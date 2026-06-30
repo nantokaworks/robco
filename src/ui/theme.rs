@@ -70,14 +70,23 @@ impl Theme {
         Style::default().fg(self.input)
     }
 
-    pub fn status_style(self, status: Status) -> Style {
-        let color = match status {
+    fn status_color(self, status: Status) -> Color {
+        match status {
             Status::Running => self.running,
             Status::Waiting => self.waiting,
             Status::Idle => self.idle,
             Status::Dead => self.dead,
             Status::BranchOnly => self.branch_only,
-        };
-        Style::default().fg(color)
+        }
+    }
+
+    pub fn status_style(self, status: Status) -> Style {
+        Style::default().fg(self.status_color(status))
+    }
+
+    pub fn selected_status_style(self, status: Status) -> Style {
+        Style::default()
+            .fg(self.status_color(status))
+            .add_modifier(Modifier::BOLD)
     }
 }

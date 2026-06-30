@@ -63,7 +63,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     agent.status.badge()
                 };
                 let status_style = if selected {
-                    style
+                    THEME.selected_status_style(agent.status)
                 } else {
                     super::status_style(agent.status)
                 };

@@ -204,6 +204,7 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
                 &app.registry,
                 app.preview,
                 app.preview_scroll,
+                &app.config.tmux_session_prefix,
             );
             dialog::draw(frame, app, &visible);
         })?;

@@ -20,11 +20,29 @@ pub fn draw(
     registry: &Registry,
     pane: PreviewPane,
     scroll: u16,
+    tmux_prefix: &str,
 ) {
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
 
     let (title, text) = match (pane, selection) {
+        (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
+            let repo = &registry.repos[repo_idx];
+            let title = format!("TERMINAL: {} / main", repo.name);
+            let session = agent::repo_shell_session_name(tmux_prefix, repo);
+            resize_preview_session(&session, panes.preview);
+            let text = tmux::capture_plain(&session)
+                .ok()
+                .and_then(|capture| capture.into_text().ok())
+                .unwrap_or_else(|| {
+                    vec![Line::from(Span::styled(
+                        "No shell session. Press enter to open one.",
+                        THEME.muted_style(),
+                    ))]
+                    .into()
+                });
+            (title, text)
+        }
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
         (PreviewPane::Claude, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];

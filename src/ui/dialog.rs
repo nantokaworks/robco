@@ -83,7 +83,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 Line::from("Sessions"),
                 Line::from("  n              new agent under selected repo"),
                 Line::from("  N              new agent with initial prompt: title | prompt"),
-                Line::from("  enter          attach to claude, or shell in terminal view"),
+                Line::from(
+                    "  enter          attach: claude, or terminal (agent shell / repo main worktree)",
+                ),
                 Line::from("  ctrl-q         return from attached tmux session"),
                 Line::from("  r              restart selected agent"),
                 Line::from(
