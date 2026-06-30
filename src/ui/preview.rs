@@ -2,7 +2,7 @@ use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -12,7 +12,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::PreviewPane,
+    ui::{PreviewPane, theme::DEFAULT as THEME},
 };
 
 pub fn draw(
@@ -50,14 +50,8 @@ pub fn draw(
                 .and_then(|capture| capture.into_text().ok())
                 .unwrap_or_else(|| {
                     vec![
-                        Line::from(Span::styled(
-                            "No preview available.",
-                            Style::default().fg(Color::DarkGray),
-                        )),
-                        Line::from(Span::styled(
-                            &agent.tmux_session,
-                            Style::default().fg(Color::DarkGray),
-                        )),
+                        Line::from(Span::styled("No preview available.", THEME.muted_style())),
+                        Line::from(Span::styled(&agent.tmux_session, THEME.muted_style())),
                     ]
                     .into()
                 });
@@ -77,7 +71,7 @@ pub fn draw(
                 .unwrap_or_else(|| {
                     vec![Line::from(Span::styled(
                         "No shell session. Press enter to open one.",
-                        Style::default().fg(Color::DarkGray),
+                        THEME.muted_style(),
                     ))]
                     .into()
                 });
@@ -109,7 +103,7 @@ pub fn draw(
                 .title_style(Style::default().add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL),
         )
-        .style(Style::default().fg(Color::Green))
+        .style(THEME.accent_style())
         .scroll((scroll, 0));
     frame.render_widget(preview, panes[1]);
 }
@@ -123,15 +117,15 @@ fn render_branch_only(
     let text = vec![
         Line::from(Span::styled(
             "Worktree has been removed.",
-            Style::default().fg(Color::DarkGray),
+            THEME.muted_style(),
         )),
         Line::from(vec![
-            Span::styled("branch: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("branch: ", THEME.muted_style()),
             Span::raw(branch.to_string()),
         ]),
         Line::from(Span::styled(
             "Press x to delete the branch.",
-            Style::default().fg(Color::DarkGray),
+            THEME.muted_style(),
         )),
     ];
     let preview = Paragraph::new(text)
@@ -141,18 +135,18 @@ fn render_branch_only(
                 .title_style(Style::default().add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL),
         )
-        .style(Style::default().fg(Color::DarkGray));
+        .style(THEME.muted_style());
     frame.render_widget(preview, area);
 }
 
 fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'static>) {
     let mut lines = vec![
         Line::from(vec![
-            Span::styled("path: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("path: ", THEME.muted_style()),
             Span::raw(repo.path.display().to_string()),
         ]),
         Line::from(vec![
-            Span::styled("remote: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("remote: ", THEME.muted_style()),
             Span::raw(
                 repo.remote_url
                     .clone()
@@ -160,27 +154,24 @@ fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'
             ),
         ]),
         Line::from(vec![
-            Span::styled("agents: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("agents: ", THEME.muted_style()),
             Span::raw(repo.agents.len().to_string()),
         ]),
     ];
 
     if let Some(dropr) = &repo.dropr {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "dropr",
-            Style::default().fg(Color::Green),
-        )));
+        lines.push(Line::from(Span::styled("dropr", THEME.accent_style())));
         lines.push(Line::from(vec![
-            Span::styled("kind: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("kind: ", THEME.muted_style()),
             Span::raw(dropr.kind.clone()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("id: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("id: ", THEME.muted_style()),
             Span::raw(dropr.id.clone()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("name: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("name: ", THEME.muted_style()),
             Span::raw(dropr.name.clone()),
         ]));
     }

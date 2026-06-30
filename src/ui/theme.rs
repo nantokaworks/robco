@@ -1,0 +1,79 @@
+use ratatui::style::{Color, Modifier, Style};
+
+use crate::model::Status;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Theme {
+    pub accent: Color,
+    pub muted: Color,
+    pub hint: Color,
+    pub selection_fg: Color,
+    pub selection_bg: Color,
+    pub dialog_border: Color,
+    pub input: Color,
+    pub running: Color,
+    pub waiting: Color,
+    pub idle: Color,
+    pub dead: Color,
+    pub branch_only: Color,
+}
+
+pub const DEFAULT: Theme = Theme {
+    accent: Color::Green,
+    muted: Color::DarkGray,
+    hint: Color::Gray,
+    selection_fg: Color::Black,
+    selection_bg: Color::Green,
+    dialog_border: Color::Green,
+    input: Color::White,
+    running: Color::Green,
+    waiting: Color::Yellow,
+    idle: Color::Gray,
+    dead: Color::Red,
+    branch_only: Color::DarkGray,
+};
+
+impl Theme {
+    pub fn accent_style(self) -> Style {
+        Style::default().fg(self.accent)
+    }
+
+    pub fn accent_bold_style(self) -> Style {
+        self.accent_style().add_modifier(Modifier::BOLD)
+    }
+
+    pub fn muted_style(self) -> Style {
+        Style::default().fg(self.muted)
+    }
+
+    pub fn hint_style(self) -> Style {
+        Style::default().fg(self.hint)
+    }
+
+    pub fn selection_style(self) -> Style {
+        Style::default().fg(self.selection_fg).bg(self.selection_bg)
+    }
+
+    pub fn dialog_border_style(self) -> Style {
+        Style::default().fg(self.dialog_border)
+    }
+
+    pub fn dialog_label_style(self) -> Style {
+        self.accent_style().add_modifier(Modifier::BOLD)
+    }
+
+    pub fn input_style(self) -> Style {
+        Style::default().fg(self.input)
+    }
+
+    pub fn status_style(self, status: Status) -> Style {
+        let color = match status {
+            Status::Running => self.running,
+            Status::Waiting => self.waiting,
+            Status::Idle => self.idle,
+            Status::Dead => self.dead,
+            Status::BranchOnly => self.branch_only,
+        };
+        Style::default().fg(color)
+    }
+}
