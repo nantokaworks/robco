@@ -9,7 +9,8 @@ pub struct Config {
     pub default_program: String,
     #[serde(default)]
     pub profiles: Vec<Profile>,
-    pub branch_prefix: String,
+    #[serde(default)]
+    pub branch_prefix: Option<String>,
     pub worktree_root: PathBuf,
     pub tmux_session_prefix: String,
     pub poll_interval_ms: u64,
@@ -29,7 +30,7 @@ impl Default for Config {
         Self {
             default_program: "claude".to_string(),
             profiles: Vec::new(),
-            branch_prefix: "robco/".to_string(),
+            branch_prefix: None,
             worktree_root: home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".robco")

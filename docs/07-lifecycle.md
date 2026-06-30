@@ -7,7 +7,7 @@ The mechanics mirror ClaudeSquad, reimplemented in Rust.
 ### Create
 
 1. Resolve the repo and an agent `title`.
-2. Compute names: `branch = <branch_prefix><title>`,
+2. Compute names: `branch = <branch_prefix><title>` (`branch_prefix` defaults to the sanitized `<repo>/` when unset),
    `worktree = <worktree_root>/<repo>_<title>_<shortid>`,
    `session = <tmux_session_prefix><repo>_<title>` (sanitized).
 3. `git -C <repo> worktree add <worktree> -b <branch> <base>` where `<base>` is the repo's
