@@ -1,4 +1,8 @@
-use std::{path::Path, process::Command};
+use std::{
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 use crate::{Error, Result};
 
@@ -63,6 +67,7 @@ pub fn capture_plain(session: &str) -> Result<String> {
 
 pub fn attach(session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
+    let binding = ReturnKeyBinding::install(in_tmux, session)?;
     let mut command = Command::new("tmux");
     if in_tmux {
         command.args(["switch-client", "-t", session]);
@@ -70,14 +75,20 @@ pub fn attach(session: &str) -> Result<()> {
         command.args(["attach", "-t", session]);
     }
     let status = command.status()?;
-    if status.success() {
-        Ok(())
+    let attach_result = if status.success() {
+        if in_tmux {
+            wait_for_return_key(session)
+        } else {
+            Ok(())
+        }
     } else {
         Err(Error::Command {
             context: "tmux attach",
             stderr: format!("tmux exited with {status}"),
         })
-    }
+    };
+    let restore_result = binding.restore();
+    attach_result.and(restore_result)
 }
 
 pub fn send_keys(session: &str, keys: &[&str]) -> Result<()> {
@@ -102,6 +113,93 @@ fn command_output(output: std::process::Output, context: &'static str) -> Result
     })
 }
 
+struct ReturnKeyBinding {
+    previous: Option<String>,
+}
+
+impl ReturnKeyBinding {
+    fn install(in_tmux: bool, session: &str) -> Result<Self> {
+        let previous = capture_key_binding("C-q")?;
+        let signal = return_signal_name(session);
+        let mut command = Command::new("tmux");
+        if in_tmux {
+            command.args([
+                "bind-key",
+                "-T",
+                "root",
+                "C-q",
+                "switch-client",
+                "-l",
+                ";",
+                "run-shell",
+                &format!("tmux wait-for -S {signal}"),
+            ]);
+        } else {
+            command.args([
+                "bind-key",
+                "-T",
+                "root",
+                "C-q",
+                "detach-client",
+                ";",
+                "run-shell",
+                &format!("tmux wait-for -S {signal}"),
+            ]);
+        }
+        let output = command.output()?;
+        command_unit(output, "tmux bind-key")?;
+        Ok(Self { previous })
+    }
+
+    fn restore(self) -> Result<()> {
+        match self.previous {
+            Some(previous) => {
+                let mut child = Command::new("tmux")
+                    .args(["source-file", "-"])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?;
+                if let Some(mut stdin) = child.stdin.take() {
+                    stdin.write_all(previous.as_bytes())?;
+                    stdin.write_all(b"\n")?;
+                }
+                let output = child.wait_with_output()?;
+                command_unit(output, "tmux restore key binding")
+            }
+            None => {
+                let output = Command::new("tmux")
+                    .args(["unbind-key", "-T", "root", "C-q"])
+                    .output()?;
+                command_unit(output, "tmux unbind-key")
+            }
+        }
+    }
+}
+
+fn capture_key_binding(key: &str) -> Result<Option<String>> {
+    let output = Command::new("tmux")
+        .args(["list-keys", "-T", "root", key])
+        .output()?;
+    let binding = command_output(output, "tmux list-keys")?;
+    let binding = binding.trim().to_string();
+    Ok((!binding.is_empty()).then_some(binding))
+}
+
+fn wait_for_return_key(session: &str) -> Result<()> {
+    let signal = return_signal_name(session);
+    let output = Command::new("tmux").args(["wait-for", &signal]).output()?;
+    command_unit(output, "tmux wait-for")
+}
+
+fn return_signal_name(session: &str) -> String {
+    format!(
+        "robco-return-{}-{}",
+        std::process::id(),
+        sanitize_target_part(session)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +211,12 @@ mod tests {
             session_name("robco_", "my.repo", "fix/thing"),
             "robco_my-repo_fix-thing"
         );
+    }
+
+    #[test]
+    fn return_signal_name_is_tmux_safe() {
+        let signal = return_signal_name("repo/foo.bar:baz");
+        assert!(signal.starts_with("robco-return-"));
+        assert!(signal.ends_with("-repo-foo-bar-baz"));
     }
 }
