@@ -172,6 +172,7 @@ fn help() -> (String, ratatui::text::Text<'static>) {
             Line::from("  n              new agent under selected repo"),
             Line::from("  N              new agent with initial prompt: title | prompt"),
             Line::from("  enter          attach to selected tmux session"),
+            Line::from("  t              open a shell in the agent worktree (ctrl-q to return)"),
             Line::from("  ctrl-q         return from attached tmux session"),
             Line::from("  r              restart selected agent"),
             Line::from(
