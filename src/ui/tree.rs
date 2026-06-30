@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Paragraph},
 };
 
 use crate::{
@@ -15,7 +15,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
@@ -26,13 +26,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
         .split(root[1]);
 
-    let header = Paragraph::new("ROBCO ▸ repo-oriented bot control & orchestration")
-        .style(
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )
-        .block(Block::default().borders(Borders::BOTTOM));
+    let header = Paragraph::new("ROBCO ▸ repo-oriented bot control & orchestration").style(
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
+    );
     frame.render_widget(header, root[0]);
 
     let mut lines = Vec::new();
@@ -76,7 +74,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     style
                 };
                 let status_text = if agent.status == Status::Running {
-                    super::spinner::frame(app.frame)
+                    super::spinner::frame(app.started.elapsed())
                 } else {
                     agent.status.badge()
                 };
@@ -96,7 +94,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     }
 
     let tree = Paragraph::new(lines)
-        .block(Block::default().title("projects").borders(Borders::ALL))
+        .block(Block::default().title("PROJECTS"))
         .style(Style::default().fg(Color::Green));
     frame.render_widget(tree, panes[0]);
 
