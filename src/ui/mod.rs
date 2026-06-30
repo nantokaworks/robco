@@ -1,4 +1,7 @@
-use std::{io, time::Duration};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 
 use crossterm::{
     event::{self, Event},
@@ -16,6 +19,7 @@ use crate::{
 };
 
 mod actions;
+mod dialog;
 mod input;
 mod preview;
 mod spinner;
@@ -56,7 +60,7 @@ pub struct App {
     pub(crate) expanded: Vec<bool>,
     pub(crate) preview: PreviewPane,
     pub(crate) preview_scroll: u16,
-    pub(crate) frame: u64,
+    pub(crate) started: Instant,
     force_redraw: bool,
     mode: Mode,
 }
@@ -71,7 +75,7 @@ impl App {
             expanded,
             preview: PreviewPane::Terminal,
             preview_scroll: 0,
-            frame: 0,
+            started: Instant::now(),
             force_redraw: false,
             mode: Mode::Normal,
         }
@@ -123,7 +127,6 @@ impl App {
     }
 
     fn tick(&mut self) {
-        self.frame = self.frame.wrapping_add(1);
         for repo in &mut self.registry.repos {
             for agent in &mut repo.agents {
                 status::refresh_agent(&repo.path, agent, self.config.auto_accept);
@@ -176,26 +179,8 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
         terminal.draw(|frame| {
             let visible = app.visible();
             let message = match &app.mode {
-                Mode::PromptAgent {
-                    input, with_prompt, ..
-                } => {
-                    if *with_prompt {
-                        Some(format!("title | initial prompt: {input}"))
-                    } else {
-                        Some(format!("agent title: {input}"))
-                    }
-                }
-                Mode::PromptRepo { input } => Some(format!("repo path: {input}")),
-                Mode::ConfirmKill { repo, agent } => Some(format!(
-                    "delete worktree for {}? y/N",
-                    app.registry.repos[*repo].agents[*agent].title
-                )),
-                Mode::ConfirmDeleteBranch { repo, agent } => Some(format!(
-                    "delete branch {}? y/N",
-                    app.registry.repos[*repo].agents[*agent].branch
-                )),
                 Mode::Message(message) => Some(message.clone()),
-                Mode::Normal => None,
+                _ => None,
             };
             tree::draw(frame, app, &visible, message.as_deref());
             preview::draw(
@@ -205,6 +190,7 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
                 app.preview,
                 app.preview_scroll,
             );
+            dialog::draw(frame, app, &visible);
         })?;
 
         if event::poll(Duration::from_millis(app.config.poll_interval_ms))?

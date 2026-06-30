@@ -74,7 +74,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     style
                 };
                 let status_text = if agent.status == Status::Running {
-                    super::spinner::frame(app.frame)
+                    super::spinner::frame(app.started.elapsed())
                 } else {
                     agent.status.badge()
                 };
