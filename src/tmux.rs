@@ -27,10 +27,10 @@ pub fn sanitize_target_part(value: &str) -> String {
 }
 
 pub fn has_session(session: &str) -> Result<bool> {
-    let status = Command::new("tmux")
+    let output = Command::new("tmux")
         .args(["has-session", "-t", session])
-        .status()?;
-    Ok(status.success())
+        .output()?;
+    Ok(output.status.success())
 }
 
 pub fn new_session_command(session: &str, cwd: &Path, program: &str) -> Command {

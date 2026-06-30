@@ -1,9 +1,9 @@
 use chrono::{Duration, Local};
 
-use crate::{model::Status, tmux};
+use crate::{agent, model::Status, tmux};
 
 pub fn refresh_agent(agent: &mut crate::model::AgentNode, auto_accept: bool) {
-    if !tmux::has_session(&agent.tmux_session).unwrap_or(false) {
+    if agent::ensure_agent_session(agent).is_err() {
         agent.status = Status::Dead;
         return;
     }

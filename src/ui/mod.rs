@@ -256,11 +256,21 @@ impl App {
     }
 
     fn attach_selected(&mut self) -> Result<()> {
-        let Some(Selection::Agent { repo, agent }) = self.selected_item() else {
+        let Some(Selection::Agent {
+            repo,
+            agent: agent_idx,
+        }) = self.selected_item()
+        else {
             return Ok(());
         };
-        let session = self.registry.repos[repo].agents[agent].tmux_session.clone();
-        suspend_terminal(|| tmux::attach(&session))?;
+        let selected = self.registry.repos[repo].agents[agent_idx].clone();
+        match agent::ensure_agent_session(&selected) {
+            Ok(()) => {
+                let session = selected.tmux_session.clone();
+                suspend_terminal(|| tmux::attach(&session))?;
+            }
+            Err(err) => self.mode = Mode::Message(err.to_string()),
+        }
         Ok(())
     }
 
