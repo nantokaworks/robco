@@ -1,10 +1,9 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 
 use crate::{
@@ -12,7 +11,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::PreviewPane,
+    ui::{PreviewPane, layout, theme::DEFAULT as THEME},
 };
 
 pub fn draw(
@@ -22,19 +21,8 @@ pub fn draw(
     pane: PreviewPane,
     scroll: u16,
 ) {
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(frame.area());
-
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
-        .split(root[1]);
+    let root = layout::root(frame.area());
+    let panes = layout::panes(root.body);
 
     let (title, text) = match (pane, selection) {
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
@@ -43,21 +31,16 @@ pub fn draw(
             let agent = &repo.agents[agent];
             let title = format!("CLAUDE: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(frame, panes[1], title, &agent.branch);
+                return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
+            resize_preview_session(&agent.tmux_session, panes.preview);
             let text = tmux::capture_plain(&agent.tmux_session)
                 .ok()
                 .and_then(|capture| capture.into_text().ok())
                 .unwrap_or_else(|| {
                     vec![
-                        Line::from(Span::styled(
-                            "No preview available.",
-                            Style::default().fg(Color::DarkGray),
-                        )),
-                        Line::from(Span::styled(
-                            &agent.tmux_session,
-                            Style::default().fg(Color::DarkGray),
-                        )),
+                        Line::from(Span::styled("No preview available.", THEME.muted_style())),
+                        Line::from(Span::styled(&agent.tmux_session, THEME.muted_style())),
                     ]
                     .into()
                 });
@@ -68,16 +51,17 @@ pub fn draw(
             let agent = &repo.agents[agent];
             let title = format!("TERMINAL: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(frame, panes[1], title, &agent.branch);
+                return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
             let session = agent::shell_session_name(agent);
+            resize_preview_session(&session, panes.preview);
             let text = tmux::capture_plain(&session)
                 .ok()
                 .and_then(|capture| capture.into_text().ok())
                 .unwrap_or_else(|| {
                     vec![Line::from(Span::styled(
                         "No shell session. Press enter to open one.",
-                        Style::default().fg(Color::DarkGray),
+                        THEME.muted_style(),
                     ))]
                     .into()
                 });
@@ -88,7 +72,7 @@ pub fn draw(
             let agent = &repo.agents[agent];
             let title = format!("DIFF: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(frame, panes[1], title, &agent.branch);
+                return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
             let text = git::diff(&agent.worktree_path)
                 .unwrap_or_else(|err| err.to_string())
@@ -109,9 +93,19 @@ pub fn draw(
                 .title_style(Style::default().add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL),
         )
-        .style(Style::default().fg(Color::Green))
+        .style(THEME.accent_style())
+        .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
-    frame.render_widget(preview, panes[1]);
+    frame.render_widget(preview, panes.preview);
+}
+
+fn resize_preview_session(session: &str, area: ratatui::layout::Rect) {
+    let width = area.width.saturating_sub(2);
+    let height = area.height.saturating_sub(2);
+    if width == 0 || height == 0 {
+        return;
+    }
+    let _ = tmux::resize_session(session, width, height);
 }
 
 fn render_branch_only(
@@ -123,15 +117,15 @@ fn render_branch_only(
     let text = vec![
         Line::from(Span::styled(
             "Worktree has been removed.",
-            Style::default().fg(Color::DarkGray),
+            THEME.muted_style(),
         )),
         Line::from(vec![
-            Span::styled("branch: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("branch: ", THEME.muted_style()),
             Span::raw(branch.to_string()),
         ]),
         Line::from(Span::styled(
             "Press x to delete the branch.",
-            Style::default().fg(Color::DarkGray),
+            THEME.muted_style(),
         )),
     ];
     let preview = Paragraph::new(text)
@@ -141,18 +135,19 @@ fn render_branch_only(
                 .title_style(Style::default().add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL),
         )
-        .style(Style::default().fg(Color::DarkGray));
+        .style(THEME.muted_style())
+        .wrap(Wrap { trim: false });
     frame.render_widget(preview, area);
 }
 
 fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'static>) {
     let mut lines = vec![
         Line::from(vec![
-            Span::styled("path: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("path: ", THEME.muted_style()),
             Span::raw(repo.path.display().to_string()),
         ]),
         Line::from(vec![
-            Span::styled("remote: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("remote: ", THEME.muted_style()),
             Span::raw(
                 repo.remote_url
                     .clone()
@@ -160,27 +155,24 @@ fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'
             ),
         ]),
         Line::from(vec![
-            Span::styled("agents: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("agents: ", THEME.muted_style()),
             Span::raw(repo.agents.len().to_string()),
         ]),
     ];
 
     if let Some(dropr) = &repo.dropr {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "dropr",
-            Style::default().fg(Color::Green),
-        )));
+        lines.push(Line::from(Span::styled("dropr", THEME.accent_style())));
         lines.push(Line::from(vec![
-            Span::styled("kind: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("kind: ", THEME.muted_style()),
             Span::raw(dropr.kind.clone()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("id: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("id: ", THEME.muted_style()),
             Span::raw(dropr.id.clone()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("name: ", Style::default().fg(Color::DarkGray)),
+            Span::styled("name: ", THEME.muted_style()),
             Span::raw(dropr.name.clone()),
         ]));
     }
