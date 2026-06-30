@@ -25,7 +25,7 @@ pub fn draw(
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(2),
             Constraint::Min(1),
             Constraint::Length(1),
         ])
@@ -42,7 +42,7 @@ pub fn draw(
         (PreviewPane::Terminal, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
-            let title = format!("preview: {} / {}", repo.name, agent.title);
+            let title = format!("PREVIEW: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
                 return render_branch_only(frame, panes[1], title, &agent.branch);
             }
@@ -67,7 +67,7 @@ pub fn draw(
         (PreviewPane::Diff, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
-            let title = format!("diff: {} / {}", repo.name, agent.title);
+            let title = format!("DIFF: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
                 return render_branch_only(frame, panes[1], title, &agent.branch);
             }
@@ -78,7 +78,7 @@ pub fn draw(
             (title, text)
         }
         (_, None) => (
-            "preview".to_string(),
+            "PREVIEW".to_string(),
             vec![Line::from("No repositories discovered.")].into(),
         ),
     };
@@ -156,12 +156,12 @@ fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'
         ]));
     }
 
-    (format!("repo: {}", repo.name), lines.into())
+    (format!("REPO: {}", repo.name), lines.into())
 }
 
 fn help() -> (String, ratatui::text::Text<'static>) {
     (
-        "help".to_string(),
+        "HELP".to_string(),
         vec![
             Line::from("Navigation"),
             Line::from("  j/k or arrows  move selection"),
