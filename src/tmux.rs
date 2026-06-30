@@ -65,6 +65,13 @@ pub fn capture_plain(session: &str) -> Result<String> {
     command_output(output, "tmux capture-pane")
 }
 
+pub fn capture_text(session: &str) -> Result<String> {
+    let output = Command::new("tmux")
+        .args(["capture-pane", "-p", "-t", session])
+        .output()?;
+    command_output(output, "tmux capture-pane")
+}
+
 pub fn attach(session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
     let binding = ReturnKeyBinding::install(in_tmux, session)?;

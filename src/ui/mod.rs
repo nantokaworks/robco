@@ -49,6 +49,7 @@ pub struct App {
     pub(crate) expanded: Vec<bool>,
     pub(crate) preview: PreviewPane,
     pub(crate) preview_scroll: u16,
+    force_redraw: bool,
     mode: Mode,
 }
 
@@ -62,6 +63,7 @@ impl App {
             expanded,
             preview: PreviewPane::Terminal,
             preview_scroll: 0,
+            force_redraw: false,
             mode: Mode::Normal,
         }
     }
@@ -267,6 +269,7 @@ impl App {
         match agent::ensure_agent_session(&selected) {
             Ok(()) => {
                 let session = selected.tmux_session.clone();
+                self.force_redraw = true;
                 suspend_terminal(|| tmux::attach(&session))?;
             }
             Err(err) => self.mode = Mode::Message(err.to_string()),
@@ -393,6 +396,10 @@ pub fn run(registry: Registry, config: Config) -> Result<()> {
 fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
     loop {
         app.tick();
+        if app.force_redraw {
+            terminal.clear()?;
+            app.force_redraw = false;
+        }
         terminal.draw(|frame| {
             let visible = app.visible();
             let message = match &app.mode {
