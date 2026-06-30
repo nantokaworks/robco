@@ -24,6 +24,8 @@ pub struct AgentNode {
     pub branch: String,
     pub base_commit: String,
     pub program: String,
+    #[serde(default)]
+    pub profile: Option<String>,
     pub tmux_session: String,
     pub created_at: DateTime<Local>,
     pub updated_at: DateTime<Local>,
