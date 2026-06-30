@@ -1,0 +1,19 @@
+version: "3"
+
+tasks:
+  release:
+    desc: Local release pipeline for RobCo (preflight -> check -> build -> package -> tag -> publish -> verify). Pass --dry-run or --from=<stage> after --.
+    cmds:
+      - bash scripts/release.sh {{.CLI_ARGS}}
+
+  release:dry:
+    desc: Dry-run the release pipeline without pushing tags, creating releases, or updating Homebrew.
+    cmds:
+      - bash scripts/release.sh --dry-run {{.CLI_ARGS}}
+
+  check:
+    desc: Run local checks.
+    cmds:
+      - cargo fmt --all -- --check
+      - cargo test
+      - cargo clippy --all-targets --all-features -- -D warnings
