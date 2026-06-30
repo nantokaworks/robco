@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-const FRAMES: [&str; 6] = ["[=   ]", "[ =  ]", "[  = ]", "[   =]", "[  = ]", "[ =  ]"];
+const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_INTERVAL_MS: u128 = 120;
 
 /// Pick the animation frame from elapsed wall-clock time, so the spinner runs
