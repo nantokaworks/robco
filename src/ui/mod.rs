@@ -183,6 +183,7 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
         }
 
         if app.force_redraw {
+            terminal.autoresize()?;
             terminal.clear()?;
             app.force_redraw = false;
         }
