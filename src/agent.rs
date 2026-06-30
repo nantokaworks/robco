@@ -82,6 +82,19 @@ pub fn ensure_shell_session(agent: &AgentNode) -> Result<()> {
     tmux::new_session(&session, &agent.worktree_path, &shell_program())
 }
 
+pub fn repo_shell_session_name(prefix: &str, repo: &RepoNode) -> String {
+    format!("{}-shell", tmux::session_name(prefix, &repo.name, "main"))
+}
+
+pub fn ensure_repo_shell_session(prefix: &str, repo: &RepoNode) -> Result<()> {
+    let session = repo_shell_session_name(prefix, repo);
+    if tmux::has_session(&session)? {
+        return Ok(());
+    }
+
+    tmux::new_session(&session, &repo.path, &shell_program())
+}
+
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
     let worktree_exists = agent.worktree_path.exists();
     if worktree_exists && !git::tracked_tree_is_clean(&agent.worktree_path)? {
