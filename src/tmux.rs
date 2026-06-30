@@ -2,6 +2,8 @@ use std::{
     io::Write,
     path::Path,
     process::{Command, Stdio},
+    thread,
+    time::Duration,
 };
 
 use crossterm::terminal;
@@ -32,6 +34,11 @@ pub fn has_session(session: &str) -> Result<bool> {
     let output = Command::new("tmux")
         .args(["has-session", "-t", session])
         .output()?;
+    Ok(output.status.success())
+}
+
+fn has_server() -> Result<bool> {
+    let output = Command::new("tmux").arg("list-sessions").output()?;
     Ok(output.status.success())
 }
 
@@ -133,6 +140,9 @@ pub fn attach(session: &str) -> Result<()> {
         })
     };
     let restore_result = binding.restore();
+    if !has_session(session)? {
+        return restore_result.map(|_| ());
+    }
     attach_result.and(restore_result)
 }
 
@@ -214,10 +224,17 @@ impl ReturnKeyBinding {
     }
 
     fn restore(self) -> Result<()> {
-        let key_result = restore_key_binding(self.previous.as_deref());
-        let status_result =
-            restore_session_option(&self.session, "status", self.previous_status.as_deref());
-        let status_right_result = restore_session_option(
+        let key_result = if has_server()? {
+            restore_key_binding(self.previous.as_deref())
+        } else {
+            Ok(())
+        };
+        let status_result = restore_session_option_if_present(
+            &self.session,
+            "status",
+            self.previous_status.as_deref(),
+        );
+        let status_right_result = restore_session_option_if_present(
             &self.session,
             "status-right",
             self.previous_status_right.as_deref(),
@@ -298,10 +315,37 @@ fn restore_session_option(session: &str, option: &str, previous: Option<&str>) -
     }
 }
 
+fn restore_session_option_if_present(
+    session: &str,
+    option: &str,
+    previous: Option<&str>,
+) -> Result<()> {
+    if !has_session(session)? {
+        return Ok(());
+    }
+    restore_session_option(session, option, previous)
+}
+
 fn wait_for_return_key(session: &str) -> Result<()> {
     let signal = return_signal_name(session);
-    let output = Command::new("tmux").args(["wait-for", &signal]).output()?;
-    command_unit(output, "tmux wait-for")
+    let mut child = Command::new("tmux").args(["wait-for", &signal]).spawn()?;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            if status.success() {
+                return Ok(());
+            }
+            return Err(Error::Command {
+                context: "tmux wait-for",
+                stderr: format!("tmux exited with {status}"),
+            });
+        }
+        if !has_session(session)? {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn return_signal_name(session: &str) -> String {
