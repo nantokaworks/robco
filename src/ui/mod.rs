@@ -16,6 +16,7 @@ use crate::{
 };
 
 mod preview;
+mod spinner;
 mod tree;
 
 enum Mode {
@@ -53,6 +54,7 @@ pub struct App {
     pub(crate) expanded: Vec<bool>,
     pub(crate) preview: PreviewPane,
     pub(crate) preview_scroll: u16,
+    pub(crate) frame: u64,
     force_redraw: bool,
     mode: Mode,
 }
@@ -67,6 +69,7 @@ impl App {
             expanded,
             preview: PreviewPane::Terminal,
             preview_scroll: 0,
+            frame: 0,
             force_redraw: false,
             mode: Mode::Normal,
         }
@@ -118,6 +121,7 @@ impl App {
     }
 
     fn tick(&mut self) {
+        self.frame = self.frame.wrapping_add(1);
         for repo in &mut self.registry.repos {
             for agent in &mut repo.agents {
                 status::refresh_agent(&repo.path, agent, self.config.auto_accept);
