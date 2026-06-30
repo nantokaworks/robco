@@ -62,6 +62,7 @@ cargo test
 - `N`: create a new agent with an initial prompt (`title | prompt`)
 - `a`: add an arbitrary repository path
 - `enter`: attach to the selected agent's tmux session
+- `ctrl-q`: return from the attached tmux session to RobCo
 - `tab`: switch between terminal preview and git diff
 - `r`: restart the selected agent program
 - `s`: `git add`, commit, and push the selected agent branch
