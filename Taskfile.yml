@@ -11,6 +11,11 @@ tasks:
     cmds:
       - bash scripts/release.sh --dry-run {{.CLI_ARGS}}
 
+  dev:
+    desc: Run RobCo against ~/abyss (cargo run, as if launched from ~/abyss). Extra flags pass through after --.
+    cmds:
+      - cargo run -- ~/abyss {{.CLI_ARGS}}
+
   check:
     desc: Run local checks.
     cmds:
