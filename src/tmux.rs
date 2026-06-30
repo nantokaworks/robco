@@ -121,7 +121,10 @@ fn command_output(output: std::process::Output, context: &'static str) -> Result
 }
 
 struct ReturnKeyBinding {
+    session: String,
     previous: Option<String>,
+    previous_status: Option<String>,
+    previous_status_right: Option<String>,
 }
 
 impl ReturnKeyBinding {
@@ -155,32 +158,37 @@ impl ReturnKeyBinding {
         }
         let output = command.output()?;
         command_unit(output, "tmux bind-key")?;
-        Ok(Self { previous })
+        let (previous_status, previous_status_right) = match (|| {
+            let previous_status = capture_session_option(session, "status")?;
+            let previous_status_right = capture_session_option(session, "status-right")?;
+            set_session_option(session, "status", "on")?;
+            set_session_option(session, "status-right", "C-q to return")?;
+            Ok((previous_status, previous_status_right))
+        })() {
+            Ok(previous) => previous,
+            Err(err) => {
+                let _ = restore_key_binding(previous.as_deref());
+                return Err(err);
+            }
+        };
+        Ok(Self {
+            session: session.to_string(),
+            previous,
+            previous_status,
+            previous_status_right,
+        })
     }
 
     fn restore(self) -> Result<()> {
-        match self.previous {
-            Some(previous) => {
-                let mut child = Command::new("tmux")
-                    .args(["source-file", "-"])
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()?;
-                if let Some(mut stdin) = child.stdin.take() {
-                    stdin.write_all(previous.as_bytes())?;
-                    stdin.write_all(b"\n")?;
-                }
-                let output = child.wait_with_output()?;
-                command_unit(output, "tmux restore key binding")
-            }
-            None => {
-                let output = Command::new("tmux")
-                    .args(["unbind-key", "-T", "root", "C-q"])
-                    .output()?;
-                command_unit(output, "tmux unbind-key")
-            }
-        }
+        let key_result = restore_key_binding(self.previous.as_deref());
+        let status_result =
+            restore_session_option(&self.session, "status", self.previous_status.as_deref());
+        let status_right_result = restore_session_option(
+            &self.session,
+            "status-right",
+            self.previous_status_right.as_deref(),
+        );
+        key_result.and(status_result.and(status_right_result))
     }
 }
 
@@ -191,6 +199,69 @@ fn capture_key_binding(key: &str) -> Result<Option<String>> {
     let binding = command_output(output, "tmux list-keys")?;
     let binding = binding.trim().to_string();
     Ok((!binding.is_empty()).then_some(binding))
+}
+
+fn restore_key_binding(previous: Option<&str>) -> Result<()> {
+    match previous {
+        Some(previous) => {
+            let mut child = Command::new("tmux")
+                .args(["source-file", "-"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(previous.as_bytes())?;
+                stdin.write_all(b"\n")?;
+            }
+            let output = child.wait_with_output()?;
+            command_unit(output, "tmux restore key binding")
+        }
+        None => {
+            let output = Command::new("tmux")
+                .args(["unbind-key", "-T", "root", "C-q"])
+                .output()?;
+            command_unit(output, "tmux unbind-key")
+        }
+    }
+}
+
+fn capture_session_option(session: &str, option: &str) -> Result<Option<String>> {
+    let output = Command::new("tmux")
+        .args(["show-options", "-t", session, "-q", option])
+        .output()?;
+    let presence = command_output(output, "tmux show-options")?;
+    if presence.is_empty() {
+        return Ok(None);
+    }
+
+    let output = Command::new("tmux")
+        .args(["show-options", "-t", session, "-q", "-v", option])
+        .output()?;
+    let value = command_output(output, "tmux show-options")?;
+    let value = value.trim_end_matches(['\r', '\n']).to_string();
+    Ok(Some(value))
+}
+
+fn set_session_option(session: &str, option: &str, value: &str) -> Result<()> {
+    let output = Command::new("tmux")
+        .args(["set-option", "-t", session, option, value])
+        .output()?;
+    command_unit(output, "tmux set-option")
+}
+
+fn unset_session_option(session: &str, option: &str) -> Result<()> {
+    let output = Command::new("tmux")
+        .args(["set-option", "-u", "-t", session, option])
+        .output()?;
+    command_unit(output, "tmux set-option -u")
+}
+
+fn restore_session_option(session: &str, option: &str, previous: Option<&str>) -> Result<()> {
+    match previous {
+        Some(value) => set_session_option(session, option, value),
+        None => unset_session_option(session, option),
+    }
 }
 
 fn wait_for_return_key(session: &str) -> Result<()> {
