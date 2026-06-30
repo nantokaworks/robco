@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, theme::DEFAULT as THEME};
+use super::{App, Mode, layout, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let (title, lines): (&str, Vec<Line<'static>>) = match &app.mode {
@@ -120,15 +120,8 @@ fn hint_line(text: &str) -> Line<'static> {
 }
 
 fn centered_area(frame: &Frame<'_>, width: u16, height: u16) -> Rect {
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(frame.area());
-    let container = root[1];
+    let root = layout::root(frame.area());
+    let container = root.body;
 
     let width = width.min(container.width);
     let height = height.min(container.height);
@@ -152,20 +145,10 @@ fn popup_area(
     width: u16,
     height: u16,
 ) -> Rect {
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(frame.area());
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
-        .split(root[1]);
-    let container = root[1];
-    let tree = panes[0];
+    let root = layout::root(frame.area());
+    let panes = layout::panes(root.body);
+    let container = root.body;
+    let tree = panes.tree;
 
     let width = width.min(container.width);
     let height = height.min(container.height);
