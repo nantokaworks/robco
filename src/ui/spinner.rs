@@ -2,6 +2,7 @@ use std::time::Duration;
 
 const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_INTERVAL_MS: u128 = 120;
+pub(crate) const FRAME_INTERVAL: Duration = Duration::from_millis(FRAME_INTERVAL_MS as u64);
 
 /// Pick the animation frame from elapsed wall-clock time, so the spinner runs
 /// at a steady rate regardless of how often the UI is redrawn.
