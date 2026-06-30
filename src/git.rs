@@ -93,6 +93,18 @@ pub fn tracked_tree_is_clean(worktree: &Path) -> Result<bool> {
     Ok(command_output(output, "git status")?.trim().is_empty())
 }
 
+/// Stricter than [`tracked_tree_is_clean`]: also reports untracked files as
+/// dirty. Used by the merge/land gate, since `git worktree remove` refuses to
+/// remove a worktree that still has untracked files.
+pub fn worktree_is_clean(worktree: &Path) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["status", "--porcelain"])
+        .output()?;
+    Ok(command_output(output, "git status")?.trim().is_empty())
+}
+
 pub fn status_short(worktree: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["-C"])

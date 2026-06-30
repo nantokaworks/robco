@@ -161,11 +161,12 @@ impl App {
             return;
         }
 
-        match git::tracked_tree_is_clean(&selected.worktree_path) {
+        match git::worktree_is_clean(&selected.worktree_path) {
             Ok(true) => {}
             Ok(false) => {
                 self.mode = Mode::Message(
-                    "commit changes before merge (press s to ship, or commit first)".to_string(),
+                    "commit or clean untracked changes before merge (press s to ship first)"
+                        .to_string(),
                 );
                 return;
             }
