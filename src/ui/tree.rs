@@ -94,7 +94,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     }
 
     let tree = Paragraph::new(lines)
-        .block(Block::default().title("PROJECTS"))
+        .block(
+            Block::default()
+                .title("PROJECTS")
+                .title_style(Style::default().add_modifier(Modifier::BOLD)),
+        )
         .style(Style::default().fg(Color::Green));
     frame.render_widget(tree, panes[0]);
 
