@@ -1,5 +1,5 @@
 use crate::{
-    Result, agent,
+    Result, agent, git,
     model::{Selection, Status},
     tmux,
 };
@@ -143,6 +143,93 @@ impl App {
                 Err(err) => self.mode = Mode::Message(err.to_string()),
             }
         }
+    }
+
+    pub(super) fn merge_selected(&mut self) {
+        let Some(Selection::Agent {
+            repo,
+            agent: agent_idx,
+        }) = self.selected_item()
+        else {
+            return;
+        };
+
+        let repo_node = self.registry.repos[repo].clone();
+        let selected = repo_node.agents[agent_idx].clone();
+        if selected.status == Status::BranchOnly {
+            self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+            return;
+        }
+
+        match git::tracked_tree_is_clean(&selected.worktree_path) {
+            Ok(true) => {}
+            Ok(false) => {
+                self.mode = Mode::Message(
+                    "commit changes before merge (press s to ship, or commit first)".to_string(),
+                );
+                return;
+            }
+            Err(err) => {
+                self.mode = Mode::Message(err.to_string());
+                return;
+            }
+        }
+
+        match git::pr_exists(&repo_node.path, &selected.branch) {
+            Ok(true) => {
+                self.mode = Mode::ConfirmMerge {
+                    repo,
+                    agent: agent_idx,
+                }
+            }
+            Ok(false) => {
+                self.mode = Mode::Message(format!(
+                    "no open PR for {}; create a PR first",
+                    selected.branch
+                ));
+            }
+            Err(err) => self.mode = Mode::Message(err.to_string()),
+        }
+    }
+
+    pub(super) fn perform_merge(&mut self, repo: usize, agent_idx: usize) -> Result<()> {
+        if repo >= self.registry.repos.len() || agent_idx >= self.registry.repos[repo].agents.len()
+        {
+            return Ok(());
+        }
+
+        let repo_node = self.registry.repos[repo].clone();
+        let selected = repo_node.agents[agent_idx].clone();
+        if let Err(err) = git::merge_pr(
+            &repo_node.path,
+            &selected.branch,
+            self.config.merge_strategy.gh_flag(),
+        ) {
+            self.mode = Mode::Message(err.to_string());
+            return Ok(());
+        }
+        if let Err(err) = git::pull_ff_only(&repo_node.path) {
+            self.mode = Mode::Message(err.to_string());
+            return Ok(());
+        }
+        if selected.worktree_path.exists()
+            && let Err(err) = git::remove_worktree(&repo_node.path, &selected.worktree_path)
+        {
+            self.mode = Mode::Message(err.to_string());
+            return Ok(());
+        }
+        if git::branch_exists(&repo_node.path, &selected.branch).unwrap_or(false)
+            && let Err(err) = git::delete_branch(&repo_node.path, &selected.branch)
+        {
+            self.mode = Mode::Message(err.to_string());
+            return Ok(());
+        }
+        let _ = git::delete_remote_branch(&repo_node.path, &selected.branch);
+
+        self.registry.repos[repo].agents.remove(agent_idx);
+        self.registry.save()?;
+        self.mode = Mode::Message(format!("merged & landed {}", selected.branch));
+        Ok(())
     }
 
     pub(super) fn add_repo_path(&mut self, path: &str) {

@@ -4,6 +4,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum MergeStrategy {
+    #[default]
+    Rebase,
+    Squash,
+    Merge,
+}
+
+impl MergeStrategy {
+    pub fn gh_flag(self) -> &'static str {
+        match self {
+            MergeStrategy::Rebase => "--rebase",
+            MergeStrategy::Squash => "--squash",
+            MergeStrategy::Merge => "--merge",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub default_program: String,
@@ -17,6 +36,8 @@ pub struct Config {
     pub dropr_overlay: bool,
     #[serde(default)]
     pub auto_accept: bool,
+    #[serde(default)]
+    pub merge_strategy: MergeStrategy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -39,6 +60,7 @@ impl Default for Config {
             poll_interval_ms: 750,
             dropr_overlay: true,
             auto_accept: false,
+            merge_strategy: MergeStrategy::default(),
         }
     }
 }
@@ -113,5 +135,13 @@ mod tests {
             config.default_program_command(),
             "codex --ask-for-approval never"
         );
+    }
+
+    #[test]
+    fn merge_strategy_defaults_to_rebase_and_maps_to_gh_flags() {
+        assert_eq!(MergeStrategy::default(), MergeStrategy::Rebase);
+        assert_eq!(MergeStrategy::Rebase.gh_flag(), "--rebase");
+        assert_eq!(MergeStrategy::Squash.gh_flag(), "--squash");
+        assert_eq!(MergeStrategy::Merge.gh_flag(), "--merge");
     }
 }
