@@ -4,6 +4,8 @@ use std::{
     process::{Command, Stdio},
 };
 
+use crossterm::terminal;
+
 use crate::{Error, Result};
 
 pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
@@ -103,6 +105,13 @@ pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
 
 pub fn attach(session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
+    if !in_tmux {
+        let (width, height) = terminal::size()?;
+        if width != 0 && height != 0 {
+            resize_session(session, width, height)?;
+        }
+    }
+
     let binding = ReturnKeyBinding::install(in_tmux, session)?;
     let mut command = Command::new("tmux");
     if in_tmux {
