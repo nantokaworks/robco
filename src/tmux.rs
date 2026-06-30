@@ -72,6 +72,35 @@ pub fn capture_text(session: &str) -> Result<String> {
     command_output(output, "tmux capture-pane")
 }
 
+pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
+    let target = format!("{width}x{height}");
+    let output = Command::new("tmux")
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            session,
+            "#{window_width}x#{window_height}",
+        ])
+        .output()?;
+    let current = command_output(output, "tmux display-message")?;
+    if current.trim() == target {
+        return Ok(());
+    }
+
+    let output = Command::new("tmux")
+        .args(["set-option", "-t", session, "window-size", "manual"])
+        .output()?;
+    command_unit(output, "tmux set-option window-size")?;
+
+    let width = width.to_string();
+    let height = height.to_string();
+    let output = Command::new("tmux")
+        .args(["resize-window", "-t", session, "-x", &width, "-y", &height])
+        .output()?;
+    command_unit(output, "tmux resize-window")
+}
+
 pub fn attach(session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
     let binding = ReturnKeyBinding::install(in_tmux, session)?;
