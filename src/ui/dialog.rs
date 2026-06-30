@@ -49,6 +49,35 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y delete   n/esc keep"),
             ],
         ),
+        Mode::Help => (
+            "help",
+            vec![
+                Line::from("Navigation"),
+                Line::from("  j/k or arrows  move selection"),
+                Line::from("  h/l            collapse or expand repo"),
+                Line::from("  tab            cycle claude / diff / terminal view"),
+                Line::from(""),
+                Line::from("Sessions"),
+                Line::from("  n              new agent under selected repo"),
+                Line::from("  N              new agent with initial prompt: title | prompt"),
+                Line::from("  enter          attach to claude, or shell in terminal view"),
+                Line::from("  ctrl-q         return from attached tmux session"),
+                Line::from("  r              restart selected agent"),
+                Line::from(
+                    "  x              remove selected agent worktree, then optionally delete branch",
+                ),
+                Line::from(""),
+                Line::from("Repo / shipping"),
+                Line::from("  a              add repository by path"),
+                Line::from("  s              git add, commit, and push selected agent branch"),
+                Line::from(""),
+                Line::from("General"),
+                Line::from("  ?              show this help"),
+                Line::from("  q              quit without stopping agents"),
+                Line::from(""),
+                hint_line("press any key to close"),
+            ],
+        ),
         Mode::Message(_) | Mode::Normal => return,
     };
 
@@ -60,7 +89,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         .max(title.len()) as u16
         + 4;
     let height = lines.len() as u16 + 2;
-    let area = popup_area(frame, app, visible, width, height);
+    let area = if matches!(&app.mode, Mode::Help) {
+        centered_area(frame, width, height)
+    } else {
+        popup_area(frame, app, visible, width, height)
+    };
 
     let block = Block::default()
         .title(title)
@@ -91,6 +124,30 @@ fn hint_line(text: &str) -> Line<'static> {
         text.to_string(),
         Style::default().fg(Color::Gray),
     ))
+}
+
+fn centered_area(frame: &Frame<'_>, width: u16, height: u16) -> Rect {
+    let root = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(frame.area());
+    let container = root[1];
+
+    let width = width.min(container.width);
+    let height = height.min(container.height);
+    let x = container.x + container.width.saturating_sub(width) / 2;
+    let y = container.y + container.height.saturating_sub(height) / 2;
+
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
 }
 
 /// Place the dialog just below the selected tree row, clamped inside the

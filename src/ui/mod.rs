@@ -27,6 +27,7 @@ mod tree;
 
 enum Mode {
     Normal,
+    Help,
     PromptAgent {
         repo: usize,
         with_prompt: bool,
@@ -51,7 +52,6 @@ pub enum PreviewPane {
     Claude,
     Diff,
     Terminal,
-    Help,
 }
 
 pub struct App {
@@ -148,7 +148,6 @@ impl App {
             PreviewPane::Claude => PreviewPane::Diff,
             PreviewPane::Diff => PreviewPane::Terminal,
             PreviewPane::Terminal => PreviewPane::Claude,
-            PreviewPane::Help => PreviewPane::Claude,
         };
         self.preview_scroll = 0;
     }

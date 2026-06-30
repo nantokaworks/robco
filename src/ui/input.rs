@@ -77,6 +77,7 @@ impl App {
                 _ => {}
             },
             Mode::Message(_) => self.mode = Mode::Normal,
+            Mode::Help => self.mode = Mode::Normal,
             Mode::Normal => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -132,7 +133,7 @@ impl App {
                     };
                 }
                 KeyCode::Tab => self.toggle_preview(),
-                KeyCode::Char('?') => self.preview = PreviewPane::Help,
+                KeyCode::Char('?') => self.mode = Mode::Help,
                 KeyCode::Enter => match self.preview {
                     PreviewPane::Terminal => self.attach_shell_selected()?,
                     _ => self.attach_selected()?,

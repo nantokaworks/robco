@@ -37,7 +37,6 @@ pub fn draw(
         .split(root[1]);
 
     let (title, text) = match (pane, selection) {
-        (PreviewPane::Help, _) => help(),
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
         (PreviewPane::Claude, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
@@ -187,35 +186,4 @@ fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'
     }
 
     (format!("REPO: {}", repo.name), lines.into())
-}
-
-fn help() -> (String, ratatui::text::Text<'static>) {
-    (
-        "HELP".to_string(),
-        vec![
-            Line::from("Navigation"),
-            Line::from("  j/k or arrows  move selection"),
-            Line::from("  h/l            collapse or expand repo"),
-            Line::from("  tab            cycle claude / diff / terminal view"),
-            Line::from(""),
-            Line::from("Sessions"),
-            Line::from("  n              new agent under selected repo"),
-            Line::from("  N              new agent with initial prompt: title | prompt"),
-            Line::from("  enter          attach to claude, or shell in terminal view"),
-            Line::from("  ctrl-q         return from attached tmux session"),
-            Line::from("  r              restart selected agent"),
-            Line::from(
-                "  x              remove selected agent worktree, then optionally delete branch",
-            ),
-            Line::from(""),
-            Line::from("Repo / shipping"),
-            Line::from("  a              add repository by path"),
-            Line::from("  s              git add, commit, and push selected agent branch"),
-            Line::from(""),
-            Line::from("General"),
-            Line::from("  ?              show this help"),
-            Line::from("  q              quit without stopping agents"),
-        ]
-        .into(),
-    )
 }
