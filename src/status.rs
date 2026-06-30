@@ -8,18 +8,19 @@ pub fn refresh_agent(agent: &mut crate::model::AgentNode, auto_accept: bool) {
         return;
     }
 
-    let capture = tmux::capture_plain(&agent.tmux_session).unwrap_or_default();
+    let capture = tmux::capture_text(&agent.tmux_session).unwrap_or_default();
+    let signature = status_signature(&capture);
     let now = Local::now();
     let changed = agent
         .last_capture
         .as_ref()
-        .map(|last| last != &capture)
+        .map(|last| last != &signature)
         .unwrap_or(false);
 
     if changed {
         agent.last_change_at = Some(now);
     }
-    agent.last_capture = Some(capture.clone());
+    agent.last_capture = Some(signature);
 
     if looks_waiting(&capture) {
         agent.status = Status::Waiting;
@@ -44,6 +45,16 @@ pub fn looks_waiting(capture: &str) -> bool {
             let trimmed = line.trim();
             trimmed.ends_with('>') || trimmed.ends_with('?')
         })
+}
+
+fn status_signature(capture: &str) -> String {
+    capture
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_end()
+        .to_string()
 }
 
 fn maybe_auto_accept(
@@ -77,5 +88,13 @@ mod tests {
         assert!(looks_waiting("Allow edit src/main.rs? (y/n)"));
         assert!(looks_waiting("Do you want to continue?"));
         assert!(!looks_waiting("running cargo test"));
+    }
+
+    #[test]
+    fn status_signature_ignores_trailing_whitespace() {
+        assert_eq!(
+            status_signature("hello   \nworld\t\n\n\n"),
+            status_signature("hello\nworld")
+        );
     }
 }
