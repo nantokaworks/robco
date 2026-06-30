@@ -1,15 +1,14 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
 };
 
-use crate::{
-    model::{Selection, Status},
-    ui::App,
-};
+use crate::model::{Selection, Status};
+
+use super::{App, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = Layout::default()
@@ -26,11 +25,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
         .split(root[1]);
 
-    let header = Paragraph::new("ROBCO ▸ repo-oriented bot control & orchestration").style(
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD),
-    );
+    let header = Paragraph::new("ROBCO ▸ repo-oriented bot control & orchestration")
+        .style(THEME.accent_bold_style());
     frame.render_widget(header, root[0]);
 
     let mut lines = Vec::new();
@@ -38,9 +34,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         let selected = idx == app.selected;
         let marker = if selected { ">" } else { " " };
         let style = if selected {
-            Style::default().fg(Color::Black).bg(Color::Green)
+            THEME.selection_style()
         } else {
-            Style::default().fg(Color::Green)
+            THEME.accent_style()
         };
 
         match *item {
@@ -60,7 +56,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 if expanded && repo.agents.is_empty() {
                     lines.push(Line::from(Span::styled(
                         "    (no agents)",
-                        Style::default().fg(Color::DarkGray),
+                        THEME.muted_style(),
                     )));
                 }
             }
@@ -69,7 +65,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let agent_style = if selected {
                     style
                 } else if agent.status == Status::BranchOnly {
-                    Style::default().fg(Color::DarkGray)
+                    THEME.status_style(Status::BranchOnly)
                 } else {
                     style
                 };
@@ -99,12 +95,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 .title("PROJECTS")
                 .title_style(Style::default().add_modifier(Modifier::BOLD)),
         )
-        .style(Style::default().fg(Color::Green));
+        .style(THEME.accent_style());
     frame.render_widget(tree, panes[0]);
 
     let footer_text = message.unwrap_or(
         "↑↓/jk move  pgup/pgdn scroll  tab diff  enter attach  t shell  n/N new  a add repo  s push  x kill  ? help  q quit",
     );
-    let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
+    let footer = Paragraph::new(footer_text).style(THEME.muted_style());
     frame.render_widget(footer, root[2]);
 }

@@ -1,14 +1,14 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use crate::model::Selection;
 
-use super::{App, Mode};
+use super::{App, Mode, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let (title, lines): (&str, Vec<Line<'static>>) = match &app.mode {
@@ -99,31 +99,24 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         .title(title)
         .title_style(Style::default().add_modifier(Modifier::BOLD))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Green))
-        .style(Style::default().bg(Color::Black));
+        .border_style(THEME.dialog_border_style());
     let dialog = Paragraph::new(lines)
         .block(block)
-        .style(Style::default().fg(Color::Green));
+        .style(THEME.accent_style());
     frame.render_widget(Clear, area);
     frame.render_widget(dialog, area);
 }
 
 fn input_line(label: &str, input: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled(
-            format!(" {label}: "),
-            Style::default().fg(Color::Black).bg(Color::Green),
-        ),
-        Span::styled(input.to_string(), Style::default().fg(Color::White)),
-        Span::styled("_", Style::default().fg(Color::Green)),
+        Span::styled(format!(" {label}: "), THEME.dialog_label_style()),
+        Span::styled(input.to_string(), THEME.input_style()),
+        Span::styled("_", THEME.accent_style()),
     ])
 }
 
 fn hint_line(text: &str) -> Line<'static> {
-    Line::from(Span::styled(
-        text.to_string(),
-        Style::default().fg(Color::Gray),
-    ))
+    Line::from(Span::styled(text.to_string(), THEME.hint_style()))
 }
 
 fn centered_area(frame: &Frame<'_>, width: u16, height: u16) -> Rect {

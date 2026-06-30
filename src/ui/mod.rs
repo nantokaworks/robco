@@ -23,6 +23,7 @@ mod dialog;
 mod input;
 mod preview;
 mod spinner;
+mod theme;
 mod tree;
 
 enum Mode {
@@ -235,12 +236,5 @@ fn suspend_terminal(action: impl FnOnce() -> Result<()>) -> Result<()> {
 }
 
 fn status_style(status: Status) -> ratatui::style::Style {
-    use ratatui::style::{Color, Style};
-    match status {
-        Status::Running => Style::default().fg(Color::Green),
-        Status::Waiting => Style::default().fg(Color::Yellow),
-        Status::Idle => Style::default().fg(Color::Gray),
-        Status::Dead => Style::default().fg(Color::Red),
-        Status::BranchOnly => Style::default().fg(Color::DarkGray),
-    }
+    theme::DEFAULT.status_style(status)
 }
