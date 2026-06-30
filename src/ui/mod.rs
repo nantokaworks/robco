@@ -44,8 +44,9 @@ enum Mode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewPane {
-    Terminal,
+    Claude,
     Diff,
+    Terminal,
     Help,
 }
 
@@ -69,7 +70,7 @@ impl App {
             config,
             selected: 0,
             expanded,
-            preview: PreviewPane::Terminal,
+            preview: PreviewPane::Claude,
             preview_scroll: 0,
             frame: 0,
             force_redraw: false,
@@ -141,9 +142,10 @@ impl App {
 
     fn toggle_preview(&mut self) {
         self.preview = match self.preview {
-            PreviewPane::Terminal => PreviewPane::Diff,
+            PreviewPane::Claude => PreviewPane::Diff,
             PreviewPane::Diff => PreviewPane::Terminal,
-            PreviewPane::Help => PreviewPane::Terminal,
+            PreviewPane::Terminal => PreviewPane::Claude,
+            PreviewPane::Help => PreviewPane::Claude,
         };
         self.preview_scroll = 0;
     }
