@@ -75,11 +75,21 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 } else {
                     style
                 };
+                let status_text = if agent.status == Status::Running {
+                    super::spinner::frame(app.frame)
+                } else {
+                    agent.status.badge()
+                };
+                let status_style = if selected {
+                    style
+                } else {
+                    super::status_style(agent.status)
+                };
                 lines.push(Line::from(vec![
                     Span::styled(format!("{marker}   "), style),
                     Span::styled(&agent.title, agent_style),
                     Span::raw(" "),
-                    Span::styled(agent.status.badge(), super::status_style(agent.status)),
+                    Span::styled(status_text, status_style),
                 ]));
             }
         }
