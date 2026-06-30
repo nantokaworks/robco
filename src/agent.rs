@@ -57,6 +57,14 @@ pub fn restart_agent(agent: &AgentNode) -> Result<()> {
     tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)
 }
 
+pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
+    if tmux::has_session(&agent.tmux_session)? {
+        return Ok(());
+    }
+
+    tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)
+}
+
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
     if !git::tracked_tree_is_clean(&agent.worktree_path)? {
         return Err(crate::Error::DirtyWorktree(agent.worktree_path.clone()));
