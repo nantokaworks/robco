@@ -13,6 +13,38 @@ cargo run -- ~/abyss
 cargo run -- --autoyes ~/abyss
 ```
 
+## Installation
+
+### Homebrew
+
+```bash
+brew install nantokaworks/tap/robco
+```
+
+Upgrade later with:
+
+```bash
+brew upgrade nantokaworks/tap/robco
+```
+
+### Pre-built Binaries
+
+Release archives are published from the local maintainer pipeline to
+[`nantokaworks/robco-releases`](https://github.com/nantokaworks/robco-releases):
+
+- `robco-<version>-aarch64-apple-darwin.tar.gz`
+- `robco-<version>-x86_64-apple-darwin.tar.gz`
+- `robco-<version>-aarch64-unknown-linux-gnu.tar.gz`
+- `robco-<version>-x86_64-unknown-linux-gnu.tar.gz`
+
+### Build From Source
+
+```bash
+git clone https://github.com/nantokaworks/robco
+cd robco
+cargo install --path .
+```
+
 Useful checks:
 
 ```bash
@@ -49,6 +81,19 @@ robco reset
 
 `debug` prints the config, state, worktree, and resolved program paths. `reset` removes
 RobCo's persisted state file but does not kill tmux sessions or delete worktrees.
+
+## Release
+
+RobCo follows the same local release model as dropr:
+
+```bash
+task release:dry
+task release
+```
+
+The release pipeline builds the four supported targets, publishes archives to
+`nantokaworks/robco-releases`, and updates `Formula/robco.rb` in
+`nantokaworks/homebrew-tap`.
 
 ## Profiles
 
