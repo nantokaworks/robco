@@ -64,6 +64,16 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
+            Mode::ConfirmMerge { repo, agent } => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let repo = *repo;
+                    let agent = *agent;
+                    self.mode = Mode::Normal;
+                    self.perform_merge(repo, agent)?;
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
+                _ => {}
+            },
             Mode::ConfirmDeleteBranch { repo, agent } => match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                     let repo = *repo;
@@ -140,6 +150,7 @@ impl App {
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('s') => self.ship_selected(),
+                KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 _ => {}
             },

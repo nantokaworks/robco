@@ -42,6 +42,10 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    ConfirmMerge {
+        repo: usize,
+        agent: usize,
+    },
     ConfirmDeleteBranch {
         repo: usize,
         agent: usize,

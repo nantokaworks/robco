@@ -57,6 +57,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y delete   n/esc cancel"),
             ],
         ),
+        Mode::ConfirmMerge { repo, agent } => (
+            "merge / land?",
+            vec![
+                Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
+                Line::from(format!("strategy: {:?}", app.config.merge_strategy).to_lowercase()),
+                hint_line("y merge   n/esc cancel"),
+            ],
+        ),
         Mode::ConfirmDeleteBranch { repo, agent } => (
             "delete branch?",
             vec![
@@ -85,6 +93,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 Line::from("Repo / shipping"),
                 Line::from("  a              add repository by path"),
                 Line::from("  s              git add, commit, and push selected agent branch"),
+                Line::from(
+                    "  m              merge/land selected agent: merge PR + pull main (needs commit + open PR)",
+                ),
                 Line::from(""),
                 Line::from("General"),
                 Line::from("  ?              show this help"),

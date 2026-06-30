@@ -75,6 +75,15 @@ pub fn delete_branch(repo: &Path, branch: &str) -> Result<()> {
     command_unit(output, "git branch -D")
 }
 
+pub fn delete_remote_branch(repo: &Path, branch: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["push", "origin", "--delete", branch])
+        .output()?;
+    command_unit(output, "git push origin --delete")
+}
+
 pub fn tracked_tree_is_clean(worktree: &Path) -> Result<bool> {
     let output = Command::new("git")
         .args(["-C"])
@@ -147,6 +156,33 @@ pub fn push_branch(worktree: &Path, branch: &str) -> Result<()> {
         .args(["push", "-u", "origin", branch])
         .output()?;
     command_unit(output, "git push")
+}
+
+pub fn pr_exists(repo: &Path, branch: &str) -> Result<bool> {
+    let output = Command::new("gh")
+        .current_dir(repo)
+        .args(["pr", "list", "--head", branch, "--state", "open"])
+        .args(["--json", "number"])
+        .output()?;
+    let output = command_output(output, "gh pr list")?;
+    Ok(!matches!(output.trim(), "" | "[]"))
+}
+
+pub fn merge_pr(repo: &Path, branch: &str, strategy_flag: &str) -> Result<()> {
+    let output = Command::new("gh")
+        .current_dir(repo)
+        .args(["pr", "merge", branch, strategy_flag])
+        .output()?;
+    command_unit(output, "gh pr merge")
+}
+
+pub fn pull_ff_only(main_worktree: &Path) -> Result<()> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(main_worktree)
+        .args(["pull", "--ff-only"])
+        .output()?;
+    command_unit(output, "git pull --ff-only")
 }
 
 fn command_unit(output: std::process::Output, context: &'static str) -> Result<()> {
