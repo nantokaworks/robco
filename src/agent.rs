@@ -48,6 +48,7 @@ pub fn create_agent(
         status: Default::default(),
         last_capture: None,
         last_change_at: None,
+        last_auto_accept_at: None,
     })
 }
 

@@ -2,7 +2,7 @@ use chrono::{Duration, Local};
 
 use crate::{model::Status, tmux};
 
-pub fn refresh_agent(agent: &mut crate::model::AgentNode) {
+pub fn refresh_agent(agent: &mut crate::model::AgentNode, auto_accept: bool) {
     if !tmux::has_session(&agent.tmux_session).unwrap_or(false) {
         agent.status = Status::Dead;
         return;
@@ -23,6 +23,7 @@ pub fn refresh_agent(agent: &mut crate::model::AgentNode) {
 
     if looks_waiting(&capture) {
         agent.status = Status::Waiting;
+        maybe_auto_accept(agent, auto_accept, now);
     } else if agent
         .last_change_at
         .map(|changed_at| now - changed_at < Duration::seconds(3))
@@ -34,7 +35,7 @@ pub fn refresh_agent(agent: &mut crate::model::AgentNode) {
     }
 }
 
-fn looks_waiting(capture: &str) -> bool {
+pub fn looks_waiting(capture: &str) -> bool {
     let lower = capture.to_ascii_lowercase();
     lower.contains("allow") && lower.contains("(y/n)")
         || lower.contains("do you want to")
@@ -43,4 +44,38 @@ fn looks_waiting(capture: &str) -> bool {
             let trimmed = line.trim();
             trimmed.ends_with('>') || trimmed.ends_with('?')
         })
+}
+
+fn maybe_auto_accept(
+    agent: &mut crate::model::AgentNode,
+    auto_accept: bool,
+    now: chrono::DateTime<Local>,
+) {
+    if !auto_accept {
+        return;
+    }
+
+    let recently_sent = agent
+        .last_auto_accept_at
+        .map(|sent_at| now - sent_at < Duration::seconds(5))
+        .unwrap_or(false);
+    if recently_sent {
+        return;
+    }
+
+    if tmux::send_keys(&agent.tmux_session, &["y", "Enter"]).is_ok() {
+        agent.last_auto_accept_at = Some(now);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_common_confirmation_prompts() {
+        assert!(looks_waiting("Allow edit src/main.rs? (y/n)"));
+        assert!(looks_waiting("Do you want to continue?"));
+        assert!(!looks_waiting("running cargo test"));
+    }
 }

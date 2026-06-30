@@ -10,6 +10,7 @@ The full product specification lives in [docs/README.md](docs/README.md).
 
 ```bash
 cargo run -- ~/abyss
+cargo run -- --autoyes ~/abyss
 ```
 
 Useful checks:
@@ -24,6 +25,7 @@ cargo test
 
 - `j` / `k` or arrow keys: move selection
 - `h` / `l`: collapse or expand a repo
+- `page up` / `page down`: scroll the preview, diff, or help pane
 - `n`: create a new agent under the selected repo
 - `N`: create a new agent with an initial prompt (`title | prompt`)
 - `a`: add an arbitrary repository path
@@ -34,6 +36,9 @@ cargo test
 - `x`: kill the selected agent and remove its worktree when the tracked tree is clean
 - `?`: show help
 - `q`: quit the cockpit without stopping agents
+
+`--autoyes` is opt-in. When enabled, RobCo sends `y` + `Enter` to selected common
+confirmation prompts that match its local waiting heuristic.
 
 ## Commands
 

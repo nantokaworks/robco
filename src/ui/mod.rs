@@ -48,6 +48,7 @@ pub struct App {
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
     pub(crate) preview: PreviewPane,
+    pub(crate) preview_scroll: u16,
     mode: Mode,
 }
 
@@ -60,6 +61,7 @@ impl App {
             selected: 0,
             expanded,
             preview: PreviewPane::Terminal,
+            preview_scroll: 0,
             mode: Mode::Normal,
         }
     }
@@ -93,10 +95,26 @@ impl App {
         }
     }
 
+    fn move_selection_down(&mut self) {
+        let len = self.visible().len();
+        if self.selected + 1 < len {
+            self.selected += 1;
+            self.preview_scroll = 0;
+        }
+    }
+
+    fn move_selection_up(&mut self) {
+        let previous = self.selected;
+        self.selected = self.selected.saturating_sub(1);
+        if self.selected != previous {
+            self.preview_scroll = 0;
+        }
+    }
+
     fn tick(&mut self) {
         for repo in &mut self.registry.repos {
             for agent in &mut repo.agents {
-                status::refresh_agent(agent);
+                status::refresh_agent(agent, self.config.auto_accept);
             }
         }
     }
@@ -167,14 +185,13 @@ impl App {
                     return Ok(true);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    let len = self.visible().len();
-                    if self.selected + 1 < len {
-                        self.selected += 1;
-                    }
+                    self.move_selection_down();
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
-                    self.selected = self.selected.saturating_sub(1);
+                    self.move_selection_up();
                 }
+                KeyCode::PageDown => self.preview_scroll = self.preview_scroll.saturating_add(10),
+                KeyCode::PageUp => self.preview_scroll = self.preview_scroll.saturating_sub(10),
                 KeyCode::Right | KeyCode::Char('l') => {
                     if let Some(Selection::Repo(repo)) = self.selected_item()
                         && let Some(expanded) = self.expanded.get_mut(repo)
@@ -342,6 +359,7 @@ impl App {
             PreviewPane::Diff => PreviewPane::Terminal,
             PreviewPane::Help => PreviewPane::Terminal,
         };
+        self.preview_scroll = 0;
     }
 }
 
@@ -386,7 +404,13 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
                 Mode::Normal => None,
             };
             tree::draw(frame, app, &visible, message.as_deref());
-            preview::draw(frame, app.selected_item(), &app.registry, app.preview);
+            preview::draw(
+                frame,
+                app.selected_item(),
+                &app.registry,
+                app.preview,
+                app.preview_scroll,
+            );
         })?;
 
         if event::poll(Duration::from_millis(app.config.poll_interval_ms))?

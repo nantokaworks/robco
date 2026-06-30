@@ -80,6 +80,14 @@ pub fn attach(session: &str) -> Result<()> {
     }
 }
 
+pub fn send_keys(session: &str, keys: &[&str]) -> Result<()> {
+    let output = Command::new("tmux")
+        .args(["send-keys", "-t", session])
+        .args(keys)
+        .output()?;
+    command_unit(output, "tmux send-keys")
+}
+
 fn command_unit(output: std::process::Output, context: &'static str) -> Result<()> {
     command_output(output, context).map(|_| ())
 }

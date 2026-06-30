@@ -54,6 +54,9 @@ async fn run() -> Result<()> {
     if let Some(program) = args.program {
         config.default_program = program;
     }
+    if args.auto_yes {
+        config.auto_accept = true;
+    }
     if args.no_dropr {
         config.dropr_overlay = false;
     }
@@ -99,6 +102,7 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
             println!("worktrees: {}", config.worktree_root.display());
             println!("program: {}", config.default_program_command());
             println!("dropr_overlay: {}", config.dropr_overlay);
+            println!("auto_accept: {}", config.auto_accept);
         }
         Command::Reset => {
             let path = config::state_path()?;

@@ -35,6 +35,8 @@ pub struct AgentNode {
     pub last_capture: Option<String>,
     #[serde(skip)]
     pub last_change_at: Option<DateTime<Local>>,
+    #[serde(skip)]
+    pub last_auto_accept_at: Option<DateTime<Local>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

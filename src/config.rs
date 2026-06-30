@@ -14,6 +14,8 @@ pub struct Config {
     pub tmux_session_prefix: String,
     pub poll_interval_ms: u64,
     pub dropr_overlay: bool,
+    #[serde(default)]
+    pub auto_accept: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,6 +37,7 @@ impl Default for Config {
             tmux_session_prefix: "robco_".to_string(),
             poll_interval_ms: 750,
             dropr_overlay: true,
+            auto_accept: false,
         }
     }
 }

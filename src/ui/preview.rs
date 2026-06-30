@@ -14,6 +14,7 @@ pub fn draw(
     selection: Option<Selection>,
     registry: &Registry,
     pane: PreviewPane,
+    scroll: u16,
 ) {
     let root = Layout::default()
         .direction(Direction::Vertical)
@@ -72,7 +73,8 @@ pub fn draw(
 
     let preview = Paragraph::new(text)
         .block(Block::default().title(title).borders(Borders::ALL))
-        .style(Style::default().fg(Color::Green));
+        .style(Style::default().fg(Color::Green))
+        .scroll((scroll, 0));
     frame.render_widget(preview, panes[1]);
 }
 
