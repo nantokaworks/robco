@@ -32,6 +32,10 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    ConfirmDeleteBranch {
+        repo: usize,
+        agent: usize,
+    },
     Message(String),
 }
 
@@ -116,7 +120,7 @@ impl App {
     fn tick(&mut self) {
         for repo in &mut self.registry.repos {
             for agent in &mut repo.agents {
-                status::refresh_agent(agent, self.config.auto_accept);
+                status::refresh_agent(&repo.path, agent, self.config.auto_accept);
             }
         }
     }
@@ -178,6 +182,18 @@ impl App {
                     self.kill_agent(repo, agent)?;
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
+                _ => {}
+            },
+            Mode::ConfirmDeleteBranch { repo, agent } => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let repo = *repo;
+                    let agent = *agent;
+                    self.mode = Mode::Normal;
+                    self.delete_agent_branch(repo, agent)?;
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    self.mode = Mode::Message("kept branch".to_string());
+                }
                 _ => {}
             },
             Mode::Message(_) => self.mode = Mode::Normal,
@@ -266,6 +282,10 @@ impl App {
             return Ok(());
         };
         let selected = self.registry.repos[repo].agents[agent_idx].clone();
+        if selected.status == Status::BranchOnly {
+            self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+            return Ok(());
+        }
         match agent::ensure_agent_session(&selected) {
             Ok(()) => {
                 let session = selected.tmux_session.clone();
@@ -284,6 +304,10 @@ impl App {
         }) = self.selected_item()
         {
             let selected = self.registry.repos[repo].agents[agent_idx].clone();
+            if selected.status == Status::BranchOnly {
+                self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+                return Ok(());
+            }
             match agent::restart_agent(&selected) {
                 Ok(()) => self.mode = Mode::Message(format!("restarted {}", selected.title)),
                 Err(err) => self.mode = Mode::Message(err.to_string()),
@@ -294,7 +318,11 @@ impl App {
 
     fn confirm_kill_selected(&mut self) {
         if let Some(Selection::Agent { repo, agent }) = self.selected_item() {
-            self.mode = Mode::ConfirmKill { repo, agent };
+            if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
+                self.mode = Mode::ConfirmDeleteBranch { repo, agent };
+            } else {
+                self.mode = Mode::ConfirmKill { repo, agent };
+            }
         }
     }
 
@@ -304,9 +332,36 @@ impl App {
             let selected_agent = selected_repo.agents[agent_idx].clone();
             match agent::kill_agent(&selected_repo, &selected_agent) {
                 Ok(()) => {
+                    if crate::git::branch_exists(&selected_repo.path, &selected_agent.branch)
+                        .unwrap_or(false)
+                    {
+                        self.registry.repos[repo].agents[agent_idx].status = Status::BranchOnly;
+                        self.registry.save()?;
+                        self.mode = Mode::ConfirmDeleteBranch {
+                            repo,
+                            agent: agent_idx,
+                        };
+                    } else {
+                        self.registry.repos[repo].agents.remove(agent_idx);
+                        self.registry.save()?;
+                        self.mode = Mode::Message(format!("killed {}", selected_agent.title));
+                    }
+                }
+                Err(err) => self.mode = Mode::Message(err.to_string()),
+            }
+        }
+        Ok(())
+    }
+
+    fn delete_agent_branch(&mut self, repo: usize, agent_idx: usize) -> Result<()> {
+        if repo < self.registry.repos.len() && agent_idx < self.registry.repos[repo].agents.len() {
+            let selected_repo = self.registry.repos[repo].clone();
+            let selected_agent = selected_repo.agents[agent_idx].clone();
+            match crate::git::delete_branch(&selected_repo.path, &selected_agent.branch) {
+                Ok(()) => {
                     self.registry.repos[repo].agents.remove(agent_idx);
                     self.registry.save()?;
-                    self.mode = Mode::Message(format!("killed {}", selected_agent.title));
+                    self.mode = Mode::Message(format!("deleted branch {}", selected_agent.branch));
                 }
                 Err(err) => self.mode = Mode::Message(err.to_string()),
             }
@@ -321,6 +376,10 @@ impl App {
         }) = self.selected_item()
         {
             let selected = self.registry.repos[repo].agents[agent_idx].clone();
+            if selected.status == Status::BranchOnly {
+                self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+                return;
+            }
             match agent::ship_agent(&selected) {
                 Ok(()) => self.mode = Mode::Message(format!("pushed {}", selected.branch)),
                 Err(err) => self.mode = Mode::Message(err.to_string()),
@@ -414,8 +473,12 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
                 }
                 Mode::PromptRepo { input } => Some(format!("repo path: {input}")),
                 Mode::ConfirmKill { repo, agent } => Some(format!(
-                    "kill {}? y/N",
+                    "delete worktree for {}? y/N",
                     app.registry.repos[*repo].agents[*agent].title
+                )),
+                Mode::ConfirmDeleteBranch { repo, agent } => Some(format!(
+                    "delete branch {}? y/N",
+                    app.registry.repos[*repo].agents[*agent].branch
                 )),
                 Mode::Message(message) => Some(message.clone()),
                 Mode::Normal => None,
@@ -470,5 +533,6 @@ fn status_style(status: Status) -> ratatui::style::Style {
         Status::Waiting => Style::default().fg(Color::Yellow),
         Status::Idle => Style::default().fg(Color::Gray),
         Status::Dead => Style::default().fg(Color::Red),
+        Status::BranchOnly => Style::default().fg(Color::DarkGray),
     }
 }

@@ -46,6 +46,7 @@ pub enum Status {
     Running,
     Waiting,
     Dead,
+    BranchOnly,
 }
 
 impl Status {
@@ -55,6 +56,7 @@ impl Status {
             Status::Running => "run",
             Status::Waiting => "wait",
             Status::Dead => "dead",
+            Status::BranchOnly => "branch",
         }
     }
 }

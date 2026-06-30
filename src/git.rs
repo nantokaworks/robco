@@ -53,6 +53,25 @@ pub fn remove_worktree(repo: &Path, worktree: &Path) -> Result<()> {
     command_unit(output, "git worktree prune")
 }
 
+pub fn branch_exists(repo: &Path, branch: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["show-ref", "--verify", "--quiet"])
+        .arg(format!("refs/heads/{branch}"))
+        .output()?;
+    Ok(output.status.success())
+}
+
+pub fn delete_branch(repo: &Path, branch: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["branch", "-D", branch])
+        .output()?;
+    command_unit(output, "git branch -D")
+}
+
 pub fn tracked_tree_is_clean(worktree: &Path) -> Result<bool> {
     let output = Command::new("git")
         .args(["-C"])

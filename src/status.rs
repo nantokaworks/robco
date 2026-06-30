@@ -1,8 +1,19 @@
 use chrono::{Duration, Local};
 
-use crate::{agent, model::Status, tmux};
+use std::path::Path;
 
-pub fn refresh_agent(agent: &mut crate::model::AgentNode, auto_accept: bool) {
+use crate::{agent, git, model::Status, tmux};
+
+pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto_accept: bool) {
+    if !agent.worktree_path.exists() {
+        agent.status = if git::branch_exists(repo_path, &agent.branch).unwrap_or(false) {
+            Status::BranchOnly
+        } else {
+            Status::Dead
+        };
+        return;
+    }
+
     if agent::ensure_agent_session(agent).is_err() {
         agent.status = Status::Dead;
         return;
