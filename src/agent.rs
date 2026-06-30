@@ -19,7 +19,11 @@ pub fn create_agent(
 ) -> Result<AgentNode> {
     let id = nanoid!(8);
     let clean_title = tmux::sanitize_target_part(title);
-    let branch = format!("{}{}", resolve_branch_prefix(config, &repo.name), clean_title);
+    let branch = format!(
+        "{}{}",
+        resolve_branch_prefix(config, &repo.name),
+        clean_title
+    );
     let base_commit = git::head_commit(&repo.path)?;
     let worktree_path =
         config
