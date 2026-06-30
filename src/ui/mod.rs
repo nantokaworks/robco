@@ -258,6 +258,7 @@ impl App {
                 KeyCode::Tab => self.toggle_preview(),
                 KeyCode::Char('?') => self.preview = PreviewPane::Help,
                 KeyCode::Enter => self.attach_selected()?,
+                KeyCode::Char('t') => self.attach_shell_selected()?,
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('s') => self.ship_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
@@ -293,6 +294,30 @@ impl App {
         match agent::ensure_agent_session(&selected) {
             Ok(()) => {
                 let session = selected.tmux_session.clone();
+                self.force_redraw = true;
+                suspend_terminal(|| tmux::attach(&session))?;
+            }
+            Err(err) => self.mode = Mode::Message(err.to_string()),
+        }
+        Ok(())
+    }
+
+    fn attach_shell_selected(&mut self) -> Result<()> {
+        let Some(Selection::Agent {
+            repo,
+            agent: agent_idx,
+        }) = self.selected_item()
+        else {
+            return Ok(());
+        };
+        let selected = self.registry.repos[repo].agents[agent_idx].clone();
+        if selected.status == Status::BranchOnly {
+            self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+            return Ok(());
+        }
+        match agent::ensure_shell_session(&selected) {
+            Ok(()) => {
+                let session = agent::shell_session_name(&selected);
                 self.force_redraw = true;
                 suspend_terminal(|| tmux::attach(&session))?;
             }

@@ -65,12 +65,26 @@ pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
     tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)
 }
 
+pub fn shell_session_name(agent: &AgentNode) -> String {
+    format!("{}-shell", agent.tmux_session)
+}
+
+pub fn ensure_shell_session(agent: &AgentNode) -> Result<()> {
+    let session = shell_session_name(agent);
+    if tmux::has_session(&session)? {
+        return Ok(());
+    }
+
+    tmux::new_session(&session, &agent.worktree_path, &shell_program())
+}
+
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
     if !git::tracked_tree_is_clean(&agent.worktree_path)? {
         return Err(crate::Error::DirtyWorktree(agent.worktree_path.clone()));
     }
 
     let _ = tmux::kill_session(&agent.tmux_session);
+    let _ = tmux::kill_session(&shell_session_name(agent));
     git::remove_worktree(&repo.path, &agent.worktree_path)
 }
 
@@ -96,6 +110,10 @@ fn launch_command(program: &str, initial_prompt: Option<&str>) -> String {
         Some(prompt) => format!("{program} {}", shell_quote(prompt)),
         None => program.to_string(),
     }
+}
+
+fn shell_program() -> String {
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
 }
 
 fn shell_quote(value: &str) -> String {
