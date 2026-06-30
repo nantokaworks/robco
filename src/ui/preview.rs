@@ -1,7 +1,6 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
@@ -12,7 +11,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::{PreviewPane, theme::DEFAULT as THEME},
+    ui::{PreviewPane, layout, theme::DEFAULT as THEME},
 };
 
 pub fn draw(
@@ -22,19 +21,8 @@ pub fn draw(
     pane: PreviewPane,
     scroll: u16,
 ) {
-    let root = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(frame.area());
-
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
-        .split(root[1]);
+    let root = layout::root(frame.area());
+    let panes = layout::panes(root.body);
 
     let (title, text) = match (pane, selection) {
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
@@ -43,7 +31,7 @@ pub fn draw(
             let agent = &repo.agents[agent];
             let title = format!("CLAUDE: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(frame, panes[1], title, &agent.branch);
+                return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
             let text = tmux::capture_plain(&agent.tmux_session)
                 .ok()
@@ -62,7 +50,7 @@ pub fn draw(
             let agent = &repo.agents[agent];
             let title = format!("TERMINAL: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(frame, panes[1], title, &agent.branch);
+                return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
             let session = agent::shell_session_name(agent);
             let text = tmux::capture_plain(&session)
@@ -82,7 +70,7 @@ pub fn draw(
             let agent = &repo.agents[agent];
             let title = format!("DIFF: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(frame, panes[1], title, &agent.branch);
+                return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
             let text = git::diff(&agent.worktree_path)
                 .unwrap_or_else(|err| err.to_string())
@@ -105,7 +93,7 @@ pub fn draw(
         )
         .style(THEME.accent_style())
         .scroll((scroll, 0));
-    frame.render_widget(preview, panes[1]);
+    frame.render_widget(preview, panes.preview);
 }
 
 fn render_branch_only(

@@ -21,6 +21,7 @@ use crate::{
 mod actions;
 mod dialog;
 mod input;
+mod layout;
 mod preview;
 mod spinner;
 mod theme;
