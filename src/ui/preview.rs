@@ -7,7 +7,13 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::{git, model::Selection, registry::Registry, tmux, ui::PreviewPane};
+use crate::{
+    git,
+    model::{Selection, Status},
+    registry::Registry,
+    tmux,
+    ui::PreviewPane,
+};
 
 pub fn draw(
     frame: &mut Frame<'_>,
@@ -37,6 +43,9 @@ pub fn draw(
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
             let title = format!("preview: {} / {}", repo.name, agent.title);
+            if agent.status == Status::BranchOnly {
+                return render_branch_only(frame, panes[1], title, &agent.branch);
+            }
             let text = tmux::capture_plain(&agent.tmux_session)
                 .ok()
                 .and_then(|capture| capture.into_text().ok())
@@ -59,6 +68,9 @@ pub fn draw(
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
             let title = format!("diff: {} / {}", repo.name, agent.title);
+            if agent.status == Status::BranchOnly {
+                return render_branch_only(frame, panes[1], title, &agent.branch);
+            }
             let text = git::diff(&agent.worktree_path)
                 .unwrap_or_else(|err| err.to_string())
                 .into_text()
@@ -76,6 +88,32 @@ pub fn draw(
         .style(Style::default().fg(Color::Green))
         .scroll((scroll, 0));
     frame.render_widget(preview, panes[1]);
+}
+
+fn render_branch_only(
+    frame: &mut Frame<'_>,
+    area: ratatui::layout::Rect,
+    title: String,
+    branch: &str,
+) {
+    let text = vec![
+        Line::from(Span::styled(
+            "Worktree has been removed.",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(vec![
+            Span::styled("branch: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(branch.to_string()),
+        ]),
+        Line::from(Span::styled(
+            "Press x to delete the branch.",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    let preview = Paragraph::new(text)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(preview, area);
 }
 
 fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'static>) {
@@ -136,7 +174,9 @@ fn help() -> (String, ratatui::text::Text<'static>) {
             Line::from("  enter          attach to selected tmux session"),
             Line::from("  ctrl-q         return from attached tmux session"),
             Line::from("  r              restart selected agent"),
-            Line::from("  x              kill selected agent after confirmation"),
+            Line::from(
+                "  x              remove selected agent worktree, then optionally delete branch",
+            ),
             Line::from(""),
             Line::from("Repo / shipping"),
             Line::from("  a              add repository by path"),

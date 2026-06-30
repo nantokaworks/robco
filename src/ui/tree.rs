@@ -6,7 +6,10 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::{model::Selection, ui::App};
+use crate::{
+    model::{Selection, Status},
+    ui::App,
+};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = Layout::default()
@@ -65,9 +68,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             }
             Selection::Agent { repo, agent } => {
                 let agent = &app.registry.repos[repo].agents[agent];
+                let agent_style = if selected {
+                    style
+                } else if agent.status == Status::BranchOnly {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    style
+                };
                 lines.push(Line::from(vec![
                     Span::styled(format!("{marker}   "), style),
-                    Span::styled(&agent.title, style),
+                    Span::styled(&agent.title, agent_style),
                     Span::raw(" "),
                     Span::styled(agent.status.badge(), super::status_style(agent.status)),
                 ]));

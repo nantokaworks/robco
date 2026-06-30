@@ -66,7 +66,7 @@ cargo test
 - `tab`: switch between terminal preview and git diff
 - `r`: restart the selected agent program
 - `s`: `git add`, commit, and push the selected agent branch
-- `x`: kill the selected agent and remove its worktree when the tracked tree is clean
+- `x`: kill the selected agent, remove its clean worktree, and optionally delete its branch
 - `?`: show help
 - `q`: quit the cockpit without stopping agents
 
