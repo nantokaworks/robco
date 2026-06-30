@@ -77,8 +77,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
 
 fn input_line(label: &str, input: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{label}: "), Style::default().fg(Color::Gray)),
-        Span::raw(input.to_string()),
+        Span::styled(
+            format!(" {label}: "),
+            Style::default().fg(Color::Black).bg(Color::Green),
+        ),
+        Span::styled(input.to_string(), Style::default().fg(Color::White)),
         Span::styled("_", Style::default().fg(Color::Green)),
     ])
 }
