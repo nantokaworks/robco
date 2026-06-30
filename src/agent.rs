@@ -19,7 +19,7 @@ pub fn create_agent(
 ) -> Result<AgentNode> {
     let id = nanoid!(8);
     let clean_title = tmux::sanitize_target_part(title);
-    let branch = format!("{}{}", config.branch_prefix, clean_title);
+    let branch = format!("{}{}", resolve_branch_prefix(config, &repo.name), clean_title);
     let base_commit = git::head_commit(&repo.path)?;
     let worktree_path =
         config
@@ -104,6 +104,22 @@ pub fn ship_agent(agent: &AgentNode) -> Result<()> {
     git::push_branch(&agent.worktree_path, &agent.branch)
 }
 
+fn resolve_branch_prefix(config: &Config, repo_name: &str) -> String {
+    if let Some(prefix) = &config.branch_prefix {
+        return prefix.clone();
+    }
+    // Derive `<repo>/` from the project name, sanitized so it is a valid git
+    // ref. A pathological repo name (e.g. `...`) sanitizes to an empty string,
+    // which would yield a `/`-prefixed (invalid) branch — fall back to the
+    // historical default in that case.
+    let sanitized = tmux::sanitize_target_part(repo_name);
+    if sanitized.is_empty() {
+        "robco/".to_string()
+    } else {
+        format!("{}/", sanitized)
+    }
+}
+
 fn profile_name(config: &Config) -> Option<String> {
     config
         .profiles
@@ -140,5 +156,32 @@ mod tests {
             launch_command("claude", Some("fix Bob's bug")),
             "claude 'fix Bob'\\''s bug'"
         );
+    }
+
+    #[test]
+    fn branch_prefix_defaults_to_repo_name() {
+        let config = Config::default();
+        assert_eq!(resolve_branch_prefix(&config, "myapp"), "myapp/");
+    }
+
+    #[test]
+    fn branch_prefix_uses_explicit_override() {
+        let config = Config {
+            branch_prefix: Some("robco/".to_string()),
+            ..Config::default()
+        };
+        assert_eq!(resolve_branch_prefix(&config, "myapp"), "robco/");
+    }
+
+    #[test]
+    fn branch_prefix_sanitizes_repo_name() {
+        let config = Config::default();
+        assert_eq!(resolve_branch_prefix(&config, "my.repo"), "my-repo/");
+    }
+
+    #[test]
+    fn branch_prefix_falls_back_when_repo_name_sanitizes_to_empty() {
+        let config = Config::default();
+        assert_eq!(resolve_branch_prefix(&config, "..."), "robco/");
     }
 }
