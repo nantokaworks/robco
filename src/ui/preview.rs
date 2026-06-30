@@ -1,9 +1,9 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
-    Frame,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Wrap},
+    Frame,
 };
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::{PreviewPane, layout, theme::DEFAULT as THEME},
+    ui::{layout, theme::DEFAULT as THEME, PreviewPane},
 };
 
 pub fn draw(
@@ -33,6 +33,7 @@ pub fn draw(
             if agent.status == Status::BranchOnly {
                 return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
+            resize_preview_session(&agent.tmux_session, panes.preview);
             let text = tmux::capture_plain(&agent.tmux_session)
                 .ok()
                 .and_then(|capture| capture.into_text().ok())
@@ -53,6 +54,7 @@ pub fn draw(
                 return render_branch_only(frame, panes.preview, title, &agent.branch);
             }
             let session = agent::shell_session_name(agent);
+            resize_preview_session(&session, panes.preview);
             let text = tmux::capture_plain(&session)
                 .ok()
                 .and_then(|capture| capture.into_text().ok())
@@ -92,8 +94,18 @@ pub fn draw(
                 .borders(Borders::ALL),
         )
         .style(THEME.accent_style())
+        .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
     frame.render_widget(preview, panes.preview);
+}
+
+fn resize_preview_session(session: &str, area: ratatui::layout::Rect) {
+    let width = area.width.saturating_sub(2);
+    let height = area.height.saturating_sub(2);
+    if width == 0 || height == 0 {
+        return;
+    }
+    let _ = tmux::resize_session(session, width, height);
 }
 
 fn render_branch_only(
@@ -123,7 +135,8 @@ fn render_branch_only(
                 .title_style(Style::default().add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL),
         )
-        .style(THEME.muted_style());
+        .style(THEME.muted_style())
+        .wrap(Wrap { trim: false });
     frame.render_widget(preview, area);
 }
 
