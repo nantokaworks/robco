@@ -1,9 +1,9 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
+    Frame,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::{layout, theme::DEFAULT as THEME, PreviewPane},
+    ui::{PreviewPane, layout, theme::DEFAULT as THEME},
 };
 
 pub fn draw(
