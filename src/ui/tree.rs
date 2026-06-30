@@ -81,7 +81,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     frame.render_widget(tree, panes[0]);
 
     let footer_text = message.unwrap_or(
-        "↑↓/jk move  tab diff  enter attach  n/N new  a add repo  s push  x kill  ? help  q quit",
+        "↑↓/jk move  pgup/pgdn scroll  tab diff  enter attach  n/N new  a add repo  s push  x kill  ? help  q quit",
     );
     let footer = Paragraph::new(footer_text).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, root[2]);

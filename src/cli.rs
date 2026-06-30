@@ -13,6 +13,10 @@ pub struct Args {
     #[arg(long)]
     pub program: Option<String>,
 
+    /// Automatically answer common permission prompts with "y".
+    #[arg(short = 'y', long = "autoyes")]
+    pub auto_yes: bool,
+
     /// Print discovered repositories and exit.
     #[arg(long)]
     pub list: bool,
