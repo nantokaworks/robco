@@ -133,8 +133,10 @@ impl App {
                 }
                 KeyCode::Tab => self.toggle_preview(),
                 KeyCode::Char('?') => self.preview = PreviewPane::Help,
-                KeyCode::Enter => self.attach_selected()?,
-                KeyCode::Char('t') => self.attach_shell_selected()?,
+                KeyCode::Enter => match self.preview {
+                    PreviewPane::Terminal => self.attach_shell_selected()?,
+                    _ => self.attach_selected()?,
+                },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('s') => self.ship_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),

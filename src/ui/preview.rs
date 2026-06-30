@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 use crate::{
-    git,
+    agent, git,
     model::{Selection, Status},
     registry::Registry,
     tmux,
@@ -39,10 +39,10 @@ pub fn draw(
     let (title, text) = match (pane, selection) {
         (PreviewPane::Help, _) => help(),
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
-        (PreviewPane::Terminal, Some(Selection::Agent { repo, agent })) => {
+        (PreviewPane::Claude, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
-            let title = format!("PREVIEW: {} / {}", repo.name, agent.title);
+            let title = format!("CLAUDE: {} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
                 return render_branch_only(frame, panes[1], title, &agent.branch);
             }
@@ -60,6 +60,26 @@ pub fn draw(
                             Style::default().fg(Color::DarkGray),
                         )),
                     ]
+                    .into()
+                });
+            (title, text)
+        }
+        (PreviewPane::Terminal, Some(Selection::Agent { repo, agent })) => {
+            let repo = &registry.repos[repo];
+            let agent = &repo.agents[agent];
+            let title = format!("TERMINAL: {} / {}", repo.name, agent.title);
+            if agent.status == Status::BranchOnly {
+                return render_branch_only(frame, panes[1], title, &agent.branch);
+            }
+            let session = agent::shell_session_name(agent);
+            let text = tmux::capture_plain(&session)
+                .ok()
+                .and_then(|capture| capture.into_text().ok())
+                .unwrap_or_else(|| {
+                    vec![Line::from(Span::styled(
+                        "No shell session. Press enter to open one.",
+                        Style::default().fg(Color::DarkGray),
+                    ))]
                     .into()
                 });
             (title, text)
@@ -166,13 +186,12 @@ fn help() -> (String, ratatui::text::Text<'static>) {
             Line::from("Navigation"),
             Line::from("  j/k or arrows  move selection"),
             Line::from("  h/l            collapse or expand repo"),
-            Line::from("  tab            switch terminal/diff view"),
+            Line::from("  tab            cycle claude / diff / terminal view"),
             Line::from(""),
             Line::from("Sessions"),
             Line::from("  n              new agent under selected repo"),
             Line::from("  N              new agent with initial prompt: title | prompt"),
-            Line::from("  enter          attach to selected tmux session"),
-            Line::from("  t              open a shell in the agent worktree (ctrl-q to return)"),
+            Line::from("  enter          attach to claude, or shell in terminal view"),
             Line::from("  ctrl-q         return from attached tmux session"),
             Line::from("  r              restart selected agent"),
             Line::from(
