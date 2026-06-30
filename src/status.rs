@@ -2,7 +2,7 @@ use chrono::{Duration, Local};
 
 use std::path::Path;
 
-use crate::{agent, git, model::Status, tmux};
+use crate::{git, model::Status, tmux};
 
 pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto_accept: bool) {
     if !agent.worktree_path.exists() {
@@ -14,12 +14,26 @@ pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto
         return;
     }
 
-    if agent::ensure_agent_session(agent).is_err() {
-        agent.status = Status::Dead;
-        return;
+    // A status refresh only *observes* the tmux session; it must never create
+    // one. Distinguish "the session is gone" from "couldn't probe it": a
+    // transient failure to run `tmux` (e.g. a fork/exec hiccup under load) makes
+    // `has_session` return `Err`, and treating that as death is what flipped a
+    // healthy, running agent to `dead`. Keep the previous status and retry on
+    // the next tick instead.
+    match tmux::has_session(&agent.tmux_session) {
+        Ok(true) => {}
+        Ok(false) => {
+            agent.status = Status::Dead;
+            return;
+        }
+        Err(_) => return,
     }
 
-    let capture = tmux::capture_text(&agent.tmux_session).unwrap_or_default();
+    // Likewise, a transient capture failure should not corrupt the Running/Idle
+    // signal; keep the previous status until the next successful capture.
+    let Ok(capture) = tmux::capture_text(&agent.tmux_session) else {
+        return;
+    };
     let signature = status_signature(&capture);
     let now = Local::now();
     let changed = agent
