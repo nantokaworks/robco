@@ -2,7 +2,7 @@ use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
@@ -104,7 +104,12 @@ pub fn draw(
     };
 
     let preview = Paragraph::new(text)
-        .block(Block::default().title(title).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(title)
+                .title_style(Style::default().add_modifier(Modifier::BOLD))
+                .borders(Borders::ALL),
+        )
         .style(Style::default().fg(Color::Green))
         .scroll((scroll, 0));
     frame.render_widget(preview, panes[1]);
@@ -131,7 +136,12 @@ fn render_branch_only(
         )),
     ];
     let preview = Paragraph::new(text)
-        .block(Block::default().title(title).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(title)
+                .title_style(Style::default().add_modifier(Modifier::BOLD))
+                .borders(Borders::ALL),
+        )
         .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(preview, area);
 }
