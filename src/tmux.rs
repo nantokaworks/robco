@@ -130,31 +130,27 @@ struct ReturnKeyBinding {
 impl ReturnKeyBinding {
     fn install(in_tmux: bool, session: &str) -> Result<Self> {
         let previous = capture_key_binding("C-q")?;
-        let signal = return_signal_name(session);
         let mut command = Command::new("tmux");
         if in_tmux {
+            // One idempotent root binding that works at any nesting depth. The
+            // return signal is derived from the session the key is pressed in
+            // (`#{session_name}`, expanded by tmux at the press), so every nested
+            // robco waits on its own session's signal. Because the binding text
+            // is identical at every level, a deeper instance installing over a
+            // shallower one cannot corrupt it, and `switch-client -l` returns to
+            // the parent session the current client came from.
             command.args([
                 "bind-key",
                 "-T",
                 "root",
                 "C-q",
-                "switch-client",
-                "-l",
-                ";",
                 "run-shell",
-                &format!("tmux wait-for -S {signal}"),
+                "tmux switch-client -l ; tmux wait-for -S robco-return-#{session_name}",
             ]);
         } else {
-            command.args([
-                "bind-key",
-                "-T",
-                "root",
-                "C-q",
-                "detach-client",
-                ";",
-                "run-shell",
-                &format!("tmux wait-for -S {signal}"),
-            ]);
+            // Outside tmux the client returns when the blocking `tmux attach`
+            // exits, so detaching is enough; no wait-for signal is needed.
+            command.args(["bind-key", "-T", "root", "C-q", "detach-client"]);
         }
         let output = command.output()?;
         command_unit(output, "tmux bind-key")?;
@@ -271,11 +267,11 @@ fn wait_for_return_key(session: &str) -> Result<()> {
 }
 
 fn return_signal_name(session: &str) -> String {
-    format!(
-        "robco-return-{}-{}",
-        std::process::id(),
-        sanitize_target_part(session)
-    )
+    // Must match the signal emitted by the C-q root binding installed in
+    // `ReturnKeyBinding::install` (`robco-return-#{session_name}`). The session
+    // name robco creates is already sanitized, so this round-trips to the same
+    // string tmux expands `#{session_name}` to.
+    format!("robco-return-{}", sanitize_target_part(session))
 }
 
 #[cfg(test)]
