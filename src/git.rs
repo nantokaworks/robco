@@ -44,7 +44,10 @@ pub fn remove_worktree(repo: &Path, worktree: &Path) -> Result<()> {
         .arg(worktree)
         .output()?;
     command_unit(output, "git worktree remove")?;
+    prune_worktrees(repo)
+}
 
+pub fn prune_worktrees(repo: &Path) -> Result<()> {
     let output = Command::new("git")
         .args(["-C"])
         .arg(repo)

@@ -79,13 +79,23 @@ pub fn ensure_shell_session(agent: &AgentNode) -> Result<()> {
 }
 
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
-    if !git::tracked_tree_is_clean(&agent.worktree_path)? {
+    let worktree_exists = agent.worktree_path.exists();
+    if worktree_exists && !git::tracked_tree_is_clean(&agent.worktree_path)? {
         return Err(crate::Error::DirtyWorktree(agent.worktree_path.clone()));
     }
 
     let _ = tmux::kill_session(&agent.tmux_session);
     let _ = tmux::kill_session(&shell_session_name(agent));
-    git::remove_worktree(&repo.path, &agent.worktree_path)
+
+    if worktree_exists {
+        git::remove_worktree(&repo.path, &agent.worktree_path)
+    } else {
+        // The worktree directory is already gone (e.g. a dead agent whose
+        // directory was deleted out from under robco). `git worktree remove`
+        // would fail on the missing path, so just prune the stale administrative
+        // entry; the caller then drops the registry row.
+        git::prune_worktrees(&repo.path)
+    }
 }
 
 pub fn ship_agent(agent: &AgentNode) -> Result<()> {
