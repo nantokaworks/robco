@@ -46,6 +46,10 @@ impl Theme {
         Style::default().fg(self.muted)
     }
 
+    pub fn backdrop_style(self) -> Style {
+        Style::default().fg(self.muted).add_modifier(Modifier::DIM)
+    }
+
     pub fn hint_style(self) -> Style {
         Style::default().fg(self.hint)
     }

@@ -103,6 +103,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let dialog = Paragraph::new(lines)
         .block(block)
         .style(THEME.accent_style());
+    let body = layout::root(frame.area()).body;
+    frame.render_widget(Block::default().style(THEME.backdrop_style()), body);
     frame.render_widget(Clear, area);
     frame.render_widget(dialog, area);
 }
