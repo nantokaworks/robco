@@ -27,6 +27,7 @@ mod tree;
 
 enum Mode {
     Normal,
+    Help,
     PromptAgent {
         repo: usize,
         with_prompt: bool,
@@ -51,7 +52,6 @@ pub enum PreviewPane {
     Claude,
     Diff,
     Terminal,
-    Help,
 }
 
 pub struct App {
@@ -148,7 +148,6 @@ impl App {
             PreviewPane::Claude => PreviewPane::Diff,
             PreviewPane::Diff => PreviewPane::Terminal,
             PreviewPane::Terminal => PreviewPane::Claude,
-            PreviewPane::Help => PreviewPane::Claude,
         };
         self.preview_scroll = 0;
     }
@@ -172,8 +171,15 @@ pub fn run(registry: Registry, config: Config) -> Result<()> {
 }
 
 fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
+    let tick_interval = Duration::from_millis(app.config.poll_interval_ms);
+    let mut last_tick = Instant::now() - tick_interval;
+
     loop {
-        app.tick();
+        if last_tick.elapsed() >= tick_interval {
+            app.tick();
+            last_tick = Instant::now();
+        }
+
         if app.force_redraw {
             terminal.clear()?;
             app.force_redraw = false;
@@ -195,7 +201,7 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
             dialog::draw(frame, app, &visible);
         })?;
 
-        if event::poll(Duration::from_millis(app.config.poll_interval_ms))?
+        if event::poll(spinner::FRAME_INTERVAL)?
             && let Event::Key(key) = event::read()?
             && app.handle_key(key)?
         {
