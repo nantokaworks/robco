@@ -13,7 +13,7 @@ mod ui;
 use std::{path::PathBuf, process::ExitCode};
 
 use clap::Parser;
-use cli::Args;
+use cli::{Args, Command};
 use config::Config;
 use registry::Registry;
 use thiserror::Error;
@@ -58,6 +58,10 @@ async fn run() -> Result<()> {
         config.dropr_overlay = false;
     }
 
+    if let Some(command) = args.command {
+        return run_command(command, &config);
+    }
+
     let mut discovered = discover::discover_repos(&args.launch_dir)?;
     if config.dropr_overlay {
         let overlay = dropr::DroprOverlay::load_best_effort();
@@ -85,4 +89,26 @@ async fn run() -> Result<()> {
     registry.merge_discovered(discovered);
     registry.save()?;
     ui::run(registry, config)
+}
+
+fn run_command(command: Command, config: &Config) -> Result<()> {
+    match command {
+        Command::Debug => {
+            println!("config: {}", config::config_file_path()?.display());
+            println!("state: {}", config::state_path()?.display());
+            println!("worktrees: {}", config.worktree_root.display());
+            println!("program: {}", config.default_program_command());
+            println!("dropr_overlay: {}", config.dropr_overlay);
+        }
+        Command::Reset => {
+            let path = config::state_path()?;
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+                println!("removed {}", path.display());
+            } else {
+                println!("state file not found: {}", path.display());
+            }
+        }
+    }
+    Ok(())
 }

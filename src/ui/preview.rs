@@ -7,9 +7,14 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::{model::Selection, registry::Registry, tmux};
+use crate::{git, model::Selection, registry::Registry, tmux, ui::PreviewPane};
 
-pub fn draw(frame: &mut Frame<'_>, selection: Option<Selection>, registry: &Registry) {
+pub fn draw(
+    frame: &mut Frame<'_>,
+    selection: Option<Selection>,
+    registry: &Registry,
+    pane: PreviewPane,
+) {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -24,9 +29,10 @@ pub fn draw(frame: &mut Frame<'_>, selection: Option<Selection>, registry: &Regi
         .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
         .split(root[1]);
 
-    let (title, text) = match selection {
-        Some(Selection::Repo(repo_idx)) => repo_summary(&registry.repos[repo_idx]),
-        Some(Selection::Agent { repo, agent }) => {
+    let (title, text) = match (pane, selection) {
+        (PreviewPane::Help, _) => help(),
+        (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
+        (PreviewPane::Terminal, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
             let title = format!("preview: {} / {}", repo.name, agent.title);
@@ -48,7 +54,17 @@ pub fn draw(frame: &mut Frame<'_>, selection: Option<Selection>, registry: &Regi
                 });
             (title, text)
         }
-        None => (
+        (PreviewPane::Diff, Some(Selection::Agent { repo, agent })) => {
+            let repo = &registry.repos[repo];
+            let agent = &repo.agents[agent];
+            let title = format!("diff: {} / {}", repo.name, agent.title);
+            let text = git::diff(&agent.worktree_path)
+                .unwrap_or_else(|err| err.to_string())
+                .into_text()
+                .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
+            (title, text)
+        }
+        (_, None) => (
             "preview".to_string(),
             vec![Line::from("No repositories discovered.")].into(),
         ),
@@ -101,4 +117,32 @@ fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'
     }
 
     (format!("repo: {}", repo.name), lines.into())
+}
+
+fn help() -> (String, ratatui::text::Text<'static>) {
+    (
+        "help".to_string(),
+        vec![
+            Line::from("Navigation"),
+            Line::from("  j/k or arrows  move selection"),
+            Line::from("  h/l            collapse or expand repo"),
+            Line::from("  tab            switch terminal/diff view"),
+            Line::from(""),
+            Line::from("Sessions"),
+            Line::from("  n              new agent under selected repo"),
+            Line::from("  N              new agent with initial prompt: title | prompt"),
+            Line::from("  enter          attach to selected tmux session"),
+            Line::from("  r              restart selected agent"),
+            Line::from("  x              kill selected agent after confirmation"),
+            Line::from(""),
+            Line::from("Repo / shipping"),
+            Line::from("  a              add repository by path"),
+            Line::from("  s              git add, commit, and push selected agent branch"),
+            Line::from(""),
+            Line::from("General"),
+            Line::from("  ?              show this help"),
+            Line::from("  q              quit without stopping agents"),
+        ]
+        .into(),
+    )
 }

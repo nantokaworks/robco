@@ -62,6 +62,71 @@ pub fn tracked_tree_is_clean(worktree: &Path) -> Result<bool> {
     Ok(command_output(output, "git status")?.trim().is_empty())
 }
 
+pub fn status_short(worktree: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["status", "--short"])
+        .output()?;
+    command_output(output, "git status --short")
+}
+
+pub fn diff(worktree: &Path) -> Result<String> {
+    let status = status_short(worktree)?;
+    let stat = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["diff", "--stat"])
+        .output()?;
+    let patch = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["diff"])
+        .output()?;
+
+    let stat = command_output(stat, "git diff --stat")?;
+    let patch = command_output(patch, "git diff")?;
+    let diff = match (stat.trim().is_empty(), patch.trim().is_empty()) {
+        (true, true) => "No tracked diff.".to_string(),
+        (false, true) => stat,
+        (true, false) => patch,
+        (false, false) => format!("{stat}\n\n{patch}"),
+    };
+
+    if status.trim().is_empty() {
+        Ok(diff)
+    } else {
+        Ok(format!("status:\n{status}\n\n{diff}"))
+    }
+}
+
+pub fn add_all(worktree: &Path) -> Result<()> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["add", "-A"])
+        .output()?;
+    command_unit(output, "git add -A")
+}
+
+pub fn commit(worktree: &Path, message: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["commit", "-m", message])
+        .output()?;
+    command_unit(output, "git commit")
+}
+
+pub fn push_branch(worktree: &Path, branch: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(worktree)
+        .args(["push", "-u", "origin", branch])
+        .output()?;
+    command_unit(output, "git push")
+}
+
 fn command_unit(output: std::process::Output, context: &'static str) -> Result<()> {
     command_output(output, context).map(|_| ())
 }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(author, version, about = "Repo-oriented bot control and orchestration")]
@@ -20,4 +20,15 @@ pub struct Args {
     /// Disable best-effort dropr read-only workspace overlay.
     #[arg(long)]
     pub no_dropr: bool,
+
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Print config and state paths.
+    Debug,
+    /// Remove RobCo's persisted state file.
+    Reset,
 }
