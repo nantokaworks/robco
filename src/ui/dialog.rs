@@ -22,12 +22,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             };
             (
                 "new agent",
-                vec![input_line(label, input), hint_line("enter create   esc cancel")],
+                vec![
+                    input_line(label, input),
+                    hint_line("enter create   esc cancel"),
+                ],
             )
         }
         Mode::PromptRepo { input } => (
             "add repo",
-            vec![input_line("repo path", input), hint_line("enter add   esc cancel")],
+            vec![
+                input_line("repo path", input),
+                hint_line("enter add   esc cancel"),
+            ],
         ),
         Mode::ConfirmKill { repo, agent } => (
             "delete worktree?",
@@ -85,7 +91,13 @@ fn hint_line(text: &str) -> Line<'static> {
 
 /// Place the dialog just below the selected tree row, clamped inside the
 /// content pane. Falls back to above the row when there is no room below.
-fn popup_area(frame: &Frame<'_>, app: &App, visible: &[Selection], width: u16, height: u16) -> Rect {
+fn popup_area(
+    frame: &Frame<'_>,
+    app: &App,
+    visible: &[Selection],
+    width: u16,
+    height: u16,
+) -> Rect {
     let root = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
