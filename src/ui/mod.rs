@@ -9,7 +9,7 @@ use std::{
 };
 
 use crossterm::{
-    event::{self, Event},
+    event::{self, Event, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -239,6 +239,7 @@ fn run_loop<B: ratatui::backend::Backend>(
 
         if event::poll(spinner::FRAME_INTERVAL)?
             && let Event::Key(key) = event::read()?
+            && key.kind == KeyEventKind::Press
             && app.handle_key(key)?
         {
             return Ok(());
