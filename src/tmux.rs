@@ -114,6 +114,12 @@ pub fn attach(session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
     if !in_tmux {
         let (width, height) = terminal::size()?;
+        // `install()` turns the tmux status bar on (the "C-q to return" line),
+        // which consumes one client row. Because we pin the window size to
+        // `manual`, tmux will not shrink the pane to make room for it, so we must
+        // reserve that row here — otherwise the status bar is drawn over the
+        // inner program's bottom line (e.g. Claude's mode indicator).
+        let height = height.saturating_sub(1);
         if width != 0 && height != 0 {
             resize_session(session, width, height)?;
         }
