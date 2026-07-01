@@ -4,6 +4,7 @@ mod config;
 mod discover;
 mod dropr;
 mod git;
+mod mcp;
 mod model;
 mod notify;
 mod registry;
@@ -63,6 +64,9 @@ async fn run() -> Result<()> {
     }
 
     if let Some(command) = args.command {
+        if matches!(command, Command::McpStdio) {
+            return mcp::run_stdio();
+        }
         return run_command(command, &config);
     }
 
@@ -106,6 +110,7 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
             println!("dropr_overlay: {}", config.dropr_overlay);
             println!("auto_accept: {}", config.auto_accept);
         }
+        Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::Reset => {
             let path = config::state_path()?;
             if path.exists() {

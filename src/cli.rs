@@ -33,6 +33,8 @@ pub struct Args {
 pub enum Command {
     /// Print config and state paths.
     Debug,
+    /// Run an MCP server over stdio for agent state and control.
+    McpStdio,
     /// Remove RobCo's persisted state file.
     Reset,
 }
