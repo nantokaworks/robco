@@ -8,6 +8,7 @@ mod mcp;
 mod model;
 mod notify;
 mod registry;
+mod setup;
 mod status;
 mod tmux;
 mod ui;
@@ -28,6 +29,8 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("toml error: {0}")]
+    Toml(#[from] toml_edit::TomlError),
     #[error("home directory could not be resolved")]
     HomeDir,
     #[error("{context} failed: {stderr}")]
@@ -110,6 +113,7 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
             println!("dropr_overlay: {}", config.dropr_overlay);
             println!("auto_accept: {}", config.auto_accept);
         }
+        Command::Install(args) => setup::install(&args)?,
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::Reset => {
             let path = config::state_path()?;
@@ -120,6 +124,7 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
                 println!("state file not found: {}", path.display());
             }
         }
+        Command::Uninstall(args) => setup::uninstall(&args)?,
     }
     Ok(())
 }
