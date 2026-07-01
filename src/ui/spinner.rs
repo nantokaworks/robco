@@ -1,6 +1,9 @@
 use std::time::Duration;
 
 const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/// A visually distinct spinner for the companion TERM (shell) session, so a
+/// running shell command reads differently from the AI's own `run` spinner.
+const TERM_FRAMES: [&str; 8] = ["▖", "▘", "▝", "▗", "▚", "▞", "▙", "▟"];
 const FRAME_INTERVAL_MS: u128 = 120;
 pub(crate) const FRAME_INTERVAL: Duration = Duration::from_millis(FRAME_INTERVAL_MS as u64);
 
@@ -9,4 +12,10 @@ pub(crate) const FRAME_INTERVAL: Duration = Duration::from_millis(FRAME_INTERVAL
 pub(crate) fn frame(elapsed: Duration) -> &'static str {
     let idx = (elapsed.as_millis() / FRAME_INTERVAL_MS) as usize;
     FRAMES[idx % FRAMES.len()]
+}
+
+/// The TERM (shell) working spinner frame for the elapsed wall-clock time.
+pub(crate) fn term_frame(elapsed: Duration) -> &'static str {
+    let idx = (elapsed.as_millis() / FRAME_INTERVAL_MS) as usize;
+    TERM_FRAMES[idx % TERM_FRAMES.len()]
 }

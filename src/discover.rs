@@ -29,6 +29,7 @@ pub fn discover_repos(launch_dir: &Path) -> Result<Vec<RepoNode>> {
             main_status: None,
             main_last_capture: None,
             main_last_change_at: None,
+            main_shell_working: false,
         });
     }
 

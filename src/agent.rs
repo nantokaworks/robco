@@ -53,6 +53,7 @@ pub fn create_agent(
         last_capture: None,
         last_change_at: None,
         last_auto_accept_at: None,
+        shell_working: false,
     })
 }
 
@@ -94,6 +95,7 @@ pub fn adopt_worktree(
         last_capture: None,
         last_change_at: None,
         last_auto_accept_at: None,
+        shell_working: false,
     }
 }
 

@@ -54,7 +54,16 @@ pub struct NotifyConfig {
     pub enabled: bool,
     pub waiting: bool,
     pub idle: bool,
+    /// Notify when the AI finishes a turn (`Status::Done`). Defaults to on;
+    /// carries an explicit serde default so configs written before the `done`
+    /// state existed keep notifying on completion.
+    #[serde(default = "notify_flag_default")]
+    pub done: bool,
     pub dead: bool,
+}
+
+fn notify_flag_default() -> bool {
+    true
 }
 
 impl Default for NotifyConfig {
@@ -63,6 +72,7 @@ impl Default for NotifyConfig {
             enabled: true,
             waiting: true,
             idle: true,
+            done: true,
             dead: true,
         }
     }
@@ -77,6 +87,7 @@ impl NotifyConfig {
         match status {
             Status::Waiting => self.waiting,
             Status::Idle => self.idle,
+            Status::Done => self.done,
             Status::Dead => self.dead,
             Status::Running | Status::BranchOnly => false,
         }
