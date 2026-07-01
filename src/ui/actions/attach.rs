@@ -7,6 +7,18 @@ use crate::{
 use super::super::{App, Mode, suspend_terminal};
 
 impl App {
+    /// Suspend the TUI and hand the terminal to a tmux session. A failure here
+    /// (e.g. the session exited between `ensure_*` and attach, or a transient
+    /// tmux error) is surfaced as an in-app message and MUST NOT propagate: a
+    /// bubbling `Err` would unwind out of the event loop and exit robco, which
+    /// over ssh drops the whole connection.
+    fn attach_session(&mut self, session: &str) {
+        self.force_redraw = true;
+        if let Err(err) = suspend_terminal(|| tmux::attach(session)) {
+            self.mode = Mode::Message(err.to_string());
+        }
+    }
+
     pub(in crate::ui) fn attach_selected(&mut self) -> Result<()> {
         let Some(Selection::Agent {
             repo,
@@ -21,11 +33,7 @@ impl App {
             return Ok(());
         }
         match agent::ensure_agent_session(&selected) {
-            Ok(()) => {
-                let session = selected.tmux_session.clone();
-                self.force_redraw = true;
-                suspend_terminal(|| tmux::attach(&session))?;
-            }
+            Ok(()) => self.attach_session(&selected.tmux_session),
             Err(err) => self.mode = Mode::Message(err.to_string()),
         }
         Ok(())
@@ -43,11 +51,7 @@ impl App {
                     return Ok(());
                 }
                 match agent::ensure_shell_session(&selected) {
-                    Ok(()) => {
-                        let session = agent::shell_session_name(&selected);
-                        self.force_redraw = true;
-                        suspend_terminal(|| tmux::attach(&session))?;
-                    }
+                    Ok(()) => self.attach_session(&agent::shell_session_name(&selected)),
                     Err(err) => self.mode = Mode::Message(err.to_string()),
                 }
             }
@@ -56,9 +60,7 @@ impl App {
                 let prefix = self.config.tmux_session_prefix.clone();
                 match agent::ensure_repo_shell_session(&prefix, &repo_node) {
                     Ok(()) => {
-                        let session = agent::repo_shell_session_name(&prefix, &repo_node);
-                        self.force_redraw = true;
-                        suspend_terminal(|| tmux::attach(&session))?;
+                        self.attach_session(&agent::repo_shell_session_name(&prefix, &repo_node))
                     }
                     Err(err) => self.mode = Mode::Message(err.to_string()),
                 }
@@ -80,11 +82,7 @@ impl App {
                     return Ok(());
                 }
                 match agent::ensure_agent_session(&selected) {
-                    Ok(()) => {
-                        let session = selected.tmux_session.clone();
-                        self.force_redraw = true;
-                        suspend_terminal(|| tmux::attach(&session))?;
-                    }
+                    Ok(()) => self.attach_session(&selected.tmux_session),
                     Err(err) => self.mode = Mode::Message(err.to_string()),
                 }
             }
@@ -93,9 +91,7 @@ impl App {
                 let prefix = self.config.tmux_session_prefix.clone();
                 match agent::ensure_repo_claude_session(&self.config, &prefix, &repo_node) {
                     Ok(()) => {
-                        let session = agent::repo_claude_session_name(&prefix, &repo_node);
-                        self.force_redraw = true;
-                        suspend_terminal(|| tmux::attach(&session))?;
+                        self.attach_session(&agent::repo_claude_session_name(&prefix, &repo_node))
                     }
                     Err(err) => self.mode = Mode::Message(err.to_string()),
                 }
