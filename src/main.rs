@@ -92,7 +92,8 @@ async fn run() -> Result<()> {
     let mut registry = Registry::load()?;
     registry.merge_discovered(discovered);
     registry.save()?;
-    ui::run(registry, config)
+    let launch_dir = args.launch_dir.canonicalize().unwrap_or(args.launch_dir);
+    ui::run(registry, config, launch_dir)
 }
 
 fn run_command(command: Command, config: &Config) -> Result<()> {

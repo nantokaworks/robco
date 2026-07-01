@@ -45,6 +45,23 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     ),
                     style,
                 )];
+                // The repo's own main-worktree AI session progress. Shown only
+                // when such a session is running, so the parent node reflects AI
+                // work done directly on `main`.
+                if let Some(status) = repo.main_status {
+                    let status_text = if status == Status::Running {
+                        super::spinner::frame(app.started.elapsed())
+                    } else {
+                        status.badge()
+                    };
+                    let status_style = if selected {
+                        THEME.selected_status_style(status)
+                    } else {
+                        super::status_style(status)
+                    };
+                    spans.push(Span::styled("  ", style));
+                    spans.push(Span::styled(status_text, status_style));
+                }
                 if !expanded && !repo.agents.is_empty() {
                     let status_counts = [
                         Status::Running,

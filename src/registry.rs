@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     Result,
     config::{ensure_robco_dir, state_path},
-    model::{AgentNode, RepoNode},
+    model::RepoNode,
 };
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -36,18 +36,26 @@ impl Registry {
     }
 
     pub fn merge_discovered(&mut self, discovered: Vec<RepoNode>) {
-        let mut known_agents: BTreeMap<String, Vec<AgentNode>> = self
+        let mut known: BTreeMap<String, RepoNode> = self
             .repos
             .drain(..)
-            .map(|repo| (repo.path.to_string_lossy().to_string(), repo.agents))
+            .map(|repo| (repo.path.to_string_lossy().to_string(), repo))
             .collect();
 
         self.repos = discovered
             .into_iter()
             .map(|mut repo| {
-                repo.agents = known_agents
-                    .remove(&repo.path.to_string_lossy().to_string())
-                    .unwrap_or_default();
+                if let Some(existing) = known.remove(&repo.path.to_string_lossy().to_string()) {
+                    // Carry over the tracked agents and runtime status so a
+                    // re-scan does not drop worktrees or flicker the repo's
+                    // main-session badge. Prefer a freshly-resolved dropr
+                    // overlay, falling back to the previous one.
+                    repo.agents = existing.agents;
+                    repo.main_status = existing.main_status;
+                    repo.main_last_capture = existing.main_last_capture;
+                    repo.main_last_change_at = existing.main_last_change_at;
+                    repo.dropr = repo.dropr.or(existing.dropr);
+                }
                 repo
             })
             .collect();

@@ -1,5 +1,7 @@
 use std::{
+    collections::HashMap,
     io::{self, Write},
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -16,13 +18,17 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::{
-    Result,
+    Result, agent,
     config::Config,
     model::{Selection, Status},
     notify::{self, WatchTarget},
     registry::Registry,
     status,
 };
+
+/// How often the launch directory and each repo's worktrees are re-scanned to
+/// pick up projects or worktrees created outside robco.
+const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
 mod dialog;
@@ -60,17 +66,48 @@ enum Mode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewPane {
+    Info,
     Claude,
     Diff,
     Terminal,
 }
 
+/// Preview tabs available for a given tree selection, in display order. The
+/// first entry is the default tab used when nothing has been remembered yet.
+pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
+    match selection {
+        Some(Selection::Repo(_)) => &[
+            PreviewPane::Info,
+            PreviewPane::Claude,
+            PreviewPane::Terminal,
+        ],
+        Some(Selection::Agent { .. }) => &[
+            PreviewPane::Claude,
+            PreviewPane::Diff,
+            PreviewPane::Terminal,
+        ],
+        None => &[],
+    }
+}
+
+fn default_pane(selection: Option<Selection>) -> PreviewPane {
+    panes_for(selection)
+        .first()
+        .copied()
+        .unwrap_or(PreviewPane::Claude)
+}
+
 pub struct App {
     pub(crate) registry: Registry,
     pub(crate) config: Config,
+    pub(crate) launch_dir: PathBuf,
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
     pub(crate) preview: PreviewPane,
+    /// Remembers the selected preview tab per tree item so switching selection
+    /// restores the tab the user last viewed for that item. Keyed by repo path
+    /// (repos) or agent id (agents) via [`App::item_key`].
+    preview_tabs: HashMap<String, PreviewPane>,
     pub(crate) preview_scroll: u16,
     pub(crate) started: Instant,
     force_redraw: bool,
@@ -78,19 +115,50 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(registry: Registry, config: Config) -> Self {
+    pub fn new(registry: Registry, config: Config, launch_dir: PathBuf) -> Self {
         let expanded = vec![true; registry.repos.len()];
-        Self {
+        let mut app = Self {
             registry,
             config,
+            launch_dir,
             selected: 0,
             expanded,
-            preview: PreviewPane::Claude,
+            preview: PreviewPane::Info,
+            preview_tabs: HashMap::new(),
             preview_scroll: 0,
             started: Instant::now(),
             force_redraw: false,
             mode: Mode::Normal,
+        };
+        app.restore_preview();
+        app
+    }
+
+    /// Stable identity for the current selection, used to remember its preview
+    /// tab. Indices shift as items are added or removed, so repos key on their
+    /// path and agents on their unique id.
+    fn item_key(&self, selection: Selection) -> String {
+        match selection {
+            Selection::Repo(repo) => {
+                format!("repo:{}", self.registry.repos[repo].path.display())
+            }
+            Selection::Agent { repo, agent } => {
+                format!("agent:{}", self.registry.repos[repo].agents[agent].id)
+            }
         }
+    }
+
+    /// Set the active preview pane from the remembered tab for the current
+    /// selection, falling back to that selection's default tab. Guards against a
+    /// stale pane that is not valid for the current selection type.
+    fn restore_preview(&mut self) {
+        let selection = self.selected_item();
+        let panes = panes_for(selection);
+        let remembered = selection
+            .map(|sel| self.item_key(sel))
+            .and_then(|key| self.preview_tabs.get(&key).copied())
+            .filter(|pane| panes.contains(pane));
+        self.preview = remembered.unwrap_or_else(|| default_pane(selection));
     }
 
     fn visible(&self) -> Vec<Selection> {
@@ -115,10 +183,14 @@ impl App {
 
     fn clamp_selection(&mut self) {
         let len = self.visible().len();
+        let previous = self.selected;
         if len == 0 {
             self.selected = 0;
         } else if self.selected >= len {
             self.selected = len - 1;
+        }
+        if self.selected != previous {
+            self.restore_preview();
         }
     }
 
@@ -127,6 +199,7 @@ impl App {
         if self.selected + 1 < len {
             self.selected += 1;
             self.preview_scroll = 0;
+            self.restore_preview();
         }
     }
 
@@ -135,11 +208,15 @@ impl App {
         self.selected = self.selected.saturating_sub(1);
         if self.selected != previous {
             self.preview_scroll = 0;
+            self.restore_preview();
         }
     }
 
     fn tick(&mut self) {
+        let prefix = self.config.tmux_session_prefix.clone();
         for repo in &mut self.registry.repos {
+            let main_session = agent::repo_claude_session_name(&prefix, repo);
+            status::refresh_repo_main(&main_session, repo);
             for agent in &mut repo.agents {
                 status::refresh_agent(&repo.path, agent, self.config.auto_accept);
             }
@@ -155,18 +232,23 @@ impl App {
     }
 
     fn toggle_preview(&mut self) {
-        let repo_selected = matches!(self.selected_item(), Some(Selection::Repo(_)));
-        self.preview = match self.preview {
-            PreviewPane::Claude if repo_selected => PreviewPane::Terminal,
-            PreviewPane::Claude => PreviewPane::Diff,
-            PreviewPane::Diff => PreviewPane::Terminal,
-            PreviewPane::Terminal => PreviewPane::Claude,
+        let Some(selection) = self.selected_item() else {
+            return;
         };
+        let panes = panes_for(Some(selection));
+        if panes.is_empty() {
+            return;
+        }
+        let current = panes.iter().position(|pane| *pane == self.preview);
+        let next = panes[(current.map_or(0, |idx| idx + 1)) % panes.len()];
+        self.preview = next;
         self.preview_scroll = 0;
+        let key = self.item_key(selection);
+        self.preview_tabs.insert(key, next);
     }
 }
 
-pub fn run(registry: Registry, config: Config) -> Result<()> {
+pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -183,7 +265,7 @@ pub fn run(registry: Registry, config: Config) -> Result<()> {
         notify_running.clone(),
         Duration::from_millis(config.poll_interval_ms),
     );
-    let mut app = App::new(registry, config);
+    let mut app = App::new(registry, config, launch_dir);
 
     let result = run_loop(&mut terminal, &mut app, &notify_rx, &notify_targets);
 
@@ -205,11 +287,16 @@ fn run_loop<B: ratatui::backend::Backend>(
 ) -> Result<()> {
     let tick_interval = Duration::from_millis(app.config.poll_interval_ms);
     let mut last_tick = Instant::now() - tick_interval;
+    let mut last_discovery = Instant::now();
 
     loop {
         if last_tick.elapsed() >= tick_interval {
             app.tick();
             last_tick = Instant::now();
+        }
+        if last_discovery.elapsed() >= DISCOVERY_INTERVAL {
+            app.refresh_discovery();
+            last_discovery = Instant::now();
         }
         if let Ok(mut targets) = notify_targets.lock() {
             *targets = watch_targets(&app.registry);
@@ -235,6 +322,7 @@ fn run_loop<B: ratatui::backend::Backend>(
                 app.preview,
                 app.preview_scroll,
                 &app.config.tmux_session_prefix,
+                &app.config.default_program,
             );
             dialog::draw(frame, app, &visible);
         })?;

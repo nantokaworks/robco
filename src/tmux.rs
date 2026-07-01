@@ -18,6 +18,19 @@ pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
     )
 }
 
+/// Anchor a session name so tmux matches it exactly.
+///
+/// tmux resolves a `-t <name>` target by exact match first, then falls back to
+/// an `fnmatch(3)` pattern or a name prefix. Our shell session is named
+/// `<ai>-shell`, which has the AI session `<ai>` as a prefix, so an un-anchored
+/// target for `<ai>` bleeds into `<ai>-shell` whenever `<ai>` itself does not
+/// exist (e.g. the main worktree AI was never launched but the user started a
+/// program in TERM). The `=` prefix forces an exact-name match and prevents the
+/// AI tab from mirroring the TERM session.
+fn exact(session: &str) -> String {
+    format!("={session}")
+}
+
 pub fn sanitize_target_part(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -32,7 +45,7 @@ pub fn sanitize_target_part(value: &str) -> String {
 
 pub fn has_session(session: &str) -> Result<bool> {
     let output = Command::new("tmux")
-        .args(["has-session", "-t", session])
+        .args(["has-session", "-t", &exact(session)])
         .output()?;
     Ok(output.status.success())
 }
@@ -55,40 +68,47 @@ pub fn new_session(session: &str, cwd: &Path, program: &str) -> Result<()> {
     let output = new_session_command(session, cwd, program).output()?;
     command_unit(output, "tmux new-session")?;
     let _ = Command::new("tmux")
-        .args(["set-window-option", "-t", session, "monitor-activity", "on"])
+        .args([
+            "set-window-option",
+            "-t",
+            &exact(session),
+            "monitor-activity",
+            "on",
+        ])
         .output();
     Ok(())
 }
 
 pub fn kill_session(session: &str) -> Result<()> {
     let output = Command::new("tmux")
-        .args(["kill-session", "-t", session])
+        .args(["kill-session", "-t", &exact(session)])
         .output()?;
     command_unit(output, "tmux kill-session")
 }
 
 pub fn capture_plain(session: &str) -> Result<String> {
     let output = Command::new("tmux")
-        .args(["capture-pane", "-e", "-p", "-t", session])
+        .args(["capture-pane", "-e", "-p", "-t", &exact(session)])
         .output()?;
     command_output(output, "tmux capture-pane")
 }
 
 pub fn capture_text(session: &str) -> Result<String> {
     let output = Command::new("tmux")
-        .args(["capture-pane", "-p", "-t", session])
+        .args(["capture-pane", "-p", "-t", &exact(session)])
         .output()?;
     command_output(output, "tmux capture-pane")
 }
 
 pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
+    let session = exact(session);
     let target = format!("{width}x{height}");
     let output = Command::new("tmux")
         .args([
             "display-message",
             "-p",
             "-t",
-            session,
+            &session,
             "#{window_width}x#{window_height}",
         ])
         .output()?;
@@ -98,14 +118,14 @@ pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
     }
 
     let output = Command::new("tmux")
-        .args(["set-option", "-t", session, "window-size", "manual"])
+        .args(["set-option", "-t", &session, "window-size", "manual"])
         .output()?;
     command_unit(output, "tmux set-option window-size")?;
 
     let width = width.to_string();
     let height = height.to_string();
     let output = Command::new("tmux")
-        .args(["resize-window", "-t", session, "-x", &width, "-y", &height])
+        .args(["resize-window", "-t", &session, "-x", &width, "-y", &height])
         .output()?;
     command_unit(output, "tmux resize-window")
 }
@@ -131,9 +151,9 @@ pub fn attach(session: &str) -> Result<()> {
     let binding = ReturnKeyBinding::install(in_tmux, session)?;
     let mut command = Command::new("tmux");
     if in_tmux {
-        command.args(["switch-client", "-t", session]);
+        command.args(["switch-client", "-t", &exact(session)]);
     } else {
-        command.args(["attach", "-t", session]);
+        command.args(["attach", "-t", &exact(session)]);
     }
     let status = command.status()?;
     let attach_result = if status.success() {
@@ -157,7 +177,7 @@ pub fn attach(session: &str) -> Result<()> {
 
 pub fn send_keys(session: &str, keys: &[&str]) -> Result<()> {
     let output = Command::new("tmux")
-        .args(["send-keys", "-t", session])
+        .args(["send-keys", "-t", &exact(session)])
         .args(keys)
         .output()?;
     command_unit(output, "tmux send-keys")
@@ -343,8 +363,9 @@ fn restore_key_binding(previous: Option<&str>) -> Result<()> {
 }
 
 fn capture_session_option(session: &str, option: &str) -> Result<Option<String>> {
+    let session = exact(session);
     let output = Command::new("tmux")
-        .args(["show-options", "-t", session, "-q", option])
+        .args(["show-options", "-t", &session, "-q", option])
         .output()?;
     let presence = command_output(output, "tmux show-options")?;
     if presence.is_empty() {
@@ -352,7 +373,7 @@ fn capture_session_option(session: &str, option: &str) -> Result<Option<String>>
     }
 
     let output = Command::new("tmux")
-        .args(["show-options", "-t", session, "-q", "-v", option])
+        .args(["show-options", "-t", &session, "-q", "-v", option])
         .output()?;
     let value = command_output(output, "tmux show-options")?;
     let value = value.trim_end_matches(['\r', '\n']).to_string();
@@ -361,14 +382,14 @@ fn capture_session_option(session: &str, option: &str) -> Result<Option<String>>
 
 fn set_session_option(session: &str, option: &str, value: &str) -> Result<()> {
     let output = Command::new("tmux")
-        .args(["set-option", "-t", session, option, value])
+        .args(["set-option", "-t", &exact(session), option, value])
         .output()?;
     command_unit(output, "tmux set-option")
 }
 
 fn unset_session_option(session: &str, option: &str) -> Result<()> {
     let output = Command::new("tmux")
-        .args(["set-option", "-u", "-t", session, option])
+        .args(["set-option", "-u", "-t", &exact(session), option])
         .output()?;
     command_unit(output, "tmux set-option -u")
 }

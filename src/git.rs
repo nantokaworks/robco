@@ -1,6 +1,61 @@
-use std::{path::Path, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::{Error, Result};
+
+/// A single entry from `git worktree list --porcelain`.
+#[derive(Debug, Clone)]
+pub struct Worktree {
+    pub path: PathBuf,
+    pub head: Option<String>,
+    pub branch: Option<String>,
+}
+
+/// List every worktree registered for `repo`, including the main worktree. Used
+/// to reconcile worktrees created outside robco (e.g. a manual
+/// `git worktree add`) with the registry.
+pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["worktree", "list", "--porcelain"])
+        .output()?;
+    let text = command_output(output, "git worktree list")?;
+
+    let mut worktrees = Vec::new();
+    let mut current: Option<Worktree> = None;
+    for line in text.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            if let Some(worktree) = current.take() {
+                worktrees.push(worktree);
+            }
+            current = Some(Worktree {
+                path: PathBuf::from(path),
+                head: None,
+                branch: None,
+            });
+        } else if let Some(head) = line.strip_prefix("HEAD ")
+            && let Some(worktree) = current.as_mut()
+        {
+            worktree.head = Some(head.to_string());
+        } else if let Some(branch) = line.strip_prefix("branch ")
+            && let Some(worktree) = current.as_mut()
+        {
+            worktree.branch = Some(
+                branch
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(branch)
+                    .to_string(),
+            );
+        }
+    }
+    if let Some(worktree) = current.take() {
+        worktrees.push(worktree);
+    }
+    Ok(worktrees)
+}
 
 pub fn remote_url(repo: &Path) -> Result<String> {
     let output = Command::new("git")
