@@ -31,7 +31,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
-                let prefix = if expanded { "▾" } else { "▸" };
+                let prefix = app.config.project_icon.marker(expanded);
                 let worktree_label = if repo.agents.len() == 1 {
                     "worktree"
                 } else {

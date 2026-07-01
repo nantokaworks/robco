@@ -13,6 +13,29 @@ pub enum MergeStrategy {
     Merge,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectIcon {
+    #[default]
+    None,
+    Nerdfont,
+    Emoji,
+}
+
+impl ProjectIcon {
+    /// PROJECTS 行の開閉マーカー。None は従来の三角、その他はフォルダの開/閉。
+    pub fn marker(self, expanded: bool) -> &'static str {
+        match (self, expanded) {
+            (ProjectIcon::None, true) => "▾",
+            (ProjectIcon::None, false) => "▸",
+            (ProjectIcon::Nerdfont, true) => "\u{f07c}", // nf-fa-folder_open
+            (ProjectIcon::Nerdfont, false) => "\u{f07b}", // nf-fa-folder
+            (ProjectIcon::Emoji, true) => "📂",
+            (ProjectIcon::Emoji, false) => "📁",
+        }
+    }
+}
+
 impl MergeStrategy {
     pub fn gh_flag(self) -> &'static str {
         match self {
@@ -74,6 +97,8 @@ pub struct Config {
     pub merge_strategy: MergeStrategy,
     #[serde(default)]
     pub notify: NotifyConfig,
+    #[serde(default)]
+    pub project_icon: ProjectIcon,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,6 +123,7 @@ impl Default for Config {
             auto_accept: false,
             merge_strategy: MergeStrategy::default(),
             notify: NotifyConfig::default(),
+            project_icon: ProjectIcon::default(),
         }
     }
 }
@@ -180,5 +206,32 @@ mod tests {
         assert_eq!(MergeStrategy::Rebase.gh_flag(), "--rebase");
         assert_eq!(MergeStrategy::Squash.gh_flag(), "--squash");
         assert_eq!(MergeStrategy::Merge.gh_flag(), "--merge");
+    }
+
+    #[test]
+    fn project_icon_defaults_to_none_and_maps_markers() {
+        assert_eq!(ProjectIcon::default(), ProjectIcon::None);
+        assert_eq!(ProjectIcon::None.marker(true), "▾");
+        assert_eq!(ProjectIcon::None.marker(false), "▸");
+        assert_eq!(ProjectIcon::Nerdfont.marker(true), "\u{f07c}");
+        assert_eq!(ProjectIcon::Nerdfont.marker(false), "\u{f07b}");
+        assert_eq!(ProjectIcon::Emoji.marker(true), "📂");
+        assert_eq!(ProjectIcon::Emoji.marker(false), "📁");
+    }
+
+    #[test]
+    fn project_icon_serde_roundtrip_is_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&ProjectIcon::Nerdfont).unwrap(),
+            "\"nerdfont\""
+        );
+        assert_eq!(
+            serde_json::from_str::<ProjectIcon>("\"emoji\"").unwrap(),
+            ProjectIcon::Emoji
+        );
+        assert_eq!(
+            serde_json::from_str::<ProjectIcon>("\"none\"").unwrap(),
+            ProjectIcon::None
+        );
     }
 }
