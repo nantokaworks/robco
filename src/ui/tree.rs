@@ -76,6 +76,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         Status::Done,
                         Status::Idle,
                         Status::Dead,
+                        Status::Orphaned,
                         Status::BranchOnly,
                     ]
                     .map(|status| {

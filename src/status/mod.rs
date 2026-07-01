@@ -85,10 +85,11 @@ pub fn refresh_repo_main(session: &str, repo: &mut crate::model::RepoNode) {
 
 /// Classify an agent's status. The tmux session is the source of truth for
 /// whether the agent process is alive, so it is probed **first**: a live
-/// session whose worktree directory was deleted is still a running agent and
-/// must reflect its real state (`run`/`wait`/`done`/`idle`), never `Dead`. Only
-/// once the session is gone does the worktree/branch fall-back distinguish a
-/// branch that still exists (`BranchOnly`) from a truly dead agent (`Dead`).
+/// session whose worktree directory still exists reflects its real captured
+/// state (`run`/`wait`/`done`/`idle`), while a live session whose worktree was
+/// deleted is `Orphaned`. Only once the session is gone does the worktree/branch
+/// fall-back distinguish a branch that still exists (`BranchOnly`) from a truly
+/// dead agent (`Dead`).
 ///
 /// A transient failure to probe `tmux` (a fork/exec hiccup under load) returns
 /// `None`, so the caller keeps the previous status and retries next tick instead
@@ -102,6 +103,12 @@ pub fn classify_agent_status(
 ) -> Option<StatusReport> {
     match tmux::has_session(tmux_session) {
         Ok(true) => {
+            if !worktree_path.exists() {
+                return Some(StatusReport {
+                    status: Status::Orphaned,
+                    awaiting_confirmation: false,
+                });
+            }
             // A transient capture failure should not corrupt the signal; keep
             // the previous status until the next successful capture.
             let capture = tmux::capture_text(tmux_session).ok()?;
