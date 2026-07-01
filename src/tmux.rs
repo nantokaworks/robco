@@ -114,16 +114,19 @@ pub fn attach(session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
     if !in_tmux {
         let (width, height) = terminal::size()?;
-        // `install()` turns the tmux status bar on (the "C-q to return" line),
-        // which consumes one client row. Because we pin the window size to
-        // `manual`, tmux will not shrink the pane to make room for it, so we must
-        // reserve that row here — otherwise the status bar is drawn over the
-        // inner program's bottom line (e.g. Claude's mode indicator).
-        let height = height.saturating_sub(1);
         if width != 0 && height != 0 {
             resize_session(session, width, height)?;
         }
     }
+    // Hand window sizing back to the attaching client. The preview path pins
+    // `window-size` to `manual`; if we leave it pinned, the window stays at our
+    // pre-attach guess (or the small preview size) and does not track the real
+    // client. tmux then cannot reserve the row consumed by the status bar that
+    // `install()` turns on, so the "C-q to return" line is drawn over the inner
+    // program's bottom row (e.g. Claude's mode indicator). Letting the client
+    // drive the size (as ClaudeSquad does) makes tmux lay out `pane = client - 1`
+    // status row on attach, so nothing overlaps and no filler rows appear.
+    let _ = set_session_option(session, "window-size", "latest");
 
     let binding = ReturnKeyBinding::install(in_tmux, session)?;
     let mut command = Command::new("tmux");
