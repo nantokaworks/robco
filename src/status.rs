@@ -16,21 +16,33 @@ pub struct WatchStatusState {
     pub last_change_at: Option<chrono::DateTime<Local>>,
 }
 
+/// Outcome of classifying a capture: the display [`Status`] plus whether the
+/// screen shows a real confirmation prompt (y/n / option list). The latter — not
+/// the broadened `Waiting` — is what gates auto-accept, so an ordinary input
+/// prompt never gets a spurious `y`+Enter typed into it.
+#[derive(Debug, Clone, Copy)]
+pub struct StatusReport {
+    pub status: Status,
+    pub awaiting_confirmation: bool,
+}
+
 pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto_accept: bool) {
     let mut state = WatchStatusState {
         last_capture: agent.last_capture.take(),
         last_change_at: agent.last_change_at.take(),
     };
 
-    if let Some(status) = classify_agent_status(
+    if let Some(report) = classify_agent_status(
         repo_path,
         &agent.worktree_path,
         &agent.branch,
         &agent.tmux_session,
         &mut state,
     ) {
-        agent.status = status;
-        if status == Status::Waiting {
+        agent.status = report.status;
+        // Only a real confirmation prompt drives auto-accept — never a plain
+        // input prompt, which now also maps to `Waiting`.
+        if report.awaiting_confirmation {
             maybe_auto_accept(agent, auto_accept, Local::now());
         }
     }
@@ -63,7 +75,7 @@ pub fn refresh_repo_main(session: &str, repo: &mut crate::model::RepoNode) {
         last_capture: repo.main_last_capture.take(),
         last_change_at: repo.main_last_change_at.take(),
     };
-    repo.main_status = Some(classify_capture(&capture, &mut state, Local::now()));
+    repo.main_status = Some(classify_capture(&capture, &mut state, Local::now()).status);
     repo.main_last_capture = state.last_capture;
     repo.main_last_change_at = state.last_change_at;
 }
@@ -74,12 +86,16 @@ pub fn classify_agent_status(
     branch: &str,
     tmux_session: &str,
     state: &mut WatchStatusState,
-) -> Option<Status> {
+) -> Option<StatusReport> {
     if !worktree_path.exists() {
-        return Some(if git::branch_exists(repo_path, branch).unwrap_or(false) {
+        let status = if git::branch_exists(repo_path, branch).unwrap_or(false) {
             Status::BranchOnly
         } else {
             Status::Dead
+        };
+        return Some(StatusReport {
+            status,
+            awaiting_confirmation: false,
         });
     }
 
@@ -91,7 +107,12 @@ pub fn classify_agent_status(
     // the next tick instead.
     match tmux::has_session(tmux_session) {
         Ok(true) => {}
-        Ok(false) => return Some(Status::Dead),
+        Ok(false) => {
+            return Some(StatusReport {
+                status: Status::Dead,
+                awaiting_confirmation: false,
+            });
+        }
         Err(_) => return None,
     }
 
@@ -107,9 +128,20 @@ fn classify_capture(
     capture: &str,
     state: &mut WatchStatusState,
     now: chrono::DateTime<Local>,
-) -> Status {
-    let waiting = looks_waiting(capture);
+) -> StatusReport {
     let working = looks_working(capture);
+    // A real confirmation prompt (y/n / option list). This is the only signal
+    // that may drive auto-accept.
+    let confirmation = looks_strong_waiting(capture);
+    // Generic weak waiting (a line ending in `?`/`>`), preserved for non-Claude
+    // programs. Both of these are "attention now" signals and take precedence
+    // over the settle buffer, matching the previous behaviour.
+    let weak = !working && looks_weak_waiting(capture);
+    // Claude finished a turn and is sitting at its input prompt. Treated as
+    // waiting-for-input, but only after the screen settles (see below) so a
+    // just-finished turn shows `run` briefly before flipping to `wait`.
+    let awaiting_input = !working && looks_input_prompt(capture);
+
     let signature = status_signature(capture);
     let changed = state
         .last_capture
@@ -127,16 +159,24 @@ fn classify_capture(
         .map(|changed_at| now - changed_at < Duration::seconds(3))
         .unwrap_or(false);
 
-    if waiting {
+    let status = if confirmation || weak {
         Status::Waiting
     } else if working || recently_changed {
         Status::Running
+    } else if awaiting_input {
+        Status::Waiting
     } else {
         Status::Idle
+    };
+
+    StatusReport {
+        status,
+        awaiting_confirmation: confirmation,
     }
 }
 
-pub fn looks_waiting(capture: &str) -> bool {
+#[cfg(test)]
+fn looks_waiting(capture: &str) -> bool {
     looks_strong_waiting(capture) || (!looks_working(capture) && looks_weak_waiting(capture))
 }
 
@@ -164,6 +204,15 @@ fn looks_weak_waiting(capture: &str) -> bool {
         .map(trim_line_chrome)
         .find(|line| !line.is_empty() && !is_border_line(line) && !is_footer_line(line))
         .is_some_and(|line| line.ends_with('?') || line.ends_with('>'))
+}
+
+/// Whether the capture shows Claude's input prompt caret (`❯`). Present both
+/// while working and at rest, so callers gate on `!looks_working` to mean
+/// "finished, awaiting input".
+fn looks_input_prompt(capture: &str) -> bool {
+    capture
+        .lines()
+        .any(|line| trim_line_chrome(line).starts_with('❯'))
 }
 
 fn looks_option_line(line: &str) -> bool {
@@ -232,7 +281,20 @@ fn is_footer_line(line: &str) -> bool {
     lower.contains("for shortcuts")
         || (lower.contains("model") && lower.contains("token"))
         || lower.contains("elapsed")
+        || is_mode_bar(&lower)
         || has_token_counter(&lower)
+}
+
+/// Claude Code's persistent bottom mode bar, e.g.
+/// `⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents`.
+/// It is chrome, not content: without skipping it, `looks_weak_waiting` would
+/// always inspect this bar instead of the real prompt/question line above it.
+/// `looks_working` still sees `esc to interrupt` because it scans the raw
+/// capture, independent of this footer filtering.
+fn is_mode_bar(lower: &str) -> bool {
+    lower.contains("shift+tab to cycle")
+        || lower.contains("bypass permissions")
+        || lower.contains("accept edits")
 }
 
 fn has_token_counter(line: &str) -> bool {
@@ -305,21 +367,50 @@ mod tests {
         let mut state = WatchStatusState::default();
         let first = "Done\n  Tokens: 1 █\n  ? for shortcuts";
         let second = "Done\n  Tokens: 2 ▌\n  ? for shortcuts";
-        assert_eq!(classify_capture(first, &mut state, fixed_now()), Status::Idle);
-        assert_eq!(classify_capture(second, &mut state, fixed_now() + Duration::seconds(1)), Status::Idle);
+        assert_eq!(classify_capture(first, &mut state, fixed_now()).status, Status::Idle);
+        assert_eq!(classify_capture(second, &mut state, fixed_now() + Duration::seconds(1)).status, Status::Idle);
     }
 
     #[test]
     fn boxed_permission_prompt_waits_despite_footer() {
         let mut state = WatchStatusState::default();
         let capture = "╭────╮\n│ Do you want to proceed? │\n│ ❯ 1. Yes │\n│   2. No │\n╰────╯\n  ? for shortcuts";
-        assert_eq!(classify_capture(capture, &mut state, fixed_now()), Status::Waiting);
+        let report = classify_capture(capture, &mut state, fixed_now());
+        assert_eq!(report.status, Status::Waiting);
+        assert!(report.awaiting_confirmation);
     }
 
     #[test]
     fn working_marker_forces_running() {
         let mut state = WatchStatusState::default();
-        assert_eq!(classify_capture("Generating response (esc to interrupt)", &mut state, fixed_now()), Status::Running);
+        assert_eq!(classify_capture("Generating response (esc to interrupt)", &mut state, fixed_now()).status, Status::Running);
+    }
+
+    #[test]
+    fn finished_at_input_prompt_waits_without_confirmation() {
+        // Real Claude "finished, awaiting input" shape: a `❯` prompt above the
+        // persistent mode bar, no `esc to interrupt`.
+        let capture = "⏺ 実装完了だす。\n\n────── branch-name ──\n❯ \n──────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents";
+        let mut state = WatchStatusState::default();
+        let report = classify_capture(capture, &mut state, fixed_now());
+        assert_eq!(report.status, Status::Waiting);
+        assert!(!report.awaiting_confirmation);
+    }
+
+    #[test]
+    fn working_beats_input_prompt_even_with_prompt_visible() {
+        // While working the `❯` box is still on screen; `esc to interrupt` in the
+        // mode bar must keep it Running, not Waiting.
+        let capture = "✻ Working…\n❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents";
+        let mut state = WatchStatusState::default();
+        assert_eq!(classify_capture(capture, &mut state, fixed_now()).status, Status::Running);
+    }
+
+    #[test]
+    fn mode_bar_is_treated_as_footer_chrome() {
+        assert!(is_footer_line("⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents"));
+        assert!(is_footer_line("⏵⏵ accept edits on (shift+tab to cycle)"));
+        assert!(!is_footer_line("❯ cargo run で確認して"));
     }
 
     #[test]
