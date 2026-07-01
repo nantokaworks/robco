@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::Result;
+use crate::{Result, model::Status};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -23,6 +23,40 @@ impl MergeStrategy {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NotifyConfig {
+    pub enabled: bool,
+    pub waiting: bool,
+    pub idle: bool,
+    pub dead: bool,
+}
+
+impl Default for NotifyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            waiting: true,
+            idle: true,
+            dead: true,
+        }
+    }
+}
+
+impl NotifyConfig {
+    pub fn wants(&self, status: Status) -> bool {
+        if !self.enabled {
+            return false;
+        }
+
+        match status {
+            Status::Waiting => self.waiting,
+            Status::Idle => self.idle,
+            Status::Dead => self.dead,
+            Status::Running | Status::BranchOnly => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub default_program: String,
@@ -38,6 +72,8 @@ pub struct Config {
     pub auto_accept: bool,
     #[serde(default)]
     pub merge_strategy: MergeStrategy,
+    #[serde(default)]
+    pub notify: NotifyConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,6 +97,7 @@ impl Default for Config {
             dropr_overlay: true,
             auto_accept: false,
             merge_strategy: MergeStrategy::default(),
+            notify: NotifyConfig::default(),
         }
     }
 }
