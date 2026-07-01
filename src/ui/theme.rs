@@ -13,9 +13,12 @@ pub struct Theme {
     pub input: Color,
     pub running: Color,
     pub waiting: Color,
+    pub done: Color,
     pub idle: Color,
     pub dead: Color,
     pub branch_only: Color,
+    /// Colour of the companion TERM (shell) session's working mark.
+    pub term: Color,
 }
 
 pub const DEFAULT: Theme = Theme {
@@ -28,9 +31,11 @@ pub const DEFAULT: Theme = Theme {
     input: Color::White,
     running: Color::Green,
     waiting: Color::Yellow,
+    done: Color::Cyan,
     idle: Color::Gray,
     dead: Color::Red,
     branch_only: Color::DarkGray,
+    term: Color::Blue,
 };
 
 impl Theme {
@@ -74,10 +79,16 @@ impl Theme {
         match status {
             Status::Running => self.running,
             Status::Waiting => self.waiting,
+            Status::Done => self.done,
             Status::Idle => self.idle,
             Status::Dead => self.dead,
             Status::BranchOnly => self.branch_only,
         }
+    }
+
+    /// Style for the companion TERM (shell) working mark.
+    pub fn term_style(self) -> Style {
+        Style::default().fg(self.term)
     }
 
     pub fn status_style(self, status: Status) -> Style {

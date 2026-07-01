@@ -62,10 +62,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     spans.push(Span::styled("  ", style));
                     spans.push(Span::styled(status_text, status_style));
                 }
+                if repo.main_shell_working {
+                    spans.push(Span::styled(" ", style));
+                    spans.push(Span::styled(
+                        super::spinner::term_frame(app.started.elapsed()),
+                        THEME.term_style(),
+                    ));
+                }
                 if !expanded && !repo.agents.is_empty() {
                     let status_counts = [
                         Status::Running,
                         Status::Waiting,
+                        Status::Done,
                         Status::Idle,
                         Status::Dead,
                         Status::BranchOnly,
@@ -126,12 +134,20 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 } else {
                     super::status_style(agent.status)
                 };
-                lines.push(Line::from(vec![
+                let mut spans = vec![
                     Span::styled(format!("{marker}   "), style),
                     Span::styled(&agent.title, agent_style),
                     Span::raw(" "),
                     Span::styled(status_text, status_style),
-                ]));
+                ];
+                if agent.shell_working {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled(
+                        super::spinner::term_frame(app.started.elapsed()),
+                        THEME.term_style(),
+                    ));
+                }
+                lines.push(Line::from(spans));
             }
         }
     }

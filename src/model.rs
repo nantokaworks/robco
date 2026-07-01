@@ -23,6 +23,10 @@ pub struct RepoNode {
     pub main_last_capture: Option<String>,
     #[serde(skip)]
     pub main_last_change_at: Option<DateTime<Local>>,
+    /// Whether the repo main-worktree companion shell (TERM) session is running
+    /// a foreground command. Runtime only; refreshed each tick, never persisted.
+    #[serde(skip)]
+    pub main_shell_working: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +50,10 @@ pub struct AgentNode {
     pub last_change_at: Option<DateTime<Local>>,
     #[serde(skip)]
     pub last_auto_accept_at: Option<DateTime<Local>>,
+    /// Whether the agent's companion shell (TERM) session is running a
+    /// foreground command. Runtime only; refreshed each tick, never persisted.
+    #[serde(skip)]
+    pub shell_working: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -54,6 +62,10 @@ pub enum Status {
     Idle,
     Running,
     Waiting,
+    /// The AI finished a turn and is sitting at its input prompt with nothing
+    /// pending — distinct from `Waiting` (a real y/n / selection prompt) and
+    /// from `Idle` (a session that has done nothing yet).
+    Done,
     Dead,
     BranchOnly,
 }
@@ -64,6 +76,7 @@ impl Status {
             Status::Idle => "idle",
             Status::Running => "run",
             Status::Waiting => "wait",
+            Status::Done => "done",
             Status::Dead => "dead",
             Status::BranchOnly => "branch",
         }

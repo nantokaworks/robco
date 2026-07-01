@@ -116,7 +116,8 @@ pub fn spawn_watcher(
 pub fn human_status(status: Status) -> &'static str {
     match status {
         Status::Waiting => "waiting for input",
-        Status::Idle => "idle / finished",
+        Status::Done => "finished",
+        Status::Idle => "idle",
         Status::Dead => "session died",
         Status::Running => "running",
         Status::BranchOnly => "branch only",
