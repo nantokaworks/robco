@@ -18,7 +18,7 @@ pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
     )
 }
 
-/// Anchor a session name so tmux matches it exactly.
+/// Anchor a session name so tmux matches it exactly, for any target kind.
 ///
 /// tmux resolves a `-t <name>` target by exact match first, then falls back to
 /// an `fnmatch(3)` pattern or a name prefix. Our shell session is named
@@ -27,8 +27,19 @@ pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
 /// exist (e.g. the main worktree AI was never launched but the user started a
 /// program in TERM). The `=` prefix forces an exact-name match and prevents the
 /// AI tab from mirroring the TERM session.
+///
+/// The trailing `:` is load-bearing. `=<session>` alone resolves only for pure
+/// *session*-target commands (`has-session`, `kill-session`, session
+/// `set-option` / `show-options`). For *pane*- and *window*-target commands the
+/// bare `=<session>` is broken on tmux 3.7: `capture-pane` and `send-keys` fail
+/// with `can't find pane`, `set-option window-size` fails with `no such window`,
+/// and `display-message '#{window_width}...'` exits 0 but prints an empty string
+/// (this is what actually made the #50 resize path fail — it misfires for live
+/// sessions, not just missing ones). Appending `:` selects the session's default
+/// window/pane, which resolves for every target kind while still matching the
+/// session name exactly, so the prefix-bleed guard above is preserved.
 fn exact(session: &str) -> String {
-    format!("={session}")
+    format!("={session}:")
 }
 
 pub fn sanitize_target_part(value: &str) -> String {
@@ -462,6 +473,15 @@ mod tests {
             session_name("robco_", "my.repo", "fix/thing"),
             "robco_my-repo_fix-thing"
         );
+    }
+
+    #[test]
+    fn exact_target_anchors_session_and_default_pane() {
+        // `=` forces an exact session match (no prefix bleed into `<name>-shell`)
+        // and the trailing `:` selects the default window/pane so the target
+        // resolves for pane/window commands too (capture-pane, send-keys,
+        // set-option window-size) — not just session-only commands.
+        assert_eq!(exact("robco_repo_agent"), "=robco_repo_agent:");
     }
 
     #[test]
