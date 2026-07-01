@@ -86,6 +86,10 @@ pub fn repo_shell_session_name(prefix: &str, repo: &RepoNode) -> String {
     format!("{}-shell", tmux::session_name(prefix, &repo.name, "main"))
 }
 
+pub fn repo_claude_session_name(prefix: &str, repo: &RepoNode) -> String {
+    tmux::session_name(prefix, &repo.name, "main")
+}
+
 pub fn ensure_repo_shell_session(prefix: &str, repo: &RepoNode) -> Result<()> {
     let session = repo_shell_session_name(prefix, repo);
     if tmux::has_session(&session)? {
@@ -93,6 +97,15 @@ pub fn ensure_repo_shell_session(prefix: &str, repo: &RepoNode) -> Result<()> {
     }
 
     tmux::new_session(&session, &repo.path, &shell_program())
+}
+
+pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode) -> Result<()> {
+    let session = repo_claude_session_name(prefix, repo);
+    if tmux::has_session(&session)? {
+        return Ok(());
+    }
+
+    tmux::new_session(&session, &repo.path, &config.default_program_command())
 }
 
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
