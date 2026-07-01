@@ -2,36 +2,27 @@ use std::{
     collections::HashMap,
     fs::OpenOptions,
     io::Write,
-    path::PathBuf,
     process::Command,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-        mpsc,
+        mpsc, Arc, Mutex,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
-use crate::{
-    config::NotifyConfig,
-    model::Status,
-    status::{self, WatchStatusState},
-};
+use crate::{config::NotifyConfig, model::Status};
 
 #[derive(Debug, Clone)]
 pub struct WatchTarget {
-    pub repo_path: PathBuf,
-    pub worktree_path: PathBuf,
-    pub branch: String,
     pub tmux_session: String,
     pub label: String,
+    pub status: Status,
 }
 
 #[derive(Debug, Default)]
 struct WatchEntry {
     previous: Option<Status>,
-    state: WatchStatusState,
 }
 
 struct Notifier {
@@ -104,15 +95,7 @@ pub fn spawn_watcher(
             for target in snapshot {
                 live_sessions.push(target.tmux_session.clone());
                 let entry = entries.entry(target.tmux_session.clone()).or_default();
-                let Some(current) = status::classify_agent_status(
-                    &target.repo_path,
-                    &target.worktree_path,
-                    &target.branch,
-                    &target.tmux_session,
-                    &mut entry.state,
-                ) else {
-                    continue;
-                };
+                let current = target.status;
 
                 if should_notify_transition(entry.previous, current, notify_cfg) {
                     notifier.notify(
@@ -188,13 +171,11 @@ mod tests {
         assert!(cfg.wants(Status::Idle));
         assert!(!cfg.wants(Status::Dead));
 
-        assert!(
-            !NotifyConfig {
-                enabled: false,
-                ..NotifyConfig::default()
-            }
-            .wants(Status::Idle)
-        );
+        assert!(!NotifyConfig {
+            enabled: false,
+            ..NotifyConfig::default()
+        }
+        .wants(Status::Idle));
     }
 
     #[test]
