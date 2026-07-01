@@ -1,0 +1,12 @@
+[book]
+title = "RobCo — Specification"
+authors = ["nantokaworks"]
+description = "RobCo — Repo-Oriented Bot Control & Orchestration. Full specification and configuration reference."
+src = "."
+language = "en"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/nantokaworks/robco"
+edit-url-template = "https://github.com/nantokaworks/robco/edit/main/docs/{path}"

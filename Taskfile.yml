@@ -22,3 +22,18 @@ tasks:
       - cargo fmt --all -- --check
       - cargo test
       - cargo clippy --all-targets --all-features -- -D warnings
+
+  docs:
+    desc: Build the mdbook specification into docs/book.
+    cmds:
+      - mdbook build docs
+
+  docs:serve:
+    desc: Serve the mdbook specification locally with live reload.
+    cmds:
+      - mdbook serve docs {{.CLI_ARGS}}
+
+  pages:deploy:
+    desc: Build the mdbook and publish docs/book to the gh-pages branch (GitHub Pages).
+    cmds:
+      - bash scripts/pages-deploy.sh {{.CLI_ARGS}}
