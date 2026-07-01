@@ -32,15 +32,57 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
                 let prefix = if expanded { "▾" } else { "▸" };
-                let dropr = if repo.dropr.is_some() { " dropr" } else { "" };
-                lines.push(Line::from(vec![Span::styled(
+                let worktree_label = if repo.agents.len() == 1 {
+                    "worktree"
+                } else {
+                    "worktrees"
+                };
+                let mut spans = vec![Span::styled(
                     format!(
-                        "{marker} {prefix} {} ({}){dropr}",
+                        "{marker} {prefix} {} ({} {worktree_label})",
                         repo.name,
                         repo.agents.len()
                     ),
                     style,
-                )]));
+                )];
+                if !expanded && !repo.agents.is_empty() {
+                    let status_counts = [
+                        Status::Running,
+                        Status::Waiting,
+                        Status::Idle,
+                        Status::Dead,
+                        Status::BranchOnly,
+                    ]
+                    .map(|status| {
+                        (
+                            status,
+                            repo.agents
+                                .iter()
+                                .filter(|agent| agent.status == status)
+                                .count(),
+                        )
+                    });
+                    let status_style = |status| {
+                        if selected {
+                            THEME.selected_status_style(status)
+                        } else {
+                            super::status_style(status)
+                        }
+                    };
+                    let mut first = true;
+                    for (status, count) in status_counts {
+                        if count == 0 {
+                            continue;
+                        }
+                        spans.push(Span::styled(if first { "  " } else { " · " }, style));
+                        spans.push(Span::styled(
+                            format!("{count} {}", status.badge()),
+                            status_style(status),
+                        ));
+                        first = false;
+                    }
+                }
+                lines.push(Line::from(spans));
                 if expanded && repo.agents.is_empty() {
                     lines.push(Line::from(Span::styled(
                         "    (no agents)",
