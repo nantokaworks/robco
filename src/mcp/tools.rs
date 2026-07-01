@@ -1,0 +1,299 @@
+use std::process::Command;
+
+use serde::Deserialize;
+use serde_json::{json, Value};
+
+use crate::{
+    model::{AgentNode, RepoNode, Status},
+    registry::Registry,
+    status::{self, StatusReport, WatchStatusState},
+    tmux,
+};
+
+const PROMPT_LINES: usize = 20;
+
+#[derive(Debug)]
+pub enum ToolError {
+    InvalidParams(String),
+    Execution(String),
+}
+
+impl std::fmt::Display for ToolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidParams(message) | Self::Execution(message) => f.write_str(message),
+        }
+    }
+}
+
+pub type ToolResult<T> = std::result::Result<T, ToolError>;
+
+pub fn list_tools() -> Value {
+    json!([
+        tool(
+            "robco_agent_list",
+            "List repos and agents with live status.",
+            json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            })
+        ),
+        tool(
+            "robco_agent_status",
+            "Get one agent's live status.",
+            json!({
+                "type": "object",
+                "properties": { "agent_id": { "type": "string" } },
+                "required": ["agent_id"],
+                "additionalProperties": false
+            })
+        ),
+        tool(
+            "robco_question_list",
+            "List agents awaiting confirmation prompts.",
+            json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            })
+        ),
+        tool(
+            "robco_answer",
+            "Send text and Enter to an agent session.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "agent_id": { "type": "string" },
+                    "text": { "type": "string" }
+                },
+                "required": ["agent_id", "text"],
+                "additionalProperties": false
+            })
+        ),
+        tool(
+            "robco_approve",
+            "Approve an agent confirmation prompt.",
+            json!({
+                "type": "object",
+                "properties": { "agent_id": { "type": "string" } },
+                "required": ["agent_id"],
+                "additionalProperties": false
+            })
+        )
+    ])
+}
+
+fn tool(name: &str, description: &str, input_schema: Value) -> Value {
+    json!({
+        "name": name,
+        "description": description,
+        "inputSchema": input_schema
+    })
+}
+
+pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
+    match name {
+        "robco_agent_list" => {
+            let registry = Registry::load().map_err(exec_err)?;
+            agent_list(&registry)
+        }
+        "robco_agent_status" => {
+            let args: AgentIdArgs = parse_args(arguments)?;
+            validate_non_blank("agent_id", &args.agent_id)?;
+            let registry = Registry::load().map_err(exec_err)?;
+            agent_status(&registry, &args.agent_id)
+        }
+        "robco_question_list" => {
+            let registry = Registry::load().map_err(exec_err)?;
+            question_list(&registry)
+        }
+        "robco_answer" => {
+            let args: AnswerArgs = parse_args(arguments)?;
+            validate_non_blank("agent_id", &args.agent_id)?;
+            validate_non_blank("text", &args.text)?;
+            let registry = Registry::load().map_err(exec_err)?;
+            answer(&registry, &args.agent_id, &args.text)
+        }
+        "robco_approve" => {
+            let args: AgentIdArgs = parse_args(arguments)?;
+            validate_non_blank("agent_id", &args.agent_id)?;
+            let registry = Registry::load().map_err(exec_err)?;
+            approve(&registry, &args.agent_id)
+        }
+        _ => Err(invalid_params(format!("unknown tool: {name}"))),
+    }
+}
+
+fn agent_list(registry: &Registry) -> ToolResult<Value> {
+    let repos = registry
+        .repos
+        .iter()
+        .map(|repo| {
+            let agents = repo
+                .agents
+                .iter()
+                .map(|agent| {
+                    let report = live_status(repo, agent);
+                    json!({
+                        "id": agent.id,
+                        "title": agent.title,
+                        "branch": agent.branch,
+                        "tmux_session": agent.tmux_session,
+                        "status": report.status.badge()
+                    })
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "name": repo.name,
+                "path": repo.path,
+                "agents": agents
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({ "repos": repos }))
+}
+
+fn agent_status(registry: &Registry, agent_id: &str) -> ToolResult<Value> {
+    let (repo, agent) = find_agent(registry, agent_id)?;
+    let report = live_status(repo, agent);
+    Ok(json!({
+        "agent_id": agent.id,
+        "title": agent.title,
+        "tmux_session": agent.tmux_session,
+        "status": report.status.badge(),
+        "awaiting_confirmation": report.awaiting_confirmation,
+        "prompt": prompt_tail(&agent.tmux_session)
+    }))
+}
+
+fn question_list(registry: &Registry) -> ToolResult<Value> {
+    let questions = registry
+        .repos
+        .iter()
+        .flat_map(|repo| {
+            repo.agents.iter().filter_map(move |agent| {
+                let report = live_status(repo, agent);
+                (report.status == Status::Waiting && report.awaiting_confirmation).then(|| {
+                    json!({
+                        "agent_id": agent.id,
+                        "title": agent.title,
+                        "tmux_session": agent.tmux_session,
+                        "prompt": prompt_tail(&agent.tmux_session)
+                    })
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({ "questions": questions }))
+}
+
+fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> {
+    let (_, agent) = find_agent(registry, agent_id)?;
+    send_literal_text(&agent.tmux_session, text)?;
+    tmux::send_keys(&agent.tmux_session, &["Enter"]).map_err(exec_err)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn approve(registry: &Registry, agent_id: &str) -> ToolResult<Value> {
+    let (_, agent) = find_agent(registry, agent_id)?;
+    tmux::send_keys(&agent.tmux_session, &["y", "Enter"]).map_err(exec_err)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn send_literal_text(session: &str, text: &str) -> ToolResult<()> {
+    let target = format!("={session}:");
+    let output = Command::new("tmux")
+        .args(["send-keys", "-t", &target, "-l", "--", text])
+        .output()
+        .map_err(exec_err)?;
+    if !output.status.success() {
+        return Err(exec_err(
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
+    let mut state = WatchStatusState::default();
+    status::classify_agent_status(
+        &repo.path,
+        &agent.worktree_path,
+        &agent.branch,
+        &agent.tmux_session,
+        &mut state,
+    )
+    .unwrap_or(StatusReport {
+        status: Status::Dead,
+        awaiting_confirmation: false,
+    })
+}
+
+fn prompt_tail(session: &str) -> String {
+    tmux::capture_plain(session)
+        .or_else(|_| tmux::capture_text(session))
+        .map(|capture| tail_non_empty_lines(&capture, PROMPT_LINES))
+        .unwrap_or_default()
+}
+
+fn tail_non_empty_lines(text: &str, limit: usize) -> String {
+    let mut lines = text
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .rev()
+        .take(limit)
+        .collect::<Vec<_>>();
+    lines.reverse();
+    lines.join("\n")
+}
+
+fn find_agent<'a>(
+    registry: &'a Registry,
+    agent_id: &str,
+) -> ToolResult<(&'a RepoNode, &'a AgentNode)> {
+    registry
+        .repos
+        .iter()
+        .find_map(|repo| {
+            repo.agents
+                .iter()
+                .find(|agent| agent.id == agent_id)
+                .map(|agent| (repo, agent))
+        })
+        .ok_or_else(|| exec_err(format!("agent_id not found: {agent_id}")))
+}
+
+fn parse_args<T: for<'de> Deserialize<'de>>(arguments: Option<Value>) -> ToolResult<T> {
+    serde_json::from_value(arguments.unwrap_or_else(|| json!({}))).map_err(invalid_params)
+}
+
+fn validate_non_blank(field: &str, value: &str) -> ToolResult<()> {
+    if value.trim().is_empty() {
+        return Err(invalid_params(format!("{field} must not be blank")));
+    }
+    Ok(())
+}
+
+fn invalid_params(err: impl std::fmt::Display) -> ToolError {
+    ToolError::InvalidParams(err.to_string())
+}
+
+fn exec_err(err: impl std::fmt::Display) -> ToolError {
+    ToolError::Execution(err.to_string())
+}
+
+#[cfg(test)]
+mod tests;
+
+#[derive(Deserialize)]
+struct AgentIdArgs {
+    agent_id: String,
+}
+
+#[derive(Deserialize)]
+struct AnswerArgs {
+    agent_id: String,
+    text: String,
+}
