@@ -14,6 +14,15 @@ pub struct RepoNode {
     pub agents: Vec<AgentNode>,
     #[serde(skip)]
     pub dropr: Option<DroprWorkspace>,
+    /// Status of the repo's own main-worktree AI session, or `None` when no such
+    /// session is running (the main worktree does not auto-launch one). Runtime
+    /// only; refreshed each tick and never persisted.
+    #[serde(skip)]
+    pub main_status: Option<Status>,
+    #[serde(skip)]
+    pub main_last_capture: Option<String>,
+    #[serde(skip)]
+    pub main_last_change_at: Option<DateTime<Local>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

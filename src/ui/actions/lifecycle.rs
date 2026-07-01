@@ -198,6 +198,9 @@ impl App {
             remote_url,
             agents: Vec::new(),
             dropr: None,
+            main_status: None,
+            main_last_capture: None,
+            main_last_change_at: None,
         });
         self.expanded.push(true);
         if let Err(err) = self.registry.save() {

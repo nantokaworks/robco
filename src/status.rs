@@ -39,6 +39,35 @@ pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto
     agent.last_change_at = state.last_change_at;
 }
 
+/// Refresh the status of a repo's own main-worktree AI session by *observing*
+/// its tmux session — it must never create one, since the main worktree does
+/// not auto-launch an AI. When no session exists the status is cleared to
+/// `None` so the tree shows no badge; a transient `tmux` probe failure keeps the
+/// previous status until the next tick.
+pub fn refresh_repo_main(session: &str, repo: &mut crate::model::RepoNode) {
+    match tmux::has_session(session) {
+        Ok(true) => {}
+        Ok(false) => {
+            repo.main_status = None;
+            repo.main_last_capture = None;
+            repo.main_last_change_at = None;
+            return;
+        }
+        Err(_) => return,
+    }
+
+    let Ok(capture) = tmux::capture_text(session) else {
+        return;
+    };
+    let mut state = WatchStatusState {
+        last_capture: repo.main_last_capture.take(),
+        last_change_at: repo.main_last_change_at.take(),
+    };
+    repo.main_status = Some(classify_capture(&capture, &mut state, Local::now()));
+    repo.main_last_capture = state.last_capture;
+    repo.main_last_change_at = state.last_change_at;
+}
+
 pub fn classify_agent_status(
     repo_path: &Path,
     worktree_path: &Path,

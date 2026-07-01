@@ -56,6 +56,47 @@ pub fn create_agent(
     })
 }
 
+/// Build an [`AgentNode`] for a worktree that already exists on disk but is not
+/// yet tracked (created outside robco). No tmux session is launched — the AI
+/// starts only when the user attaches — so the session is named but assumed
+/// absent until then.
+pub fn adopt_worktree(
+    repo: &RepoNode,
+    config: &Config,
+    worktree_path: std::path::PathBuf,
+    branch: Option<String>,
+    head: Option<String>,
+) -> AgentNode {
+    // git forbids two worktrees on the same branch, so the branch (or the
+    // directory name for a detached worktree) is a stable per-repo identifier.
+    let label = branch.clone().unwrap_or_else(|| {
+        worktree_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("worktree")
+            .to_string()
+    });
+    let clean_label = tmux::sanitize_target_part(&label);
+    let tmux_session = tmux::session_name(&config.tmux_session_prefix, &repo.name, &clean_label);
+    let now = Local::now();
+    AgentNode {
+        id: nanoid!(8),
+        title: label,
+        worktree_path,
+        branch: branch.unwrap_or_else(|| "(detached)".to_string()),
+        base_commit: head.unwrap_or_default(),
+        program: config.default_program_command(),
+        profile: profile_name(config),
+        tmux_session,
+        created_at: now,
+        updated_at: now,
+        status: Default::default(),
+        last_capture: None,
+        last_change_at: None,
+        last_auto_accept_at: None,
+    }
+}
+
 pub fn restart_agent(agent: &AgentNode) -> Result<()> {
     let _ = tmux::kill_session(&agent.tmux_session);
     tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)

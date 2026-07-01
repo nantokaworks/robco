@@ -10,7 +10,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::{PreviewPane, layout, theme::DEFAULT as THEME},
+    ui::{PreviewPane, layout, panes_for, theme::DEFAULT as THEME},
 };
 
 pub fn draw(
@@ -20,7 +20,9 @@ pub fn draw(
     pane: PreviewPane,
     scroll: u16,
     tmux_prefix: &str,
+    default_program: &str,
 ) {
+    let ai_label = ai_label(selection, registry, default_program);
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
 
@@ -73,6 +75,7 @@ pub fn draw(
                     selection,
                     title,
                     &agent.branch,
+                    &ai_label,
                 );
             }
             resize_preview_session(&agent.tmux_session, panes.preview);
@@ -101,6 +104,7 @@ pub fn draw(
                     selection,
                     title,
                     &agent.branch,
+                    &ai_label,
                 );
             }
             let session = agent::shell_session_name(agent);
@@ -130,6 +134,7 @@ pub fn draw(
                     selection,
                     title,
                     &agent.branch,
+                    &ai_label,
                 );
             }
             let text = git::diff(&agent.worktree_path)
@@ -138,7 +143,10 @@ pub fn draw(
                 .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
             (title, text)
         }
-        (_, None) => (
+        // `None` (no repositories) and any pane not valid for the current
+        // selection (e.g. `Info` on an agent, which `restore_preview` prevents
+        // from ever becoming active).
+        _ => (
             "PREVIEW".to_string(),
             vec![Line::from("No repositories discovered.")].into(),
         ),
@@ -147,7 +155,7 @@ pub fn draw(
     let preview = Paragraph::new(text)
         .block(
             Block::default()
-                .title_top(preview_tabs_line(pane, selection))
+                .title_top(preview_tabs_line(pane, selection, &ai_label))
                 .title_top(Line::from(title).right_aligned())
                 .borders(Borders::ALL),
         )
@@ -157,25 +165,42 @@ pub fn draw(
     frame.render_widget(preview, panes.preview);
 }
 
-fn preview_tabs_line(active: PreviewPane, selection: Option<Selection>) -> Line<'static> {
-    let panes: &[PreviewPane] = match selection {
-        Some(Selection::Repo(_)) => &[PreviewPane::Claude, PreviewPane::Terminal],
-        Some(Selection::Agent { .. }) => &[
-            PreviewPane::Claude,
-            PreviewPane::Diff,
-            PreviewPane::Terminal,
-        ],
-        None => &[],
+/// Resolve the label shown on the AI tab. Agents surface their own program
+/// (profile name, or the first token of the launch command); the main worktree
+/// falls back to the configured default program, which is known even when no AI
+/// session has been launched yet.
+fn ai_label(selection: Option<Selection>, registry: &Registry, default_program: &str) -> String {
+    let raw = match selection {
+        Some(Selection::Agent { repo, agent }) => {
+            let agent = &registry.repos[repo].agents[agent];
+            agent.profile.clone().unwrap_or_else(|| {
+                agent
+                    .program
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("AI")
+                    .to_string()
+            })
+        }
+        _ => default_program.to_string(),
     };
+    raw.to_uppercase()
+}
 
+fn preview_tabs_line(
+    active: PreviewPane,
+    selection: Option<Selection>,
+    ai_label: &str,
+) -> Line<'static> {
     let mut spans = Vec::new();
-    for (idx, pane) in panes.iter().enumerate() {
+    for (idx, pane) in panes_for(selection).iter().enumerate() {
         if idx > 0 {
             spans.push(Span::styled(" │ ", THEME.muted_style()));
         }
 
         let label = match pane {
-            PreviewPane::Claude => "AI",
+            PreviewPane::Info => "INFO",
+            PreviewPane::Claude => ai_label,
             PreviewPane::Diff => "DIFF",
             PreviewPane::Terminal => "TERM",
         };
@@ -212,6 +237,7 @@ fn render_branch_only(
     selection: Option<Selection>,
     title: String,
     branch: &str,
+    ai_label: &str,
 ) {
     let text = vec![
         Line::from(Span::styled(
@@ -230,7 +256,7 @@ fn render_branch_only(
     let preview = Paragraph::new(text)
         .block(
             Block::default()
-                .title_top(preview_tabs_line(active, selection))
+                .title_top(preview_tabs_line(active, selection, ai_label))
                 .title_top(Line::from(title).right_aligned())
                 .borders(Borders::ALL),
         )
