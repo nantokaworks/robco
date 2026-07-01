@@ -100,6 +100,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 ),
                 Line::from(""),
                 Line::from("General"),
+                Line::from("  ,              edit settings (config.json) in $EDITOR"),
                 Line::from("  ?              show this help"),
                 Line::from("  q              quit without stopping agents"),
                 Line::from(""),

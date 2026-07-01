@@ -143,6 +143,14 @@ impl Config {
         Ok(config)
     }
 
+    /// Persist the config to `~/.robco/config.json`, mirroring [`Registry::save`].
+    pub fn save(&self) -> Result<()> {
+        ensure_robco_dir()?;
+        let raw = serde_json::to_string_pretty(self)?;
+        fs::write(config_path()?, raw)?;
+        Ok(())
+    }
+
     pub fn default_program_command(&self) -> String {
         self.profiles
             .iter()
