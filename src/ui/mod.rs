@@ -253,11 +253,9 @@ fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
         .iter()
         .flat_map(|repo| {
             repo.agents.iter().map(|agent| WatchTarget {
-                repo_path: repo.path.clone(),
-                worktree_path: agent.worktree_path.clone(),
-                branch: agent.branch.clone(),
                 tmux_session: agent.tmux_session.clone(),
                 label: agent.title.clone(),
+                status: agent.status,
             })
         })
         .collect()
