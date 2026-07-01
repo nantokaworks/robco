@@ -17,6 +17,7 @@ pub struct Theme {
     pub idle: Color,
     pub dead: Color,
     pub branch_only: Color,
+    pub orphaned: Color,
     /// Colour of the companion TERM (shell) session's working mark.
     pub term: Color,
 }
@@ -35,6 +36,7 @@ pub const DEFAULT: Theme = Theme {
     idle: Color::Gray,
     dead: Color::Red,
     branch_only: Color::DarkGray,
+    orphaned: Color::Magenta,
     term: Color::Blue,
 };
 
@@ -83,6 +85,7 @@ impl Theme {
             Status::Idle => self.idle,
             Status::Dead => self.dead,
             Status::BranchOnly => self.branch_only,
+            Status::Orphaned => self.orphaned,
         }
     }
 

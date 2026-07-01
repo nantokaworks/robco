@@ -68,6 +68,8 @@ pub enum Status {
     Done,
     Dead,
     BranchOnly,
+    /// The tmux session is alive but the worktree directory was removed.
+    Orphaned,
 }
 
 impl Status {
@@ -79,7 +81,18 @@ impl Status {
             Status::Done => "done",
             Status::Dead => "dead",
             Status::BranchOnly => "branch",
+            Status::Orphaned => "orphan",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orphaned_status_badge_is_orphan() {
+        assert_eq!(Status::Orphaned.badge(), "orphan");
     }
 }
 

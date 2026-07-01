@@ -121,6 +121,7 @@ pub fn human_status(status: Status) -> &'static str {
         Status::Dead => "session died",
         Status::Running => "running",
         Status::BranchOnly => "branch only",
+        Status::Orphaned => "worktree gone",
     }
 }
 
