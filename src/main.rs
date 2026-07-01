@@ -7,6 +7,7 @@ mod git;
 mod mcp;
 mod model;
 mod notify;
+mod openclaw;
 mod registry;
 mod setup;
 mod status;
