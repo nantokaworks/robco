@@ -19,6 +19,7 @@ the implementation follows it.
 | [05-discovery.md](05-discovery.md) | Repo discovery and adding repos/agents |
 | [06-ui.md](06-ui.md) | Layout, keybindings, status indicators, aesthetic |
 | [07-lifecycle.md](07-lifecycle.md) | worktree × tmux lifecycle, status detection |
+| [09-config-reference.md](09-config-reference.md) | Full `~/.robco/config.json` reference — every field, default, and example |
 | [08-roadmap.md](08-roadmap.md) | v1 scope, explicitly deferred work |
 
 ## One-paragraph summary

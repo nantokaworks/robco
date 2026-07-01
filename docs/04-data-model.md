@@ -98,6 +98,10 @@ Notes:
 | `tmux_session_prefix` | Prefix for tmux session names | `robco_` |
 | `poll_interval_ms` | Preview/status poll cadence | `750` |
 
+> This table lists only the core keys. See [09-config-reference.md](09-config-reference.md)
+> for the **complete, annotated reference** of every field (`profiles`, `dropr_overlay`,
+> `auto_accept`, `merge_strategy`, `notify`, `project_icon`, …) with defaults and examples.
+
 ## Derived names
 
 For an agent titled `feature-x` in repo `nex`:

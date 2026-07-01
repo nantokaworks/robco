@@ -4,7 +4,8 @@ RobCo is a repo-oriented terminal cockpit for supervising terminal AI agents acr
 multiple repositories. It discovers git repositories under a launch directory, shows a
 `repo -> agents` tree, and runs each agent in its own git worktree and tmux session.
 
-The full product specification lives in [docs/README.md](docs/README.md).
+The full product specification and configuration reference are published at
+<https://nantokaworks.github.io/robco/> (source under [docs/](docs/README.md)).
 
 ## Run
 
