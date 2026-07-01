@@ -450,8 +450,14 @@ mod tests {
 
     #[test]
     fn root_binding_key_handles_flags_and_non_root() {
-        assert_eq!(root_binding_key("bind-key -r -T root M-Up resize-pane"), Some("M-Up"));
-        assert_eq!(root_binding_key("bind-key -T prefix z resize-pane -Z"), None);
+        assert_eq!(
+            root_binding_key("bind-key -r -T root M-Up resize-pane"),
+            Some("M-Up")
+        );
+        assert_eq!(
+            root_binding_key("bind-key -T prefix z resize-pane -Z"),
+            None
+        );
     }
 
     #[test]
