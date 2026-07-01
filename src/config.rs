@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, model::Status};
+use crate::{Result, model::Status, openclaw::OpenClawConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -112,6 +112,8 @@ pub struct Config {
     #[serde(default)]
     pub notify: NotifyConfig,
     #[serde(default)]
+    pub openclaw: OpenClawConfig,
+    #[serde(default)]
     pub project_icon: ProjectIcon,
 }
 
@@ -137,6 +139,7 @@ impl Default for Config {
             auto_accept: false,
             merge_strategy: MergeStrategy::default(),
             notify: NotifyConfig::default(),
+            openclaw: OpenClawConfig::default(),
             project_icon: ProjectIcon::default(),
         }
     }

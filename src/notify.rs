@@ -12,11 +12,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{config::NotifyConfig, model::Status};
+use crate::{
+    config::NotifyConfig,
+    model::Status,
+    openclaw::{self, OpenClawConfig},
+};
 
 #[derive(Debug, Clone)]
 pub struct WatchTarget {
     pub tmux_session: String,
+    pub agent_id: String,
+    pub repo: String,
     pub label: String,
     pub status: Status,
 }
@@ -78,6 +84,7 @@ pub fn attached_client_ttys() -> Vec<String> {
 pub fn spawn_watcher(
     targets: Arc<Mutex<Vec<WatchTarget>>>,
     notify_cfg: NotifyConfig,
+    openclaw_cfg: OpenClawConfig,
     stdout_tx: mpsc::Sender<String>,
     running: Arc<AtomicBool>,
     poll_interval: Duration,
@@ -103,6 +110,7 @@ pub fn spawn_watcher(
                         "robco",
                         &format!("{}: {}", target.label, human_status(current)),
                     );
+                    openclaw::post_transition(&openclaw_cfg, &target);
                 }
                 entry.previous = Some(current);
             }

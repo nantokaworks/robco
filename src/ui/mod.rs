@@ -261,6 +261,7 @@ pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()
     let notify_handle = notify::spawn_watcher(
         notify_targets.clone(),
         config.notify,
+        config.openclaw.clone(),
         notify_tx,
         notify_running.clone(),
         Duration::from_millis(config.poll_interval_ms),
@@ -344,6 +345,8 @@ fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
         .flat_map(|repo| {
             repo.agents.iter().map(|agent| WatchTarget {
                 tmux_session: agent.tmux_session.clone(),
+                agent_id: agent.id.clone(),
+                repo: repo.name.clone(),
                 label: agent.title.clone(),
                 status: agent.status,
             })
