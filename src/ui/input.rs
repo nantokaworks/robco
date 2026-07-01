@@ -146,6 +146,7 @@ impl App {
                 KeyCode::Char('?') => self.mode = Mode::Help,
                 KeyCode::Enter => match self.preview {
                     PreviewPane::Terminal => self.attach_shell_selected()?,
+                    PreviewPane::Claude => self.attach_claude_selected()?,
                     _ => self.attach_selected()?,
                 },
                 KeyCode::Char('r') => self.restart_selected()?,

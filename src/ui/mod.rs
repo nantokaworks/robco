@@ -155,7 +155,9 @@ impl App {
     }
 
     fn toggle_preview(&mut self) {
+        let repo_selected = matches!(self.selected_item(), Some(Selection::Repo(_)));
         self.preview = match self.preview {
+            PreviewPane::Claude if repo_selected => PreviewPane::Terminal,
             PreviewPane::Claude => PreviewPane::Diff,
             PreviewPane::Diff => PreviewPane::Terminal,
             PreviewPane::Terminal => PreviewPane::Claude,
