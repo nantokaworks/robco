@@ -4,14 +4,48 @@ use std::path::Path;
 
 use crate::{git, model::Status, tmux};
 
+#[derive(Debug, Default)]
+pub struct WatchStatusState {
+    pub last_capture: Option<String>,
+    pub last_change_at: Option<chrono::DateTime<Local>>,
+}
+
 pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto_accept: bool) {
-    if !agent.worktree_path.exists() {
-        agent.status = if git::branch_exists(repo_path, &agent.branch).unwrap_or(false) {
+    let mut state = WatchStatusState {
+        last_capture: agent.last_capture.take(),
+        last_change_at: agent.last_change_at.take(),
+    };
+
+    if let Some(status) = classify_agent_status(
+        repo_path,
+        &agent.worktree_path,
+        &agent.branch,
+        &agent.tmux_session,
+        &mut state,
+    ) {
+        agent.status = status;
+        if status == Status::Waiting {
+            maybe_auto_accept(agent, auto_accept, Local::now());
+        }
+    }
+
+    agent.last_capture = state.last_capture;
+    agent.last_change_at = state.last_change_at;
+}
+
+pub fn classify_agent_status(
+    repo_path: &Path,
+    worktree_path: &Path,
+    branch: &str,
+    tmux_session: &str,
+    state: &mut WatchStatusState,
+) -> Option<Status> {
+    if !worktree_path.exists() {
+        return Some(if git::branch_exists(repo_path, branch).unwrap_or(false) {
             Status::BranchOnly
         } else {
             Status::Dead
-        };
-        return;
+        });
     }
 
     // A status refresh only *observes* the tmux session; it must never create
@@ -20,44 +54,47 @@ pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto
     // `has_session` return `Err`, and treating that as death is what flipped a
     // healthy, running agent to `dead`. Keep the previous status and retry on
     // the next tick instead.
-    match tmux::has_session(&agent.tmux_session) {
+    match tmux::has_session(tmux_session) {
         Ok(true) => {}
-        Ok(false) => {
-            agent.status = Status::Dead;
-            return;
-        }
-        Err(_) => return,
+        Ok(false) => return Some(Status::Dead),
+        Err(_) => return None,
     }
 
     // Likewise, a transient capture failure should not corrupt the Running/Idle
     // signal; keep the previous status until the next successful capture.
-    let Ok(capture) = tmux::capture_text(&agent.tmux_session) else {
-        return;
+    let Ok(capture) = tmux::capture_text(tmux_session) else {
+        return None;
     };
-    let signature = status_signature(&capture);
-    let now = Local::now();
-    let changed = agent
+    Some(classify_capture(&capture, state, Local::now()))
+}
+
+fn classify_capture(
+    capture: &str,
+    state: &mut WatchStatusState,
+    now: chrono::DateTime<Local>,
+) -> Status {
+    let signature = status_signature(capture);
+    let changed = state
         .last_capture
         .as_ref()
         .map(|last| last != &signature)
         .unwrap_or(false);
 
     if changed {
-        agent.last_change_at = Some(now);
+        state.last_change_at = Some(now);
     }
-    agent.last_capture = Some(signature);
+    state.last_capture = Some(signature);
 
-    if looks_waiting(&capture) {
-        agent.status = Status::Waiting;
-        maybe_auto_accept(agent, auto_accept, now);
-    } else if agent
+    if looks_waiting(capture) {
+        Status::Waiting
+    } else if state
         .last_change_at
         .map(|changed_at| now - changed_at < Duration::seconds(3))
         .unwrap_or(false)
     {
-        agent.status = Status::Running;
+        Status::Running
     } else {
-        agent.status = Status::Idle;
+        Status::Idle
     }
 }
 

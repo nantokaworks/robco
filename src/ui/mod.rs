@@ -1,5 +1,10 @@
 use std::{
-    io,
+    io::{self, Write},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::{Duration, Instant},
 };
 
@@ -14,6 +19,7 @@ use crate::{
     Result,
     config::Config,
     model::{Selection, Status},
+    notify::{self, WatchTarget},
     registry::Registry,
     status,
 };
@@ -26,7 +32,6 @@ mod preview;
 mod spinner;
 mod theme;
 mod tree;
-
 enum Mode {
     Normal,
     Help,
@@ -165,9 +170,23 @@ pub fn run(registry: Registry, config: Config) -> Result<()> {
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+
+    let (notify_tx, notify_rx) = mpsc::channel::<String>();
+    let notify_targets = Arc::new(Mutex::new(watch_targets(&registry)));
+    let notify_running = Arc::new(AtomicBool::new(true));
+    let notify_handle = notify::spawn_watcher(
+        notify_targets.clone(),
+        config.notify,
+        notify_tx,
+        notify_running.clone(),
+        Duration::from_millis(config.poll_interval_ms),
+    );
     let mut app = App::new(registry, config);
 
-    let result = run_loop(&mut terminal, &mut app);
+    let result = run_loop(&mut terminal, &mut app, &notify_rx, &notify_targets);
+
+    notify_running.store(false, Ordering::Relaxed);
+    let _ = notify_handle.join();
 
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -176,7 +195,12 @@ pub fn run(registry: Registry, config: Config) -> Result<()> {
     result
 }
 
-fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
+fn run_loop<B: ratatui::backend::Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut App,
+    notify_rx: &mpsc::Receiver<String>,
+    notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
+) -> Result<()> {
     let tick_interval = Duration::from_millis(app.config.poll_interval_ms);
     let mut last_tick = Instant::now() - tick_interval;
 
@@ -185,6 +209,10 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
             app.tick();
             last_tick = Instant::now();
         }
+        if let Ok(mut targets) = notify_targets.lock() {
+            *targets = watch_targets(&app.registry);
+        }
+        drain_stdout_notifications(notify_rx, app);
 
         if app.force_redraw {
             terminal.autoresize()?;
@@ -215,6 +243,31 @@ fn run_loop<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut 
         {
             return Ok(());
         }
+    }
+}
+
+fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
+    registry
+        .repos
+        .iter()
+        .flat_map(|repo| {
+            repo.agents.iter().map(|agent| WatchTarget {
+                repo_path: repo.path.clone(),
+                worktree_path: agent.worktree_path.clone(),
+                branch: agent.branch.clone(),
+                tmux_session: agent.tmux_session.clone(),
+                label: agent.title.clone(),
+            })
+        })
+        .collect()
+}
+
+fn drain_stdout_notifications(notify_rx: &mpsc::Receiver<String>, app: &mut App) {
+    let mut out = io::stdout();
+    for payload in notify_rx.try_iter() {
+        let _ = out.write_all(payload.as_bytes());
+        let _ = out.flush();
+        app.force_redraw = true;
     }
 }
 

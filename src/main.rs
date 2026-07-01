@@ -5,6 +5,7 @@ mod discover;
 mod dropr;
 mod git;
 mod model;
+mod notify;
 mod registry;
 mod status;
 mod tmux;
