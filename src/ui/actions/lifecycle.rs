@@ -43,7 +43,11 @@ impl App {
         Ok(())
     }
 
-    pub(in crate::ui) fn delete_agent_branch(&mut self, repo: usize, agent_idx: usize) -> Result<()> {
+    pub(in crate::ui) fn delete_agent_branch(
+        &mut self,
+        repo: usize,
+        agent_idx: usize,
+    ) -> Result<()> {
         if repo < self.registry.repos.len() && agent_idx < self.registry.repos[repo].agents.len() {
             let selected_repo = self.registry.repos[repo].clone();
             let selected_agent = selected_repo.agents[agent_idx].clone();

@@ -4,8 +4,9 @@ use std::{
     io::Write,
     process::Command,
     sync::{
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc,
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -171,11 +172,13 @@ mod tests {
         assert!(cfg.wants(Status::Idle));
         assert!(!cfg.wants(Status::Dead));
 
-        assert!(!NotifyConfig {
-            enabled: false,
-            ..NotifyConfig::default()
-        }
-        .wants(Status::Idle));
+        assert!(
+            !NotifyConfig {
+                enabled: false,
+                ..NotifyConfig::default()
+            }
+            .wants(Status::Idle)
+        );
     }
 
     #[test]
