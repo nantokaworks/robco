@@ -1,4 +1,7 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -140,6 +143,12 @@ impl Config {
         if config.default_program.trim().is_empty() {
             config.default_program = "claude".to_string();
         }
+        // A user-edited config may spell `worktree_root` with a leading `~`.
+        // serde stores that literally, leaving a relative path whose first
+        // component is `~`; git then resolves worktrees under `<repo>/~/...` and
+        // the same worktree is later re-adopted as a duplicate. Expand it here so
+        // the stored agent path matches the absolute path git reports.
+        config.worktree_root = expand_tilde(&config.worktree_root);
         Ok(config)
     }
 
@@ -187,6 +196,18 @@ fn home_dir() -> Option<PathBuf> {
     dirs::home_dir()
 }
 
+/// Expand a leading `~` component to the home directory. Paths without a `~`
+/// prefix, and paths that cannot be expanded (no home dir), are returned as-is.
+fn expand_tilde(path: &Path) -> PathBuf {
+    match path.strip_prefix("~") {
+        Ok(rest) => match home_dir() {
+            Some(home) => home.join(rest),
+            None => path.to_path_buf(),
+        },
+        Err(_) => path.to_path_buf(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +246,20 @@ mod tests {
         assert_eq!(ProjectIcon::Nerdfont.marker(false), "\u{f07b}");
         assert_eq!(ProjectIcon::Emoji.marker(true), "📂");
         assert_eq!(ProjectIcon::Emoji.marker(false), "📁");
+    }
+
+    #[test]
+    fn expand_tilde_resolves_leading_home_and_passes_through_absolute() {
+        let home = home_dir().expect("home dir");
+
+        assert_eq!(
+            expand_tilde(Path::new("~/.robco/worktrees")),
+            home.join(".robco").join("worktrees")
+        );
+        assert_eq!(expand_tilde(Path::new("~")), home);
+
+        let absolute = PathBuf::from("/tmp/robco/worktrees");
+        assert_eq!(expand_tilde(&absolute), absolute);
     }
 
     #[test]
