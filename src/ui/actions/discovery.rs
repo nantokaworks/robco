@@ -109,6 +109,13 @@ fn adopt_external_worktrees(repo: &mut RepoNode, config: &Config) -> bool {
         }
         let adopted =
             agent::adopt_worktree(repo, config, worktree.path, worktree.branch, worktree.head);
+        // Auto-open the AI for a worktree the first time it is discovered, so a
+        // worktree is "open" by default (matching robco-created worktrees, which
+        // launch on creation). This fires once per newly-adopted worktree — the
+        // `known` guard above means an already-tracked worktree is never
+        // re-adopted, so a session the user deliberately closed is NOT
+        // relaunched on the next discovery tick; Enter re-opens it in that case.
+        let _ = agent::ensure_agent_session(&adopted);
         repo.agents.push(adopted);
         added = true;
     }

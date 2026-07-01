@@ -101,6 +101,15 @@ pub fn capture_text(session: &str) -> Result<String> {
 }
 
 pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
+    // A missing target must be a no-op, not an error. `display-message` below
+    // exits 0 and prints an empty `x` for a nonexistent session (observed on
+    // tmux 3.7), so the `current == target` short-circuit never fires and the
+    // `set-option window-size` call fails with `no such window`. That Err used
+    // to bubble out of `attach` and terminate robco (dropping the ssh session)
+    // whenever the user attached to a worktree whose AI session had exited.
+    if !has_session(session)? {
+        return Ok(());
+    }
     let session = exact(session);
     let target = format!("{width}x{height}");
     let output = Command::new("tmux")
