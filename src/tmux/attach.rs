@@ -6,7 +6,7 @@ use crate::{Error, Result};
 
 use super::{
     command_unit,
-    keys::{set_session_option, wait_for_return_key, ReturnKeyBinding},
+    keys::{ReturnKeyBinding, set_session_option, wait_for_return_key},
     session::{exact, has_session, resize_session},
 };
 

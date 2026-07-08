@@ -5,8 +5,8 @@ pub mod openclaw;
 use std::{fs, io::ErrorKind, path::Path};
 
 use crate::{
-    cli::{InstallArgs, InstallTarget},
     Error, Result,
+    cli::{InstallArgs, InstallTarget},
 };
 
 #[derive(Debug, Eq, PartialEq)]

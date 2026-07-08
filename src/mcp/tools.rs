@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::{
     model::{AgentNode, RepoNode, Status},
