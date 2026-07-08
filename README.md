@@ -66,7 +66,6 @@ cargo test
 - `ctrl-q`: return from the attached tmux session to RobCo
 - `tab`: switch between terminal preview and git diff
 - `r`: restart the selected agent program
-- `s`: `git add`, commit, and push the selected agent branch
 - `x`: kill the selected agent, remove its clean worktree, and optionally delete its branch
 - `?`: show help
 - `q`: quit the cockpit without stopping agents

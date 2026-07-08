@@ -92,9 +92,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                     "  x              remove selected agent worktree, then optionally delete branch",
                 ),
                 Line::from(""),
-                Line::from("Repo / shipping"),
+                Line::from("Repo"),
                 Line::from("  a              add repository by path"),
-                Line::from("  s              git add, commit, and push selected agent branch"),
                 Line::from(
                     "  m              merge/land selected agent: merge PR + pull main (needs commit + open PR)",
                 ),
@@ -134,7 +133,20 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         .style(THEME.accent_style());
     let body = layout::root(frame.area()).body;
     frame.render_widget(Block::default().style(THEME.backdrop_style()), body);
-    frame.render_widget(Clear, area);
+
+    // Blank the full-width band of rows the popup occupies before drawing it.
+    // `Clear` only resets cells *inside* the popup rect, so a full-width (CJK)
+    // glyph in the dimmed background that straddles the popup's left/right border
+    // would leave a stray half-cell that corrupts the border. Wiping the whole
+    // row-band removes any such glyph; rows above and below stay dimmed.
+    let band = Rect {
+        x: body.x,
+        y: area.y,
+        width: body.width,
+        height: area.height,
+    };
+    frame.render_widget(Clear, band);
+    frame.render_widget(Block::default().style(THEME.backdrop_style()), band);
     frame.render_widget(dialog, area);
 }
 
@@ -223,4 +235,60 @@ fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
         }
     }
     offset
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::{
+        Terminal,
+        backend::TestBackend,
+        layout::Rect,
+        text::Line,
+        widgets::{Block, Borders, Clear, Paragraph},
+    };
+
+    /// A popup drawn over a full-width (CJK) background must keep clean vertical
+    /// borders. `Clear` alone leaves the outside half of a wide glyph that
+    /// straddles the popup edge, corrupting the border — `draw` blanks the
+    /// popup's full-width row-band first to prevent it. This guards that fix.
+    #[test]
+    fn popup_border_survives_wide_char_background() {
+        let mut terminal = Terminal::new(TestBackend::new(20, 5)).unwrap();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                let bg = Paragraph::new(vec![
+                    Line::from("あいうえおかきくけこ"),
+                    Line::from("あいうえおかきくけこ"),
+                    Line::from("あいうえおかきくけこ"),
+                    Line::from("あいうえおかきくけこ"),
+                    Line::from("あいうえおかきくけこ"),
+                ]);
+                frame.render_widget(bg, area);
+
+                // Odd x so the left border lands on the right half of a wide glyph.
+                let popup = Rect {
+                    x: 3,
+                    y: 1,
+                    width: 10,
+                    height: 3,
+                };
+                let band = Rect {
+                    x: area.x,
+                    y: popup.y,
+                    width: area.width,
+                    height: popup.height,
+                };
+                frame.render_widget(Clear, band);
+                frame.render_widget(Block::default().borders(Borders::ALL), popup);
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        // Both vertical borders render as box-drawing, not CJK remnants.
+        assert_eq!(buf.cell((3, 2)).unwrap().symbol(), "│");
+        assert_eq!(buf.cell((12, 2)).unwrap().symbol(), "│");
+        // The cell just outside the left border is blanked (no stray wide half).
+        assert_eq!(buf.cell((2, 2)).unwrap().symbol(), " ");
+    }
 }

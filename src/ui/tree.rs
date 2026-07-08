@@ -1,5 +1,6 @@
 use ratatui::{
     Frame,
+    layout::Alignment,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
@@ -12,10 +13,6 @@ use super::{App, layout, theme::DEFAULT as THEME};
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
-
-    let header = Paragraph::new("ROBCO ▸ repo-oriented bot control & orchestration")
-        .style(THEME.accent_bold_style());
-    frame.render_widget(header, root.header);
 
     let mut lines = Vec::new();
     for (idx, item) in visible.iter().enumerate() {
@@ -162,9 +159,59 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         .style(THEME.accent_style());
     frame.render_widget(tree, panes.tree);
 
-    let footer_text = message.unwrap_or(
-        "↑↓/jk move  pgup/pgdn scroll  tab diff  enter attach  t shell  n/N new  a add repo  s push  x kill  ? help  q quit",
-    );
-    let footer = Paragraph::new(footer_text).style(THEME.muted_style());
-    frame.render_widget(footer, root.footer);
+    // Status row: the ROBCO + version identity pinned bottom-left (brand
+    // bold-accent, version in hint grey), key hints centred in the rest.
+    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let ident_width = ("ROBCO ".len() + version.chars().count() + 2) as u16;
+    let zones = layout::footer_zones(root.footer, ident_width);
+
+    let ident = Paragraph::new(Line::from(vec![
+        Span::styled("ROBCO", THEME.accent_bold_style()),
+        Span::styled(format!(" {version}"), THEME.hint_style()),
+    ]));
+    frame.render_widget(ident, zones.ident);
+
+    let hints = Paragraph::new(hints_line(message)).alignment(Alignment::Center);
+    frame.render_widget(hints, zones.hints);
+}
+
+/// Key hint definitions for the footer, as `(key glyph, action label)` pairs.
+/// Special keys use geeky glyphs (`⇞⇟` page, `⇥` tab, `↵` enter) to lean into
+/// the ROBCO terminal aesthetic.
+const KEY_HINTS: &[(&str, &str)] = &[
+    ("↑↓/jk", "move"),
+    ("⇞⇟", "scroll"),
+    ("⇥", "pane"),
+    ("↵", "attach"),
+    ("n/N", "new"),
+    ("r", "restart"),
+    ("m", "merge"),
+    ("x", "kill"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
+/// Build the centre key-hint line: either a transient status message, or the
+/// geeky key-hint list — Norton-Commander style bracketed keys (brackets in
+/// accent green, key glyph bold) with UPPERCASE labels in readable hint grey.
+fn hints_line(message: Option<&str>) -> Line<'static> {
+    if let Some(text) = message {
+        return Line::from(Span::styled(text.to_string(), THEME.hint_style()));
+    }
+
+    let mut spans = Vec::with_capacity(KEY_HINTS.len() * 5);
+    for (idx, (key, label)) in KEY_HINTS.iter().enumerate() {
+        if idx > 0 {
+            spans.push(Span::raw(" "));
+        }
+        spans.push(Span::styled("[", THEME.accent_style()));
+        spans.push(Span::styled(*key, THEME.accent_bold_style()));
+        spans.push(Span::styled("]", THEME.accent_style()));
+        spans.push(Span::styled(
+            format!(" {}", label.to_uppercase()),
+            THEME.hint_style(),
+        ));
+    }
+
+    Line::from(spans)
 }

@@ -198,33 +198,6 @@ pub fn diff(worktree: &Path) -> Result<String> {
     }
 }
 
-pub fn add_all(worktree: &Path) -> Result<()> {
-    let output = Command::new("git")
-        .args(["-C"])
-        .arg(worktree)
-        .args(["add", "-A"])
-        .output()?;
-    command_unit(output, "git add -A")
-}
-
-pub fn commit(worktree: &Path, message: &str) -> Result<()> {
-    let output = Command::new("git")
-        .args(["-C"])
-        .arg(worktree)
-        .args(["commit", "-m", message])
-        .output()?;
-    command_unit(output, "git commit")
-}
-
-pub fn push_branch(worktree: &Path, branch: &str) -> Result<()> {
-    let output = Command::new("git")
-        .args(["-C"])
-        .arg(worktree)
-        .args(["push", "-u", "origin", branch])
-        .output()?;
-    command_unit(output, "git push")
-}
-
 pub fn pr_exists(repo: &Path, branch: &str) -> Result<bool> {
     let output = Command::new("gh")
         .current_dir(repo)
