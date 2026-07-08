@@ -1,6 +1,6 @@
 use std::{fs, str::FromStr};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use toml_edit::DocumentMut;
 
 use super::{claude, codex, openclaw, read_optional_config};
@@ -9,9 +9,11 @@ use super::{claude, codex, openclaw, read_optional_config};
 fn optional_config_read_treats_only_not_found_as_absent() {
     let dir = tempfile::tempdir().unwrap();
 
-    assert!(read_optional_config(&dir.path().join("missing"))
-        .unwrap()
-        .is_none());
+    assert!(
+        read_optional_config(&dir.path().join("missing"))
+            .unwrap()
+            .is_none()
+    );
     assert!(read_optional_config(dir.path()).is_err());
 }
 

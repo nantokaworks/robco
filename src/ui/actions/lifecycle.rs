@@ -82,9 +82,8 @@ impl App {
         match git::worktree_is_clean(&selected.worktree_path) {
             Ok(true) => {}
             Ok(false) => {
-                self.mode = Mode::Message(
-                    "commit or clean untracked changes before merge".to_string(),
-                );
+                self.mode =
+                    Mode::Message("commit or clean untracked changes before merge".to_string());
                 return;
             }
             Err(err) => {
