@@ -4,6 +4,7 @@ mod config;
 mod discover;
 mod dropr;
 mod git;
+mod loading;
 mod mcp;
 mod model;
 mod notify;
@@ -74,8 +75,10 @@ async fn run() -> Result<()> {
         return run_command(command, &config);
     }
 
+    let indicator = loading::Indicator::start("Scanning repositories...");
     let mut discovered = discover::discover_repos(&args.launch_dir)?;
     if config.dropr_overlay {
+        indicator.set_message("Loading dropr workspaces...");
         let overlay = dropr::DroprOverlay::load_best_effort();
         for repo in &mut discovered {
             if let Some(remote) = &repo.remote_url {
@@ -85,6 +88,7 @@ async fn run() -> Result<()> {
     }
 
     if args.list {
+        indicator.finish();
         for repo in &discovered {
             let remote = repo.remote_url.as_deref().unwrap_or("-");
             let dropr = repo
@@ -101,6 +105,7 @@ async fn run() -> Result<()> {
     registry.merge_discovered(discovered);
     registry.save()?;
     let launch_dir = args.launch_dir.canonicalize().unwrap_or(args.launch_dir);
+    indicator.finish();
     ui::run(registry, config, launch_dir)
 }
 

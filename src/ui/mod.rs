@@ -35,7 +35,7 @@ mod dialog;
 mod input;
 mod layout;
 mod preview;
-mod spinner;
+pub(crate) mod spinner;
 mod theme;
 mod tree;
 enum Mode {
