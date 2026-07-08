@@ -150,7 +150,6 @@ impl App {
                     _ => self.attach_selected()?,
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
-                KeyCode::Char('s') => self.ship_selected(),
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char(',') => self.open_settings_editor(),

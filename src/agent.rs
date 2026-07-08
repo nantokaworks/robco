@@ -171,12 +171,6 @@ pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
     }
 }
 
-pub fn ship_agent(agent: &AgentNode) -> Result<()> {
-    git::add_all(&agent.worktree_path)?;
-    git::commit(&agent.worktree_path, &format!("robco: {}", agent.title))?;
-    git::push_branch(&agent.worktree_path, &agent.branch)
-}
-
 fn resolve_branch_prefix(config: &Config, repo_name: &str) -> String {
     if let Some(prefix) = &config.branch_prefix {
         return prefix.clone();

@@ -63,24 +63,6 @@ impl App {
         Ok(())
     }
 
-    pub(in crate::ui) fn ship_selected(&mut self) {
-        if let Some(Selection::Agent {
-            repo,
-            agent: agent_idx,
-        }) = self.selected_item()
-        {
-            let selected = self.registry.repos[repo].agents[agent_idx].clone();
-            if selected.status == Status::BranchOnly {
-                self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
-                return;
-            }
-            match agent::ship_agent(&selected) {
-                Ok(()) => self.mode = Mode::Message(format!("pushed {}", selected.branch)),
-                Err(err) => self.mode = Mode::Message(err.to_string()),
-            }
-        }
-    }
-
     pub(in crate::ui) fn merge_selected(&mut self) {
         let Some(Selection::Agent {
             repo,
@@ -101,8 +83,7 @@ impl App {
             Ok(true) => {}
             Ok(false) => {
                 self.mode = Mode::Message(
-                    "commit or clean untracked changes before merge (press s to ship first)"
-                        .to_string(),
+                    "commit or clean untracked changes before merge".to_string(),
                 );
                 return;
             }
