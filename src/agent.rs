@@ -118,6 +118,33 @@ pub fn adopt_worktree(
     }
 }
 
+/// Strip the resolved branch prefix from agent titles persisted before
+/// [`adopt_worktree`] learned to do so. Such entries carry the full branch
+/// name as their title (e.g. `dropr/support-open-claw` under the `dropr`
+/// repo), which is redundant in the tree where the parent row already names
+/// the repo. Only titles equal to their branch — the adoption artifact
+/// signature — are rewritten; user-typed titles never match because
+/// [`create_agent`] stores the raw title, not the prefixed branch. Returns
+/// whether any title changed so the caller knows to persist the registry.
+pub fn normalize_adopted_titles(repos: &mut [RepoNode], config: &Config) -> bool {
+    let mut changed = false;
+    for repo in repos {
+        let prefix = resolve_branch_prefix(config, &repo.name);
+        for agent in &mut repo.agents {
+            if agent.title != agent.branch {
+                continue;
+            }
+            if let Some(rest) = agent.title.strip_prefix(&prefix)
+                && !rest.is_empty()
+            {
+                agent.title = rest.to_string();
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
 pub fn restart_agent(agent: &AgentNode) -> Result<()> {
     let _ = tmux::kill_session(&agent.tmux_session);
     tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)

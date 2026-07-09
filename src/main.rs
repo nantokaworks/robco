@@ -102,6 +102,7 @@ async fn run() -> Result<()> {
     }
 
     let mut registry = Registry::load()?;
+    agent::normalize_adopted_titles(&mut registry.repos, &config);
     registry.merge_discovered(discovered);
     registry.save()?;
     let launch_dir = args.launch_dir.canonicalize().unwrap_or(args.launch_dir);
