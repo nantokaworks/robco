@@ -33,19 +33,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
                 let prefix = app.config.project_icon.marker(expanded);
-                let worktree_label = if repo.agents.len() == 1 {
-                    "worktree"
-                } else {
-                    "worktrees"
-                };
-                let mut spans = vec![Span::styled(
-                    format!(
-                        "{marker} {prefix} {} ({} {worktree_label})",
-                        repo.name,
-                        repo.agents.len()
+                // Bare worktree count as a dim suffix, footer-ident style
+                // (`ROBCO v0.1.20`): the name carries the accent, the count
+                // stays legible but quiet.
+                let mut spans = vec![
+                    Span::styled(format!("{marker} {prefix} {}", repo.name), style),
+                    Span::styled(
+                        format!(" {}", repo.agents.len()),
+                        if selected { style } else { THEME.hint_style() },
                     ),
-                    style,
-                )];
+                ];
                 // Off-launch-dir repos need their location spelled out — the
                 // name alone no longer identifies where the repo lives.
                 if !app.repo_is_local(repo) {
