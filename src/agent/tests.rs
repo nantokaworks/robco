@@ -84,6 +84,67 @@ fn adopt_binds_to_existing_session_over_derived_name() {
     assert_eq!(adopted.title, "support-open-claw");
 }
 
+fn agent_titled(title: &str, branch: &str) -> AgentNode {
+    let now = chrono::Local::now();
+    AgentNode {
+        id: "agent123".to_string(),
+        title: title.to_string(),
+        worktree_path: "/tmp/wt".into(),
+        branch: branch.to_string(),
+        base_commit: String::new(),
+        program: "claude".to_string(),
+        profile: None,
+        tmux_session: "robco_dropr_t".to_string(),
+        created_at: now,
+        updated_at: now,
+        status: Default::default(),
+        last_capture: None,
+        last_change_at: None,
+        last_auto_accept_at: None,
+        shell_working: false,
+    }
+}
+
+#[test]
+fn normalize_strips_prefix_from_legacy_adopted_title() {
+    let config = Config::default();
+    let mut repo = repo_named("dropr");
+    repo.agents.push(agent_titled(
+        "dropr/support-open-claw",
+        "dropr/support-open-claw",
+    ));
+    let mut repos = vec![repo];
+    assert!(normalize_adopted_titles(&mut repos, &config));
+    assert_eq!(repos[0].agents[0].title, "support-open-claw");
+    // The branch itself is untouched — only the display title migrates.
+    assert_eq!(repos[0].agents[0].branch, "dropr/support-open-claw");
+}
+
+#[test]
+fn normalize_keeps_user_typed_title() {
+    let config = Config::default();
+    let mut repo = repo_named("dropr");
+    // create_agent stores the raw title, so title != branch for robco-created
+    // agents even when the title happens to contain the repo name.
+    repo.agents
+        .push(agent_titled("dropr/cleanup", "dropr/dropr-cleanup"));
+    let mut repos = vec![repo];
+    assert!(!normalize_adopted_titles(&mut repos, &config));
+    assert_eq!(repos[0].agents[0].title, "dropr/cleanup");
+}
+
+#[test]
+fn normalize_keeps_foreign_branch_and_detached_labels() {
+    let config = Config::default();
+    let mut repo = repo_named("dropr");
+    repo.agents.push(agent_titled("feature/x", "feature/x"));
+    repo.agents.push(agent_titled("wt-dir", "(detached)"));
+    let mut repos = vec![repo];
+    assert!(!normalize_adopted_titles(&mut repos, &config));
+    assert_eq!(repos[0].agents[0].title, "feature/x");
+    assert_eq!(repos[0].agents[1].title, "wt-dir");
+}
+
 #[test]
 fn adopt_keeps_full_label_for_foreign_branch() {
     let config = Config::default();
