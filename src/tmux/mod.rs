@@ -7,8 +7,8 @@ pub use attach::{attach, send_keys};
 pub use capture::{capture_plain, capture_text, pane_current_command};
 #[allow(unused_imports)]
 pub use session::{
-    has_session, kill_session, new_session, new_session_command, resize_session,
-    sanitize_target_part, session_name,
+    find_session_by_cwd, has_session, kill_session, list_sessions_with_cwd, new_session,
+    new_session_command, resize_session, sanitize_target_part, session_name,
 };
 
 use crate::{Error, Result};

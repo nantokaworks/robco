@@ -2,7 +2,22 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{Result, agent, model::Selection};
 
-use super::{App, Mode, PreviewPane, parse_agent_input};
+use super::{App, Mode, PreviewPane};
+
+fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>) {
+    if with_prompt {
+        let mut parts = input.splitn(2, '|');
+        let title = parts.next().unwrap_or_default().trim().to_string();
+        let prompt = parts
+            .next()
+            .map(str::trim)
+            .filter(|prompt| !prompt.is_empty())
+            .map(str::to_string);
+        (title, prompt)
+    } else {
+        (input.trim().to_string(), None)
+    }
+}
 
 impl App {
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -86,6 +101,15 @@ impl App {
                 }
                 _ => {}
             },
+            Mode::ConfirmKillOrphan { session } => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let session = session.clone();
+                    self.mode = Mode::Normal;
+                    self.kill_orphan(&session);
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
+                _ => {}
+            },
             Mode::Message(_) => self.mode = Mode::Normal,
             Mode::Help => self.mode = Mode::Normal,
             Mode::Normal => match key.code {
@@ -101,20 +125,26 @@ impl App {
                 }
                 KeyCode::PageDown => self.preview_scroll = self.preview_scroll.saturating_add(10),
                 KeyCode::PageUp => self.preview_scroll = self.preview_scroll.saturating_sub(10),
-                KeyCode::Right | KeyCode::Char('l') => {
-                    if let Some(Selection::Repo(repo)) = self.selected_item()
-                        && let Some(expanded) = self.expanded.get_mut(repo)
-                    {
-                        *expanded = true;
+                KeyCode::Right | KeyCode::Char('l') => match self.selected_item() {
+                    Some(Selection::Repo(repo)) => {
+                        if let Some(expanded) = self.expanded.get_mut(repo) {
+                            *expanded = true;
+                        }
                     }
-                }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    if let Some(Selection::Repo(repo)) = self.selected_item()
-                        && let Some(expanded) = self.expanded.get_mut(repo)
-                    {
-                        *expanded = false;
+                    Some(Selection::OtherHeader) => self.set_other_collapsed(false),
+                    Some(Selection::OrphanHeader) => self.set_orphans_collapsed(false),
+                    _ => {}
+                },
+                KeyCode::Left | KeyCode::Char('h') => match self.selected_item() {
+                    Some(Selection::Repo(repo)) => {
+                        if let Some(expanded) = self.expanded.get_mut(repo) {
+                            *expanded = false;
+                        }
                     }
-                }
+                    Some(Selection::OtherHeader) => self.set_other_collapsed(true),
+                    Some(Selection::OrphanHeader) => self.set_orphans_collapsed(true),
+                    _ => {}
+                },
                 KeyCode::Char('n') => {
                     if let Some(repo) = self.selected_repo() {
                         self.mode = Mode::PromptAgent {
@@ -144,10 +174,19 @@ impl App {
                 }
                 KeyCode::Tab => self.toggle_preview(),
                 KeyCode::Char('?') => self.mode = Mode::Help,
-                KeyCode::Enter => match self.preview {
-                    PreviewPane::Terminal => self.attach_shell_selected()?,
-                    PreviewPane::Claude => self.attach_claude_selected()?,
-                    _ => self.attach_selected()?,
+                KeyCode::Enter => match self.selected_item() {
+                    Some(Selection::OtherHeader) => {
+                        self.set_other_collapsed(!self.other_collapsed);
+                    }
+                    Some(Selection::OrphanHeader) => {
+                        self.set_orphans_collapsed(!self.orphans_collapsed);
+                    }
+                    Some(Selection::Orphan(_)) => self.attach_orphan_selected(),
+                    _ => match self.preview {
+                        PreviewPane::Terminal => self.attach_shell_selected()?,
+                        PreviewPane::Claude => self.attach_claude_selected()?,
+                        _ => self.attach_selected()?,
+                    },
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('m') => self.merge_selected(),

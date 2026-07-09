@@ -99,5 +99,26 @@ mod tests {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
     Repo(usize),
-    Agent { repo: usize, agent: usize },
+    Agent {
+        repo: usize,
+        agent: usize,
+    },
+    /// Collapsible header of the "other locations" section listing repos that
+    /// live outside the launch directory but still have agents.
+    OtherHeader,
+    /// Collapsible header of the "orphan sessions" section listing
+    /// robco-prefixed tmux sessions no tracked agent or repo accounts for.
+    OrphanHeader,
+    /// One orphan session row, indexing into [`crate::ui::App`]'s orphan list.
+    Orphan(usize),
+}
+
+/// A live robco-prefixed tmux session that neither a tracked agent (or its
+/// `-shell` twin) nor a registry repo's derived main session accounts for —
+/// e.g. left behind by a pre-#66 registry wipe or a deleted worktree. Runtime
+/// only; rebuilt from `tmux` on each discovery tick and never persisted.
+#[derive(Debug, Clone)]
+pub struct OrphanSession {
+    pub name: String,
+    pub cwd: PathBuf,
 }

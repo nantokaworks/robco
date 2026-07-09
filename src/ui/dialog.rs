@@ -52,10 +52,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         ),
         Mode::ConfirmKill { repo, agent } => (
             "delete worktree?",
-            vec![
-                Line::from(app.registry.repos[*repo].agents[*agent].title.clone()),
-                hint_line("y delete   n/esc cancel"),
-            ],
+            confirm_lines(
+                app.registry.repos[*repo].agents[*agent].title.clone(),
+                "y delete   n/esc cancel",
+            ),
         ),
         Mode::ConfirmMerge { repo, agent } => (
             "merge / land?",
@@ -67,10 +67,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         ),
         Mode::ConfirmDeleteBranch { repo, agent } => (
             "delete branch?",
-            vec![
-                Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
-                hint_line("y delete   n/esc keep"),
-            ],
+            confirm_lines(
+                app.registry.repos[*repo].agents[*agent].branch.clone(),
+                "y delete   n/esc keep",
+            ),
+        ),
+        Mode::ConfirmKillOrphan { session } => (
+            "kill session?",
+            confirm_lines(session.clone(), "y kill   n/esc cancel"),
         ),
         Mode::Help => (
             "help",
@@ -118,9 +122,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         + 4;
     let height = lines.len() as u16 + 2;
     let area = if matches!(&app.mode, Mode::Help) {
-        centered_area(frame, width, height)
+        layout::centered_area(frame, width, height)
     } else {
-        popup_area(frame, app, visible, width, height)
+        layout::popup_area(frame, app, visible, width, height)
     };
 
     let block = Block::default()
@@ -150,6 +154,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     frame.render_widget(dialog, area);
 }
 
+fn confirm_lines(subject: String, hint: &str) -> Vec<Line<'static>> {
+    vec![Line::from(subject), hint_line(hint)]
+}
+
 fn input_line(label: &str, input: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!(" {label}: "), THEME.dialog_label_style()),
@@ -160,81 +168,6 @@ fn input_line(label: &str, input: &str) -> Line<'static> {
 
 fn hint_line(text: &str) -> Line<'static> {
     Line::from(Span::styled(text.to_string(), THEME.hint_style()))
-}
-
-fn centered_area(frame: &Frame<'_>, width: u16, height: u16) -> Rect {
-    let root = layout::root(frame.area());
-    let container = root.body;
-
-    let width = width.min(container.width);
-    let height = height.min(container.height);
-    let x = container.x + container.width.saturating_sub(width) / 2;
-    let y = container.y + container.height.saturating_sub(height) / 2;
-
-    Rect {
-        x,
-        y,
-        width,
-        height,
-    }
-}
-
-/// Place the dialog just below the selected tree row, clamped inside the
-/// content pane. Falls back to above the row when there is no room below.
-fn popup_area(
-    frame: &Frame<'_>,
-    app: &App,
-    visible: &[Selection],
-    width: u16,
-    height: u16,
-) -> Rect {
-    let root = layout::root(frame.area());
-    let panes = layout::panes(root.body);
-    let container = root.body;
-    let tree = panes.tree;
-
-    let width = width.min(container.width);
-    let height = height.min(container.height);
-
-    // The tree block reserves its top row for the "PROJECTS" title.
-    let anchor_row = tree.y + 1 + selected_row_offset(app, visible);
-
-    let x = tree.x.min(container.right().saturating_sub(width));
-    let below = anchor_row.saturating_add(1);
-    let y = if below + height <= container.bottom() {
-        below
-    } else {
-        anchor_row.saturating_sub(height)
-    };
-    let y = y
-        .max(container.y)
-        .min(container.bottom().saturating_sub(height));
-
-    Rect {
-        x,
-        y,
-        width,
-        height,
-    }
-}
-
-/// Number of rendered rows above the selected item, accounting for the extra
-/// "(no agents)" line drawn under an expanded empty repo.
-fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
-    let mut offset = 0u16;
-    for (idx, item) in visible.iter().enumerate() {
-        if idx == app.selected {
-            break;
-        }
-        offset += 1;
-        if let Selection::Repo(repo_idx) = item {
-            let expanded = app.expanded.get(*repo_idx).copied().unwrap_or(true);
-            if expanded && app.registry.repos[*repo_idx].agents.is_empty() {
-                offset += 1;
-            }
-        }
-    }
-    offset
 }
 
 #[cfg(test)]

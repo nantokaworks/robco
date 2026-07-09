@@ -65,7 +65,7 @@ impl App {
                     Err(err) => self.mode = Mode::Message(err.to_string()),
                 }
             }
-            None => {}
+            _ => {}
         }
         Ok(())
     }
@@ -96,9 +96,19 @@ impl App {
                     Err(err) => self.mode = Mode::Message(err.to_string()),
                 }
             }
-            None => {}
+            _ => {}
         }
         Ok(())
+    }
+
+    pub(in crate::ui) fn attach_orphan_selected(&mut self) {
+        let Some(Selection::Orphan(orphan)) = self.selected_item() else {
+            return;
+        };
+        let Some(session) = self.orphans.get(orphan).map(|orphan| orphan.name.clone()) else {
+            return;
+        };
+        self.attach_session(&session);
     }
 
     pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
