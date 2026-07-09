@@ -173,6 +173,7 @@ impl App {
                     };
                 }
                 KeyCode::Tab => self.toggle_preview(),
+                KeyCode::BackTab => self.toggle_preview_back(),
                 KeyCode::Char('?') => self.mode = Mode::Help,
                 KeyCode::Enter => match self.selected_item() {
                     Some(Selection::OtherHeader) => {

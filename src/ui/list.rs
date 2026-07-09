@@ -83,6 +83,14 @@ impl App {
     }
 
     pub(in crate::ui) fn toggle_preview(&mut self) {
+        self.cycle_preview(1);
+    }
+
+    pub(in crate::ui) fn toggle_preview_back(&mut self) {
+        self.cycle_preview(-1);
+    }
+
+    fn cycle_preview(&mut self, step: isize) {
         let Some(selection) = self.selected_item() else {
             return;
         };
@@ -91,7 +99,9 @@ impl App {
             return;
         }
         let current = panes.iter().position(|pane| *pane == self.preview);
-        let next = panes[(current.map_or(0, |idx| idx + 1)) % panes.len()];
+        let next = panes[current.map_or(0, |idx| {
+            (idx as isize + step).rem_euclid(panes.len() as isize) as usize
+        })];
         self.preview = next;
         self.preview_scroll = 0;
         let key = self.item_key(selection);
