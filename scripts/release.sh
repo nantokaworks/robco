@@ -303,10 +303,25 @@ if stage_active verify; then
   log "stage: verify"
   if [ "$DRY_RUN" -eq 1 ]; then
     printf '[dry-run] gh release view %s --repo %s\n' "$TAG" "$RELEASES_REPO"
-    printf '[dry-run] brew update && brew install nantokaworks/tap/robco\n'
+    printf '[dry-run] gh api repos/%s/contents/%s (expect version %s)\n' "$HOMEBREW_TAP_REPO" "$FORMULA_PATH" "$VERSION"
   else
     gh release view "$TAG" --repo "$RELEASES_REPO" >/dev/null
-    curl -fsSL "https://raw.githubusercontent.com/${HOMEBREW_TAP_REPO}/main/${FORMULA_PATH}" >/dev/null
+
+    # Read the formula through the authenticated contents API instead of
+    # raw.githubusercontent.com: the raw CDN is rate-limited when
+    # unauthenticated and lags behind the API write from the publish stage.
+    formula_version=""
+    for attempt in 1 2 3; do
+      formula_version="$(gh api "repos/${HOMEBREW_TAP_REPO}/contents/${FORMULA_PATH}" --jq .content 2>/dev/null \
+        | base64 -d | sed -n 's/^ *version "\(.*\)"$/\1/p' | head -1)"
+      [ "$formula_version" = "$VERSION" ] && break
+      if [ "$attempt" -lt 3 ]; then
+        log "formula version check got '${formula_version:-none}' (attempt ${attempt}/3); retrying in 5s"
+        sleep 5
+      fi
+    done
+    [ "$formula_version" = "$VERSION" ] \
+      || die "formula version is '${formula_version:-none}', expected ${VERSION}"
     log "verify OK"
   fi
 fi
