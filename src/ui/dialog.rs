@@ -82,7 +82,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 Line::from("Navigation"),
                 Line::from("  j/k or arrows  move selection"),
                 Line::from("  h/l            collapse or expand repo"),
-                Line::from("  tab            cycle claude / diff / terminal view"),
+                Line::from("  tab/shift-tab  cycle claude / diff / terminal view"),
                 Line::from(""),
                 Line::from("Sessions"),
                 Line::from("  n              new agent under selected repo"),
