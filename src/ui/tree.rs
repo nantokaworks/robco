@@ -10,6 +10,10 @@ use crate::model::{Selection, Status};
 
 use super::{App, layout, theme::DEFAULT as THEME};
 
+fn status_style(status: Status) -> Style {
+    THEME.status_style(status)
+}
+
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
@@ -42,6 +46,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     ),
                     style,
                 )];
+                // Off-launch-dir repos need their location spelled out — the
+                // name alone no longer identifies where the repo lives.
+                if !app.repo_is_local(repo) {
+                    spans.push(Span::styled(
+                        format!("  {}", short_path(&repo.path)),
+                        if selected { style } else { THEME.muted_style() },
+                    ));
+                }
                 // The repo's own main-worktree AI session progress. Shown only
                 // when such a session is running, so the parent node reflects AI
                 // work done directly on `main`.
@@ -54,7 +66,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     let status_style = if selected {
                         THEME.selected_status_style(status)
                     } else {
-                        super::status_style(status)
+                        status_style(status)
                     };
                     spans.push(Span::styled("  ", style));
                     spans.push(Span::styled(status_text, status_style));
@@ -89,7 +101,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         if selected {
                             THEME.selected_status_style(status)
                         } else {
-                            super::status_style(status)
+                            status_style(status)
                         }
                     };
                     let mut first = true;
@@ -130,7 +142,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let status_style = if selected {
                     THEME.selected_status_style(agent.status)
                 } else {
-                    super::status_style(agent.status)
+                    status_style(agent.status)
                 };
                 let mut spans = vec![
                     Span::styled(format!("{marker}   "), style),
@@ -146,6 +158,39 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     ));
                 }
                 lines.push(Line::from(spans));
+            }
+            Selection::OtherHeader => {
+                let count = app.other_location_repos().len();
+                let arrow = if app.other_collapsed { "▸" } else { "▾" };
+                let noun = if count == 1 { "repo" } else { "repos" };
+                let header_style = if selected { style } else { THEME.hint_style() };
+                lines.push(Line::from(Span::styled(
+                    format!("{marker} {arrow} OTHER LOCATIONS ({count} {noun})"),
+                    header_style,
+                )));
+            }
+            Selection::OrphanHeader => {
+                let count = app.orphans.len();
+                let arrow = if app.orphans_collapsed { "▸" } else { "▾" };
+                let noun = if count == 1 { "session" } else { "sessions" };
+                let header_style = if selected { style } else { THEME.hint_style() };
+                lines.push(Line::from(Span::styled(
+                    format!("{marker} {arrow} ORPHAN SESSIONS ({count} {noun})"),
+                    header_style,
+                )));
+            }
+            Selection::Orphan(orphan_idx) => {
+                let Some(orphan) = app.orphans.get(orphan_idx) else {
+                    continue;
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{marker}   "), style),
+                    Span::styled(orphan.name.clone(), style),
+                    Span::styled(
+                        format!("  {}", short_path(&orphan.cwd)),
+                        if selected { style } else { THEME.muted_style() },
+                    ),
+                ]));
             }
         }
     }
@@ -173,6 +218,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
 
     let hints = Paragraph::new(hints_line(message)).alignment(Alignment::Center);
     frame.render_widget(hints, zones.hints);
+}
+
+/// Home-relative rendering of a repo path (`/Users/x/abyss/dropr` →
+/// `~/abyss/dropr`), used to locate off-launch-dir repos at a glance.
+fn short_path(path: &std::path::Path) -> String {
+    match dirs::home_dir().and_then(|home| path.strip_prefix(home).ok()) {
+        Some(rest) => format!("~/{}", rest.display()),
+        None => path.display().to_string(),
+    }
 }
 
 /// Key hint definitions for the footer, as `(key glyph, action label)` pairs.

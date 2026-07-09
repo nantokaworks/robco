@@ -10,18 +10,17 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     tmux,
-    ui::{PreviewPane, layout, panes_for, theme::DEFAULT as THEME},
+    ui::{App, PreviewPane, layout, panes_for, summary::repo_summary, theme::DEFAULT as THEME},
 };
 
-pub fn draw(
-    frame: &mut Frame<'_>,
-    selection: Option<Selection>,
-    registry: &Registry,
-    pane: PreviewPane,
-    scroll: u16,
-    tmux_prefix: &str,
-    default_program: &str,
-) {
+pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
+    let registry = &app.registry;
+    let orphans = &app.orphans;
+    let pane = app.preview;
+    let scroll = app.preview_scroll;
+    let tmux_prefix = &app.config.tmux_session_prefix;
+    let default_program = &app.config.default_program;
+
     let ai_label = ai_label(selection, registry, default_program);
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
@@ -143,6 +142,23 @@ pub fn draw(
                 .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
             (title, text)
         }
+        (_, Some(Selection::Orphan(orphan_idx))) => {
+            let Some(orphan) = orphans.get(orphan_idx) else {
+                return;
+            };
+            resize_preview_session(&orphan.name, panes.preview);
+            let text = tmux::capture_plain(&orphan.name)
+                .ok()
+                .and_then(|capture| capture.into_text().ok())
+                .unwrap_or_else(|| {
+                    vec![Line::from(Span::styled(
+                        "Session is gone.",
+                        THEME.muted_style(),
+                    ))]
+                    .into()
+                });
+            (orphan.name.clone(), text)
+        }
         // `None` (no repositories) and any pane not valid for the current
         // selection (e.g. `Info` on an agent, which `restore_preview` prevents
         // from ever becoming active).
@@ -263,44 +279,4 @@ fn render_branch_only(
         .style(THEME.muted_style())
         .wrap(Wrap { trim: false });
     frame.render_widget(preview, area);
-}
-
-fn repo_summary(repo: &crate::model::RepoNode) -> (String, ratatui::text::Text<'static>) {
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("path: ", THEME.muted_style()),
-            Span::raw(repo.path.display().to_string()),
-        ]),
-        Line::from(vec![
-            Span::styled("remote: ", THEME.muted_style()),
-            Span::raw(
-                repo.remote_url
-                    .clone()
-                    .unwrap_or_else(|| "(none)".to_string()),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("agents: ", THEME.muted_style()),
-            Span::raw(repo.agents.len().to_string()),
-        ]),
-    ];
-
-    if let Some(dropr) = &repo.dropr {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("dropr", THEME.accent_style())));
-        lines.push(Line::from(vec![
-            Span::styled("kind: ", THEME.muted_style()),
-            Span::raw(dropr.kind.clone()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("id: ", THEME.muted_style()),
-            Span::raw(dropr.id.clone()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("name: ", THEME.muted_style()),
-            Span::raw(dropr.name.clone()),
-        ]));
-    }
-
-    (repo.name.clone(), lines.into())
 }

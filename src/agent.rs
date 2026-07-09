@@ -60,25 +60,44 @@ pub fn create_agent(
 /// Build an [`AgentNode`] for a worktree that already exists on disk but is not
 /// yet tracked (created outside robco). No tmux session is launched — the AI
 /// starts only when the user attaches — so the session is named but assumed
-/// absent until then.
+/// absent until then. `existing_session` is a live AI session already running
+/// in this worktree (found by cwd, e.g. via [`crate::tmux::find_session_by_cwd`]);
+/// when present the agent binds to it instead of the derived name, so adoption
+/// reattaches to the surviving chat rather than spawning a duplicate.
 pub fn adopt_worktree(
     repo: &RepoNode,
     config: &Config,
     worktree_path: std::path::PathBuf,
     branch: Option<String>,
     head: Option<String>,
+    existing_session: Option<String>,
 ) -> AgentNode {
     // git forbids two worktrees on the same branch, so the branch (or the
     // directory name for a detached worktree) is a stable per-repo identifier.
-    let label = branch.clone().unwrap_or_else(|| {
-        worktree_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("worktree")
-            .to_string()
-    });
+    // Branches robco created itself are `<prefix><title>`; strip the prefix so
+    // the adopted agent resolves to the same tmux session name `create_agent`
+    // produced and reattaches to a still-running session instead of spawning a
+    // duplicate one.
+    let label = branch
+        .clone()
+        .map(|branch| {
+            let prefix = resolve_branch_prefix(config, &repo.name);
+            branch
+                .strip_prefix(&prefix)
+                .map(str::to_string)
+                .unwrap_or(branch)
+        })
+        .unwrap_or_else(|| {
+            worktree_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("worktree")
+                .to_string()
+        });
     let clean_label = tmux::sanitize_target_part(&label);
-    let tmux_session = tmux::session_name(&config.tmux_session_prefix, &repo.name, &clean_label);
+    let tmux_session = existing_session.unwrap_or_else(|| {
+        tmux::session_name(&config.tmux_session_prefix, &repo.name, &clean_label)
+    });
     let now = Local::now();
     AgentNode {
         id: nanoid!(8),
@@ -214,41 +233,4 @@ fn shell_quote(value: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quotes_initial_prompt_for_shell_command() {
-        assert_eq!(
-            launch_command("claude", Some("fix Bob's bug")),
-            "claude 'fix Bob'\\''s bug'"
-        );
-    }
-
-    #[test]
-    fn branch_prefix_defaults_to_repo_name() {
-        let config = Config::default();
-        assert_eq!(resolve_branch_prefix(&config, "myapp"), "myapp/");
-    }
-
-    #[test]
-    fn branch_prefix_uses_explicit_override() {
-        let config = Config {
-            branch_prefix: Some("robco/".to_string()),
-            ..Config::default()
-        };
-        assert_eq!(resolve_branch_prefix(&config, "myapp"), "robco/");
-    }
-
-    #[test]
-    fn branch_prefix_sanitizes_repo_name() {
-        let config = Config::default();
-        assert_eq!(resolve_branch_prefix(&config, "my.repo"), "my-repo/");
-    }
-
-    #[test]
-    fn branch_prefix_falls_back_when_repo_name_sanitizes_to_empty() {
-        let config = Config::default();
-        assert_eq!(resolve_branch_prefix(&config, "..."), "robco/");
-    }
-}
+mod tests;

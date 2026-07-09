@@ -48,6 +48,54 @@ pub fn sanitize_target_part(value: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
+/// Every live tmux session paired with the cwd of its first listed pane.
+/// A missing tmux server is an empty list, not an error.
+pub fn list_sessions_with_cwd() -> Result<Vec<(String, std::path::PathBuf)>> {
+    let output = Command::new("tmux")
+        .args([
+            "list-panes",
+            "-a",
+            "-F",
+            "#{session_name}\t#{pane_current_path}",
+        ])
+        .output()?;
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let mut sessions = Vec::new();
+    for line in raw.lines() {
+        let Some((name, cwd)) = line.split_once('\t') else {
+            continue;
+        };
+        // Multi-pane sessions repeat the name; keep the first pane's cwd.
+        if sessions.iter().any(|(existing, _)| existing == name) {
+            continue;
+        }
+        sessions.push((name.to_string(), std::path::PathBuf::from(cwd)));
+    }
+    Ok(sessions)
+}
+
+/// A live AI session (prefix-matching, not a `-shell` companion) whose pane
+/// cwd is `cwd`. Lets adoption rebind to a surviving session even when its
+/// name does not match the derived one.
+pub fn find_session_by_cwd(prefix: &str, cwd: &Path) -> Option<String> {
+    let target = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    list_sessions_with_cwd()
+        .ok()?
+        .into_iter()
+        .find(|(name, path)| {
+            // Canonicalize the pane path too: either side may spell the same
+            // directory through a symlink (macOS `/tmp` → `/private/tmp`), and
+            // a missed match here spawns a duplicate session over a live chat.
+            name.starts_with(prefix)
+                && !name.ends_with("-shell")
+                && path.canonicalize().unwrap_or_else(|_| path.clone()) == target
+        })
+        .map(|(name, _)| name)
+}
+
 pub fn has_session(session: &str) -> Result<bool> {
     let output = Command::new("tmux")
         .args(["has-session", "-t", &exact(session)])

@@ -7,12 +7,22 @@ use super::super::{App, Mode};
 
 impl App {
     pub(in crate::ui) fn confirm_kill_selected(&mut self) {
-        if let Some(Selection::Agent { repo, agent }) = self.selected_item() {
-            if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
-                self.mode = Mode::ConfirmDeleteBranch { repo, agent };
-            } else {
-                self.mode = Mode::ConfirmKill { repo, agent };
+        match self.selected_item() {
+            Some(Selection::Agent { repo, agent }) => {
+                if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
+                    self.mode = Mode::ConfirmDeleteBranch { repo, agent };
+                } else {
+                    self.mode = Mode::ConfirmKill { repo, agent };
+                }
             }
+            Some(Selection::Orphan(orphan)) => {
+                if let Some(orphan) = self.orphans.get(orphan) {
+                    self.mode = Mode::ConfirmKillOrphan {
+                        session: orphan.name.clone(),
+                    };
+                }
+            }
+            _ => {}
         }
     }
 

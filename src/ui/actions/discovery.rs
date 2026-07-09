@@ -17,15 +17,26 @@ impl App {
             return;
         };
 
-        let discovered_paths: HashSet<String> =
+        // What the registry will hold after a merge: the discovered set plus
+        // any repo that keeps its registration through `merge_discovered`
+        // because it still tracks agents (e.g. registered from another launch
+        // directory). Comparing against this — not the raw discovered set —
+        // keeps the steady state a no-op instead of re-merging and re-saving
+        // on every discovery tick.
+        let mut expected_paths: HashSet<String> =
             discovered.iter().map(|repo| path_key(&repo.path)).collect();
+        for repo in &self.registry.repos {
+            if !repo.agents.is_empty() {
+                expected_paths.insert(path_key(&repo.path));
+            }
+        }
         let current_paths: HashSet<String> = self
             .registry
             .repos
             .iter()
             .map(|repo| path_key(&repo.path))
             .collect();
-        let repos_changed = discovered_paths != current_paths;
+        let repos_changed = expected_paths != current_paths;
 
         // Snapshot identity-keyed state so selection and expansion survive any
         // re-ordering caused by a newly-added project sorting into the middle.
@@ -70,6 +81,8 @@ impl App {
             let _ = self.registry.save();
             self.restore_selection(selected_identity);
         }
+
+        self.refresh_orphans();
     }
 
     /// Re-point the selection at the item it referred to before a refresh,
@@ -107,8 +120,19 @@ fn adopt_external_worktrees(repo: &mut RepoNode, config: &Config) -> bool {
         if !known.insert(path_key(&worktree.path)) {
             continue;
         }
-        let adopted =
-            agent::adopt_worktree(repo, config, worktree.path, worktree.branch, worktree.head);
+        // Prefer a live AI session already running in this worktree (matched by
+        // cwd) so adoption reattaches to it even when its name predates the
+        // current naming scheme, instead of spawning a duplicate below.
+        let existing_session =
+            crate::tmux::find_session_by_cwd(&config.tmux_session_prefix, &worktree.path);
+        let adopted = agent::adopt_worktree(
+            repo,
+            config,
+            worktree.path,
+            worktree.branch,
+            worktree.head,
+            existing_session,
+        );
         // Auto-open the AI for a worktree the first time it is discovered, so a
         // worktree is "open" by default (matching robco-created worktrees, which
         // launch on creation). This fires once per newly-adopted worktree — the
