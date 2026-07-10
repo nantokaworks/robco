@@ -21,15 +21,21 @@ pub(super) struct ReportArgs {
 }
 
 pub(super) fn report(args: ReportArgs) -> ToolResult<Value> {
-    report_with_lookup(args, |key| std::env::var(key).ok())
+    deliver_report(&args.message, args.target_agent_id.as_deref())?;
+    Ok(json!({ "ok": true }))
 }
 
-fn report_with_lookup(
-    args: ReportArgs,
+pub(crate) fn deliver_report(message: &str, target_agent_id: Option<&str>) -> ToolResult<()> {
+    deliver_report_with_lookup(message, target_agent_id, |key| std::env::var(key).ok())
+}
+
+fn deliver_report_with_lookup(
+    message: &str,
+    target_agent_id: Option<&str>,
     lookup: impl Fn(&str) -> Option<String>,
-) -> ToolResult<Value> {
-    let message = sanitize_message(&args.message)?;
-    let identities = resolve_identities(args.target_agent_id.as_deref(), lookup)?;
+) -> ToolResult<()> {
+    let message = sanitize_message(message)?;
+    let identities = resolve_identities(target_agent_id, lookup)?;
     guard_self_report(
         &identities.target_agent_id,
         identities.sender_agent_id.as_deref(),
@@ -45,7 +51,15 @@ fn report_with_lookup(
     let line = format_report_line(&sender, &message);
     send_literal_text(&target.tmux_session, &line)?;
     tmux::send_keys(&target.tmux_session, &["Enter"]).map_err(exec_err)?;
-    Ok(json!({ "ok": true }))
+    Ok(())
+}
+
+pub(crate) fn report_exit_code(error: &super::ToolError) -> u8 {
+    match error {
+        super::ToolError::InvalidParams(_) => 3,
+        super::ToolError::Execution(message) if message.starts_with("target_busy:") => 2,
+        super::ToolError::Execution(_) => 4,
+    }
 }
 
 fn sanitize_message(message: &str) -> ToolResult<String> {
@@ -244,5 +258,13 @@ mod tests {
                 .starts_with("target_unavailable:")
         );
         assert!(guard_delivery(idle, true).is_ok());
+    }
+
+    #[test]
+    fn maps_cli_exit_codes_from_core_error_kinds() {
+        assert_eq!(report_exit_code(&invalid_params("invalid")), 3);
+        assert_eq!(report_exit_code(&exec_err("target_busy: retry")), 2);
+        assert_eq!(report_exit_code(&exec_err("target_unavailable: gone")), 4);
+        assert_eq!(report_exit_code(&exec_err("tmux failed")), 4);
     }
 }
