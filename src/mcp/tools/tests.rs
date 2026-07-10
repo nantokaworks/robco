@@ -67,3 +67,66 @@ fn tails_last_non_empty_lines() {
     let text = "a\n\nb\nc\n";
     assert_eq!(tail_non_empty_lines(text, 2), "b\nc");
 }
+
+#[test]
+fn whoami_resolves_known_agent_and_parent() {
+    let registry = registry_with_agent("a1");
+    let result = identity::whoami_with_lookup(
+        |key| match key {
+            crate::config::ENV_AGENT_ID => Some("a1".to_string()),
+            crate::config::ENV_PARENT_AGENT_ID => Some("parent-1".to_string()),
+            _ => None,
+        },
+        || Ok(registry),
+    )
+    .unwrap();
+
+    assert_eq!(
+        result,
+        json!({
+            "agent_id": "a1",
+            "title": "task",
+            "repo": "repo",
+            "parent_agent_id": "parent-1"
+        })
+    );
+}
+
+#[test]
+fn whoami_returns_unknown_raw_agent_id() {
+    let registry = registry_with_agent("a1");
+    let result = identity::whoami_with_lookup(
+        |key| (key == crate::config::ENV_AGENT_ID).then(|| "missing".to_string()),
+        || Ok(registry),
+    )
+    .unwrap();
+
+    assert_eq!(
+        result,
+        json!({
+            "agent_id": "missing",
+            "title": null,
+            "repo": null,
+            "parent_agent_id": null
+        })
+    );
+}
+
+#[test]
+fn whoami_treats_empty_identity_values_as_unset() {
+    let result = identity::whoami_with_lookup(
+        |_| Some(String::new()),
+        || panic!("empty identity must not load the registry"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        result,
+        json!({
+            "agent_id": null,
+            "title": null,
+            "repo": null,
+            "parent_agent_id": null
+        })
+    );
+}
