@@ -155,6 +155,20 @@ pub fn new_session(
             "on",
         ])
         .output();
+    // Alternate-screen apps (Claude Code's TUI among them) keep their output
+    // in the alt buffer, which has no scrollback — the preview could never
+    // scroll them back. Denying the alt screen routes their output through the
+    // normal buffer, whose history `capture_scrollback` can walk. Best-effort
+    // like monitor-activity: failure costs scrollback, not the session.
+    let _ = Command::new("tmux")
+        .args([
+            "set-window-option",
+            "-t",
+            &exact(session),
+            "alternate-screen",
+            "off",
+        ])
+        .output();
     Ok(())
 }
 

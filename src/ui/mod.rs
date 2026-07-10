@@ -1,30 +1,17 @@
 use std::{
     collections::HashMap,
-    io::{self, Write},
+    io,
     path::PathBuf,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
     time::{Duration, Instant},
 };
 
 use crossterm::{
-    event::{self, Event, KeyEventKind},
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
 
-use crate::{
-    Result, agent,
-    config::Config,
-    model::Selection,
-    notify::{self, WatchTarget},
-    registry::Registry,
-    status,
-};
+use crate::{Result, agent, config::Config, model::Selection, registry::Registry, status};
 
 /// How often the launch directory and each repo's worktrees are re-scanned to
 /// pick up projects or worktrees created outside robco.
@@ -32,14 +19,19 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
 mod dialog;
+mod event_loop;
 mod input;
 mod layout;
 mod list;
 mod preview;
+mod scrollback;
 pub(crate) mod spinner;
 mod summary;
 mod theme;
 mod tree;
+
+pub use event_loop::run;
+
 enum Mode {
     Normal,
     Help,
@@ -168,124 +160,11 @@ impl App {
     }
 }
 
-pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let (notify_tx, notify_rx) = mpsc::channel::<String>();
-    let notify_targets = Arc::new(Mutex::new(watch_targets(&registry)));
-    let notify_running = Arc::new(AtomicBool::new(true));
-    let notify_handle = notify::spawn_watcher(
-        notify_targets.clone(),
-        config.notify,
-        config.openclaw.clone(),
-        notify_tx,
-        notify_running.clone(),
-        Duration::from_millis(config.poll_interval_ms),
-    );
-    let mut app = App::new(registry, config, launch_dir);
-
-    let result = run_loop(&mut terminal, &mut app, &notify_rx, &notify_targets);
-
-    notify_running.store(false, Ordering::Relaxed);
-    let _ = notify_handle.join();
-
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
-    result
-}
-
-fn run_loop<B: ratatui::backend::Backend>(
-    terminal: &mut Terminal<B>,
-    app: &mut App,
-    notify_rx: &mpsc::Receiver<String>,
-    notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
-) -> Result<()> {
-    let tick_interval = Duration::from_millis(app.config.poll_interval_ms);
-    let mut last_tick = Instant::now() - tick_interval;
-    let mut last_discovery = Instant::now();
-
-    loop {
-        if last_tick.elapsed() >= tick_interval {
-            app.tick();
-            last_tick = Instant::now();
-        }
-        if last_discovery.elapsed() >= DISCOVERY_INTERVAL {
-            app.refresh_discovery();
-            last_discovery = Instant::now();
-        }
-        if let Ok(mut targets) = notify_targets.lock() {
-            *targets = watch_targets(&app.registry);
-        }
-        drain_stdout_notifications(notify_rx, app);
-
-        if app.force_redraw {
-            terminal.autoresize()?;
-            terminal.clear()?;
-            app.force_redraw = false;
-        }
-        terminal.draw(|frame| {
-            let visible = app.visible();
-            let message = match &app.mode {
-                Mode::Message(message) => Some(message.clone()),
-                _ => None,
-            };
-            tree::draw(frame, app, &visible, message.as_deref());
-            preview::draw(
-                frame,
-                app,
-                // Section headers have no preview of their own.
-                app.selected_item()
-                    .filter(|sel| !matches!(sel, Selection::OtherHeader | Selection::OrphanHeader)),
-            );
-            dialog::draw(frame, app, &visible);
-        })?;
-
-        if event::poll(spinner::FRAME_INTERVAL)?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-            && app.handle_key(key)?
-        {
-            return Ok(());
-        }
-    }
-}
-
-fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
-    registry
-        .repos
-        .iter()
-        .flat_map(|repo| {
-            repo.agents.iter().map(|agent| WatchTarget {
-                tmux_session: agent.tmux_session.clone(),
-                agent_id: agent.id.clone(),
-                repo: repo.name.clone(),
-                label: agent.title.clone(),
-                status: agent.status,
-            })
-        })
-        .collect()
-}
-
-fn drain_stdout_notifications(notify_rx: &mpsc::Receiver<String>, app: &mut App) {
-    let mut out = io::stdout();
-    for payload in notify_rx.try_iter() {
-        let _ = out.write_all(payload.as_bytes());
-        let _ = out.flush();
-        app.force_redraw = true;
-    }
-}
-
 fn suspend_terminal(action: impl FnOnce() -> Result<()>) -> Result<()> {
     disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
+    execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
     let result = action();
-    execute!(io::stdout(), EnterAlternateScreen)?;
+    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     enable_raw_mode()?;
     result
 }

@@ -1,8 +1,13 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use ratatui::layout::{Position, Rect};
 
 use crate::{Result, agent, model::Selection};
 
-use super::{App, Mode, PreviewPane};
+use super::{App, Mode, PreviewPane, layout};
+
+/// Lines the preview moves per wheel notch. Smaller than PageUp/PageDown's 10
+/// so the wheel reads as fine-grained scrubbing, not paging.
+const WHEEL_SCROLL_STEP: u16 = 3;
 
 fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>) {
     if with_prompt {
@@ -20,6 +25,33 @@ fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>)
 }
 
 impl App {
+    /// Wheel-only mouse handling: the tree scrolls the selection, the preview
+    /// scrolls its capture. Clicks and drags are intentionally unhandled, and
+    /// any open dialog/prompt swallows mouse input entirely.
+    pub(crate) fn handle_mouse(&mut self, event: MouseEvent, area: Rect) {
+        if !matches!(self.mode, Mode::Normal) {
+            return;
+        }
+        let up = match event.kind {
+            MouseEventKind::ScrollUp => true,
+            MouseEventKind::ScrollDown => false,
+            _ => return,
+        };
+
+        let panes = layout::panes(layout::root(area).body);
+        let position = Position::new(event.column, event.row);
+        if panes.tree.contains(position) {
+            if up {
+                self.move_selection_up();
+            } else {
+                self.move_selection_down();
+            }
+            self.clamp_selection();
+        } else if panes.preview.contains(position) {
+            self.scroll_preview(up, WHEEL_SCROLL_STEP);
+        }
+    }
+
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
         match &mut self.mode {
             Mode::PromptAgent {
@@ -123,8 +155,8 @@ impl App {
                 KeyCode::Up | KeyCode::Char('k') => {
                     self.move_selection_up();
                 }
-                KeyCode::PageDown => self.preview_scroll = self.preview_scroll.saturating_add(10),
-                KeyCode::PageUp => self.preview_scroll = self.preview_scroll.saturating_sub(10),
+                KeyCode::PageDown => self.scroll_preview(false, 10),
+                KeyCode::PageUp => self.scroll_preview(true, 10),
                 KeyCode::Right | KeyCode::Char('l') => match self.selected_item() {
                     Some(Selection::Repo(repo)) => {
                         if let Some(expanded) = self.expanded.get_mut(repo) {
