@@ -8,6 +8,22 @@ pub fn list_tools() -> Value {
             empty_schema()
         ),
         tool(
+            "robco_report",
+            "Send a labeled report to a controller agent when it is safe to interrupt.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Report text; control characters are collapsed to spaces and the delivered report is a single line."
+                    },
+                    "target_agent_id": { "type": "string" }
+                },
+                "required": ["message"],
+                "additionalProperties": false
+            })
+        ),
+        tool(
             "robco_agent_list",
             "List repos and agents with live status.",
             empty_schema()

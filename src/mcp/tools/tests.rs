@@ -3,7 +3,7 @@ use serde_json::json;
 
 use super::*;
 
-fn registry_with_agent(id: &str) -> Registry {
+pub(super) fn registry_with_agent(id: &str) -> Registry {
     Registry {
         version: 1,
         repos: vec![RepoNode {
