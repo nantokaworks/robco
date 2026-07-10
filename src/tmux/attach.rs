@@ -1,6 +1,10 @@
-use std::process::Command;
+use std::{io, process::Command};
 
-use crossterm::terminal;
+use crossterm::{
+    cursor::{MoveToColumn, MoveUp},
+    execute,
+    terminal::{self, Clear, ClearType},
+};
 
 use crate::{Error, Result};
 
@@ -36,6 +40,19 @@ pub fn attach(session: &str) -> Result<()> {
         command.args(["attach", "-t", &exact(session)]);
     }
     let status = command.status()?;
+    if !in_tmux {
+        // The exiting tmux client prints "[detached (from session …)]" or
+        // "[exited]" onto the normal screen buffer; the TUI re-enters the
+        // alternate screen right away, so each line piles up unseen and the
+        // whole backlog floods the terminal when robco quits. Erase the line
+        // (cursor sits one row below it) before handing the terminal back.
+        let _ = execute!(
+            io::stdout(),
+            MoveUp(1),
+            Clear(ClearType::CurrentLine),
+            MoveToColumn(0)
+        );
+    }
     let attach_result = if status.success() {
         if in_tmux {
             wait_for_return_key(session)
