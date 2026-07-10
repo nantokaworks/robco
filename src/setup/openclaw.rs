@@ -38,28 +38,40 @@ pub fn upsert_openclaw(content: Option<&str>) -> Result<String> {
         None => json!({}),
     };
     ensure_object(&mut root);
-    let mcp_servers = root
+    remove_stale_robco(&mut root);
+    let mcp = root
         .as_object_mut()
         .expect("root object was ensured")
-        .entry("mcpServers")
+        .entry("mcp")
+        .or_insert_with(|| json!({}));
+    ensure_object(mcp);
+    let mcp_servers = mcp
+        .as_object_mut()
+        .expect("mcp object")
+        .entry("servers")
         .or_insert_with(|| json!({}));
     ensure_object(mcp_servers);
     mcp_servers
         .as_object_mut()
-        .expect("mcpServers object")
+        .expect("mcp.servers object")
         .insert(
             "robco".to_string(),
-            json!({ "command": "robco", "args": ["mcp-stdio"], "transport": "stdio" }),
+            json!({ "command": "robco", "args": ["mcp-stdio"] }),
         );
     Ok(serde_json::to_string_pretty(&root)? + "\n")
 }
 
 pub fn remove_openclaw(content: &str) -> Result<Option<String>> {
     let mut root: Value = serde_json::from_str(content)?;
-    let Some(mcp_servers) = root.get_mut("mcpServers").and_then(Value::as_object_mut) else {
-        return Ok(None);
-    };
-    if mcp_servers.remove("robco").is_none() {
+    let removed_current = root
+        .get_mut("mcp")
+        .and_then(Value::as_object_mut)
+        .and_then(|mcp| mcp.get_mut("servers"))
+        .and_then(Value::as_object_mut)
+        .and_then(|servers| servers.remove("robco"))
+        .is_some();
+    let removed_stale = remove_stale_robco(&mut root);
+    if !removed_current && !removed_stale {
         return Ok(None);
     }
     Ok(Some(serde_json::to_string_pretty(&root)? + "\n"))
@@ -67,10 +79,31 @@ pub fn remove_openclaw(content: &str) -> Result<Option<String>> {
 
 fn has_robco(content: &str) -> Result<bool> {
     let root: Value = serde_json::from_str(content)?;
-    Ok(root
+    let current = root
+        .get("mcp")
+        .and_then(|mcp| mcp.get("servers"))
+        .and_then(|servers| servers.get("robco"))
+        .is_some();
+    let stale = root
         .get("mcpServers")
         .and_then(|servers| servers.get("robco"))
-        .is_some())
+        .is_some();
+    Ok(current || stale)
+}
+
+fn remove_stale_robco(root: &mut Value) -> bool {
+    let Some(root) = root.as_object_mut() else {
+        return false;
+    };
+    let (removed, empty) = root
+        .get_mut("mcpServers")
+        .and_then(Value::as_object_mut)
+        .map(|servers| (servers.remove("robco").is_some(), servers.is_empty()))
+        .unwrap_or_default();
+    if removed && empty {
+        root.remove("mcpServers");
+    }
+    removed
 }
 
 fn ensure_object(value: &mut Value) {
