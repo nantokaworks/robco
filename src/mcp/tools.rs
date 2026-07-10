@@ -12,6 +12,11 @@ use crate::{
 
 const PROMPT_LINES: usize = 20;
 
+mod catalog;
+mod identity;
+
+pub use catalog::list_tools;
+
 #[derive(Debug)]
 pub enum ToolError {
     InvalidParams(String),
@@ -28,72 +33,9 @@ impl std::fmt::Display for ToolError {
 
 pub type ToolResult<T> = std::result::Result<T, ToolError>;
 
-pub fn list_tools() -> Value {
-    json!([
-        tool(
-            "robco_agent_list",
-            "List repos and agents with live status.",
-            json!({
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-            })
-        ),
-        tool(
-            "robco_agent_status",
-            "Get one agent's live status.",
-            json!({
-                "type": "object",
-                "properties": { "agent_id": { "type": "string" } },
-                "required": ["agent_id"],
-                "additionalProperties": false
-            })
-        ),
-        tool(
-            "robco_question_list",
-            "List agents awaiting confirmation prompts.",
-            json!({
-                "type": "object",
-                "properties": {},
-                "additionalProperties": false
-            })
-        ),
-        tool(
-            "robco_answer",
-            "Send text and Enter to an agent session.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "agent_id": { "type": "string" },
-                    "text": { "type": "string" }
-                },
-                "required": ["agent_id", "text"],
-                "additionalProperties": false
-            })
-        ),
-        tool(
-            "robco_approve",
-            "Approve an agent confirmation prompt.",
-            json!({
-                "type": "object",
-                "properties": { "agent_id": { "type": "string" } },
-                "required": ["agent_id"],
-                "additionalProperties": false
-            })
-        )
-    ])
-}
-
-fn tool(name: &str, description: &str, input_schema: Value) -> Value {
-    json!({
-        "name": name,
-        "description": description,
-        "inputSchema": input_schema
-    })
-}
-
 pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
     match name {
+        "robco_whoami" => identity::whoami(),
         "robco_agent_list" => {
             let registry = Registry::load().map_err(exec_err)?;
             agent_list(&registry)

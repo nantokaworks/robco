@@ -1,6 +1,9 @@
 use std::{path::Path, process::Command};
 
-use crate::Result;
+use crate::{
+    Result,
+    config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
+};
 
 use super::{command_output, command_unit};
 
@@ -108,17 +111,40 @@ pub(super) fn has_server() -> Result<bool> {
     Ok(output.status.success())
 }
 
-pub fn new_session_command(session: &str, cwd: &Path, program: &str) -> Command {
+/// Build a detached tmux session command with session-scoped environment.
+///
+/// Environment injection uses `new-session -e`, which requires tmux >= 3.2.
+/// Missing robco identity keys are assigned empty values so the new session
+/// cannot inherit stale identities from the tmux server's global environment.
+pub fn new_session_command(
+    session: &str,
+    cwd: &Path,
+    program: &str,
+    envs: &[(&str, String)],
+) -> Command {
     let mut command = Command::new("tmux");
     command
         .args(["new-session", "-d", "-s", session, "-c"])
-        .arg(cwd)
-        .arg(program);
+        .arg(cwd);
+    for key in [ENV_AGENT_ID, ENV_PARENT_AGENT_ID] {
+        if !envs.iter().any(|(candidate, _)| *candidate == key) {
+            command.arg("-e").arg(format!("{key}="));
+        }
+    }
+    for (key, value) in envs {
+        command.arg("-e").arg(format!("{key}={value}"));
+    }
+    command.arg(program);
     command
 }
 
-pub fn new_session(session: &str, cwd: &Path, program: &str) -> Result<()> {
-    let output = new_session_command(session, cwd, program).output()?;
+pub fn new_session(
+    session: &str,
+    cwd: &Path,
+    program: &str,
+    envs: &[(&str, String)],
+) -> Result<()> {
+    let output = new_session_command(session, cwd, program, envs).output()?;
     command_unit(output, "tmux new-session")?;
     let _ = Command::new("tmux")
         .args([
@@ -198,5 +224,58 @@ mod tests {
         // resolves for pane/window commands too (capture-pane, send-keys,
         // set-option window-size) — not just session-only commands.
         assert_eq!(exact("robco_repo_agent"), "=robco_repo_agent:");
+    }
+
+    #[test]
+    fn new_session_command_includes_environment_pairs() {
+        let command = new_session_command(
+            "robco_repo_agent",
+            Path::new("/repo"),
+            "codex",
+            &[("FIRST", "one".to_string()), ("SECOND", "two".to_string())],
+        );
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            [
+                "new-session",
+                "-d",
+                "-s",
+                "robco_repo_agent",
+                "-c",
+                "/repo",
+                "-e",
+                "ROBCO_AGENT_ID=",
+                "-e",
+                "ROBCO_PARENT_AGENT_ID=",
+                "-e",
+                "FIRST=one",
+                "-e",
+                "SECOND=two",
+                "codex",
+            ]
+        );
+    }
+
+    #[test]
+    fn new_session_command_neutralizes_missing_identity() {
+        let command = new_session_command("robco_repo_shell", Path::new("/repo"), "zsh", &[]);
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert!(
+            args.windows(2)
+                .any(|args| args == ["-e", "ROBCO_AGENT_ID="])
+        );
+        assert!(
+            args.windows(2)
+                .any(|args| args == ["-e", "ROBCO_PARENT_AGENT_ID="])
+        );
     }
 }

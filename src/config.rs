@@ -5,6 +5,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+/// Registry agent identity inherited by processes in an agent tmux session.
+pub const ENV_AGENT_ID: &str = "ROBCO_AGENT_ID";
+/// Optional controller identity; no current creation flow knows a parent id.
+pub const ENV_PARENT_AGENT_ID: &str = "ROBCO_PARENT_AGENT_ID";
+
 use crate::{Result, model::Status, openclaw::OpenClawConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
