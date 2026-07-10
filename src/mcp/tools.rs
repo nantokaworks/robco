@@ -17,6 +17,7 @@ mod identity;
 mod report;
 
 pub use catalog::list_tools;
+pub(crate) use report::{deliver_report, report_exit_code};
 
 #[derive(Debug)]
 pub enum ToolError {

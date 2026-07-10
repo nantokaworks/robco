@@ -15,10 +15,10 @@ mod status;
 mod tmux;
 mod ui;
 
-use std::{path::PathBuf, process::ExitCode};
+use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
-use clap::Parser;
-use cli::{Args, Command};
+use clap::{Parser, error::ErrorKind};
+use cli::{Args, Command, ReportArgs};
 use config::Config;
 use registry::Registry;
 use thiserror::Error;
@@ -46,7 +46,24 @@ pub enum Error {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    match run().await {
+    let raw_args: Vec<OsString> = std::env::args_os().collect();
+    let args = match Args::try_parse_from(&raw_args) {
+        Ok(args) => args,
+        Err(err) => {
+            if let Some(message) =
+                report_parse_error_message(&err, invocation_targets_report(&raw_args))
+            {
+                eprintln!("{message}");
+                return ExitCode::from(3);
+            }
+            err.exit();
+        }
+    };
+    if let Some(Command::Report(report_args)) = &args.command {
+        return run_report(report_args);
+    }
+
+    match run(args).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("robco: {err}");
@@ -55,8 +72,46 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run() -> Result<()> {
-    let args = Args::parse();
+fn invocation_targets_report(args: &[OsString]) -> bool {
+    let mut args = args.iter().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "report" {
+            return true;
+        }
+        if arg == "--program" {
+            args.next();
+            continue;
+        }
+        if arg.to_string_lossy().starts_with("--program=")
+            || matches!(
+                arg.to_str(),
+                Some("-y" | "--autoyes" | "--list" | "--no-dropr")
+            )
+        {
+            continue;
+        }
+        return false;
+    }
+    false
+}
+
+fn report_parse_error_message(
+    error: &clap::Error,
+    invocation_targets_report: bool,
+) -> Option<&'static str> {
+    if invocation_targets_report
+        && !matches!(
+            error.kind(),
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+        )
+    {
+        Some("robco report: invalid arguments (see --help)")
+    } else {
+        None
+    }
+}
+
+async fn run(args: Args) -> Result<()> {
     let mut config = Config::load()?;
     if let Some(program) = args.program {
         config.default_program = program;
@@ -122,6 +177,7 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
         }
         Command::Install(args) => setup::install(&args)?,
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
+        Command::Report(_) => unreachable!("report is handled before config loading"),
         Command::Reset => {
             let path = config::state_path()?;
             if path.exists() {
@@ -134,4 +190,71 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
         Command::Uninstall(args) => setup::uninstall(&args)?,
     }
     Ok(())
+}
+
+fn run_report(args: &ReportArgs) -> ExitCode {
+    match mcp::deliver_report(&args.message, args.target.as_deref()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            let message: String = err
+                .to_string()
+                .chars()
+                .map(|character| {
+                    if character.is_control() {
+                        ' '
+                    } else {
+                        character
+                    }
+                })
+                .collect();
+            eprintln!("robco: {message}");
+            ExitCode::from(mcp::report_exit_code(&err))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_error(args: &[&str]) -> clap::Error {
+        Args::try_parse_from(args).unwrap_err()
+    }
+
+    fn mapped_report_error(args: &[&str]) -> Option<&'static str> {
+        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
+        report_parse_error_message(&parse_error(args), invocation_targets_report(&raw_args))
+    }
+
+    #[test]
+    fn report_missing_message_maps_to_one_line_exit_three_error() {
+        let message = mapped_report_error(&["robco", "report"]).unwrap();
+        assert_eq!(message.lines().count(), 1);
+        assert_eq!(message, "robco report: invalid arguments (see --help)");
+    }
+
+    #[test]
+    fn report_unknown_flag_maps_to_exit_three_error() {
+        assert!(mapped_report_error(&["robco", "report", "--unknown"]).is_some());
+    }
+
+    #[test]
+    fn report_help_keeps_clap_output_and_success_exit() {
+        let args = ["robco", "report", "--help"];
+        let error = parse_error(&args);
+        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
+        assert_eq!(error.kind(), ErrorKind::DisplayHelp);
+        assert_eq!(error.exit_code(), 0);
+        assert!(error.to_string().lines().count() > 1);
+        assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
+    }
+
+    #[test]
+    fn another_subcommand_parse_error_keeps_clap_mapping() {
+        let args = ["robco", "install", "--unknown"];
+        let error = parse_error(&args);
+        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
+        assert_eq!(error.exit_code(), 2);
+        assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
+    }
 }

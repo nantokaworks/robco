@@ -37,10 +37,23 @@ pub enum Command {
     Install(InstallArgs),
     /// Run an MCP server over stdio for agent state and control.
     McpStdio,
+    /// Report turn completion to a controller agent.
+    Report(ReportArgs),
     /// Remove RobCo's persisted state file.
     Reset,
     /// Remove RobCo's MCP server from supported client configs.
     Uninstall(InstallArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ReportArgs {
+    /// Report text. Exit codes: 0 delivered, 2 busy, 3 invalid, 4 unavailable.
+    #[arg(short, long)]
+    pub message: String,
+
+    /// Agent id to report to; defaults to ROBCO_PARENT_AGENT_ID.
+    #[arg(long)]
+    pub target: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -60,4 +73,28 @@ pub struct InstallArgs {
     /// Update all supported client configs.
     #[arg(long)]
     pub all: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_report_subcommand() {
+        let args = Args::try_parse_from([
+            "robco",
+            "report",
+            "--message",
+            "turn finished",
+            "--target",
+            "controller",
+        ])
+        .unwrap();
+
+        let Some(Command::Report(report)) = args.command else {
+            panic!("expected report command");
+        };
+        assert_eq!(report.message, "turn finished");
+        assert_eq!(report.target.as_deref(), Some("controller"));
+    }
 }
