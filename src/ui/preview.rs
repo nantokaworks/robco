@@ -9,8 +9,10 @@ use crate::{
     agent, git,
     model::{Selection, Status},
     registry::Registry,
-    tmux,
-    ui::{App, PreviewPane, layout, panes_for, summary::repo_summary, theme::DEFAULT as THEME},
+    ui::{
+        App, PreviewPane, layout, panes_for, scrollback, summary::repo_summary,
+        theme::DEFAULT as THEME,
+    },
 };
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
@@ -30,34 +32,26 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
             let session = agent::repo_shell_session_name(tmux_prefix, repo);
-            resize_preview_session(&session, panes.preview);
-            let text = tmux::capture_plain(&session)
-                .ok()
-                .and_then(|capture| capture.into_text().ok())
-                .unwrap_or_else(|| {
-                    vec![Line::from(Span::styled(
-                        "No shell session. Press enter to open one.",
-                        THEME.muted_style(),
-                    ))]
-                    .into()
-                });
+            let text = scrollback::capture(&session, panes.preview, scroll).unwrap_or_else(|| {
+                vec![Line::from(Span::styled(
+                    "No shell session. Press enter to open one.",
+                    THEME.muted_style(),
+                ))]
+                .into()
+            });
             (title, text)
         }
         (PreviewPane::Claude, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
             let session = agent::repo_claude_session_name(tmux_prefix, repo);
-            resize_preview_session(&session, panes.preview);
-            let text = tmux::capture_plain(&session)
-                .ok()
-                .and_then(|capture| capture.into_text().ok())
-                .unwrap_or_else(|| {
-                    vec![Line::from(Span::styled(
-                        "No AI session. Press enter to open one.",
-                        THEME.muted_style(),
-                    ))]
-                    .into()
-                });
+            let text = scrollback::capture(&session, panes.preview, scroll).unwrap_or_else(|| {
+                vec![Line::from(Span::styled(
+                    "No AI session. Press enter to open one.",
+                    THEME.muted_style(),
+                ))]
+                .into()
+            });
             (title, text)
         }
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
@@ -77,10 +71,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     &ai_label,
                 );
             }
-            resize_preview_session(&agent.tmux_session, panes.preview);
-            let text = tmux::capture_plain(&agent.tmux_session)
-                .ok()
-                .and_then(|capture| capture.into_text().ok())
+            let text = scrollback::capture(&agent.tmux_session, panes.preview, scroll)
                 .unwrap_or_else(|| {
                     vec![
                         Line::from(Span::styled("No preview available.", THEME.muted_style())),
@@ -107,17 +98,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 );
             }
             let session = agent::shell_session_name(agent);
-            resize_preview_session(&session, panes.preview);
-            let text = tmux::capture_plain(&session)
-                .ok()
-                .and_then(|capture| capture.into_text().ok())
-                .unwrap_or_else(|| {
-                    vec![Line::from(Span::styled(
-                        "No shell session. Press enter to open one.",
-                        THEME.muted_style(),
-                    ))]
-                    .into()
-                });
+            let text = scrollback::capture(&session, panes.preview, scroll).unwrap_or_else(|| {
+                vec![Line::from(Span::styled(
+                    "No shell session. Press enter to open one.",
+                    THEME.muted_style(),
+                ))]
+                .into()
+            });
             (title, text)
         }
         (PreviewPane::Diff, Some(Selection::Agent { repo, agent })) => {
@@ -146,11 +133,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let Some(orphan) = orphans.get(orphan_idx) else {
                 return;
             };
-            resize_preview_session(&orphan.name, panes.preview);
-            let text = tmux::capture_plain(&orphan.name)
-                .ok()
-                .and_then(|capture| capture.into_text().ok())
-                .unwrap_or_else(|| {
+            let text =
+                scrollback::capture(&orphan.name, panes.preview, scroll).unwrap_or_else(|| {
                     vec![Line::from(Span::styled(
                         "Session is gone.",
                         THEME.muted_style(),
@@ -168,6 +152,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         ),
     };
 
+    // Live tmux tabs already captured the scrolled-back window; scrolling the
+    // paragraph on top of that would double-shift. Static tabs keep it.
+    let para_scroll = if scrollback::live_session(app).is_some() {
+        0
+    } else {
+        scroll
+    };
     let preview = Paragraph::new(text)
         .block(
             Block::default()
@@ -177,7 +168,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         )
         .style(THEME.accent_style())
         .wrap(Wrap { trim: false })
-        .scroll((scroll, 0));
+        .scroll((para_scroll, 0));
     frame.render_widget(preview, panes.preview);
 }
 
@@ -235,15 +226,6 @@ fn preview_tabs_line(
     }
 
     Line::from(spans)
-}
-
-fn resize_preview_session(session: &str, area: ratatui::layout::Rect) {
-    let width = area.width.saturating_sub(2);
-    let height = area.height.saturating_sub(2);
-    if width == 0 || height == 0 {
-        return;
-    }
-    let _ = tmux::resize_session(session, width, height);
 }
 
 fn render_branch_only(

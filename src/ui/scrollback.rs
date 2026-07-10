@@ -1,0 +1,70 @@
+use ansi_to_tui::IntoText;
+use ratatui::{layout::Rect, text::Text};
+
+use crate::{
+    agent,
+    model::{Selection, Status},
+    tmux,
+};
+
+use super::{App, PreviewPane};
+
+/// The tmux session mirrored by the current preview tab, when that tab shows a
+/// live session (CLAUDE / TERM tabs and orphan previews). `None` for static
+/// content (INFO summary, DIFF), whose scrolling stays paragraph-based.
+pub(in crate::ui) fn live_session(app: &App) -> Option<String> {
+    let prefix = &app.config.tmux_session_prefix;
+    match (app.preview, app.selected_item()?) {
+        (PreviewPane::Claude, Selection::Repo(repo)) => Some(agent::repo_claude_session_name(
+            prefix,
+            &app.registry.repos[repo],
+        )),
+        (PreviewPane::Terminal, Selection::Repo(repo)) => Some(agent::repo_shell_session_name(
+            prefix,
+            &app.registry.repos[repo],
+        )),
+        (PreviewPane::Claude, Selection::Agent { repo, agent }) => {
+            let agent = &app.registry.repos[repo].agents[agent];
+            (agent.status != Status::BranchOnly).then(|| agent.tmux_session.clone())
+        }
+        (PreviewPane::Terminal, Selection::Agent { repo, agent }) => {
+            let agent = &app.registry.repos[repo].agents[agent];
+            (agent.status != Status::BranchOnly).then(|| agent::shell_session_name(agent))
+        }
+        (_, Selection::Orphan(orphan)) => app.orphans.get(orphan).map(|o| o.name.clone()),
+        _ => None,
+    }
+}
+
+/// Resize the mirrored session to the preview's inner size, then capture one
+/// screenful `offset` lines back from the live edge.
+pub(in crate::ui) fn capture(session: &str, area: Rect, offset: u16) -> Option<Text<'static>> {
+    let width = area.width.saturating_sub(2);
+    let height = area.height.saturating_sub(2);
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let _ = tmux::resize_session(session, width, height);
+    tmux::capture_scrollback(session, offset, height)
+        .ok()?
+        .into_text()
+        .ok()
+}
+
+impl App {
+    /// Scroll the preview one step. Live tmux tabs walk the session's
+    /// scrollback history — `preview_scroll` counts lines back from the live
+    /// edge, clamped to what the pane's history holds. Static tabs keep
+    /// paragraph semantics, counting lines down from the top.
+    pub(in crate::ui) fn scroll_preview(&mut self, up: bool, step: u16) {
+        self.preview_scroll = match (live_session(self), up) {
+            (Some(session), true) => {
+                let limit = tmux::history_size(&session).unwrap_or(0);
+                self.preview_scroll.saturating_add(step).min(limit)
+            }
+            (Some(_), false) => self.preview_scroll.saturating_sub(step),
+            (None, true) => self.preview_scroll.saturating_sub(step),
+            (None, false) => self.preview_scroll.saturating_add(step),
+        };
+    }
+}
