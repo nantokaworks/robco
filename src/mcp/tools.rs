@@ -14,6 +14,7 @@ const PROMPT_LINES: usize = 20;
 
 mod catalog;
 mod identity;
+mod report;
 
 pub use catalog::list_tools;
 
@@ -36,6 +37,10 @@ pub type ToolResult<T> = std::result::Result<T, ToolError>;
 pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
     match name {
         "robco_whoami" => identity::whoami(),
+        "robco_report" => {
+            let args: report::ReportArgs = parse_args(arguments)?;
+            report::report(args)
+        }
         "robco_agent_list" => {
             let registry = Registry::load().map_err(exec_err)?;
             agent_list(&registry)
