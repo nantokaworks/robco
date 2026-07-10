@@ -10,4 +10,5 @@
 - [UI](06-ui.md)
 - [Lifecycle](07-lifecycle.md)
 - [Config Reference](09-config-reference.md)
+- [Agent reporting](10-agent-reporting.md)
 - [Roadmap](08-roadmap.md)

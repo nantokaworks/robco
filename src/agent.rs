@@ -5,7 +5,7 @@ use nanoid::nanoid;
 
 use crate::{
     Result,
-    config::Config,
+    config::{Config, ENV_AGENT_ID},
     git,
     model::{AgentNode, RepoNode},
     tmux,
@@ -35,7 +35,12 @@ pub fn create_agent(
     git::add_worktree(&repo.path, &worktree_path, &branch, &base_commit)?;
     let program = config.default_program_command();
     let command = launch_command(&program, initial_prompt);
-    tmux::new_session(&tmux_session, &worktree_path, &command)?;
+    tmux::new_session(
+        &tmux_session,
+        &worktree_path,
+        &command,
+        &[(ENV_AGENT_ID, id.clone())],
+    )?;
 
     let now = Local::now();
     Ok(AgentNode {
@@ -147,7 +152,12 @@ pub fn normalize_adopted_titles(repos: &mut [RepoNode], config: &Config) -> bool
 
 pub fn restart_agent(agent: &AgentNode) -> Result<()> {
     let _ = tmux::kill_session(&agent.tmux_session);
-    tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)
+    tmux::new_session(
+        &agent.tmux_session,
+        &agent.worktree_path,
+        &agent.program,
+        &[(ENV_AGENT_ID, agent.id.clone())],
+    )
 }
 
 pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
@@ -155,7 +165,12 @@ pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
         return Ok(());
     }
 
-    tmux::new_session(&agent.tmux_session, &agent.worktree_path, &agent.program)
+    tmux::new_session(
+        &agent.tmux_session,
+        &agent.worktree_path,
+        &agent.program,
+        &[(ENV_AGENT_ID, agent.id.clone())],
+    )
 }
 
 pub fn shell_session_name(agent: &AgentNode) -> String {
@@ -168,7 +183,7 @@ pub fn ensure_shell_session(agent: &AgentNode) -> Result<()> {
         return Ok(());
     }
 
-    tmux::new_session(&session, &agent.worktree_path, &shell_program())
+    tmux::new_session(&session, &agent.worktree_path, &shell_program(), &[])
 }
 
 pub fn repo_shell_session_name(prefix: &str, repo: &RepoNode) -> String {
@@ -185,7 +200,7 @@ pub fn ensure_repo_shell_session(prefix: &str, repo: &RepoNode) -> Result<()> {
         return Ok(());
     }
 
-    tmux::new_session(&session, &repo.path, &shell_program())
+    tmux::new_session(&session, &repo.path, &shell_program(), &[])
 }
 
 pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode) -> Result<()> {
@@ -194,7 +209,7 @@ pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode
         return Ok(());
     }
 
-    tmux::new_session(&session, &repo.path, &config.default_program_command())
+    tmux::new_session(&session, &repo.path, &config.default_program_command(), &[])
 }
 
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
