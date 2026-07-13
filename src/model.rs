@@ -109,6 +109,18 @@ impl Status {
             Status::Orphaned => "orphan",
         }
     }
+
+    pub fn glyph(self) -> &'static str {
+        match self {
+            Status::Idle => "·",
+            Status::Running => "▶",
+            Status::Waiting => "?",
+            Status::Done => "✓",
+            Status::Dead => "✗",
+            Status::BranchOnly => "⎇",
+            Status::Orphaned => "⌦",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -116,8 +128,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn orphaned_status_badge_is_orphan() {
+    fn status_badges_and_glyphs_are_stable() {
         assert_eq!(Status::Orphaned.badge(), "orphan");
+        assert_eq!(Status::Running.glyph(), "▶");
+        assert_eq!(Status::Waiting.glyph(), "?");
+        assert_eq!(Status::Done.glyph(), "✓");
+        assert_eq!(Status::Idle.glyph(), "·");
+        assert_eq!(Status::Dead.glyph(), "✗");
+        assert_eq!(Status::BranchOnly.glyph(), "⎇");
+        assert_eq!(Status::Orphaned.glyph(), "⌦");
     }
 }
 
