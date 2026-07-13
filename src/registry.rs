@@ -107,6 +107,7 @@ mod tests {
             last_change_at: None,
             last_auto_accept_at: None,
             shell_working: false,
+            children: Vec::new(),
         }
     }
 
@@ -135,6 +136,24 @@ mod tests {
         registry.merge_discovered(vec![repo("/b/two", Vec::new())]);
         assert_eq!(registry.repos.len(), 1);
         assert_eq!(registry.repos[0].path.to_string_lossy(), "/b/two");
+    }
+
+    #[test]
+    fn children_are_runtime_only() {
+        let mut agent = dummy_agent();
+        agent.children.push(crate::model::ChildWorktree {
+            path: "/tmp/wt/child".into(),
+            branch: Some("child".into()),
+            head: None,
+            clean: None,
+            ahead_behind: None,
+            tmux_session: None,
+            modified_at: None,
+        });
+        let json = serde_json::to_string(&agent).unwrap();
+        assert!(!json.contains("children"));
+        let loaded: AgentNode = serde_json::from_str(&json).unwrap();
+        assert!(loaded.children.is_empty());
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use crate::{agent, config::Config, discover, dropr, git, model::RepoNode};
+use crate::{discover, dropr, git};
 
 use super::super::App;
 
@@ -76,12 +76,19 @@ impl App {
         }
 
         let mut worktrees_added = false;
+        let mut children_changed = false;
         for repo in &mut self.registry.repos {
-            worktrees_added |= adopt_external_worktrees(repo, &self.config);
+            if let Ok(worktrees) = git::list_worktrees(&repo.path) {
+                let (added, changed) = super::children::reconcile(repo, &self.config, worktrees);
+                worktrees_added |= added;
+                children_changed |= changed;
+            }
         }
 
         if repos_changed || worktrees_added || worktrees_removed {
             let _ = self.registry.save();
+        }
+        if repos_changed || worktrees_added || worktrees_removed || children_changed {
             self.restore_selection(selected_identity);
         }
 
@@ -95,6 +102,7 @@ impl App {
             repo.agents.retain(|tracked| {
                 is_managed_worktree(&tracked.worktree_path, &self.config.worktree_root)
             });
+            prune_nested_agents(repo);
             removed |= repo.agents.len() != previous_len;
         }
         removed
@@ -115,63 +123,39 @@ impl App {
     }
 }
 
+fn prune_nested_agents(repo: &mut crate::model::RepoNode) {
+    let paths: Vec<_> = repo
+        .agents
+        .iter()
+        .map(|agent| agent.worktree_path.clone())
+        .collect();
+    repo.agents.retain(|tracked| {
+        !paths.iter().any(|parent| {
+            parent != &tracked.worktree_path
+                && path_is_strictly_inside(&tracked.worktree_path, parent)
+        })
+    });
+}
+
 /// Add an agent for any worktree of `repo` that exists on disk but is not yet
 /// tracked. The main worktree and already-known agents are skipped. Returns
 /// whether any agent was added.
-fn adopt_external_worktrees(repo: &mut RepoNode, config: &Config) -> bool {
-    let Ok(worktrees) = git::list_worktrees(&repo.path) else {
-        return false;
-    };
-
-    let mut known: HashSet<String> = repo
-        .agents
-        .iter()
-        .map(|agent| path_key(&agent.worktree_path))
-        .collect();
-    known.insert(path_key(&repo.path));
-
-    let mut added = false;
-    for worktree in worktrees {
-        if !is_managed_worktree(&worktree.path, &config.worktree_root) {
-            continue;
-        }
-        if !known.insert(path_key(&worktree.path)) {
-            continue;
-        }
-        // Prefer a live AI session already running in this worktree (matched by
-        // cwd) so adoption reattaches to it even when its name predates the
-        // current naming scheme, instead of spawning a duplicate below.
-        let existing_session =
-            crate::tmux::find_session_by_cwd(&config.tmux_session_prefix, &worktree.path);
-        let adopted = agent::adopt_worktree(
-            repo,
-            config,
-            worktree.path,
-            worktree.branch,
-            worktree.head,
-            existing_session,
-        );
-        // Auto-open the AI for a worktree the first time it is discovered, so a
-        // worktree is "open" by default (matching robco-created worktrees, which
-        // launch on creation). This fires once per newly-adopted worktree — the
-        // `known` guard above means an already-tracked worktree is never
-        // re-adopted, so a session the user deliberately closed is NOT
-        // relaunched on the next discovery tick; Enter re-opens it in that case.
-        let _ = agent::ensure_agent_session(&adopted);
-        repo.agents.push(adopted);
-        added = true;
-    }
-    added
-}
-
 /// Canonical string key for a path, used to compare worktree paths that git and
 /// robco may spell differently (symlinks, trailing components). Falls back to
 /// the lexical path when the path cannot be canonicalized.
-fn path_key(path: &Path) -> String {
+pub(super) fn path_key(path: &Path) -> String {
     path.canonicalize()
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+pub(super) fn path_is_strictly_inside(path: &Path, parent: &Path) -> bool {
+    let path = path.canonicalize().unwrap_or_else(|_| normalize_path(path));
+    let parent = parent
+        .canonicalize()
+        .unwrap_or_else(|_| normalize_path(parent));
+    path != parent && path.starts_with(parent)
 }
 
 pub(super) fn is_managed_worktree(path: &Path, worktree_root: &Path) -> bool {
@@ -205,7 +189,8 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::is_managed_worktree;
+    use super::{is_managed_worktree, prune_nested_agents};
+    use crate::{agent, config::Config, model::RepoNode};
     use std::path::Path;
 
     #[test]
@@ -274,5 +259,40 @@ mod tests {
             &root.join("../missing-outside"),
             &root
         ));
+    }
+
+    #[test]
+    fn legacy_nested_agents_are_pruned_without_prefix_false_positives() {
+        let config = Config::default();
+        let mut repo = RepoNode {
+            path: "/repo".into(),
+            name: "repo".into(),
+            remote_url: None,
+            agents: Vec::new(),
+            dropr: None,
+            main_status: None,
+            main_last_capture: None,
+            main_last_change_at: None,
+            main_shell_working: false,
+        };
+        for path in ["/wt/foo", "/wt/foo/nested", "/wt/foo-bar"] {
+            repo.agents.push(agent::adopt_worktree(
+                &repo,
+                &config,
+                path.into(),
+                None,
+                None,
+                None,
+            ));
+        }
+
+        prune_nested_agents(&mut repo);
+
+        let paths: Vec<_> = repo
+            .agents
+            .iter()
+            .map(|agent| agent.worktree_path.as_path())
+            .collect();
+        assert_eq!(paths, [Path::new("/wt/foo"), Path::new("/wt/foo-bar")]);
     }
 }

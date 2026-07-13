@@ -88,6 +88,7 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
             PreviewPane::Diff,
             PreviewPane::Terminal,
         ],
+        Some(Selection::ChildWorktree { .. }) => &[PreviewPane::Info, PreviewPane::Diff],
         Some(Selection::Orphan(_)) => &[PreviewPane::Claude],
         Some(Selection::OtherHeader) | Some(Selection::OrphanHeader) | None => &[],
     }

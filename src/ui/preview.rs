@@ -10,7 +10,8 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     ui::{
-        App, PreviewPane, layout, panes_for, scrollback, summary::repo_summary,
+        App, PreviewPane, layout, panes_for, scrollback,
+        summary::{child_summary, repo_summary},
         theme::DEFAULT as THEME,
     },
 };
@@ -132,6 +133,31 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 .into_text()
                 .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
             (title, text)
+        }
+        (PreviewPane::Info, Some(Selection::ChildWorktree { repo, agent, child })) => {
+            let repo = &registry.repos[repo];
+            child_summary(
+                repo,
+                &repo.agents[agent],
+                &repo.agents[agent].children[child],
+            )
+        }
+        (PreviewPane::Diff, Some(Selection::ChildWorktree { repo, agent, child })) => {
+            let repo = &registry.repos[repo];
+            let agent = &repo.agents[agent];
+            let child = &agent.children[child];
+            let label = child.branch.as_deref().unwrap_or_else(|| {
+                child
+                    .path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("worktree")
+            });
+            let text = git::diff(&child.path)
+                .unwrap_or_else(|err| err.to_string())
+                .into_text()
+                .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
+            (format!("{} / {} / {label}", repo.name, agent.title), text)
         }
         (_, Some(Selection::Orphan(orphan_idx))) => {
             let Some(orphan) = orphans.get(orphan_idx) else {

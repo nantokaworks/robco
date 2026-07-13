@@ -14,6 +14,12 @@ impl App {
             Selection::Agent { repo, agent } => {
                 format!("agent:{}", self.registry.repos[repo].agents[agent].id)
             }
+            Selection::ChildWorktree { repo, agent, child } => format!(
+                "child:{}",
+                self.registry.repos[repo].agents[agent].children[child]
+                    .path
+                    .display()
+            ),
             Selection::OtherHeader => "section:other".to_string(),
             Selection::OrphanHeader => "section:orphans".to_string(),
             Selection::Orphan(orphan) => format!(
@@ -78,6 +84,7 @@ impl App {
         match self.selected_item() {
             Some(Selection::Repo(repo)) => Some(repo),
             Some(Selection::Agent { repo, .. }) => Some(repo),
+            Some(Selection::ChildWorktree { repo, .. }) => Some(repo),
             _ => None,
         }
     }
@@ -166,6 +173,13 @@ impl App {
                     repo: repo_idx,
                     agent: agent_idx,
                 });
+                for child in 0..repo.agents[agent_idx].children.len() {
+                    visible.push(Selection::ChildWorktree {
+                        repo: repo_idx,
+                        agent: agent_idx,
+                        child,
+                    });
+                }
             }
         }
     }

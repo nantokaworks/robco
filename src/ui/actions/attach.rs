@@ -20,6 +20,17 @@ impl App {
     }
 
     pub(in crate::ui) fn attach_selected(&mut self) -> Result<()> {
+        if let Some(Selection::ChildWorktree { repo, agent, child }) = self.selected_item() {
+            let session = self.registry.repos[repo].agents[agent].children[child]
+                .tmux_session
+                .clone();
+            if let Some(session) = session {
+                self.attach_session(&session);
+            } else {
+                self.mode = Mode::Message("no live session in this child worktree".to_string());
+            }
+            return Ok(());
+        }
         let Some(Selection::Agent {
             repo,
             agent: agent_idx,
@@ -112,6 +123,10 @@ impl App {
     }
 
     pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
+        if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
+            self.mode = Mode::Message("restart is not available for child worktrees".to_string());
+            return Ok(());
+        }
         if let Some(Selection::Agent {
             repo,
             agent: agent_idx,

@@ -24,6 +24,11 @@ impl App {
             for tracked in &repo.agents {
                 known.insert(tracked.tmux_session.clone());
                 known.insert(agent::shell_session_name(tracked));
+                for child in &tracked.children {
+                    if let Some(session) = &child.tmux_session {
+                        known.insert(session.clone());
+                    }
+                }
             }
         }
 
