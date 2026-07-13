@@ -1,5 +1,9 @@
+use std::time::{Duration, SystemTime};
+
 use chrono::Local;
 use serde_json::json;
+
+use crate::subagents::{SubagentStatus, TaskSubagent};
 
 use super::*;
 
@@ -73,6 +77,68 @@ fn finds_agent_by_id() {
 fn tails_last_non_empty_lines() {
     let text = "a\n\nb\nc\n";
     assert_eq!(tail_non_empty_lines(text, 2), "b\nc");
+}
+
+#[test]
+fn dead_agent_tools_suppress_cached_subagent_activity() {
+    let mut registry = registry_with_agent("a1");
+    let agent = &mut registry.repos[0].agents[0];
+    agent.tracked_command = Some("cargo".into());
+    agent.subagents = vec![
+        subagent("running", SubagentStatus::Running),
+        subagent("done", SubagentStatus::Done),
+    ];
+
+    let listed = agent_list(&registry).unwrap();
+    let status = agent_status(&registry, "a1").unwrap();
+    assert_eq!(listed["repos"][0]["agents"][0]["tracked_command"], "cargo");
+    assert_eq!(listed["repos"][0]["agents"][0]["status"], "dead");
+    assert_eq!(listed["repos"][0]["agents"][0]["subagents_active"], 0);
+    assert_eq!(status["tracked_command"], "cargo");
+    assert_eq!(status["status"], "dead");
+    assert_eq!(status["subagents_active"], 0);
+}
+
+#[test]
+fn live_agent_activity_counts_running_subagents() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut registry = registry_with_agent("a1");
+    let agent = &mut registry.repos[0].agents[0];
+    agent.worktree_path = temp.path().into();
+    agent.subagents = vec![
+        subagent("running", SubagentStatus::Running),
+        subagent("done", SubagentStatus::Done),
+    ];
+
+    assert_eq!(live_activity(agent, Status::Running).1, 1);
+}
+
+#[test]
+fn activity_output_schemas_require_new_fields() {
+    let tools = catalog::list_tools();
+    for name in ["robco_agent_list", "robco_agent_status"] {
+        let tool = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .unwrap();
+        let schema = &tool["outputSchema"];
+        assert!(schema.to_string().contains("tracked_command"));
+        assert!(schema.to_string().contains("subagents_active"));
+    }
+}
+
+fn subagent(id: &str, status: SubagentStatus) -> TaskSubagent {
+    TaskSubagent {
+        id: id.into(),
+        agent_type: "Explore".into(),
+        description: "inspect".into(),
+        spawn_depth: 1,
+        started_at: SystemTime::now() - Duration::from_secs(10),
+        last_activity_at: SystemTime::now(),
+        status,
+    }
 }
 
 #[test]

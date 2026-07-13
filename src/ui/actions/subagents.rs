@@ -1,8 +1,8 @@
 use std::time::SystemTime;
 
 use crate::{
-    model::{RepoNode, Status},
-    subagents::{SubagentReader, SubagentStatus, claude::ClaudeSubagentReader},
+    model::RepoNode,
+    subagents::{SubagentReader, SubagentStatus, claude::ClaudeSubagentReader, read_allowed},
 };
 
 use super::super::App;
@@ -39,9 +39,7 @@ fn ingest(repos: &mut [RepoNode], enabled: bool, reader: &dyn SubagentReader, no
                 .count()
         });
         for agent in &mut repo.agents {
-            if matches!(agent.status, Status::Dead | Status::BranchOnly)
-                || !agent.worktree_path.exists()
-            {
+            if !read_allowed(agent.status, &agent.worktree_path) {
                 agent.subagents.clear();
             } else {
                 agent.subagents = reader.read(&agent.worktree_path, now);

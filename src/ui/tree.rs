@@ -7,8 +7,12 @@ use ratatui::{
 };
 
 use crate::model::{Selection, Status};
+use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
+use activity::{activity_spans, shows_process};
+
+mod activity;
 
 fn status_style(status: Status) -> Style {
     THEME.status_style(status)
@@ -67,14 +71,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         THEME.term_style(),
                     ));
                 }
-                if repo.main_status.is_some_and(shows_process)
-                    && let Some(command) = &repo.main_tracked_command
-                {
-                    spans.push(Span::styled(
-                        format!("  ⚙ {}", truncate_command(command)),
-                        THEME.proc_style(),
-                    ));
-                }
+                let command = repo
+                    .main_tracked_command
+                    .as_deref()
+                    .filter(|_| repo.main_status.is_some_and(shows_process));
+                spans.extend(activity_spans(command, repo.main_subagents_active, "  "));
                 if !expanded && !repo.agents.is_empty() {
                     let status_counts = [
                         Status::Running,
@@ -154,14 +155,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         THEME.term_style(),
                     ));
                 }
-                if shows_process(agent.status)
-                    && let Some(command) = &agent.tracked_command
-                {
-                    spans.push(Span::styled(
-                        format!(" ⚙ {}", truncate_command(command)),
-                        THEME.proc_style(),
-                    ));
-                }
+                let command = agent
+                    .tracked_command
+                    .as_deref()
+                    .filter(|_| shows_process(agent.status));
+                let active = agent
+                    .subagents
+                    .iter()
+                    .filter(|subagent| subagent.status == SubagentStatus::Running)
+                    .count();
+                spans.extend(activity_spans(command, active, " "));
                 lines.push(Line::from(spans));
             }
             Selection::ChildWorktree { repo, agent, child } => {
@@ -240,21 +243,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
 
     let hints = Paragraph::new(hints_line(message)).alignment(Alignment::Center);
     frame.render_widget(hints, zones.hints);
-}
-
-fn shows_process(status: Status) -> bool {
-    matches!(status, Status::Waiting | Status::Done | Status::Idle)
-}
-
-fn truncate_command(command: &str) -> String {
-    const MAX: usize = 16;
-    let mut chars = command.chars();
-    let prefix: String = chars.by_ref().take(MAX).collect();
-    if chars.next().is_some() {
-        format!("{}…", prefix.chars().take(MAX - 1).collect::<String>())
-    } else {
-        prefix
-    }
 }
 
 fn short_path(path: &std::path::Path) -> String {

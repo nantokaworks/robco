@@ -21,6 +21,7 @@ pub struct Theme {
     /// Colour of the companion TERM (shell) session's working mark.
     pub term: Color,
     pub proc: Color,
+    pub subagent: Color,
 }
 
 pub const DEFAULT: Theme = Theme {
@@ -40,6 +41,7 @@ pub const DEFAULT: Theme = Theme {
     orphaned: Color::Magenta,
     term: Color::Blue,
     proc: Color::LightMagenta,
+    subagent: Color::LightCyan,
 };
 
 impl Theme {
@@ -98,6 +100,10 @@ impl Theme {
 
     pub fn proc_style(self) -> Style {
         Style::default().fg(self.proc)
+    }
+
+    pub fn subagent_style(self) -> Style {
+        Style::default().fg(self.subagent)
     }
 
     pub fn status_style(self, status: Status) -> Style {
