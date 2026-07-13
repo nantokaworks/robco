@@ -26,6 +26,7 @@ pub fn discover_repos(launch_dir: &Path) -> Result<Vec<RepoNode>> {
             remote_url,
             agents: Vec::new(),
             dropr: None,
+            dropr_tasks: Vec::new(),
             main_status: None,
             main_last_capture: None,
             main_last_change_at: None,

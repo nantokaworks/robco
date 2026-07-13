@@ -64,6 +64,13 @@ pub(in crate::ui) fn repo_summary(repo: &RepoNode, width: u16) -> (String, Text<
             Span::styled("name: ", THEME.muted_style()),
             Span::raw(dropr.name.clone()),
         ]));
+        if !repo.dropr_tasks.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled("next tasks", THEME.accent_style())));
+            for task in repo.dropr_tasks.iter().take(3) {
+                lines.push(Line::from(format!("{}  {}", task.display_id, task.title)));
+            }
+        }
     }
 
     (repo.name.clone(), lines.into())

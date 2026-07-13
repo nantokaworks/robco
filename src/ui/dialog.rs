@@ -91,7 +91,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                     "  enter          attach: claude, or terminal (agent shell / repo main worktree)",
                 ),
                 Line::from("  ctrl-q         return from attached tmux session"),
-                Line::from("  r              restart selected agent"),
+                Line::from("  r              restart agent / refresh repo tasks"),
                 Line::from(
                     "  x              remove selected agent worktree, then optionally delete branch",
                 ),
@@ -145,7 +145,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let body = layout::root(frame.area()).body;
     frame.render_widget(Block::default().style(THEME.backdrop_style()), body);
 
-    // Blank the full-width band of rows the popup occupies before drawing it.
     // `Clear` only resets cells *inside* the popup rect, so a full-width (CJK)
     // glyph in the dimmed background that straddles the popup's left/right border
     // would leave a stray half-cell that corrupts the border. Wiping the whole
@@ -157,8 +156,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         height: area.height,
     };
     frame.render_widget(Clear, band);
-    // Re-dim only the band segments beside the popup. Painting the backdrop
-    // under the popup too would leave its DIM modifier on every dialog cell
+    // Painting the backdrop under the popup would leave its DIM modifier
     // (`set_style` only adds modifiers), rendering the dialog content dim.
     let right_x = area.x + area.width;
     for side in [
@@ -207,10 +205,7 @@ mod tests {
         widgets::{Block, Borders, Clear, Paragraph},
     };
 
-    /// A popup drawn over a full-width (CJK) background must keep clean vertical
-    /// borders. `Clear` alone leaves the outside half of a wide glyph that
-    /// straddles the popup edge, corrupting the border — `draw` blanks the
-    /// popup's full-width row-band first to prevent it. This guards that fix.
+    /// A full-width background must keep clean popup borders.
     #[test]
     fn popup_border_survives_wide_char_background() {
         let mut terminal = Terminal::new(TestBackend::new(20, 5)).unwrap();
@@ -252,11 +247,7 @@ mod tests {
         assert_eq!(buf.cell((2, 2)).unwrap().symbol(), " ");
     }
 
-    /// The backdrop's DIM must not bleed into the popup. `set_style` only adds
-    /// modifiers, so painting the dimmed backdrop across the popup's row-band
-    /// and drawing the dialog on top would leave every dialog cell DIM — the
-    /// original grayed-out-dialog bug. `draw` therefore re-dims only the band
-    /// segments beside the popup; this mirrors that sequence.
+    /// The backdrop's DIM must not bleed into the popup.
     #[test]
     fn popup_cells_escape_backdrop_dim() {
         let mut terminal = Terminal::new(TestBackend::new(20, 3)).unwrap();

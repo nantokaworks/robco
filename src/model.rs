@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
-use crate::{dropr::DroprWorkspace, subagents::TaskSubagent};
+use crate::{
+    dropr::{DroprTaskCandidate, DroprWorkspace},
+    subagents::TaskSubagent,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoNode {
@@ -14,6 +17,8 @@ pub struct RepoNode {
     pub agents: Vec<AgentNode>,
     #[serde(skip)]
     pub dropr: Option<DroprWorkspace>,
+    #[serde(skip)]
+    pub dropr_tasks: Vec<DroprTaskCandidate>,
     /// Status of the repo's own main-worktree AI session, or `None` when no such
     /// session is running (the main worktree does not auto-launch one). Runtime
     /// only; refreshed each tick and never persisted.

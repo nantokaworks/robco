@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     io,
     path::PathBuf,
+    sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
 
@@ -11,7 +12,10 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 
-use crate::{Result, agent, config::Config, model::Selection, registry::Registry, status};
+use crate::{
+    Result, agent, config::Config, dropr::DroprTaskCandidate, model::Selection, registry::Registry,
+    status,
+};
 
 /// How often the launch directory and each repo's worktrees are re-scanned to
 /// pick up projects or worktrees created outside robco.
@@ -95,6 +99,25 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
     }
 }
 
+type DroprTaskResult = (String, Instant, Option<Vec<DroprTaskCandidate>>);
+
+struct DroprTaskRefresh {
+    sender: Sender<DroprTaskResult>,
+    receiver: Receiver<DroprTaskResult>,
+    in_flight: HashMap<String, Instant>,
+}
+
+impl DroprTaskRefresh {
+    fn new() -> Self {
+        let (sender, receiver) = mpsc::channel();
+        Self {
+            sender,
+            receiver,
+            in_flight: HashMap::new(),
+        }
+    }
+}
+
 fn default_pane(selection: Option<Selection>) -> PreviewPane {
     panes_for(selection)
         .first()
@@ -126,6 +149,7 @@ pub struct App {
     force_redraw: bool,
     mode: Mode,
     message: Option<(String, Instant)>,
+    dropr_task_refresh: DroprTaskRefresh,
 }
 
 impl App {
@@ -147,6 +171,7 @@ impl App {
             force_redraw: false,
             mode: Mode::Normal,
             message: None,
+            dropr_task_refresh: DroprTaskRefresh::new(),
         };
         if app.prune_unmanaged_agents() {
             let _ = app.registry.save();
