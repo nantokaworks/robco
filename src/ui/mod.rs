@@ -53,6 +53,9 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    ConfirmRemoveRepo {
+        path: PathBuf,
+    },
     ConfirmMerge {
         repo: usize,
         agent: usize,

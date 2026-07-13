@@ -27,7 +27,7 @@ impl App {
         let mut expected_paths: HashSet<String> =
             discovered.iter().map(|repo| path_key(&repo.path)).collect();
         for repo in &self.registry.repos {
-            if !repo.agents.is_empty() {
+            if !repo.agents.is_empty() || repo.pinned {
                 expected_paths.insert(path_key(&repo.path));
             }
         }
@@ -266,6 +266,7 @@ mod tests {
             path: "/repo".into(),
             name: "repo".into(),
             remote_url: None,
+            pinned: false,
             agents: Vec::new(),
             dropr: None,
             dropr_tasks: Vec::new(),
@@ -287,7 +288,6 @@ mod tests {
                 None,
             ));
         }
-
         prune_nested_agents(&mut repo);
 
         let paths: Vec<_> = repo

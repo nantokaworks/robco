@@ -57,6 +57,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 "y delete   n/esc cancel",
             ),
         ),
+        Mode::ConfirmRemoveRepo { path } => (
+            "remove repo?",
+            confirm_lines(path.display().to_string(), "y remove   n/esc cancel"),
+        ),
         Mode::ConfirmMerge { repo, agent } => (
             "merge / land?",
             vec![
@@ -92,9 +96,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 ),
                 Line::from("  ctrl-q         return from attached tmux session"),
                 Line::from("  r              restart agent / refresh repo tasks"),
-                Line::from(
-                    "  x              remove selected agent worktree, then optionally delete branch",
-                ),
+                Line::from("  x              remove selected agent worktree or pinned repo"),
                 Line::from(""),
                 Line::from("Repo"),
                 Line::from("  a              add repository by path"),

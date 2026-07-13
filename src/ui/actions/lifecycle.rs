@@ -2,6 +2,7 @@ use crate::{
     Result, agent, git,
     model::{Selection, Status},
 };
+use std::path::Path;
 
 use super::super::{App, Mode};
 
@@ -16,6 +17,18 @@ impl App {
                     self.mode = Mode::ConfirmDeleteBranch { repo, agent };
                 } else {
                     self.mode = Mode::ConfirmKill { repo, agent };
+                }
+            }
+            Some(Selection::Repo(repo)) => {
+                let repo_node = &self.registry.repos[repo];
+                if repo_node.pinned {
+                    if repo_node.agents.is_empty() {
+                        self.mode = Mode::ConfirmRemoveRepo {
+                            path: repo_node.path.clone(),
+                        };
+                    } else {
+                        self.show_message("remove agents first");
+                    }
                 }
             }
             Some(Selection::Orphan(orphan)) => {
@@ -73,6 +86,31 @@ impl App {
                 Err(err) => self.show_message(err.to_string()),
             }
         }
+        Ok(())
+    }
+
+    pub(in crate::ui) fn remove_pinned_repo(&mut self, path: &Path) -> Result<()> {
+        let Some(repo) = self
+            .registry
+            .repos
+            .iter()
+            .position(|repo| repo.path == path)
+        else {
+            self.show_message("repository changed, not removed");
+            return Ok(());
+        };
+        if !self.registry.repos[repo].pinned || !self.registry.repos[repo].agents.is_empty() {
+            self.show_message("repository changed, not removed");
+            return Ok(());
+        }
+
+        let removed = self.registry.repos.remove(repo);
+        if repo < self.expanded.len() {
+            self.expanded.remove(repo);
+        }
+        self.registry.save()?;
+        self.clamp_selection();
+        self.show_message(format!("removed {}", removed.name));
         Ok(())
     }
 
@@ -192,6 +230,7 @@ impl App {
             path,
             name,
             remote_url,
+            pinned: true,
             agents: Vec::new(),
             dropr: None,
             dropr_tasks: Vec::new(),

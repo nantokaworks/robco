@@ -101,6 +101,7 @@ mod tests {
             path: path.into(),
             name: "repo".into(),
             remote_url: None,
+            pinned: false,
             agents: vec![AgentNode {
                 id: "agent".into(),
                 title: "task".into(),
