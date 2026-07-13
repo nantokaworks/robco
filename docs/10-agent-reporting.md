@@ -10,6 +10,21 @@ These values are inherited by programs and hooks started inside the agent's tmux
 session. The `robco_whoami` MCP tool returns both ids and, when the current agent is
 still in the registry, its title and repository.
 
+## Reading live activity
+
+`robco_agent_list` includes two activity fields on every agent in its repo-grouped
+response. `robco_agent_status` returns the same fields for one agent:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `tracked_command` | string or `null` | Best-effort name of a live child command, such as `cargo`; `null` when none can be identified. |
+| `subagents_active` | non-negative integer | Claude Code subagents whose activity file is within the running window. Done or stale subagents are not counted. |
+
+Both tools refresh missing activity best-effort from the live tmux process tree and
+Claude Code session files. Lifecycle guards suppress subagent counts for dead,
+branch-only, or missing-worktree agents. Probe or parse failures are represented as
+`null` / `0` rather than failing the MCP request.
+
 ## Sending a report
 
 The `robco_report` MCP tool sends a labeled, single-line message to a controller. Its

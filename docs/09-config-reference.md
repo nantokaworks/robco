@@ -17,6 +17,8 @@ does not require any config at all.
   "poll_interval_ms": 750,
   "dropr_overlay": true,
   "auto_accept": false,
+  "process_indicator": true,
+  "subagent_indicator": true,
   "merge_strategy": "rebase",
   "notify": {
     "enabled": true,
@@ -44,6 +46,8 @@ default.
 | `poll_interval_ms` | integer (ms) | `750` | How often RobCo re-polls tmux for each agent's preview and status. Lower = snappier and more CPU; higher = calmer. |
 | `dropr_overlay` | boolean | `true` | When `true`, best-effort reads `dropr workspace list` and shows matching workspace metadata in the repo preview. Read-only; disable with this flag or `--no-dropr`. |
 | `auto_accept` | boolean | `false` | When `true`, any agent detected as `Waiting` (awaiting a yes/no prompt) is auto-answered by sending `y` + Enter, throttled to at most once every 5 seconds per agent. |
+| `process_indicator` | boolean | `true` | Enables `⚙ <cmd>` child-process detection. When enabled, each UI poll takes one system-wide `ps` snapshot shared by all rows; `false` skips that call and hides the indicator. |
+| `subagent_indicator` | boolean | `true` | Enables passive Claude Code session reads, the `✻N` counts, and subagent details in the agent INFO pane. `false` skips the periodic `~/.claude/projects` filesystem reads and clears cached subagent activity. |
 | `merge_strategy` | enum | `"rebase"` | Strategy passed to `gh pr merge` when landing an agent's branch. See [merge_strategy](#merge_strategy). |
 | `notify` | object | (all `true`) | Desktop-notification toggles per status. See [notify](#notify). |
 | `project_icon` | enum | `"none"` | Marker style for the PROJECTS tree rows. See [project_icon](#project_icon). |
