@@ -274,6 +274,8 @@ mod tests {
             main_last_capture: None,
             main_last_change_at: None,
             main_shell_working: false,
+            main_pane_pid: None,
+            main_tracked_command: None,
         };
         for path in ["/wt/foo", "/wt/foo/nested", "/wt/foo-bar"] {
             repo.agents.push(agent::adopt_worktree(

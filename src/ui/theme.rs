@@ -20,6 +20,7 @@ pub struct Theme {
     pub orphaned: Color,
     /// Colour of the companion TERM (shell) session's working mark.
     pub term: Color,
+    pub proc: Color,
 }
 
 pub const DEFAULT: Theme = Theme {
@@ -38,6 +39,7 @@ pub const DEFAULT: Theme = Theme {
     branch_only: Color::DarkGray,
     orphaned: Color::Magenta,
     term: Color::Blue,
+    proc: Color::LightMagenta,
 };
 
 impl Theme {
@@ -92,6 +94,10 @@ impl Theme {
     /// Style for the companion TERM (shell) working mark.
     pub fn term_style(self) -> Style {
         Style::default().fg(self.term)
+    }
+
+    pub fn proc_style(self) -> Style {
+        Style::default().fg(self.proc)
     }
 
     pub fn status_style(self, status: Status) -> Style {

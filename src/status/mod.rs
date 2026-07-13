@@ -6,9 +6,11 @@ use crate::{git, model::Status, tmux};
 
 mod auto_accept;
 mod classify;
+pub mod proc;
 
 use auto_accept::maybe_auto_accept;
 use classify::classify_capture;
+use proc::ProcSnapshot;
 
 #[derive(Debug, Default)]
 pub struct WatchStatusState {
@@ -26,30 +28,52 @@ pub struct StatusReport {
     pub awaiting_confirmation: bool,
 }
 
-pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto_accept: bool) {
+pub fn refresh_agent(
+    repo_path: &Path,
+    agent: &mut crate::model::AgentNode,
+    auto_accept: bool,
+    processes: Option<&ProcSnapshot>,
+) {
     let mut state = WatchStatusState {
         last_capture: agent.last_capture.take(),
         last_change_at: agent.last_change_at.take(),
     };
 
-    if let Some(report) = classify_agent_status(
+    let report = classify_agent_status(
         repo_path,
         &agent.worktree_path,
         &agent.branch,
         &agent.tmux_session,
         &mut state,
-    ) {
-        agent.status = report.status;
-        // Only a real confirmation prompt drives auto-accept — never a plain
-        // input prompt or a finished (`Done`) turn.
-        if report.awaiting_confirmation {
-            maybe_auto_accept(agent, auto_accept, Local::now());
-        }
-    }
-
+    );
     agent.last_capture = state.last_capture;
     agent.last_change_at = state.last_change_at;
     agent.shell_working = shell_session_working(&agent.tmux_session);
+    match report {
+        Some(report) => {
+            agent.status = report.status;
+            // Only a real confirmation prompt drives auto-accept — never a
+            // plain input prompt or a finished (`Done`) turn.
+            if report.awaiting_confirmation {
+                maybe_auto_accept(agent, auto_accept, Local::now());
+            }
+            if matches!(report.status, Status::Dead | Status::BranchOnly) {
+                agent.pane_pid = None;
+                agent.tracked_command = None;
+            } else {
+                refresh_process(
+                    &agent.tmux_session,
+                    &mut agent.pane_pid,
+                    &mut agent.tracked_command,
+                    processes,
+                );
+            }
+        }
+        None => {
+            agent.pane_pid = None;
+            agent.tracked_command = None;
+        }
+    }
 }
 
 /// Refresh the status of a repo's own main-worktree AI session by *observing*
@@ -57,7 +81,12 @@ pub fn refresh_agent(repo_path: &Path, agent: &mut crate::model::AgentNode, auto
 /// not auto-launch an AI. When no session exists the status is cleared to
 /// `None` so the tree shows no badge; a transient `tmux` probe failure keeps the
 /// previous status until the next tick.
-pub fn refresh_repo_main(session: &str, repo: &mut crate::model::RepoNode) {
+pub fn refresh_repo_main(
+    session: &str,
+    repo: &mut crate::model::RepoNode,
+    processes: Option<&ProcSnapshot>,
+) {
+    repo.main_tracked_command = None;
     match tmux::has_session(session) {
         Ok(true) => {}
         Ok(false) => {
@@ -65,12 +94,18 @@ pub fn refresh_repo_main(session: &str, repo: &mut crate::model::RepoNode) {
             repo.main_last_capture = None;
             repo.main_last_change_at = None;
             repo.main_shell_working = false;
+            repo.main_pane_pid = None;
+            repo.main_tracked_command = None;
             return;
         }
-        Err(_) => return,
+        Err(_) => {
+            repo.main_pane_pid = None;
+            return;
+        }
     }
 
     let Ok(capture) = tmux::capture_text(session) else {
+        repo.main_pane_pid = None;
         return;
     };
     let mut state = WatchStatusState {
@@ -81,6 +116,28 @@ pub fn refresh_repo_main(session: &str, repo: &mut crate::model::RepoNode) {
     repo.main_last_capture = state.last_capture;
     repo.main_last_change_at = state.last_change_at;
     repo.main_shell_working = shell_session_working(session);
+    refresh_process(
+        session,
+        &mut repo.main_pane_pid,
+        &mut repo.main_tracked_command,
+        processes,
+    );
+}
+
+fn refresh_process(
+    session: &str,
+    pane_pid: &mut Option<u32>,
+    tracked_command: &mut Option<String>,
+    processes: Option<&ProcSnapshot>,
+) {
+    *tracked_command = None;
+    let Some(processes) = processes else {
+        return;
+    };
+    if pane_pid.is_none_or(|pid| !processes.contains(pid)) {
+        *pane_pid = tmux::pane_pid(session).ok().flatten();
+    }
+    *tracked_command = pane_pid.and_then(|pid| processes.tracked_command(pid));
 }
 
 /// Classify an agent's status. The tmux session is the source of truth for
@@ -142,33 +199,7 @@ fn shell_session_working(ai_session: &str) -> bool {
         return false;
     }
     match tmux::pane_current_command(&shell) {
-        Ok(Some(cmd)) => !is_login_shell(&cmd),
+        Ok(Some(cmd)) => !proc::is_shell_name(&cmd),
         _ => false,
-    }
-}
-
-/// Whether `cmd` is an interactive shell sitting at its prompt (idle). Login
-/// shells report with a leading `-` (e.g. `-zsh`), which is tolerated.
-fn is_login_shell(cmd: &str) -> bool {
-    matches!(
-        cmd.trim_start_matches('-'),
-        "zsh" | "bash" | "fish" | "sh" | "dash" | "ksh" | "tcsh" | "csh"
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shell_names_are_idle_other_commands_are_working() {
-        assert!(is_login_shell("zsh"));
-        assert!(is_login_shell("-zsh"));
-        assert!(is_login_shell("bash"));
-        assert!(is_login_shell("fish"));
-        assert!(!is_login_shell("cargo"));
-        assert!(!is_login_shell("robco"));
-        assert!(!is_login_shell("sleep"));
-        assert!(!is_login_shell("nvim"));
     }
 }

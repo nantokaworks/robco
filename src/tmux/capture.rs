@@ -79,3 +79,18 @@ pub fn pane_current_command(session: &str) -> Result<Option<String>> {
     let trimmed = value.trim();
     Ok((!trimmed.is_empty()).then(|| trimmed.to_string()))
 }
+
+/// PID of the process tmux started for the session's active pane.
+pub fn pane_pid(session: &str) -> Result<Option<u32>> {
+    let output = Command::new("tmux")
+        .args([
+            "display-message",
+            "-p",
+            "-t",
+            &exact(session),
+            "#{pane_pid}",
+        ])
+        .output()?;
+    let value = command_output(output, "tmux display-message")?;
+    Ok(value.trim().parse().ok())
+}

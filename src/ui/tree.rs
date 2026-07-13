@@ -33,9 +33,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
                 let prefix = app.config.project_icon.marker(expanded);
-                // Bare worktree count as a dim suffix, footer-ident style
-                // (`ROBCO v0.1.20`): the name carries the accent, the count
-                // stays legible but quiet.
                 let mut spans = vec![
                     Span::styled(format!("{marker} {prefix} {}", repo.name), style),
                     Span::styled(
@@ -43,17 +40,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         if selected { style } else { THEME.hint_style() },
                     ),
                 ];
-                // Off-launch-dir repos need their location spelled out — the
-                // name alone no longer identifies where the repo lives.
                 if !app.repo_is_local(repo) {
                     spans.push(Span::styled(
                         format!("  {}", short_path(&repo.path)),
                         if selected { style } else { THEME.muted_style() },
                     ));
                 }
-                // The repo's own main-worktree AI session progress. Shown only
-                // when such a session is running, so the parent node reflects AI
-                // work done directly on `main`.
                 if let Some(status) = repo.main_status {
                     let status_text = if status == Status::Running {
                         super::spinner::frame(app.started.elapsed())
@@ -73,6 +65,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     spans.push(Span::styled(
                         super::spinner::term_frame(app.started.elapsed()),
                         THEME.term_style(),
+                    ));
+                }
+                if repo.main_status.is_some_and(shows_process)
+                    && let Some(command) = &repo.main_tracked_command
+                {
+                    spans.push(Span::styled(
+                        format!("  ⚙ {}", truncate_command(command)),
+                        THEME.proc_style(),
                     ));
                 }
                 if !expanded && !repo.agents.is_empty() {
@@ -154,6 +154,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         THEME.term_style(),
                     ));
                 }
+                if shows_process(agent.status)
+                    && let Some(command) = &agent.tracked_command
+                {
+                    spans.push(Span::styled(
+                        format!(" ⚙ {}", truncate_command(command)),
+                        THEME.proc_style(),
+                    ));
+                }
                 lines.push(Line::from(spans));
             }
             Selection::ChildWorktree { repo, agent, child } => {
@@ -220,8 +228,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         .style(THEME.accent_style());
     frame.render_widget(tree, panes.tree);
 
-    // Status row: the ROBCO + version identity pinned bottom-left (brand
-    // bold-accent, version in hint grey), key hints centred in the rest.
     let version = format!("v{}", env!("CARGO_PKG_VERSION"));
     let ident_width = ("ROBCO ".len() + version.chars().count() + 2) as u16;
     let zones = layout::footer_zones(root.footer, ident_width);
@@ -236,8 +242,21 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     frame.render_widget(hints, zones.hints);
 }
 
-/// Home-relative rendering of a repo path (`/Users/x/abyss/dropr` →
-/// `~/abyss/dropr`), used to locate off-launch-dir repos at a glance.
+fn shows_process(status: Status) -> bool {
+    matches!(status, Status::Waiting | Status::Done | Status::Idle)
+}
+
+fn truncate_command(command: &str) -> String {
+    const MAX: usize = 16;
+    let mut chars = command.chars();
+    let prefix: String = chars.by_ref().take(MAX).collect();
+    if chars.next().is_some() {
+        format!("{}…", prefix.chars().take(MAX - 1).collect::<String>())
+    } else {
+        prefix
+    }
+}
+
 fn short_path(path: &std::path::Path) -> String {
     match dirs::home_dir().and_then(|home| path.strip_prefix(home).ok()) {
         Some(rest) => format!("~/{}", rest.display()),
@@ -245,9 +264,6 @@ fn short_path(path: &std::path::Path) -> String {
     }
 }
 
-/// Key hint definitions for the footer, as `(key glyph, action label)` pairs.
-/// Special keys use geeky glyphs (`⇞⇟` page, `⇥` tab, `↵` enter) to lean into
-/// the ROBCO terminal aesthetic.
 const KEY_HINTS: &[(&str, &str)] = &[
     ("↑↓/jk", "move"),
     ("⇞⇟", "scroll"),
@@ -261,9 +277,6 @@ const KEY_HINTS: &[(&str, &str)] = &[
     ("q", "quit"),
 ];
 
-/// Build the centre key-hint line: either a transient status message, or the
-/// geeky key-hint list — Norton-Commander style bracketed keys (brackets in
-/// accent green, key glyph bold) with UPPERCASE labels in readable hint grey.
 fn hints_line(message: Option<&str>) -> Line<'static> {
     if let Some(text) = message {
         return Line::from(Span::styled(text.to_string(), THEME.hint_style()));

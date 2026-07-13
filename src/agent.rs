@@ -59,6 +59,8 @@ pub fn create_agent(
         last_change_at: None,
         last_auto_accept_at: None,
         shell_working: false,
+        pane_pid: None,
+        tracked_command: None,
         children: Vec::new(),
     })
 }
@@ -121,6 +123,8 @@ pub fn adopt_worktree(
         last_change_at: None,
         last_auto_accept_at: None,
         shell_working: false,
+        pane_pid: None,
+        tracked_command: None,
         children: Vec::new(),
     }
 }

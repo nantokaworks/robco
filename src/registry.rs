@@ -86,6 +86,8 @@ mod tests {
             main_last_capture: None,
             main_last_change_at: None,
             main_shell_working: false,
+            main_pane_pid: None,
+            main_tracked_command: None,
         }
     }
 
@@ -107,6 +109,8 @@ mod tests {
             last_change_at: None,
             last_auto_accept_at: None,
             shell_working: false,
+            pane_pid: None,
+            tracked_command: None,
             children: Vec::new(),
         }
     }

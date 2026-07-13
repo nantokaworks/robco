@@ -199,6 +199,8 @@ impl App {
             main_last_capture: None,
             main_last_change_at: None,
             main_shell_working: false,
+            main_pane_pid: None,
+            main_tracked_command: None,
         });
         self.expanded.push(true);
         if let Err(err) = self.registry.save() {

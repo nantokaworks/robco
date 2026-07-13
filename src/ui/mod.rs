@@ -156,11 +156,21 @@ impl App {
 
     fn tick(&mut self) {
         let prefix = self.config.tmux_session_prefix.clone();
+        let processes = self
+            .config
+            .process_indicator
+            .then(status::proc::ProcSnapshot::capture)
+            .and_then(Result::ok);
         for repo in &mut self.registry.repos {
             let main_session = agent::repo_claude_session_name(&prefix, repo);
-            status::refresh_repo_main(&main_session, repo);
+            status::refresh_repo_main(&main_session, repo, processes.as_ref());
             for agent in &mut repo.agents {
-                status::refresh_agent(&repo.path, agent, self.config.auto_accept);
+                status::refresh_agent(
+                    &repo.path,
+                    agent,
+                    self.config.auto_accept,
+                    processes.as_ref(),
+                );
             }
         }
     }
