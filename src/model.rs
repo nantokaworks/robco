@@ -27,6 +27,10 @@ pub struct RepoNode {
     /// a foreground command. Runtime only; refreshed each tick, never persisted.
     #[serde(skip)]
     pub main_shell_working: bool,
+    #[serde(skip)]
+    pub main_pane_pid: Option<u32>,
+    #[serde(skip)]
+    pub main_tracked_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +58,10 @@ pub struct AgentNode {
     /// foreground command. Runtime only; refreshed each tick, never persisted.
     #[serde(skip)]
     pub shell_working: bool,
+    #[serde(skip)]
+    pub pane_pid: Option<u32>,
+    #[serde(skip)]
+    pub tracked_command: Option<String>,
     #[serde(skip)]
     pub children: Vec<ChildWorktree>,
 }

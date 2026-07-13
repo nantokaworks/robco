@@ -26,6 +26,8 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 last_change_at: None,
                 last_auto_accept_at: None,
                 shell_working: false,
+                pane_pid: None,
+                tracked_command: None,
                 children: Vec::new(),
             }],
             dropr: None,
@@ -33,6 +35,8 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
             main_last_capture: None,
             main_last_change_at: None,
             main_shell_working: false,
+            main_pane_pid: None,
+            main_tracked_command: None,
         }],
     }
 }

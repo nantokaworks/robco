@@ -59,9 +59,7 @@ pub struct NotifyConfig {
     pub enabled: bool,
     pub waiting: bool,
     pub idle: bool,
-    /// Notify when the AI finishes a turn (`Status::Done`). Defaults to on;
-    /// carries an explicit serde default so configs written before the `done`
-    /// state existed keep notifying on completion.
+    /// Notify when the AI finishes a turn (`Status::Done`). Defaults to on.
     #[serde(default = "notify_flag_default")]
     pub done: bool,
     pub dead: bool,
@@ -112,6 +110,8 @@ pub struct Config {
     pub dropr_overlay: bool,
     #[serde(default)]
     pub auto_accept: bool,
+    #[serde(default = "notify_flag_default")]
+    pub process_indicator: bool,
     #[serde(default)]
     pub merge_strategy: MergeStrategy,
     #[serde(default)]
@@ -142,6 +142,7 @@ impl Default for Config {
             poll_interval_ms: 750,
             dropr_overlay: true,
             auto_accept: false,
+            process_indicator: true,
             merge_strategy: MergeStrategy::default(),
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
