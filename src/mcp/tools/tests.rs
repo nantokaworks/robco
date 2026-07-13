@@ -14,6 +14,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
             path: "/repo".into(),
             name: "repo".to_string(),
             remote_url: None,
+            pinned: false,
             agents: vec![AgentNode {
                 id: id.to_string(),
                 title: "task".to_string(),

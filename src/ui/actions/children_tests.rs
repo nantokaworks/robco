@@ -148,6 +148,7 @@ fn repo_node(path: std::path::PathBuf) -> RepoNode {
         path,
         name: "repo".into(),
         remote_url: None,
+        pinned: false,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: Vec::new(),

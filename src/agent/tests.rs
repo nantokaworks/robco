@@ -41,6 +41,7 @@ fn repo_named(name: &str) -> RepoNode {
         path: format!("/tmp/{name}").into(),
         name: name.to_string(),
         remote_url: None,
+        pinned: false,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: Vec::new(),

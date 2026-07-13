@@ -13,6 +13,9 @@ pub struct RepoNode {
     pub path: PathBuf,
     pub name: String,
     pub remote_url: Option<String>,
+    /// Persisted manual registration; keeps an agent-less repo listed.
+    #[serde(default)]
+    pub pinned: bool,
     #[serde(default)]
     pub agents: Vec<AgentNode>,
     #[serde(skip)]

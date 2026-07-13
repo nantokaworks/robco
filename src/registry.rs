@@ -50,6 +50,7 @@ impl Registry {
                     // re-scan does not drop worktrees or flicker the repo's
                     // main-session badge. Prefer a freshly-resolved dropr
                     // overlay, falling back to the previous one.
+                    repo.pinned = repo.pinned || existing.pinned;
                     repo.agents = existing.agents;
                     repo.main_status = existing.main_status;
                     repo.main_last_capture = existing.main_last_capture;
@@ -61,12 +62,13 @@ impl Registry {
             .collect();
 
         // Repos registered from another launch directory are never in the
-        // discovered set. Keep the ones that still track agents — their
-        // worktrees and tmux sessions are machine-global, so a launch
-        // elsewhere must not erase the records needed to reattach them.
-        // Agent-less leftovers carry no state worth keeping and are dropped.
-        self.repos
-            .extend(known.into_values().filter(|repo| !repo.agents.is_empty()));
+        // discovered set. Keep ones that still track agents, plus pinned manual
+        // registrations. Agent-less, unpinned leftovers are dropped.
+        self.repos.extend(
+            known
+                .into_values()
+                .filter(|repo| !repo.agents.is_empty() || repo.pinned),
+        );
     }
 }
 
@@ -83,6 +85,7 @@ mod tests {
             path: path.into(),
             name: path.rsplit('/').next().unwrap_or("repo").to_string(),
             remote_url: None,
+            pinned: false,
             agents,
             dropr: None,
             dropr_tasks: Vec::new(),
@@ -149,6 +152,22 @@ mod tests {
     }
 
     #[test]
+    fn merge_keeps_undiscovered_pinned_repo_without_agents() {
+        let mut pinned = repo("/a/one", Vec::new());
+        pinned.pinned = true;
+        let mut registry = Registry {
+            version: 1,
+            repos: vec![pinned],
+        };
+
+        registry.merge_discovered(vec![repo("/b/two", Vec::new())]);
+
+        assert_eq!(registry.repos.len(), 2);
+        assert_eq!(registry.repos[1].path.to_string_lossy(), "/a/one");
+        assert!(registry.repos[1].pinned);
+    }
+
+    #[test]
     fn runtime_fields_are_not_serialized_and_default_when_absent() {
         let mut agent = dummy_agent();
         agent.subagents.push(TaskSubagent {
@@ -170,6 +189,7 @@ mod tests {
             modified_at: None,
         });
         let mut repo = repo("/repo", vec![agent]);
+        repo.pinned = true;
         repo.main_subagents_active = 2;
 
         let json = serde_json::to_string(&repo).unwrap();
@@ -177,9 +197,15 @@ mod tests {
         assert!(!json.contains("subagents"));
         assert!(!json.contains("main_subagents_active"));
         let loaded: RepoNode = serde_json::from_str(&json).unwrap();
+        assert!(loaded.pinned);
         assert_eq!(loaded.main_subagents_active, 0);
         assert!(loaded.agents[0].subagents.is_empty());
         assert!(loaded.agents[0].children.is_empty());
+
+        let mut legacy = serde_json::to_value(&repo).unwrap();
+        legacy.as_object_mut().unwrap().remove("pinned");
+        let legacy: RepoNode = serde_json::from_value(legacy).unwrap();
+        assert!(!legacy.pinned);
     }
 
     #[test]
@@ -191,5 +217,20 @@ mod tests {
         registry.merge_discovered(vec![repo("/a/one", Vec::new())]);
         assert_eq!(registry.repos.len(), 1);
         assert_eq!(registry.repos[0].agents.len(), 1);
+    }
+
+    #[test]
+    fn merge_carries_pinned_into_rediscovered_repo() {
+        let mut pinned = repo("/a/one", Vec::new());
+        pinned.pinned = true;
+        let mut registry = Registry {
+            version: 1,
+            repos: vec![pinned],
+        };
+
+        registry.merge_discovered(vec![repo("/a/one", Vec::new())]);
+
+        assert_eq!(registry.repos.len(), 1);
+        assert!(registry.repos[0].pinned);
     }
 }

@@ -120,15 +120,16 @@ impl App {
         repo.path.parent() == Some(self.launch_dir.as_path())
     }
 
-    /// Registry indices of off-launch-dir repos that still have agents. Repos
-    /// outside the launch directory with no agents stay hidden — they carry no
-    /// live worktree or tmux session the user could lose track of.
+    /// Registry indices of off-launch-dir repos that still have agents or were
+    /// pinned by manual registration.
     pub(in crate::ui) fn other_location_repos(&self) -> Vec<usize> {
         self.registry
             .repos
             .iter()
             .enumerate()
-            .filter(|(_, repo)| !self.repo_is_local(repo) && !repo.agents.is_empty())
+            .filter(|(_, repo)| {
+                !self.repo_is_local(repo) && (!repo.agents.is_empty() || repo.pinned)
+            })
             .map(|(idx, _)| idx)
             .collect()
     }
