@@ -9,7 +9,7 @@ impl App {
     pub(in crate::ui) fn confirm_kill_selected(&mut self) {
         match self.selected_item() {
             Some(Selection::ChildWorktree { .. }) => {
-                self.mode = Mode::Message("kill is not available for child worktrees".to_string());
+                self.show_message("kill is not available for child worktrees");
             }
             Some(Selection::Agent { repo, agent }) => {
                 if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
@@ -47,10 +47,10 @@ impl App {
                     } else {
                         self.registry.repos[repo].agents.remove(agent_idx);
                         self.registry.save()?;
-                        self.mode = Mode::Message(format!("killed {}", selected_agent.title));
+                        self.show_message(format!("killed {}", selected_agent.title));
                     }
                 }
-                Err(err) => self.mode = Mode::Message(err.to_string()),
+                Err(err) => self.show_message(err.to_string()),
             }
         }
         Ok(())
@@ -68,9 +68,9 @@ impl App {
                 Ok(()) => {
                     self.registry.repos[repo].agents.remove(agent_idx);
                     self.registry.save()?;
-                    self.mode = Mode::Message(format!("deleted branch {}", selected_agent.branch));
+                    self.show_message(format!("deleted branch {}", selected_agent.branch));
                 }
-                Err(err) => self.mode = Mode::Message(err.to_string()),
+                Err(err) => self.show_message(err.to_string()),
             }
         }
         Ok(())
@@ -78,7 +78,7 @@ impl App {
 
     pub(in crate::ui) fn merge_selected(&mut self) {
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
-            self.mode = Mode::Message("merge is not available for child worktrees".to_string());
+            self.show_message("merge is not available for child worktrees");
             return;
         }
         let Some(Selection::Agent {
@@ -92,19 +92,18 @@ impl App {
         let repo_node = self.registry.repos[repo].clone();
         let selected = repo_node.agents[agent_idx].clone();
         if selected.status == Status::BranchOnly {
-            self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+            self.show_message(format!("branch remains: {}", selected.branch));
             return;
         }
 
         match git::worktree_is_clean(&selected.worktree_path) {
             Ok(true) => {}
             Ok(false) => {
-                self.mode =
-                    Mode::Message("commit or clean untracked changes before merge".to_string());
+                self.show_message("commit or clean untracked changes before merge");
                 return;
             }
             Err(err) => {
-                self.mode = Mode::Message(err.to_string());
+                self.show_message(err.to_string());
                 return;
             }
         }
@@ -117,12 +116,12 @@ impl App {
                 }
             }
             Ok(false) => {
-                self.mode = Mode::Message(format!(
+                self.show_message(format!(
                     "no open PR for {}; create a PR first",
                     selected.branch
                 ));
             }
-            Err(err) => self.mode = Mode::Message(err.to_string()),
+            Err(err) => self.show_message(err.to_string()),
         }
     }
 
@@ -139,47 +138,47 @@ impl App {
             &selected.branch,
             self.config.merge_strategy.gh_flag(),
         ) {
-            self.mode = Mode::Message(err.to_string());
+            self.show_message(err.to_string());
             return Ok(());
         }
         if let Err(err) = git::pull_ff_only(&repo_node.path) {
-            self.mode = Mode::Message(err.to_string());
+            self.show_message(err.to_string());
             return Ok(());
         }
         if selected.worktree_path.exists()
             && let Err(err) = git::remove_worktree(&repo_node.path, &selected.worktree_path)
         {
-            self.mode = Mode::Message(err.to_string());
+            self.show_message(err.to_string());
             return Ok(());
         }
         if git::branch_exists(&repo_node.path, &selected.branch).unwrap_or(false)
             && let Err(err) = git::delete_branch(&repo_node.path, &selected.branch)
         {
-            self.mode = Mode::Message(err.to_string());
+            self.show_message(err.to_string());
             return Ok(());
         }
         let _ = git::delete_remote_branch(&repo_node.path, &selected.branch);
 
         self.registry.repos[repo].agents.remove(agent_idx);
         self.registry.save()?;
-        self.mode = Mode::Message(format!("merged & landed {}", selected.branch));
+        self.show_message(format!("merged & landed {}", selected.branch));
         Ok(())
     }
 
     pub(in crate::ui) fn add_repo_path(&mut self, path: &str) {
         let path = std::path::PathBuf::from(path);
         if !crate::discover::is_git_repo(&path) {
-            self.mode = Mode::Message("path is not a git repository".to_string());
+            self.show_message("path is not a git repository");
             return;
         }
 
         let Ok(path) = path.canonicalize() else {
-            self.mode = Mode::Message("could not resolve path".to_string());
+            self.show_message("could not resolve path");
             return;
         };
 
         if self.registry.repos.iter().any(|repo| repo.path == path) {
-            self.mode = Mode::Message("repository already listed".to_string());
+            self.show_message("repository already listed");
             return;
         }
 
@@ -205,9 +204,9 @@ impl App {
         });
         self.expanded.push(true);
         if let Err(err) = self.registry.save() {
-            self.mode = Mode::Message(err.to_string());
+            self.show_message(err.to_string());
         } else {
-            self.mode = Mode::Message("repository added".to_string());
+            self.show_message("repository added");
         }
     }
 }

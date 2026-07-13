@@ -4,7 +4,7 @@ use crate::{
     tmux,
 };
 
-use super::super::{App, Mode, suspend_terminal};
+use super::super::{App, suspend_terminal};
 
 impl App {
     /// Suspend the TUI and hand the terminal to a tmux session. A failure here
@@ -15,7 +15,7 @@ impl App {
     fn attach_session(&mut self, session: &str) {
         self.force_redraw = true;
         if let Err(err) = suspend_terminal(|| tmux::attach(session)) {
-            self.mode = Mode::Message(err.to_string());
+            self.show_message(err.to_string());
         }
     }
 
@@ -27,7 +27,7 @@ impl App {
             if let Some(session) = session {
                 self.attach_session(&session);
             } else {
-                self.mode = Mode::Message("no live session in this child worktree".to_string());
+                self.show_message("no live session in this child worktree");
             }
             return Ok(());
         }
@@ -40,12 +40,12 @@ impl App {
         };
         let selected = self.registry.repos[repo].agents[agent_idx].clone();
         if selected.status == Status::BranchOnly {
-            self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+            self.show_message(format!("branch remains: {}", selected.branch));
             return Ok(());
         }
         match agent::ensure_agent_session(&selected) {
             Ok(()) => self.attach_session(&selected.tmux_session),
-            Err(err) => self.mode = Mode::Message(err.to_string()),
+            Err(err) => self.show_message(err.to_string()),
         }
         Ok(())
     }
@@ -58,12 +58,12 @@ impl App {
             }) => {
                 let selected = self.registry.repos[repo].agents[agent_idx].clone();
                 if selected.status == Status::BranchOnly {
-                    self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+                    self.show_message(format!("branch remains: {}", selected.branch));
                     return Ok(());
                 }
                 match agent::ensure_shell_session(&selected) {
                     Ok(()) => self.attach_session(&agent::shell_session_name(&selected)),
-                    Err(err) => self.mode = Mode::Message(err.to_string()),
+                    Err(err) => self.show_message(err.to_string()),
                 }
             }
             Some(Selection::Repo(repo)) => {
@@ -73,7 +73,7 @@ impl App {
                     Ok(()) => {
                         self.attach_session(&agent::repo_shell_session_name(&prefix, &repo_node))
                     }
-                    Err(err) => self.mode = Mode::Message(err.to_string()),
+                    Err(err) => self.show_message(err.to_string()),
                 }
             }
             _ => {}
@@ -89,12 +89,12 @@ impl App {
             }) => {
                 let selected = self.registry.repos[repo].agents[agent_idx].clone();
                 if selected.status == Status::BranchOnly {
-                    self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+                    self.show_message(format!("branch remains: {}", selected.branch));
                     return Ok(());
                 }
                 match agent::ensure_agent_session(&selected) {
                     Ok(()) => self.attach_session(&selected.tmux_session),
-                    Err(err) => self.mode = Mode::Message(err.to_string()),
+                    Err(err) => self.show_message(err.to_string()),
                 }
             }
             Some(Selection::Repo(repo)) => {
@@ -104,7 +104,7 @@ impl App {
                     Ok(()) => {
                         self.attach_session(&agent::repo_claude_session_name(&prefix, &repo_node))
                     }
-                    Err(err) => self.mode = Mode::Message(err.to_string()),
+                    Err(err) => self.show_message(err.to_string()),
                 }
             }
             _ => {}
@@ -124,7 +124,7 @@ impl App {
 
     pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
-            self.mode = Mode::Message("restart is not available for child worktrees".to_string());
+            self.show_message("restart is not available for child worktrees");
             return Ok(());
         }
         if let Some(Selection::Agent {
@@ -134,12 +134,12 @@ impl App {
         {
             let selected = self.registry.repos[repo].agents[agent_idx].clone();
             if selected.status == Status::BranchOnly {
-                self.mode = Mode::Message(format!("branch remains: {}", selected.branch));
+                self.show_message(format!("branch remains: {}", selected.branch));
                 return Ok(());
             }
             match agent::restart_agent(&selected) {
-                Ok(()) => self.mode = Mode::Message(format!("restarted {}", selected.title)),
-                Err(err) => self.mode = Mode::Message(err.to_string()),
+                Ok(()) => self.show_message(format!("restarted {}", selected.title)),
+                Err(err) => self.show_message(err.to_string()),
             }
         }
         Ok(())

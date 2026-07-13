@@ -2,7 +2,7 @@ use std::process::Command;
 
 use crate::config::{self, Config};
 
-use super::super::{App, Mode, suspend_terminal};
+use super::super::{App, suspend_terminal};
 
 impl App {
     /// Suspend the TUI and open `~/.robco/config.json` in the user's external
@@ -17,11 +17,11 @@ impl App {
             Ok(()) => match Config::load() {
                 Ok(config) => {
                     self.config = config;
-                    self.mode = Mode::Message("settings reloaded".to_string());
+                    self.show_message("settings reloaded");
                 }
-                Err(err) => self.mode = Mode::Message(err.to_string()),
+                Err(err) => self.show_message(err.to_string()),
             },
-            Err(err) => self.mode = Mode::Message(err.to_string()),
+            Err(err) => self.show_message(err.to_string()),
         }
     }
 

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{agent, model::OrphanSession, tmux};
 
-use super::super::{App, Mode};
+use super::super::App;
 
 impl App {
     /// Rebuild the orphan-session list: robco-prefixed tmux sessions that no
@@ -61,10 +61,10 @@ impl App {
         match tmux::kill_session(session) {
             Ok(()) => {
                 self.orphans.retain(|orphan| orphan.name != session);
-                self.mode = Mode::Message(format!("killed {session}"));
+                self.show_message(format!("killed {session}"));
                 self.clamp_selection();
             }
-            Err(err) => self.mode = Mode::Message(err.to_string()),
+            Err(err) => self.show_message(err.to_string()),
         }
     }
 }

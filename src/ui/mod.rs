@@ -64,7 +64,6 @@ enum Mode {
     ConfirmKillOrphan {
         session: String,
     },
-    Message(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +125,7 @@ pub struct App {
     pub(crate) started: Instant,
     force_redraw: bool,
     mode: Mode,
+    message: Option<(String, Instant)>,
 }
 
 impl App {
@@ -146,6 +146,7 @@ impl App {
             started: Instant::now(),
             force_redraw: false,
             mode: Mode::Normal,
+            message: None,
         };
         if app.prune_unmanaged_agents() {
             let _ = app.registry.save();
@@ -153,6 +154,10 @@ impl App {
         app.refresh_orphans();
         app.restore_preview();
         app
+    }
+
+    fn show_message(&mut self, text: impl Into<String>) {
+        self.message = Some((text.into(), Instant::now()));
     }
 
     fn tick(&mut self) {
