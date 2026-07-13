@@ -7,7 +7,7 @@ use crate::{
     tmux,
 };
 
-use super::{App, PreviewPane};
+use super::{App, PreviewPane, preview::PREVIEW_PADDING};
 
 /// The tmux session mirrored by the current preview tab, when that tab shows a
 /// live session (CLAUDE / TERM tabs and orphan previews). `None` for static
@@ -39,8 +39,8 @@ pub(in crate::ui) fn live_session(app: &App) -> Option<String> {
 /// Resize the mirrored session to the preview's inner size, then capture one
 /// screenful `offset` lines back from the live edge.
 pub(in crate::ui) fn capture(session: &str, area: Rect, offset: u16) -> Option<Text<'static>> {
-    let width = area.width.saturating_sub(2);
-    let height = area.height.saturating_sub(2);
+    let width = area.width.saturating_sub(2 + 2 * PREVIEW_PADDING);
+    let height = area.height.saturating_sub(2 + 2 * PREVIEW_PADDING);
     if width == 0 || height == 0 {
         return None;
     }
