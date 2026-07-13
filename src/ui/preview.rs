@@ -59,7 +59,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             });
             (title, text)
         }
-        (_, Some(Selection::Repo(repo_idx))) => repo_summary(&registry.repos[repo_idx]),
+        (_, Some(Selection::Repo(repo_idx))) => repo_summary(
+            &registry.repos[repo_idx],
+            panes.preview.width.saturating_sub(4),
+        ),
         (PreviewPane::Claude, Some(Selection::Agent { repo, agent })) => {
             let selection = Some(Selection::Agent { repo, agent });
             let repo = &registry.repos[repo];

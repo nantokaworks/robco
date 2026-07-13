@@ -18,13 +18,14 @@ use crate::{Result, agent, config::Config, model::Selection, registry::Registry,
 const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
+mod blockfont;
 mod dialog;
 mod event_loop;
 mod input;
 mod layout;
 mod list;
-mod logo;
 mod preview;
+mod repo_description;
 mod scrollback;
 pub(crate) mod spinner;
 mod summary;
