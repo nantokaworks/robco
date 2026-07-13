@@ -24,7 +24,6 @@ impl App {
 
         let worktrees_removed = self.prune_unmanaged_agents();
 
-        // Include repos retained by `merge_discovered` because they track agents.
         let mut expected_paths: HashSet<String> =
             discovered.iter().map(|repo| path_key(&repo.path)).collect();
         for repo in &self.registry.repos {
@@ -40,8 +39,7 @@ impl App {
             .collect();
         let repos_changed = expected_paths != current_paths;
 
-        // Snapshot identity-keyed state so selection and expansion survive any
-        // re-ordering caused by a newly-added project sorting into the middle.
+        // Preserve expansion state when newly discovered repos change the order.
         let expanded_by_path: HashMap<String, bool> = self
             .registry
             .repos
@@ -92,6 +90,7 @@ impl App {
         if self.config.subagent_indicator {
             self.refresh_subagents();
         }
+        self.refresh_dropr_tasks();
         self.refresh_orphans();
     }
 
@@ -269,6 +268,7 @@ mod tests {
             remote_url: None,
             agents: Vec::new(),
             dropr: None,
+            dropr_tasks: Vec::new(),
             main_status: None,
             main_last_capture: None,
             main_last_change_at: None,

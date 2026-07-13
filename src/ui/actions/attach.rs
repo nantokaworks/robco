@@ -123,6 +123,15 @@ impl App {
     }
 
     pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
+        if let Some(Selection::Repo(repo)) = self.selected_item() {
+            let message = if self.refresh_repo_dropr_tasks(repo) {
+                "refreshed repo tasks"
+            } else {
+                "repo is not linked to dropr"
+            };
+            self.show_message(message);
+            return Ok(());
+        }
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
             self.show_message("restart is not available for child worktrees");
             return Ok(());
