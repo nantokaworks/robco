@@ -1,23 +1,29 @@
-use ratatui::text::{Line, Span, Text};
+use ratatui::{
+    style::Modifier,
+    text::{Line, Span, Text},
+};
 
 use crate::model::{AgentNode, ChildWorktree, RepoNode};
 
-use super::{
-    logo::{ROBCO_FLAVOR, ROBCO_LOGO},
-    theme::DEFAULT as THEME,
-};
+use super::{blockfont, repo_description, theme::DEFAULT as THEME};
 
-pub(in crate::ui) fn repo_summary(repo: &RepoNode) -> (String, Text<'static>) {
-    let mut lines: Vec<_> = ROBCO_LOGO
-        .iter()
-        .map(|line| Line::from(Span::styled(*line, THEME.accent_style())))
-        .chain(
-            ROBCO_FLAVOR
-                .iter()
-                .map(|line| Line::from(Span::styled(*line, THEME.muted_style()))),
-        )
-        .chain([Line::from("")])
+pub(in crate::ui) fn repo_summary(repo: &RepoNode, width: u16) -> (String, Text<'static>) {
+    let rendered_name = blockfont::render_fitting(&repo.name, usize::from(width));
+    let name_style = if rendered_name.is_some() {
+        THEME.accent_style()
+    } else {
+        THEME.accent_style().add_modifier(Modifier::BOLD)
+    };
+    let mut lines: Vec<_> = rendered_name
+        .unwrap_or_else(|| vec![repo.name.clone()])
+        .into_iter()
+        .map(|line| Line::from(Span::styled(line, name_style)))
         .collect();
+
+    if let Some(description) = repo_description::get(repo) {
+        lines.push(Line::from(Span::styled(description, THEME.muted_style())));
+    }
+    lines.push(Line::from(""));
 
     lines.extend([
         Line::from(vec![
