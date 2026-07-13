@@ -53,6 +53,8 @@ impl App {
     }
 
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        self.message = None;
+
         match &mut self.mode {
             Mode::PromptAgent {
                 repo,
@@ -74,9 +76,9 @@ impl App {
                             Ok(agent) => {
                                 self.registry.repos[repo_idx].agents.push(agent);
                                 self.registry.save()?;
-                                self.mode = Mode::Message(format!("created agent {title}"));
+                                self.show_message(format!("created agent {title}"));
                             }
-                            Err(err) => self.mode = Mode::Message(err.to_string()),
+                            Err(err) => self.show_message(err.to_string()),
                         }
                     }
                 }
@@ -129,7 +131,8 @@ impl App {
                     self.delete_agent_branch(repo, agent)?;
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                    self.mode = Mode::Message("kept branch".to_string());
+                    self.mode = Mode::Normal;
+                    self.show_message("kept branch");
                 }
                 _ => {}
             },
@@ -142,7 +145,6 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
-            Mode::Message(_) => self.mode = Mode::Normal,
             Mode::Help => self.mode = Mode::Normal,
             Mode::Normal => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
@@ -231,5 +233,28 @@ impl App {
 
         self.clamp_selection();
         Ok(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use super::*;
+    use crate::{config::Config, registry::Registry};
+
+    #[test]
+    fn visible_message_does_not_swallow_next_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.show_message("done");
+
+        let quit = app
+            .handle_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!quit);
+        assert!(app.message.is_none());
+        assert!(matches!(app.mode, Mode::Help));
     }
 }

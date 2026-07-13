@@ -117,7 +117,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("press any key to close"),
             ],
         ),
-        Mode::Message(_) | Mode::Normal => return,
+        Mode::Normal => return,
     };
 
     let width = lines

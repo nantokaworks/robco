@@ -24,7 +24,7 @@ use crate::{
     registry::Registry,
 };
 
-use super::{App, DISCOVERY_INTERVAL, Mode, dialog, preview, spinner, tree};
+use super::{App, DISCOVERY_INTERVAL, dialog, preview, spinner, tree};
 
 pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()> {
     enable_raw_mode()?;
@@ -68,6 +68,8 @@ fn run_loop<B: ratatui::backend::Backend>(
     notify_rx: &mpsc::Receiver<String>,
     notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
 ) -> Result<()> {
+    const MESSAGE_DURATION: Duration = Duration::from_secs(4);
+
     let tick_interval = Duration::from_millis(app.config.poll_interval_ms);
     let mut last_tick = Instant::now() - tick_interval;
     let mut last_discovery = Instant::now();
@@ -86,6 +88,14 @@ fn run_loop<B: ratatui::backend::Backend>(
         }
         drain_stdout_notifications(notify_rx, app);
 
+        if app
+            .message
+            .as_ref()
+            .is_some_and(|(_, shown_at)| shown_at.elapsed() >= MESSAGE_DURATION)
+        {
+            app.message = None;
+        }
+
         if app.force_redraw {
             terminal.autoresize()?;
             terminal.clear()?;
@@ -93,11 +103,8 @@ fn run_loop<B: ratatui::backend::Backend>(
         }
         terminal.draw(|frame| {
             let visible = app.visible();
-            let message = match &app.mode {
-                Mode::Message(message) => Some(message.clone()),
-                _ => None,
-            };
-            tree::draw(frame, app, &visible, message.as_deref());
+            let message = app.message.as_ref().map(|(message, _)| message.as_str());
+            tree::draw(frame, app, &visible, message);
             preview::draw(
                 frame,
                 app,
