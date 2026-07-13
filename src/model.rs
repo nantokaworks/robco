@@ -54,6 +54,19 @@ pub struct AgentNode {
     /// foreground command. Runtime only; refreshed each tick, never persisted.
     #[serde(skip)]
     pub shell_working: bool,
+    #[serde(skip)]
+    pub children: Vec<ChildWorktree>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChildWorktree {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+    pub head: Option<String>,
+    pub clean: Option<bool>,
+    pub ahead_behind: Option<(u32, u32)>,
+    pub tmux_session: Option<String>,
+    pub modified_at: Option<DateTime<Local>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -102,6 +115,11 @@ pub enum Selection {
     Agent {
         repo: usize,
         agent: usize,
+    },
+    ChildWorktree {
+        repo: usize,
+        agent: usize,
+        child: usize,
     },
     /// Collapsible header of the "other locations" section listing repos that
     /// live outside the launch directory but still have agents.

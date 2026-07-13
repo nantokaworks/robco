@@ -156,6 +156,25 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 }
                 lines.push(Line::from(spans));
             }
+            Selection::ChildWorktree { repo, agent, child } => {
+                let child = &app.registry.repos[repo].agents[agent].children[child];
+                let label = child.branch.as_deref().unwrap_or_else(|| {
+                    child
+                        .path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("worktree")
+                });
+                let child_style = if selected { style } else { THEME.hint_style() };
+                let mut spans = vec![Span::styled(format!("{marker}     └ {label}"), child_style)];
+                if child.clean == Some(false) {
+                    spans.push(Span::styled(" *", child_style));
+                }
+                if child.tmux_session.is_some() {
+                    spans.push(Span::styled(" ⌁", child_style));
+                }
+                lines.push(Line::from(spans));
+            }
             Selection::OtherHeader => {
                 let count = app.other_location_repos().len();
                 let arrow = if app.other_collapsed { "▸" } else { "▾" };

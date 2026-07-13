@@ -8,6 +8,9 @@ use super::super::{App, Mode};
 impl App {
     pub(in crate::ui) fn confirm_kill_selected(&mut self) {
         match self.selected_item() {
+            Some(Selection::ChildWorktree { .. }) => {
+                self.mode = Mode::Message("kill is not available for child worktrees".to_string());
+            }
             Some(Selection::Agent { repo, agent }) => {
                 if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
                     self.mode = Mode::ConfirmDeleteBranch { repo, agent };
@@ -74,6 +77,10 @@ impl App {
     }
 
     pub(in crate::ui) fn merge_selected(&mut self) {
+        if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
+            self.mode = Mode::Message("merge is not available for child worktrees".to_string());
+            return;
+        }
         let Some(Selection::Agent {
             repo,
             agent: agent_idx,

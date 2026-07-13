@@ -26,6 +26,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 last_change_at: None,
                 last_auto_accept_at: None,
                 shell_working: false,
+                children: Vec::new(),
             }],
             dropr: None,
             main_status: None,

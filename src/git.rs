@@ -13,9 +13,6 @@ pub struct Worktree {
     pub branch: Option<String>,
 }
 
-/// List every worktree registered for `repo`, including the main worktree. Used
-/// to reconcile worktrees created outside robco (e.g. a manual
-/// `git worktree add`) with the registry.
 pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>> {
     let output = Command::new("git")
         .args(["-C"])
@@ -148,9 +145,32 @@ pub fn tracked_tree_is_clean(worktree: &Path) -> Result<bool> {
     Ok(command_output(output, "git status")?.trim().is_empty())
 }
 
-/// Stricter than [`tracked_tree_is_clean`]: also reports untracked files as
-/// dirty. Used by the merge/land gate, since `git worktree remove` refuses to
-/// remove a worktree that still has untracked files.
+pub fn ahead_behind(repo: &Path, left: &str, right: &str) -> Result<(u32, u32)> {
+    let output = Command::new("git")
+        .args(["-C"])
+        .arg(repo)
+        .args(["rev-list", "--left-right", "--count"])
+        .arg(format!("{left}...{right}"))
+        .output()?;
+    let text = command_output(output, "git rev-list --left-right --count")?;
+    let mut counts = text.split_whitespace();
+    let left = counts
+        .next()
+        .and_then(|n| n.parse().ok())
+        .ok_or_else(|| Error::Command {
+            context: "git rev-list --left-right --count",
+            stderr: "invalid count output".to_string(),
+        })?;
+    let right = counts
+        .next()
+        .and_then(|n| n.parse().ok())
+        .ok_or_else(|| Error::Command {
+            context: "git rev-list --left-right --count",
+            stderr: "invalid count output".to_string(),
+        })?;
+    Ok((left, right))
+}
+
 pub fn worktree_is_clean(worktree: &Path) -> Result<bool> {
     let output = Command::new("git")
         .args(["-C"])
@@ -237,4 +257,41 @@ fn command_output(output: std::process::Output, context: &'static str) -> Result
         context,
         stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn git(repo: &Path, args: &[&str]) {
+        assert!(
+            Command::new("git")
+                .args(["-C"])
+                .arg(repo)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+
+    #[test]
+    fn ahead_behind_parses_counts() {
+        let temp = tempfile::tempdir().unwrap();
+        git(temp.path(), &["init", "-q"]);
+        git(temp.path(), &["config", "user.email", "test@example.com"]);
+        git(temp.path(), &["config", "user.name", "Test"]);
+        std::fs::write(temp.path().join("file"), "base").unwrap();
+        git(temp.path(), &["add", "file"]);
+        git(temp.path(), &["commit", "-qm", "base"]);
+        git(temp.path(), &["branch", "left"]);
+        git(temp.path(), &["checkout", "-qb", "right"]);
+        std::fs::write(temp.path().join("file"), "right").unwrap();
+        git(temp.path(), &["commit", "-qam", "right"]);
+        git(temp.path(), &["checkout", "-q", "left"]);
+        std::fs::write(temp.path().join("other"), "left").unwrap();
+        git(temp.path(), &["add", "other"]);
+        git(temp.path(), &["commit", "-qm", "left"]);
+        assert_eq!(ahead_behind(temp.path(), "left", "right").unwrap(), (1, 1));
+    }
 }

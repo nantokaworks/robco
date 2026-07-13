@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Command;
 
 #[test]
 fn quotes_initial_prompt_for_shell_command() {
@@ -102,6 +103,7 @@ fn agent_titled(title: &str, branch: &str) -> AgentNode {
         last_change_at: None,
         last_auto_accept_at: None,
         shell_working: false,
+        children: Vec::new(),
     }
 }
 
@@ -158,4 +160,69 @@ fn adopt_keeps_full_label_for_foreign_branch() {
         None,
     );
     assert_eq!(adopted.tmux_session, "robco_dropr_feature-x");
+}
+
+#[test]
+fn kill_agent_rejects_registered_nested_worktree() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_path = temp.path().join("repo");
+    run_git(temp.path(), &["init", repo_path.to_str().unwrap()]);
+    run_git(&repo_path, &["config", "user.email", "robco@example.com"]);
+    run_git(&repo_path, &["config", "user.name", "Robco Test"]);
+    std::fs::write(repo_path.join("README"), "test\n").unwrap();
+    run_git(&repo_path, &["add", "README"]);
+    run_git(&repo_path, &["commit", "-m", "initial"]);
+
+    let agent_path = temp.path().join("worktrees/agent");
+    run_git(
+        &repo_path,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "agent",
+            agent_path.to_str().unwrap(),
+        ],
+    );
+    let child_path = agent_path.join("child");
+    run_git(
+        &repo_path,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "child",
+            child_path.to_str().unwrap(),
+        ],
+    );
+
+    let mut repo = repo_named("repo");
+    repo.path = repo_path;
+    let config = Config::default();
+    let agent = adopt_worktree(
+        &repo,
+        &config,
+        agent_path.clone(),
+        Some("agent".into()),
+        None,
+        None,
+    );
+
+    assert!(matches!(
+        kill_agent(&repo, &agent),
+        Err(crate::Error::ChildWorktreesPresent(path)) if path == agent_path
+    ));
+}
+
+fn run_git(cwd: &std::path::Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args(["-C", cwd.to_str().unwrap()])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

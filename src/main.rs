@@ -42,6 +42,8 @@ pub enum Error {
     },
     #[error("worktree has tracked changes: {0}")]
     DirtyWorktree(PathBuf),
+    #[error("child worktrees remain under {0}; remove them first")]
+    ChildWorktreesPresent(PathBuf),
 }
 
 #[tokio::main]

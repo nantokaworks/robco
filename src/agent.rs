@@ -59,6 +59,7 @@ pub fn create_agent(
         last_change_at: None,
         last_auto_accept_at: None,
         shell_working: false,
+        children: Vec::new(),
     })
 }
 
@@ -120,6 +121,7 @@ pub fn adopt_worktree(
         last_change_at: None,
         last_auto_accept_at: None,
         shell_working: false,
+        children: Vec::new(),
     }
 }
 
@@ -213,6 +215,21 @@ pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode
 }
 
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
+    let parent = agent
+        .worktree_path
+        .canonicalize()
+        .unwrap_or_else(|_| agent.worktree_path.clone());
+    if git::list_worktrees(&repo.path)?
+        .into_iter()
+        .any(|worktree| {
+            let path = worktree.path.canonicalize().unwrap_or(worktree.path);
+            path != parent && path.starts_with(&parent)
+        })
+    {
+        return Err(crate::Error::ChildWorktreesPresent(
+            agent.worktree_path.clone(),
+        ));
+    }
     let worktree_exists = agent.worktree_path.exists();
     if worktree_exists && !git::tracked_tree_is_clean(&agent.worktree_path)? {
         return Err(crate::Error::DirtyWorktree(agent.worktree_path.clone()));
