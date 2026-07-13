@@ -32,6 +32,7 @@ pub fn discover_repos(launch_dir: &Path) -> Result<Vec<RepoNode>> {
             main_shell_working: false,
             main_pane_pid: None,
             main_tracked_command: None,
+            main_subagents_active: 0,
         });
     }
 

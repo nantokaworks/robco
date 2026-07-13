@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
-use crate::dropr::DroprWorkspace;
+use crate::{dropr::DroprWorkspace, subagents::TaskSubagent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoNode {
@@ -31,6 +31,8 @@ pub struct RepoNode {
     pub main_pane_pid: Option<u32>,
     #[serde(skip)]
     pub main_tracked_command: Option<String>,
+    #[serde(skip)]
+    pub main_subagents_active: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +64,8 @@ pub struct AgentNode {
     pub pane_pid: Option<u32>,
     #[serde(skip)]
     pub tracked_command: Option<String>,
+    #[serde(skip)]
+    pub subagents: Vec<TaskSubagent>,
     #[serde(skip)]
     pub children: Vec<ChildWorktree>,
 }

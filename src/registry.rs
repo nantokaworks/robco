@@ -72,8 +72,11 @@ impl Registry {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use super::*;
     use crate::model::{AgentNode, RepoNode};
+    use crate::subagents::{SubagentStatus, TaskSubagent};
 
     fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         RepoNode {
@@ -88,6 +91,7 @@ mod tests {
             main_shell_working: false,
             main_pane_pid: None,
             main_tracked_command: None,
+            main_subagents_active: 0,
         }
     }
 
@@ -111,6 +115,7 @@ mod tests {
             shell_working: false,
             pane_pid: None,
             tracked_command: None,
+            subagents: Vec::new(),
             children: Vec::new(),
         }
     }
@@ -143,8 +148,17 @@ mod tests {
     }
 
     #[test]
-    fn children_are_runtime_only() {
+    fn runtime_fields_are_not_serialized_and_default_when_absent() {
         let mut agent = dummy_agent();
+        agent.subagents.push(TaskSubagent {
+            id: "worker".into(),
+            agent_type: "Explore".into(),
+            description: "inspect".into(),
+            spawn_depth: 1,
+            started_at: SystemTime::UNIX_EPOCH,
+            last_activity_at: SystemTime::UNIX_EPOCH,
+            status: SubagentStatus::Running,
+        });
         agent.children.push(crate::model::ChildWorktree {
             path: "/tmp/wt/child".into(),
             branch: Some("child".into()),
@@ -154,10 +168,17 @@ mod tests {
             tmux_session: None,
             modified_at: None,
         });
-        let json = serde_json::to_string(&agent).unwrap();
+        let mut repo = repo("/repo", vec![agent]);
+        repo.main_subagents_active = 2;
+
+        let json = serde_json::to_string(&repo).unwrap();
         assert!(!json.contains("children"));
-        let loaded: AgentNode = serde_json::from_str(&json).unwrap();
-        assert!(loaded.children.is_empty());
+        assert!(!json.contains("subagents"));
+        assert!(!json.contains("main_subagents_active"));
+        let loaded: RepoNode = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.main_subagents_active, 0);
+        assert!(loaded.agents[0].subagents.is_empty());
+        assert!(loaded.agents[0].children.is_empty());
     }
 
     #[test]

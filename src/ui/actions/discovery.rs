@@ -13,6 +13,9 @@ impl App {
     /// current selection and per-repo expand/collapse state are preserved across
     /// the refresh even when repos are re-ordered.
     pub(in crate::ui) fn refresh_discovery(&mut self) {
+        if !self.config.subagent_indicator {
+            self.refresh_subagents();
+        }
         let Ok(mut discovered) = discover::discover_repos(&self.launch_dir) else {
             return;
         };
@@ -21,12 +24,7 @@ impl App {
 
         let worktrees_removed = self.prune_unmanaged_agents();
 
-        // What the registry will hold after a merge: the discovered set plus
-        // any repo that keeps its registration through `merge_discovered`
-        // because it still tracks agents (e.g. registered from another launch
-        // directory). Comparing against this — not the raw discovered set —
-        // keeps the steady state a no-op instead of re-merging and re-saving
-        // on every discovery tick.
+        // Include repos retained by `merge_discovered` because they track agents.
         let mut expected_paths: HashSet<String> =
             discovered.iter().map(|repo| path_key(&repo.path)).collect();
         for repo in &self.registry.repos {
@@ -91,7 +89,9 @@ impl App {
         if repos_changed || worktrees_added || worktrees_removed || children_changed {
             self.restore_selection(selected_identity);
         }
-
+        if self.config.subagent_indicator {
+            self.refresh_subagents();
+        }
         self.refresh_orphans();
     }
 
@@ -108,8 +108,7 @@ impl App {
         removed
     }
 
-    /// Re-point the selection at the item it referred to before a refresh,
-    /// falling back to a clamp when that item no longer exists.
+    /// Re-point selection at the same item, falling back to a clamp.
     fn restore_selection(&mut self, identity: Option<String>) {
         if let Some(identity) = identity
             && let Some(index) = self
@@ -276,6 +275,7 @@ mod tests {
             main_shell_working: false,
             main_pane_pid: None,
             main_tracked_command: None,
+            main_subagents_active: 0,
         };
         for path in ["/wt/foo", "/wt/foo/nested", "/wt/foo-bar"] {
             repo.agents.push(agent::adopt_worktree(

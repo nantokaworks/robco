@@ -49,6 +49,7 @@ fn repo_named(name: &str) -> RepoNode {
         main_shell_working: false,
         main_pane_pid: None,
         main_tracked_command: None,
+        main_subagents_active: 0,
     }
 }
 
@@ -107,6 +108,7 @@ fn agent_titled(title: &str, branch: &str) -> AgentNode {
         shell_working: false,
         pane_pid: None,
         tracked_command: None,
+        subagents: Vec::new(),
         children: Vec::new(),
     }
 }

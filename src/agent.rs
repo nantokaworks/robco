@@ -61,6 +61,7 @@ pub fn create_agent(
         shell_working: false,
         pane_pid: None,
         tracked_command: None,
+        subagents: Vec::new(),
         children: Vec::new(),
     })
 }
@@ -70,8 +71,7 @@ pub fn create_agent(
 /// starts only when the user attaches — so the session is named but assumed
 /// absent until then. `existing_session` is a live AI session already running
 /// in this worktree (found by cwd, e.g. via [`crate::tmux::find_session_by_cwd`]);
-/// when present the agent binds to it instead of the derived name, so adoption
-/// reattaches to the surviving chat rather than spawning a duplicate.
+/// when present it binds to that session instead of spawning a duplicate.
 pub fn adopt_worktree(
     repo: &RepoNode,
     config: &Config,
@@ -125,6 +125,7 @@ pub fn adopt_worktree(
         shell_working: false,
         pane_pid: None,
         tracked_command: None,
+        subagents: Vec::new(),
         children: Vec::new(),
     }
 }
