@@ -213,9 +213,11 @@ mod tests {
     #[test]
     fn disabled_indicator_clears_state_when_discovery_fails() {
         let temp = tempfile::tempdir().unwrap();
-        let mut config = Config::default();
-        config.subagent_indicator = false;
-        config.worktree_root = temp.path().into();
+        let config = Config {
+            subagent_indicator: false,
+            worktree_root: temp.path().into(),
+            ..Default::default()
+        };
         let registry = Registry {
             version: 1,
             repos: vec![repo(temp.path(), temp.path())],
