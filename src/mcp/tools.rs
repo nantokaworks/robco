@@ -1,4 +1,5 @@
 use std::process::Command;
+use std::time::SystemTime;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -7,6 +8,7 @@ use crate::{
     model::{AgentNode, RepoNode, Status},
     registry::Registry,
     status::{self, StatusReport, WatchStatusState},
+    subagents::{SubagentReader, SubagentStatus, claude::ClaudeSubagentReader, read_allowed},
     tmux,
 };
 
@@ -83,12 +85,15 @@ fn agent_list(registry: &Registry) -> ToolResult<Value> {
                 .iter()
                 .map(|agent| {
                     let report = live_status(repo, agent);
+                    let (tracked_command, subagents_active) = live_activity(agent, report.status);
                     json!({
                         "id": agent.id,
                         "title": agent.title,
                         "branch": agent.branch,
                         "tmux_session": agent.tmux_session,
-                        "status": report.status.badge()
+                        "status": report.status.badge(),
+                        "tracked_command": tracked_command,
+                        "subagents_active": subagents_active
                     })
                 })
                 .collect::<Vec<_>>();
@@ -105,14 +110,38 @@ fn agent_list(registry: &Registry) -> ToolResult<Value> {
 fn agent_status(registry: &Registry, agent_id: &str) -> ToolResult<Value> {
     let (repo, agent) = find_agent(registry, agent_id)?;
     let report = live_status(repo, agent);
+    let (tracked_command, subagents_active) = live_activity(agent, report.status);
     Ok(json!({
         "agent_id": agent.id,
         "title": agent.title,
         "tmux_session": agent.tmux_session,
         "status": report.status.badge(),
+        "tracked_command": tracked_command,
+        "subagents_active": subagents_active,
         "awaiting_confirmation": report.awaiting_confirmation,
         "prompt": prompt_tail(&agent.tmux_session)
     }))
+}
+
+fn live_activity(agent: &AgentNode, status: Status) -> (Option<String>, usize) {
+    let subagents = if !read_allowed(status, &agent.worktree_path) {
+        Vec::new()
+    } else if agent.subagents.is_empty() {
+        ClaudeSubagentReader::default().read(&agent.worktree_path, SystemTime::now())
+    } else {
+        agent.subagents.clone()
+    };
+    let subagents_active = subagents
+        .iter()
+        .filter(|subagent| subagent.status == SubagentStatus::Running)
+        .count();
+    let tracked_command = agent.tracked_command.clone().or_else(|| {
+        let pane_pid = tmux::pane_pid(&agent.tmux_session).ok().flatten()?;
+        status::proc::ProcSnapshot::capture()
+            .ok()?
+            .tracked_command(pane_pid)
+    });
+    (tracked_command, subagents_active)
 }
 
 fn question_list(registry: &Registry) -> ToolResult<Value> {

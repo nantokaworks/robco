@@ -2,6 +2,8 @@ pub mod claude;
 
 use std::{path::Path, time::SystemTime};
 
+use crate::model::Status;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubagentStatus {
     Running,
@@ -22,4 +24,8 @@ pub struct TaskSubagent {
 /// Passive adapter boundary for coding-agent-specific subagent state.
 pub trait SubagentReader {
     fn read(&self, worktree_path: &Path, now: SystemTime) -> Vec<TaskSubagent>;
+}
+
+pub fn read_allowed(status: Status, worktree_path: &Path) -> bool {
+    !matches!(status, Status::Dead | Status::BranchOnly) && worktree_path.exists()
 }

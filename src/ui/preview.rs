@@ -11,11 +11,10 @@ use crate::{
     registry::Registry,
     ui::{
         App, PreviewPane, layout, panes_for, scrollback,
-        summary::{child_summary, repo_summary},
+        summary::{agent_summary, child_summary, repo_summary},
         theme::DEFAULT as THEME,
     },
 };
-
 /// Inner padding between the preview border and its content, applied to every
 /// tab. `scrollback::capture` subtracts it when sizing mirrored tmux sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
@@ -63,6 +62,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             &registry.repos[repo_idx],
             panes.preview.width.saturating_sub(4),
         ),
+        (PreviewPane::Info, Some(Selection::Agent { repo, agent })) => {
+            let repo = &registry.repos[repo];
+            agent_summary(repo, &repo.agents[agent])
+        }
         (PreviewPane::Claude, Some(Selection::Agent { repo, agent })) => {
             let selection = Some(Selection::Agent { repo, agent });
             let repo = &registry.repos[repo];
@@ -176,9 +179,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 });
             (orphan.name.clone(), text)
         }
-        // `None` (no repositories) and any pane not valid for the current
-        // selection (e.g. `Info` on an agent, which `restore_preview` prevents
-        // from ever becoming active).
+        // `None` (no repositories) or a pane invalid for the selection.
         _ => (
             "PREVIEW".to_string(),
             vec![Line::from("No repositories discovered.")].into(),

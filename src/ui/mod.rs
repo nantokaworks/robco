@@ -86,6 +86,7 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
         ],
         Some(Selection::Agent { .. }) => &[
             PreviewPane::Claude,
+            PreviewPane::Info,
             PreviewPane::Diff,
             PreviewPane::Terminal,
         ],

@@ -3,7 +3,12 @@ use ratatui::{
     text::{Line, Span, Text},
 };
 
-use crate::model::{AgentNode, ChildWorktree, RepoNode};
+use std::time::{Duration, SystemTime};
+
+use crate::{
+    model::{AgentNode, ChildWorktree, RepoNode},
+    subagents::SubagentStatus,
+};
 
 use super::{blockfont, repo_description, theme::DEFAULT as THEME};
 
@@ -62,6 +67,69 @@ pub(in crate::ui) fn repo_summary(repo: &RepoNode, width: u16) -> (String, Text<
     }
 
     (repo.name.clone(), lines.into())
+}
+
+pub(in crate::ui) fn agent_summary(repo: &RepoNode, agent: &AgentNode) -> (String, Text<'static>) {
+    let field = |name: &str, value: String| {
+        Line::from(vec![
+            Span::styled(format!("{name}: "), THEME.muted_style()),
+            Span::raw(value),
+        ])
+    };
+    let mut lines = vec![
+        field("branch", agent.branch.clone()),
+        field("worktree", agent.worktree_path.display().to_string()),
+        field("status", agent.status.badge().to_string()),
+        field(
+            "tracked command",
+            agent
+                .tracked_command
+                .clone()
+                .unwrap_or_else(|| "(none)".into()),
+        ),
+        Line::from(""),
+        Line::from(Span::styled("subagents", THEME.accent_style())),
+    ];
+    if agent.subagents.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "(none active or recent)",
+            THEME.muted_style(),
+        )));
+    } else {
+        let now = SystemTime::now();
+        for subagent in &agent.subagents {
+            let (status, style) = match subagent.status {
+                SubagentStatus::Running => ("running", THEME.subagent_style()),
+                SubagentStatus::Done => ("done", THEME.muted_style()),
+            };
+            let elapsed_until = match subagent.status {
+                SubagentStatus::Running => now,
+                SubagentStatus::Done => subagent.last_activity_at,
+            };
+            let elapsed = elapsed_until
+                .duration_since(subagent.started_at)
+                .unwrap_or(Duration::ZERO);
+            lines.push(Line::from(vec![
+                Span::styled(format!("✻ {}", subagent.agent_type), style),
+                Span::styled(
+                    format!("  {status}  {}", format_elapsed(elapsed)),
+                    THEME.muted_style(),
+                ),
+            ]));
+            lines.push(Line::from(format!("  {}", subagent.description)));
+        }
+    }
+    (format!("{} / {}", repo.name, agent.title), lines.into())
+}
+
+fn format_elapsed(elapsed: Duration) -> String {
+    let seconds = elapsed.as_secs();
+    let minutes = seconds / 60;
+    if minutes == 0 {
+        format!("{seconds}s")
+    } else {
+        format!("{minutes}m {:02}s", seconds % 60)
+    }
 }
 
 pub(in crate::ui) fn child_summary(
