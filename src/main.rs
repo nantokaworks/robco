@@ -12,6 +12,7 @@ mod openclaw;
 mod registry;
 mod setup;
 mod status;
+pub mod subagents;
 mod tmux;
 mod ui;
 
