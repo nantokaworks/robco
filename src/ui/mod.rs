@@ -23,6 +23,7 @@ mod event_loop;
 mod input;
 mod layout;
 mod list;
+mod logo;
 mod preview;
 mod scrollback;
 pub(crate) mod spinner;
