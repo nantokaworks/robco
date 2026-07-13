@@ -112,6 +112,8 @@ pub struct Config {
     pub auto_accept: bool,
     #[serde(default = "notify_flag_default")]
     pub process_indicator: bool,
+    #[serde(default = "notify_flag_default")]
+    pub subagent_indicator: bool,
     #[serde(default)]
     pub merge_strategy: MergeStrategy,
     #[serde(default)]
@@ -143,6 +145,7 @@ impl Default for Config {
             dropr_overlay: true,
             auto_accept: false,
             process_indicator: true,
+            subagent_indicator: true,
             merge_strategy: MergeStrategy::default(),
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
@@ -163,11 +166,8 @@ impl Config {
         if config.default_program.trim().is_empty() {
             config.default_program = "claude".to_string();
         }
-        // A user-edited config may spell `worktree_root` with a leading `~`.
-        // serde stores that literally, leaving a relative path whose first
-        // component is `~`; git then resolves worktrees under `<repo>/~/...` and
-        // the same worktree is later re-adopted as a duplicate. Expand it here so
-        // the stored agent path matches the absolute path git reports.
+        // Expand a user-written `~` so paths match git's absolute worktree paths
+        // and are not re-adopted as duplicates.
         config.worktree_root = expand_tilde(&config.worktree_root);
         Ok(config)
     }
