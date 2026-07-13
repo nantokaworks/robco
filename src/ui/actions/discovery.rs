@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Component, Path, PathBuf},
 };
 
 use crate::{agent, config::Config, discover, dropr, git, model::RepoNode};
@@ -16,6 +16,10 @@ impl App {
         let Ok(mut discovered) = discover::discover_repos(&self.launch_dir) else {
             return;
         };
+
+        let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
+
+        let worktrees_removed = self.prune_unmanaged_agents();
 
         // What the registry will hold after a merge: the discovered set plus
         // any repo that keeps its registration through `merge_discovered`
@@ -40,7 +44,6 @@ impl App {
 
         // Snapshot identity-keyed state so selection and expansion survive any
         // re-ordering caused by a newly-added project sorting into the middle.
-        let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
         let expanded_by_path: HashMap<String, bool> = self
             .registry
             .repos
@@ -77,12 +80,24 @@ impl App {
             worktrees_added |= adopt_external_worktrees(repo, &self.config);
         }
 
-        if repos_changed || worktrees_added {
+        if repos_changed || worktrees_added || worktrees_removed {
             let _ = self.registry.save();
             self.restore_selection(selected_identity);
         }
 
         self.refresh_orphans();
+    }
+
+    pub(in crate::ui) fn prune_unmanaged_agents(&mut self) -> bool {
+        let mut removed = false;
+        for repo in &mut self.registry.repos {
+            let previous_len = repo.agents.len();
+            repo.agents.retain(|tracked| {
+                is_managed_worktree(&tracked.worktree_path, &self.config.worktree_root)
+            });
+            removed |= repo.agents.len() != previous_len;
+        }
+        removed
     }
 
     /// Re-point the selection at the item it referred to before a refresh,
@@ -117,6 +132,9 @@ fn adopt_external_worktrees(repo: &mut RepoNode, config: &Config) -> bool {
 
     let mut added = false;
     for worktree in worktrees {
+        if !is_managed_worktree(&worktree.path, &config.worktree_root) {
+            continue;
+        }
         if !known.insert(path_key(&worktree.path)) {
             continue;
         }
@@ -154,4 +172,107 @@ fn path_key(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+pub(super) fn is_managed_worktree(path: &Path, worktree_root: &Path) -> bool {
+    let canonical_path = path.canonicalize();
+    let canonical_root = worktree_root.canonicalize();
+
+    if let (Ok(path), Ok(root)) = (&canonical_path, &canonical_root) {
+        return path.starts_with(root);
+    }
+
+    let path = normalize_path(path);
+    path.starts_with(normalize_path(worktree_root))
+        || canonical_root.is_ok_and(|root| path.starts_with(root))
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                normalized.push(component);
+            }
+        }
+    }
+    normalized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_managed_worktree;
+    use std::path::Path;
+
+    #[test]
+    fn managed_path_must_be_beneath_root() {
+        assert!(is_managed_worktree(
+            Path::new("/tmp/robco/worktrees/task"),
+            Path::new("/tmp/robco/worktrees")
+        ));
+        assert!(!is_managed_worktree(
+            Path::new("/tmp/robco/worktrees-other/task"),
+            Path::new("/tmp/robco/worktrees")
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn managed_path_resolves_symlinked_root() {
+        use std::{fs, os::unix::fs::symlink};
+
+        let temp = tempfile::tempdir().unwrap();
+        let real_root = temp.path().join("real");
+        let linked_root = temp.path().join("linked");
+        let worktree = real_root.join("task");
+        fs::create_dir_all(&worktree).unwrap();
+        symlink(&real_root, &linked_root).unwrap();
+
+        assert!(is_managed_worktree(&worktree, &linked_root));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_managed_path_keeps_symlink_spelling() {
+        use std::{fs, os::unix::fs::symlink};
+
+        let temp = tempfile::tempdir().unwrap();
+        let real_root = temp.path().join("real");
+        let linked_root = temp.path().join("linked");
+        fs::create_dir_all(&real_root).unwrap();
+        symlink(&real_root, &linked_root).unwrap();
+
+        let missing_worktree = linked_root.join("missing-task");
+        assert!(!missing_worktree.exists());
+        assert!(is_managed_worktree(&missing_worktree, &linked_root));
+    }
+
+    #[test]
+    fn existing_path_cannot_escape_root_with_parent_component() {
+        use std::fs;
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+
+        assert!(!is_managed_worktree(&root.join("../outside"), &root));
+    }
+
+    #[test]
+    fn missing_path_cannot_escape_root_with_parent_component() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        std::fs::create_dir_all(&root).unwrap();
+
+        assert!(!is_managed_worktree(
+            &root.join("../missing-outside"),
+            &root
+        ));
+    }
 }

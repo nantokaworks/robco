@@ -144,6 +144,9 @@ impl App {
             force_redraw: false,
             mode: Mode::Normal,
         };
+        if app.prune_unmanaged_agents() {
+            let _ = app.registry.save();
+        }
         app.refresh_orphans();
         app.restore_preview();
         app

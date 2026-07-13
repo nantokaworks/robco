@@ -29,7 +29,11 @@ impl App {
 
         let mut orphans: Vec<OrphanSession> = sessions
             .into_iter()
-            .filter(|(name, _)| name.starts_with(&prefix) && !known.contains(name))
+            .filter(|(name, cwd)| {
+                name.starts_with(&prefix)
+                    && !known.contains(name)
+                    && super::discovery::is_managed_worktree(cwd, &self.config.worktree_root)
+            })
             .map(|(name, cwd)| OrphanSession { name, cwd })
             .collect();
         orphans.sort_by(|a, b| a.name.cmp(&b.name));
