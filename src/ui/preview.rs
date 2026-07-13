@@ -2,7 +2,7 @@ use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Padding, Paragraph, Wrap},
 };
 
 use crate::{
@@ -14,6 +14,10 @@ use crate::{
         theme::DEFAULT as THEME,
     },
 };
+
+/// Inner padding between the preview border and its content, applied to every
+/// tab. `scrollback::capture` subtracts it when sizing mirrored tmux sessions.
+pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let registry = &app.registry;
@@ -164,7 +168,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             Block::default()
                 .title_top(preview_tabs_line(pane, selection, &ai_label))
                 .title_top(Line::from(title).right_aligned())
-                .borders(Borders::ALL),
+                .borders(Borders::ALL)
+                .padding(Padding::uniform(PREVIEW_PADDING)),
         )
         .style(THEME.accent_style())
         .wrap(Wrap { trim: false })
@@ -256,7 +261,8 @@ fn render_branch_only(
             Block::default()
                 .title_top(preview_tabs_line(active, selection, ai_label))
                 .title_top(Line::from(title).right_aligned())
-                .borders(Borders::ALL),
+                .borders(Borders::ALL)
+                .padding(Padding::uniform(PREVIEW_PADDING)),
         )
         .style(THEME.muted_style())
         .wrap(Wrap { trim: false });
