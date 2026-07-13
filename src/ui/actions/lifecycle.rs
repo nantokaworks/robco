@@ -201,6 +201,7 @@ impl App {
             main_shell_working: false,
             main_pane_pid: None,
             main_tracked_command: None,
+            main_subagents_active: 0,
         });
         self.expanded.push(true);
         if let Err(err) = self.registry.save() {

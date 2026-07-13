@@ -28,6 +28,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 shell_working: false,
                 pane_pid: None,
                 tracked_command: None,
+                subagents: Vec::new(),
                 children: Vec::new(),
             }],
             dropr: None,
@@ -37,6 +38,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
             main_shell_working: false,
             main_pane_pid: None,
             main_tracked_command: None,
+            main_subagents_active: 0,
         }],
     }
 }
