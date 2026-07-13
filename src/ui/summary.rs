@@ -2,10 +2,24 @@ use ratatui::text::{Line, Span, Text};
 
 use crate::model::RepoNode;
 
-use super::theme::DEFAULT as THEME;
+use super::{
+    logo::{ROBCO_FLAVOR, ROBCO_LOGO},
+    theme::DEFAULT as THEME,
+};
 
 pub(in crate::ui) fn repo_summary(repo: &RepoNode) -> (String, Text<'static>) {
-    let mut lines = vec![
+    let mut lines: Vec<_> = ROBCO_LOGO
+        .iter()
+        .map(|line| Line::from(Span::styled(*line, THEME.accent_style())))
+        .chain(
+            ROBCO_FLAVOR
+                .iter()
+                .map(|line| Line::from(Span::styled(*line, THEME.muted_style()))),
+        )
+        .chain([Line::from("")])
+        .collect();
+
+    lines.extend([
         Line::from(vec![
             Span::styled("path: ", THEME.muted_style()),
             Span::raw(repo.path.display().to_string()),
@@ -22,7 +36,7 @@ pub(in crate::ui) fn repo_summary(repo: &RepoNode) -> (String, Text<'static>) {
             Span::styled("agents: ", THEME.muted_style()),
             Span::raw(repo.agents.len().to_string()),
         ]),
-    ];
+    ]);
 
     if let Some(dropr) = &repo.dropr {
         lines.push(Line::from(""));
