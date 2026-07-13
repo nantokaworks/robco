@@ -54,7 +54,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     let status_text = if status == Status::Running {
                         super::spinner::frame(app.started.elapsed())
                     } else {
-                        status.badge()
+                        status.glyph()
                     };
                     let status_style = if selected {
                         THEME.selected_status_style(status)
@@ -109,7 +109,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         }
                         spans.push(Span::styled(if first { "  " } else { " · " }, style));
                         spans.push(Span::styled(
-                            format!("{count} {}", status.badge()),
+                            format!("{count} {}", status.glyph()),
                             status_style(status),
                         ));
                         first = false;
@@ -135,7 +135,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let status_text = if agent.status == Status::Running {
                     super::spinner::frame(app.started.elapsed())
                 } else {
-                    agent.status.badge()
+                    agent.status.glyph()
                 };
                 let status_style = if selected {
                     THEME.selected_status_style(agent.status)
