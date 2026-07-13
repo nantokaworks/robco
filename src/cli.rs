@@ -3,7 +3,12 @@ use std::path::PathBuf;
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(author, version, about = "Repo-oriented bot control and orchestration")]
+#[command(
+    author,
+    version,
+    propagate_version = true,
+    about = "Repo-oriented bot control and orchestration"
+)]
 pub struct Args {
     /// Directory whose direct children should be scanned for git repositories.
     #[arg(default_value = ".")]
