@@ -18,7 +18,7 @@ mod ui;
 
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
-use clap::{Parser, error::ErrorKind};
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use cli::{Args, Command, ReportArgs};
 use config::Config;
 use registry::Registry;
@@ -76,26 +76,10 @@ async fn main() -> ExitCode {
 }
 
 fn invocation_targets_report(args: &[OsString]) -> bool {
-    let mut args = args.iter().skip(1);
-    while let Some(arg) = args.next() {
-        if arg == "report" {
-            return true;
-        }
-        if arg == "--program" {
-            args.next();
-            continue;
-        }
-        if arg.to_string_lossy().starts_with("--program=")
-            || matches!(
-                arg.to_str(),
-                Some("-y" | "--autoyes" | "--list" | "--no-dropr")
-            )
-        {
-            continue;
-        }
-        return false;
-    }
-    false
+    Args::command()
+        .ignore_errors(true)
+        .try_get_matches_from(args)
+        .is_ok_and(|matches| matches.subcommand_name() == Some("report"))
 }
 
 fn report_parse_error_message(
@@ -242,6 +226,33 @@ mod tests {
     }
 
     #[test]
+    fn report_after_leading_positional_maps_to_exit_three_error() {
+        for args in [
+            &["robco", ".", "report", "--unknown"][..],
+            &["robco", "/some/dir", "report"][..],
+        ] {
+            assert!(mapped_report_error(args).is_some());
+        }
+    }
+
+    #[test]
+    fn report_after_program_option_maps_to_exit_three_error() {
+        for args in [
+            &["robco", "--program", "x", "report"][..],
+            &["robco", "--program=x", "report", "--unknown"][..],
+        ] {
+            assert!(mapped_report_error(args).is_some());
+        }
+    }
+
+    #[test]
+    fn report_consumed_as_program_value_keeps_clap_mapping() {
+        let args = ["robco", "--program", "report"];
+        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
+        assert!(!invocation_targets_report(&raw_args));
+    }
+
+    #[test]
     fn report_help_keeps_clap_output_and_success_exit() {
         let args = ["robco", "report", "--help"];
         let error = parse_error(&args);
@@ -249,6 +260,16 @@ mod tests {
         assert_eq!(error.kind(), ErrorKind::DisplayHelp);
         assert_eq!(error.exit_code(), 0);
         assert!(error.to_string().lines().count() > 1);
+        assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
+    }
+
+    #[test]
+    fn report_version_keeps_clap_output_and_success_exit() {
+        let args = ["robco", "report", "--version"];
+        let error = parse_error(&args);
+        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
+        assert_eq!(error.kind(), ErrorKind::DisplayVersion);
+        assert_eq!(error.exit_code(), 0);
         assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
     }
 
