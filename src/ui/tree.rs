@@ -10,13 +10,55 @@ use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
-use activity::activity_spans;
+use activity::activity_span;
+use indicator::{Indicator, IndicatorState, select};
 
 mod activity;
 mod hints;
+mod indicator;
 
 fn status_style(status: Status) -> Style {
     THEME.status_style(status)
+}
+
+fn indicator_spans(
+    indicator: Option<Indicator>,
+    selected: bool,
+    elapsed: std::time::Duration,
+    gap: &str,
+) -> Vec<Span<'static>> {
+    match indicator {
+        Some(Indicator::Status(status)) => vec![Span::styled(
+            format!("{gap}{}", status.glyph()),
+            if selected {
+                THEME.selected_status_style(status)
+            } else {
+                status_style(status)
+            },
+        )],
+        Some(Indicator::Running) => vec![Span::styled(
+            format!("{gap}{}", super::spinner::frame(elapsed)),
+            if selected {
+                THEME.selected_status_style(Status::Running)
+            } else {
+                status_style(Status::Running)
+            },
+        )],
+        Some(Indicator::WorktreeMissing) => vec![Span::styled(
+            format!("{gap}⌦"),
+            THEME.worktree_missing_style(selected),
+        )],
+        Some(Indicator::ShellActivity) => vec![Span::styled(
+            format!("{gap}{}", super::spinner::term_frame(elapsed)),
+            THEME.term_style(),
+        )],
+        Some(Indicator::SubagentActivity(active)) => vec![activity_span(active, gap)],
+        Some(Indicator::DroprRefresh) => vec![Span::styled(
+            format!("{gap}⟳ {}", super::spinner::frame(elapsed)),
+            THEME.hint_style(),
+        )],
+        None => Vec::new(),
+    }
 }
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
@@ -51,38 +93,20 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         if selected { style } else { THEME.muted_style() },
                     ));
                 }
-                if repo
+                let dropr_refresh = repo
                     .dropr
                     .as_ref()
-                    .is_some_and(|workspace| app.dropr_refresh_in_flight(&workspace.id))
-                {
-                    spans.push(Span::styled(
-                        format!("  ⟳ {}", super::spinner::frame(app.started.elapsed())),
-                        THEME.hint_style(),
-                    ));
-                }
-                if let Some(status) = repo.main_status {
-                    let status_text = if status == Status::Running {
-                        super::spinner::frame(app.started.elapsed())
-                    } else {
-                        status.glyph()
-                    };
-                    let status_style = if selected {
-                        THEME.selected_status_style(status)
-                    } else {
-                        status_style(status)
-                    };
-                    spans.push(Span::styled("  ", style));
-                    spans.push(Span::styled(status_text, status_style));
-                }
-                if repo.main_shell_working {
-                    spans.push(Span::styled(" ", style));
-                    spans.push(Span::styled(
-                        super::spinner::term_frame(app.started.elapsed()),
-                        THEME.term_style(),
-                    ));
-                }
-                spans.extend(activity_spans(repo.main_subagents_active, "  "));
+                    .is_some_and(|workspace| app.dropr_refresh_in_flight(&workspace.id));
+                let mut indicator_state = IndicatorState::with_status(repo.main_status);
+                indicator_state.shell_active = repo.main_shell_working;
+                indicator_state.subagents_active = repo.main_subagents_active;
+                indicator_state.dropr_refresh = dropr_refresh;
+                spans.extend(indicator_spans(
+                    select(indicator_state),
+                    selected,
+                    app.started.elapsed(),
+                    "  ",
+                ));
                 if !expanded && !repo.agents.is_empty() {
                     let status_counts = [
                         Status::Running,
@@ -152,39 +176,25 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 } else {
                     style
                 };
-                let status_text = if agent.status == Status::Running {
-                    super::spinner::frame(app.started.elapsed())
-                } else {
-                    agent.status.glyph()
-                };
-                let status_style = if selected {
-                    THEME.selected_status_style(agent.status)
-                } else {
-                    status_style(agent.status)
-                };
                 let mut spans = vec![
                     Span::styled(format!("{marker}   {}", "  ".repeat(depth)), style),
                     Span::styled(&agent.title, agent_style),
-                    Span::raw(" "),
-                    Span::styled(status_text, status_style),
                 ];
-                if agent.worktree_missing {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled("⌦", THEME.worktree_missing_style(selected)));
-                }
-                if agent.shell_working {
-                    spans.push(Span::raw(" "));
-                    spans.push(Span::styled(
-                        super::spinner::term_frame(app.started.elapsed()),
-                        THEME.term_style(),
-                    ));
-                }
                 let active = agent
                     .subagents
                     .iter()
                     .filter(|subagent| subagent.status == SubagentStatus::Running)
                     .count();
-                spans.extend(activity_spans(active, " "));
+                let mut indicator_state = IndicatorState::with_status(Some(agent.status));
+                indicator_state.worktree_missing = agent.worktree_missing;
+                indicator_state.shell_active = agent.shell_working;
+                indicator_state.subagents_active = active;
+                spans.extend(indicator_spans(
+                    select(indicator_state),
+                    selected,
+                    app.started.elapsed(),
+                    " ",
+                ));
                 lines.push(Line::from(spans));
             }
             Selection::ChildWorktree { repo, agent, child } => {
