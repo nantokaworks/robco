@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 29;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 33;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -24,10 +24,14 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  m              merge/land agent: merge PR + pull main (commit + PR needed)"),
         Line::from(""),
         Line::from("Indicators"),
-        Line::from("  ▶ running   ? waiting   ✓ done   · idle"),
-        Line::from("  ✗ dead   ⎇ branch only   ⌦ worktree missing"),
-        Line::from("  ✻N active subagents   ▖… TERM working (animated)"),
-        Line::from("  * uncommitted changes   ⌁ tmux session (child rows)"),
+        Line::from("  One per row (highest wins): dead > running > waiting > missing"),
+        Line::from("    > TERM activity > subagents > dropr reload > static status"),
+        Line::from("  ⠋… animated agent running   ? waiting   ✗ dead"),
+        Line::from("  ⌦ worktree missing   ▖… animated TERM activity"),
+        Line::from("  ✻N active subagents   ⟳ manual dropr reload (r key)"),
+        Line::from("  ✓ done   · idle   ⎇ branch only (static fallback)"),
+        Line::from("  Collapsed repos: N ▶ is running; status glyphs/N ⌦ are child counts"),
+        Line::from("  Child rows: * uncommitted changes   ⌁ tmux session"),
         Line::from(""),
         Line::from("General"),
         Line::from("  ,              edit settings (config.json) in $EDITOR"),
@@ -74,7 +78,7 @@ pub(crate) fn scroll_title(scroll: u16, frame_height: u16) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{backend::TestBackend, Terminal};
 
     use super::*;
     use crate::{config::Config, registry::Registry};
