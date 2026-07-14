@@ -5,17 +5,22 @@ use nanoid::nanoid;
 
 use crate::{
     Result,
-    config::{Config, ENV_AGENT_ID},
+    config::Config,
     git,
     model::{AgentNode, RepoNode},
     tmux,
 };
+
+pub mod env;
+pub use env::RecoveredIdentity;
+use env::{agent_env, launch_command};
 
 pub fn create_agent(
     repo: &RepoNode,
     title: &str,
     initial_prompt: Option<&str>,
     config: &Config,
+    parent_agent_id: Option<&str>,
 ) -> Result<AgentNode> {
     let id = nanoid!(8);
     let clean_title = tmux::sanitize_target_part(title);
@@ -39,12 +44,13 @@ pub fn create_agent(
         &tmux_session,
         &worktree_path,
         &command,
-        &[(ENV_AGENT_ID, id.clone())],
+        &agent_env(&id, parent_agent_id),
     )?;
 
     let now = Local::now();
     Ok(AgentNode {
         id,
+        parent_agent_id: parent_agent_id.map(str::to_string),
         title: title.to_string(),
         worktree_path,
         branch,
@@ -79,6 +85,7 @@ pub fn adopt_worktree(
     branch: Option<String>,
     head: Option<String>,
     existing_session: Option<String>,
+    recovered_identity: Option<RecoveredIdentity>,
 ) -> AgentNode {
     // git forbids two worktrees on the same branch, so the branch (or the
     // directory name for a detached worktree) is a stable per-repo identifier.
@@ -107,8 +114,12 @@ pub fn adopt_worktree(
         tmux::session_name(&config.tmux_session_prefix, &repo.name, &clean_label)
     });
     let now = Local::now();
+    let (id, parent_agent_id) = recovered_identity
+        .map(|identity| (identity.id, identity.parent_agent_id))
+        .unwrap_or_else(|| (nanoid!(8), None));
     AgentNode {
-        id: nanoid!(8),
+        id,
+        parent_agent_id,
         title: label,
         worktree_path,
         branch: branch.unwrap_or_else(|| "(detached)".to_string()),
@@ -163,7 +174,7 @@ pub fn restart_agent(agent: &AgentNode) -> Result<()> {
         &agent.tmux_session,
         &agent.worktree_path,
         &agent.program,
-        &[(ENV_AGENT_ID, agent.id.clone())],
+        &agent_env(&agent.id, agent.parent_agent_id.as_deref()),
     )
 }
 
@@ -176,7 +187,7 @@ pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
         &agent.tmux_session,
         &agent.worktree_path,
         &agent.program,
-        &[(ENV_AGENT_ID, agent.id.clone())],
+        &agent_env(&agent.id, agent.parent_agent_id.as_deref()),
     )
 }
 
@@ -278,22 +289,8 @@ fn profile_name(config: &Config) -> Option<String> {
         .map(|profile| profile.name.clone())
 }
 
-fn launch_command(program: &str, initial_prompt: Option<&str>) -> String {
-    match initial_prompt
-        .map(str::trim)
-        .filter(|prompt| !prompt.is_empty())
-    {
-        Some(prompt) => format!("{program} {}", shell_quote(prompt)),
-        None => program.to_string(),
-    }
-}
-
 fn shell_program() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
-}
-
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 #[cfg(test)]

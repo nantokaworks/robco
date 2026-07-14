@@ -72,6 +72,7 @@ impl App {
                             &title,
                             prompt.as_deref(),
                             &self.config,
+                            None,
                         ) {
                             Ok(agent) => {
                                 self.registry.repos[repo_idx].agents.push(agent);

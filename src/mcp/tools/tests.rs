@@ -17,6 +17,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
             pinned: false,
             agents: vec![AgentNode {
                 id: id.to_string(),
+                parent_agent_id: None,
                 title: "task".to_string(),
                 worktree_path: "/repo-wt".into(),
                 branch: "task".to_string(),

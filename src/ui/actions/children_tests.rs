@@ -10,6 +10,12 @@ struct Fixture {
     agent_path: std::path::PathBuf,
 }
 
+#[test]
+fn adoption_grace_period_has_a_strict_boundary() {
+    assert!(should_skip_adoption(std::time::Duration::from_secs(14)));
+    assert!(!should_skip_adoption(std::time::Duration::from_secs(15)));
+}
+
 impl Fixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
@@ -100,22 +106,15 @@ fn reordered_worktrees_do_not_report_children_change() {
 }
 
 #[test]
-fn sibling_under_worktree_root_is_flat_agent() {
+fn new_sibling_under_worktree_root_waits_for_identity_session() {
     let mut fixture = Fixture::new();
     let sibling = fixture.config.worktree_root.join("sibling");
     add_worktree(&fixture.repo.path, &sibling, "sibling");
 
     let (agent_added, _) = fixture.reconcile();
 
-    assert!(agent_added);
-    assert_eq!(fixture.repo.agents.len(), 2);
-    assert!(
-        fixture
-            .repo
-            .agents
-            .iter()
-            .any(|agent| path_key(&agent.worktree_path) == path_key(&sibling))
-    );
+    assert!(!agent_added);
+    assert_eq!(fixture.repo.agents.len(), 1);
 }
 
 #[test]
@@ -168,6 +167,7 @@ fn agent_node(repo: &RepoNode, path: &Path) -> AgentNode {
         &Config::default(),
         path.to_path_buf(),
         Some("agent".into()),
+        None,
         None,
         None,
     )

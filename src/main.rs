@@ -7,6 +7,7 @@ mod git;
 mod loading;
 mod mcp;
 mod model;
+mod new_agent;
 mod notify;
 mod openclaw;
 mod registry;
@@ -45,6 +46,18 @@ pub enum Error {
     DirtyWorktree(PathBuf),
     #[error("child worktrees remain under {0}; remove them first")]
     ChildWorktreesPresent(PathBuf),
+    #[error("robco new must run inside a robco agent session (ROBCO_AGENT_ID is not set)")]
+    NewOutsideAgentSession,
+    #[error("parent robco agent not found in registry: {0}")]
+    ParentAgentNotFound(String),
+    #[error(
+        "child worktree {worktree_path} and tmux session {tmux_session} were created, but the \
+         repository disappeared from the registry; the TUI will adopt the child"
+    )]
+    CreatedChildRepoMissing {
+        worktree_path: PathBuf,
+        tmux_session: String,
+    },
 }
 
 #[tokio::main]
@@ -164,6 +177,7 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
         }
         Command::Install(args) => setup::install(&args)?,
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
+        Command::New(args) => new_agent::run(args, config)?,
         Command::Report(_) => unreachable!("report is handled before config loading"),
         Command::Reset => {
             let path = config::state_path()?;

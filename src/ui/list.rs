@@ -169,7 +169,7 @@ impl App {
     fn push_repo_rows(&self, visible: &mut Vec<Selection>, repo_idx: usize, repo: &RepoNode) {
         visible.push(Selection::Repo(repo_idx));
         if self.expanded.get(repo_idx).copied().unwrap_or(true) {
-            for agent_idx in 0..repo.agents.len() {
+            for (agent_idx, _) in crate::model::agent_order(&repo.agents) {
                 visible.push(Selection::Agent {
                     repo: repo_idx,
                     agent: agent_idx,

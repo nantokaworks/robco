@@ -252,7 +252,6 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("root");
         std::fs::create_dir_all(&root).unwrap();
-
         assert!(!is_managed_worktree(
             &root.join("../missing-outside"),
             &root
@@ -283,6 +282,7 @@ mod tests {
                 &repo,
                 &config,
                 path.into(),
+                None,
                 None,
                 None,
                 None,
