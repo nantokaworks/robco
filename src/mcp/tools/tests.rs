@@ -28,6 +28,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 created_at: Local::now(),
                 updated_at: Local::now(),
                 status: Status::Idle,
+                worktree_missing: false,
                 last_capture: None,
                 last_change_at: None,
                 last_auto_accept_at: None,
@@ -96,9 +97,11 @@ fn dead_agent_tools_suppress_cached_subagent_activity() {
     let status = agent_status(&registry, "a1").unwrap();
     assert_eq!(listed["repos"][0]["agents"][0]["tracked_command"], "cargo");
     assert_eq!(listed["repos"][0]["agents"][0]["status"], "dead");
+    assert_eq!(listed["repos"][0]["agents"][0]["worktree_missing"], false);
     assert_eq!(listed["repos"][0]["agents"][0]["subagents_active"], 0);
     assert_eq!(status["tracked_command"], "cargo");
     assert_eq!(status["status"], "dead");
+    assert_eq!(status["worktree_missing"], false);
     assert_eq!(status["subagents_active"], 0);
 }
 
@@ -129,6 +132,7 @@ fn activity_output_schemas_require_new_fields() {
         let schema = &tool["outputSchema"];
         assert!(schema.to_string().contains("tracked_command"));
         assert!(schema.to_string().contains("subagents_active"));
+        assert!(schema.to_string().contains("worktree_missing"));
     }
 }
 

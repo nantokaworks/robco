@@ -60,6 +60,10 @@ pub struct AgentNode {
     pub updated_at: DateTime<Local>,
     #[serde(skip)]
     pub status: Status,
+    /// Whether the live AI session's worktree directory is missing. Runtime
+    /// only; orthogonal to the captured AI status.
+    #[serde(skip)]
+    pub worktree_missing: bool,
     #[serde(skip)]
     pub last_capture: Option<String>,
     #[serde(skip)]
@@ -163,8 +167,6 @@ pub enum Status {
     Done,
     Dead,
     BranchOnly,
-    /// The tmux session is alive but the worktree directory was removed.
-    Orphaned,
 }
 
 impl Status {
@@ -176,7 +178,6 @@ impl Status {
             Status::Done => "done",
             Status::Dead => "dead",
             Status::BranchOnly => "branch",
-            Status::Orphaned => "orphan",
         }
     }
 
@@ -188,7 +189,6 @@ impl Status {
             Status::Done => "✓",
             Status::Dead => "✗",
             Status::BranchOnly => "⎇",
-            Status::Orphaned => "⌦",
         }
     }
 }
@@ -199,14 +199,13 @@ mod tests {
 
     #[test]
     fn status_badges_and_glyphs_are_stable() {
-        assert_eq!(Status::Orphaned.badge(), "orphan");
+        assert_eq!(Status::Running.badge(), "run");
         assert_eq!(Status::Running.glyph(), "▶");
         assert_eq!(Status::Waiting.glyph(), "?");
         assert_eq!(Status::Done.glyph(), "✓");
         assert_eq!(Status::Idle.glyph(), "·");
         assert_eq!(Status::Dead.glyph(), "✗");
         assert_eq!(Status::BranchOnly.glyph(), "⎇");
-        assert_eq!(Status::Orphaned.glyph(), "⌦");
     }
 
     #[test]
@@ -226,6 +225,7 @@ mod tests {
                 created_at: now,
                 updated_at: now,
                 status: Status::Idle,
+                worktree_missing: false,
                 last_capture: None,
                 last_change_at: None,
                 last_auto_accept_at: None,

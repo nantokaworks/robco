@@ -228,6 +228,7 @@ mod tests {
         let busy = StatusReport {
             status: Status::Waiting,
             awaiting_confirmation: true,
+            worktree_missing: false,
         };
         assert!(
             guard_delivery(busy, true)
@@ -239,6 +240,7 @@ mod tests {
         let dead = StatusReport {
             status: Status::Dead,
             awaiting_confirmation: false,
+            worktree_missing: false,
         };
         assert!(
             guard_delivery(dead, true)
@@ -250,6 +252,7 @@ mod tests {
         let idle = StatusReport {
             status: Status::Idle,
             awaiting_confirmation: false,
+            worktree_missing: false,
         };
         assert!(
             guard_delivery(idle, false)

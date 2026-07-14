@@ -111,7 +111,8 @@ fn agent_list_schema() -> Value {
         "title": { "type": "string" },
         "branch": { "type": "string" },
         "tmux_session": { "type": "string" },
-        "status": { "type": "string" }
+        "status": { "type": "string" },
+        "worktree_missing": { "type": "boolean" }
     });
     properties
         .as_object_mut()
@@ -130,6 +131,7 @@ fn agent_list_schema() -> Value {
                         "agents": { "type": "array", "items": {
                             "type": "object", "properties": properties,
                             "required": ["id", "title", "branch", "tmux_session", "status",
+                                "worktree_missing",
                                 "tracked_command", "subagents_active"],
                             "additionalProperties": false
                         }}
@@ -150,6 +152,7 @@ fn agent_status_schema() -> Value {
         "title": { "type": "string" },
         "tmux_session": { "type": "string" },
         "status": { "type": "string" },
+        "worktree_missing": { "type": "boolean" },
         "awaiting_confirmation": { "type": "boolean" },
         "prompt": { "type": "string" }
     });
@@ -160,7 +163,7 @@ fn agent_status_schema() -> Value {
     json!({
         "type": "object",
         "properties": properties,
-        "required": ["agent_id", "title", "tmux_session", "status",
+        "required": ["agent_id", "title", "tmux_session", "status", "worktree_missing",
             "tracked_command", "subagents_active", "awaiting_confirmation", "prompt"],
         "additionalProperties": false
     })

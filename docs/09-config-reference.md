@@ -104,7 +104,10 @@ Desktop notifications are opt-out per status. `enabled` is the master switch —
 | `done` | `true` | An agent finishes a turn (`Done`). |
 | `dead` | `true` | An agent's tmux session is gone (`Dead`). |
 
-Statuses `Running`, `BranchOnly`, and `Orphaned` never notify.
+Statuses `Running` and `BranchOnly` never notify. Worktree loss is tracked
+independently as a `worktree_missing` flag over the agent's normal live status and
+shown with a red `⌦` overlay. A worktree-gone notification fires once when the flag
+changes from false to true.
 
 ## project_icon
 

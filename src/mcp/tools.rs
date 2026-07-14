@@ -92,6 +92,7 @@ fn agent_list(registry: &Registry) -> ToolResult<Value> {
                         "branch": agent.branch,
                         "tmux_session": agent.tmux_session,
                         "status": report.status.badge(),
+                        "worktree_missing": report.worktree_missing,
                         "tracked_command": tracked_command,
                         "subagents_active": subagents_active
                     })
@@ -116,6 +117,7 @@ fn agent_status(registry: &Registry, agent_id: &str) -> ToolResult<Value> {
         "title": agent.title,
         "tmux_session": agent.tmux_session,
         "status": report.status.badge(),
+        "worktree_missing": report.worktree_missing,
         "tracked_command": tracked_command,
         "subagents_active": subagents_active,
         "awaiting_confirmation": report.awaiting_confirmation,
@@ -156,6 +158,7 @@ fn question_list(registry: &Registry) -> ToolResult<Value> {
                         "agent_id": agent.id,
                         "title": agent.title,
                         "tmux_session": agent.tmux_session,
+                        "worktree_missing": report.worktree_missing,
                         "prompt": prompt_tail(&agent.tmux_session)
                     })
                 })
@@ -204,6 +207,7 @@ fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
     .unwrap_or(StatusReport {
         status: Status::Dead,
         awaiting_confirmation: false,
+        worktree_missing: false,
     })
 }
 

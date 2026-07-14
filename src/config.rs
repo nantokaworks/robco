@@ -92,7 +92,7 @@ impl NotifyConfig {
             Status::Idle => self.idle,
             Status::Done => self.done,
             Status::Dead => self.dead,
-            Status::Running | Status::BranchOnly | Status::Orphaned => false,
+            Status::Running | Status::BranchOnly => false,
         }
     }
 }

@@ -80,6 +80,7 @@ pub(super) fn classify_capture(
     StatusReport {
         status,
         awaiting_confirmation: confirmation,
+        worktree_missing: false,
     }
 }
 

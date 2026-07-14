@@ -26,6 +26,7 @@ pub struct WatchStatusState {
 pub struct StatusReport {
     pub status: Status,
     pub awaiting_confirmation: bool,
+    pub worktree_missing: bool,
 }
 
 pub fn refresh_agent(
@@ -52,6 +53,7 @@ pub fn refresh_agent(
     match report {
         Some(report) => {
             agent.status = report.status;
+            agent.worktree_missing = report.worktree_missing;
             // Only a real confirmation prompt drives auto-accept — never a
             // plain input prompt or a finished (`Done`) turn.
             if report.awaiting_confirmation {
@@ -141,12 +143,11 @@ fn refresh_process(
 }
 
 /// Classify an agent's status. The tmux session is the source of truth for
-/// whether the agent process is alive, so it is probed **first**: a live
-/// session whose worktree directory still exists reflects its real captured
-/// state (`run`/`wait`/`done`/`idle`), while a live session whose worktree was
-/// deleted is `Orphaned`. Only once the session is gone does the worktree/branch
-/// fall-back distinguish a branch that still exists (`BranchOnly`) from a truly
-/// dead agent (`Dead`).
+/// whether the agent process is alive, so it is probed **first**. Live sessions
+/// always reflect their real captured state
+/// (`run`/`wait`/`done`/`idle`). A missing worktree is reported independently.
+/// Only once the session is gone does the worktree/branch fall-back distinguish
+/// a branch that still exists (`BranchOnly`) from a truly dead agent (`Dead`).
 ///
 /// A transient failure to probe `tmux` (a fork/exec hiccup under load) returns
 /// `None`, so the caller keeps the previous status and retries next tick instead
@@ -160,32 +161,58 @@ pub fn classify_agent_status(
 ) -> Option<StatusReport> {
     match tmux::has_session(tmux_session) {
         Ok(true) => {
-            if !worktree_path.exists() {
-                return Some(StatusReport {
-                    status: Status::Orphaned,
-                    awaiting_confirmation: false,
-                });
-            }
             // A transient capture failure should not corrupt the signal; keep
             // the previous status until the next successful capture.
             let capture = tmux::capture_text(tmux_session).ok()?;
-            Some(classify_capture(&capture, state, Local::now()))
+            classify_agent_observation(
+                true,
+                Some(&capture),
+                worktree_path.exists(),
+                false,
+                state,
+                Local::now(),
+            )
         }
         Ok(false) => {
-            let status = if !worktree_path.exists()
-                && git::branch_exists(repo_path, branch).unwrap_or(false)
-            {
-                Status::BranchOnly
-            } else {
-                Status::Dead
-            };
-            Some(StatusReport {
-                status,
-                awaiting_confirmation: false,
-            })
+            let worktree_exists = worktree_path.exists();
+            let branch_exists =
+                !worktree_exists && git::branch_exists(repo_path, branch).unwrap_or(false);
+            classify_agent_observation(
+                false,
+                None,
+                worktree_exists,
+                branch_exists,
+                state,
+                Local::now(),
+            )
         }
         Err(_) => None,
     }
+}
+
+fn classify_agent_observation(
+    session_alive: bool,
+    capture: Option<&str>,
+    worktree_exists: bool,
+    branch_exists: bool,
+    state: &mut WatchStatusState,
+    now: chrono::DateTime<Local>,
+) -> Option<StatusReport> {
+    if session_alive {
+        let mut report = classify_capture(capture?, state, now);
+        report.worktree_missing = !worktree_exists;
+        return Some(report);
+    }
+
+    Some(StatusReport {
+        status: if !worktree_exists && branch_exists {
+            Status::BranchOnly
+        } else {
+            Status::Dead
+        },
+        awaiting_confirmation: false,
+        worktree_missing: false,
+    })
 }
 
 /// Whether the companion `<ai>-shell` TERM session is running a foreground
@@ -201,5 +228,92 @@ fn shell_session_working(ai_session: &str) -> bool {
     match tmux::pane_current_command(&shell) {
         Ok(Some(cmd)) => !proc::is_shell_name(&cmd),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone;
+
+    use super::*;
+
+    fn now() -> chrono::DateTime<Local> {
+        Local.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap()
+    }
+
+    #[test]
+    fn live_running_session_reports_missing_worktree() {
+        let mut state = WatchStatusState::default();
+        let report = classify_agent_observation(
+            true,
+            Some("Generating response (esc to interrupt)"),
+            false,
+            false,
+            &mut state,
+            now(),
+        )
+        .unwrap();
+
+        assert_eq!(report.status, Status::Running);
+        assert!(!report.awaiting_confirmation);
+        assert!(report.worktree_missing);
+    }
+
+    #[test]
+    fn live_confirmation_reports_waiting_and_missing_worktree() {
+        let mut state = WatchStatusState::default();
+        let report = classify_agent_observation(
+            true,
+            Some("Allow edit src/main.rs? (y/n)"),
+            false,
+            false,
+            &mut state,
+            now(),
+        )
+        .unwrap();
+
+        assert_eq!(report.status, Status::Waiting);
+        assert!(report.awaiting_confirmation);
+        assert!(report.worktree_missing);
+    }
+
+    #[test]
+    fn live_session_clears_missing_flag_when_worktree_reappears() {
+        let mut state = WatchStatusState::default();
+        let missing = classify_agent_observation(
+            true,
+            Some("Generating response (esc to interrupt)"),
+            false,
+            false,
+            &mut state,
+            now(),
+        )
+        .unwrap();
+        let restored = classify_agent_observation(
+            true,
+            Some("Generating response (esc to interrupt)"),
+            true,
+            false,
+            &mut state,
+            now(),
+        )
+        .unwrap();
+
+        assert!(missing.worktree_missing);
+        assert!(!restored.worktree_missing);
+    }
+
+    #[test]
+    fn dead_session_paths_keep_missing_flag_clear() {
+        let mut state = WatchStatusState::default();
+        let branch_only =
+            classify_agent_observation(false, None, false, true, &mut state, now()).unwrap();
+        let dead =
+            classify_agent_observation(false, None, false, false, &mut state, now()).unwrap();
+
+        assert_eq!(branch_only.status, Status::BranchOnly);
+        assert!(!branch_only.worktree_missing);
+        assert_eq!(dead.status, Status::Dead);
+        assert!(!dead.worktree_missing);
     }
 }
