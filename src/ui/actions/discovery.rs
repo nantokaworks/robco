@@ -101,6 +101,7 @@ impl App {
             repo.agents.retain(|tracked| {
                 is_managed_worktree(&tracked.worktree_path, &self.config.worktree_root)
             });
+            super::slots::prune_slot_agents(repo);
             prune_nested_agents(repo);
             removed |= repo.agents.len() != previous_len;
         }
@@ -135,9 +136,6 @@ fn prune_nested_agents(repo: &mut crate::model::RepoNode) {
     });
 }
 
-/// Add an agent for any worktree of `repo` that exists on disk but is not yet
-/// tracked. The main worktree and already-known agents are skipped. Returns
-/// whether any agent was added.
 /// Canonical string key for a path, used to compare worktree paths that git and
 /// robco may spell differently (symlinks, trailing components). Falls back to
 /// the lexical path when the path cannot be canonicalized.

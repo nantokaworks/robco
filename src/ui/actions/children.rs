@@ -47,6 +47,10 @@ pub(super) fn reconcile(
             repo.agents[parent].children.push(child);
             continue;
         }
+        if super::slots::is_slot_worktree(&worktree.path, worktree.branch.as_deref(), &repo.agents)
+        {
+            continue;
+        }
         if !is_managed_worktree(&worktree.path, &config.worktree_root) {
             continue;
         }
