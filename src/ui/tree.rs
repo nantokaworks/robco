@@ -10,7 +10,7 @@ use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
-use activity::{activity_spans, shows_process};
+use activity::activity_spans;
 
 mod activity;
 mod hints;
@@ -82,11 +82,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         THEME.term_style(),
                     ));
                 }
-                let command = repo
-                    .main_tracked_command
-                    .as_deref()
-                    .filter(|_| repo.main_status.is_some_and(shows_process));
-                spans.extend(activity_spans(command, repo.main_subagents_active, "  "));
+                spans.extend(activity_spans(repo.main_subagents_active, "  "));
                 if !expanded && !repo.agents.is_empty() {
                     let status_counts = [
                         Status::Running,
@@ -183,16 +179,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         THEME.term_style(),
                     ));
                 }
-                let command = agent
-                    .tracked_command
-                    .as_deref()
-                    .filter(|_| shows_process(agent.status));
                 let active = agent
                     .subagents
                     .iter()
                     .filter(|subagent| subagent.status == SubagentStatus::Running)
                     .count();
-                spans.extend(activity_spans(command, active, " "));
+                spans.extend(activity_spans(active, " "));
                 lines.push(Line::from(spans));
             }
             Selection::ChildWorktree { repo, agent, child } => {
