@@ -51,7 +51,11 @@ pub(in crate::ui) fn repo_summary(repo: &RepoNode, width: u16) -> (String, Text<
 
     if let Some(dropr) = &repo.dropr {
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("dropr", THEME.accent_style())));
+        lines.push(Line::from(Span::styled(
+            "─".repeat(usize::from(width)),
+            THEME.muted_style(),
+        )));
+        lines.push(Line::from(Span::styled("DROPR", THEME.accent_style())));
         lines.push(Line::from(vec![
             Span::styled("kind: ", THEME.muted_style()),
             Span::raw(dropr.kind.clone()),
