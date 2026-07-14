@@ -5,4 +5,5 @@ mod dropr_tasks;
 mod lifecycle;
 mod orphans;
 mod settings;
+mod slots;
 mod subagents;

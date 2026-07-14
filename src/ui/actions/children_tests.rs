@@ -28,8 +28,8 @@ impl Fixture {
         run_git(&repo_path, &["commit", "-m", "initial"]);
 
         let worktree_root = temp.path().join("worktrees");
-        let agent_path = worktree_root.join("agent");
-        add_worktree(&repo_path, &agent_path, "agent");
+        let agent_path = worktree_root.join("dropr_task-749_gOQmxo");
+        add_worktree(&repo_path, &agent_path, "dropr/task-749");
         let mut repo = repo_node(repo_path);
         repo.agents.push(agent_node(&repo, &agent_path));
         let config = Config {
@@ -118,6 +118,30 @@ fn new_sibling_under_worktree_root_waits_for_identity_session() {
 }
 
 #[test]
+fn sibling_slot_worktree_is_not_adopted() {
+    let mut fixture = Fixture::new();
+    let slot = fixture.config.worktree_root.join("dropr_task-749_slot750");
+    add_worktree(&fixture.repo.path, &slot, "dropr/task-749-slot-750");
+    let worktrees = git::list_worktrees(&fixture.repo.path).unwrap();
+    let candidate = worktrees
+        .iter()
+        .find(|worktree| path_key(&worktree.path) == path_key(&slot))
+        .unwrap();
+    assert!(super::super::slots::is_slot_worktree(
+        &candidate.path,
+        candidate.branch.as_deref(),
+        &fixture.repo.agents,
+    ));
+
+    let (agent_added, children_changed) =
+        reconcile(&mut fixture.repo, &fixture.config, vec![candidate.clone()]);
+
+    assert!(!agent_added);
+    assert!(!children_changed);
+    assert_eq!(fixture.repo.agents.len(), 1);
+}
+
+#[test]
 fn outside_worktree_is_ignored() {
     let mut fixture = Fixture::new();
     let outside = fixture._temp.path().join("outside");
@@ -166,7 +190,7 @@ fn agent_node(repo: &RepoNode, path: &Path) -> AgentNode {
         repo,
         &Config::default(),
         path.to_path_buf(),
-        Some("agent".into()),
+        Some("dropr/task-749".into()),
         None,
         None,
         None,
