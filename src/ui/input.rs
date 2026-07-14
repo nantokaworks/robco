@@ -3,7 +3,7 @@ use ratatui::layout::{Position, Rect};
 
 use crate::{Result, agent, model::Selection};
 
-use super::{App, Mode, PreviewPane, layout};
+use super::{App, Mode, PreviewPane, help, layout};
 
 /// Lines the preview moves per wheel notch. Smaller than PageUp/PageDown's 10
 /// so the wheel reads as fine-grained scrubbing, not paging.
@@ -155,7 +155,22 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
-            Mode::Help => self.mode = Mode::Normal,
+            Mode::Help { scroll } => {
+                let height = help::terminal_height();
+                if help::max_scroll(height) == 0 {
+                    self.mode = Mode::Normal;
+                } else {
+                    match key.code {
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            *scroll = help::scroll_down(*scroll, height);
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            *scroll = help::scroll_up(*scroll, height);
+                        }
+                        _ => self.mode = Mode::Normal,
+                    }
+                }
+            }
             Mode::Normal => match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -218,7 +233,7 @@ impl App {
                 }
                 KeyCode::Tab => self.toggle_preview(),
                 KeyCode::BackTab => self.toggle_preview_back(),
-                KeyCode::Char('?') => self.mode = Mode::Help,
+                KeyCode::Char('?') => self.mode = Mode::Help { scroll: 0 },
                 KeyCode::Enter => match self.selected_item() {
                     Some(Selection::OtherHeader) => {
                         self.set_other_collapsed(!self.other_collapsed);
@@ -265,6 +280,6 @@ mod tests {
 
         assert!(!quit);
         assert!(app.message.is_none());
-        assert!(matches!(app.mode, Mode::Help));
+        assert!(matches!(app.mode, Mode::Help { scroll: 0 }));
     }
 }

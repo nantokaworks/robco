@@ -25,6 +25,7 @@ mod actions;
 mod blockfont;
 mod dialog;
 mod event_loop;
+mod help;
 mod input;
 mod layout;
 mod list;
@@ -40,7 +41,9 @@ pub use event_loop::run;
 
 enum Mode {
     Normal,
-    Help,
+    Help {
+        scroll: u16,
+    },
     PromptAgent {
         repo: usize,
         with_prompt: bool,
