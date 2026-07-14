@@ -5,7 +5,7 @@ use crate::{
     config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
 };
 
-use super::{command_output, command_unit};
+use super::command_unit;
 
 pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
     format!(
@@ -169,6 +169,20 @@ pub fn new_session(
             "off",
         ])
         .output();
+    // A user-level `pane-border-status` (e.g. `top`) reserves a title row
+    // inside the window even for a single pane, so the pane runs one row
+    // shorter than the size the preview asks for and its mirror shows a blank
+    // bottom line. robco sessions are always single-pane, so the border line
+    // only costs a row — drop it. Best-effort like the options above.
+    let _ = Command::new("tmux")
+        .args([
+            "set-window-option",
+            "-t",
+            &exact(session),
+            "pane-border-status",
+            "off",
+        ])
+        .output();
     Ok(())
 }
 
@@ -177,45 +191,6 @@ pub fn kill_session(session: &str) -> Result<()> {
         .args(["kill-session", "-t", &exact(session)])
         .output()?;
     command_unit(output, "tmux kill-session")
-}
-
-pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
-    // A missing target must be a no-op, not an error. `display-message` below
-    // exits 0 and prints an empty `x` for a nonexistent session (observed on
-    // tmux 3.7), so the `current == target` short-circuit never fires and the
-    // `set-option window-size` call fails with `no such window`. That Err used
-    // to bubble out of `attach` and terminate robco (dropping the ssh session)
-    // whenever the user attached to a worktree whose AI session had exited.
-    if !has_session(session)? {
-        return Ok(());
-    }
-    let session = exact(session);
-    let target = format!("{width}x{height}");
-    let output = Command::new("tmux")
-        .args([
-            "display-message",
-            "-p",
-            "-t",
-            &session,
-            "#{window_width}x#{window_height}",
-        ])
-        .output()?;
-    let current = command_output(output, "tmux display-message")?;
-    if current.trim() == target {
-        return Ok(());
-    }
-
-    let output = Command::new("tmux")
-        .args(["set-option", "-t", &session, "window-size", "manual"])
-        .output()?;
-    command_unit(output, "tmux set-option window-size")?;
-
-    let width = width.to_string();
-    let height = height.to_string();
-    let output = Command::new("tmux")
-        .args(["resize-window", "-t", &session, "-x", &width, "-y", &height])
-        .output()?;
-    command_unit(output, "tmux resize-window")
 }
 
 #[cfg(test)]

@@ -11,7 +11,8 @@ use crate::{Error, Result};
 use super::{
     command_unit,
     keys::{ReturnKeyBinding, set_session_option, wait_for_return_key},
-    session::{exact, has_session, resize_session},
+    resize::resize_session,
+    session::{exact, has_session},
 };
 
 pub fn attach(session: &str) -> Result<()> {
