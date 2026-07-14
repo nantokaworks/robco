@@ -24,7 +24,9 @@ fn expire_stale_refreshes(refresh: &mut DroprTaskRefresh, now: Instant) {
         .in_flight
         .retain(|_, started| refresh_is_fresh(*started, now));
     let in_flight = &refresh.in_flight;
-    refresh.manual.retain(|workspace_id| in_flight.contains_key(workspace_id));
+    refresh
+        .manual
+        .retain(|workspace_id| in_flight.contains_key(workspace_id));
 }
 
 fn track_refresh(refresh: &mut DroprTaskRefresh, workspace_id: &str, manual: bool) -> bool {
@@ -168,13 +170,10 @@ mod tests {
     fn sweep_expires_removed_workspace_refresh() {
         let now = Instant::now();
         let mut refresh = DroprTaskRefresh::new();
-        refresh.in_flight.insert(
-            "removed-workspace".to_owned(),
-            now - REFRESH_STALE_AFTER,
-        );
         refresh
             .in_flight
-            .insert("linked-workspace".to_owned(), now);
+            .insert("removed-workspace".to_owned(), now - REFRESH_STALE_AFTER);
+        refresh.in_flight.insert("linked-workspace".to_owned(), now);
         refresh.manual.insert("removed-workspace".to_owned());
         refresh.manual.insert("linked-workspace".to_owned());
 
