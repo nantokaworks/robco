@@ -11,7 +11,7 @@ use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
 use activity::activity_span;
-use indicator::{Indicator, IndicatorState, select, select_supplementary};
+use indicator::{Indicator, IndicatorState, SupplementaryIndicators, select, select_supplementary};
 
 mod activity;
 mod hints;
@@ -23,7 +23,7 @@ fn status_style(status: Status) -> Style {
 
 fn indicator_spans(
     indicator: Option<Indicator>,
-    worktree_missing: bool,
+    supplementary: SupplementaryIndicators,
     selected: bool,
     elapsed: std::time::Duration,
     gap: &str,
@@ -56,11 +56,18 @@ fn indicator_spans(
         )],
         None => Vec::new(),
     };
-    if worktree_missing {
+    if supplementary.worktree_missing {
         let prefix = if spans.is_empty() { gap } else { " " };
         spans.push(Span::styled(
             format!("{prefix}⌦"),
             THEME.worktree_missing_style(selected),
+        ));
+    }
+    if supplementary.merge_failed {
+        let prefix = if spans.is_empty() { gap } else { " " };
+        spans.push(Span::styled(
+            format!("{prefix}merge-failed"),
+            THEME.merge_failed_style(selected),
         ));
     }
     spans
@@ -162,6 +169,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                             THEME.worktree_missing_style(selected),
                         ));
                     }
+                    let merge_failed_count = repo
+                        .agents
+                        .iter()
+                        .filter(|agent| agent.merge_error.is_some())
+                        .count();
+                    if merge_failed_count > 0 {
+                        spans.push(Span::styled(if first { "  " } else { " · " }, style));
+                        spans.push(Span::styled(
+                            format!("{merge_failed_count} merge-failed"),
+                            THEME.merge_failed_style(selected),
+                        ));
+                    }
                 }
                 lines.push(Line::from(spans));
                 if expanded && repo.agents.is_empty() {
@@ -193,6 +212,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     .count();
                 let mut indicator_state = IndicatorState::with_status(Some(agent.status));
                 indicator_state.worktree_missing = agent.worktree_missing;
+                indicator_state.merge_failed = agent.merge_error.is_some();
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.subagents_active = active;
                 spans.extend(indicator_spans(

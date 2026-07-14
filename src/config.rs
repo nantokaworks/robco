@@ -10,6 +10,12 @@ pub const ENV_AGENT_ID: &str = "ROBCO_AGENT_ID";
 /// Optional controller identity; no current creation flow knows a parent id.
 pub const ENV_PARENT_AGENT_ID: &str = "ROBCO_PARENT_AGENT_ID";
 
+const DEFAULT_PR_PROMPT: &str = "Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions.";
+
+fn default_pr_prompt() -> String {
+    DEFAULT_PR_PROMPT.to_string()
+}
+
 use crate::{Result, model::Status, openclaw::OpenClawConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -116,6 +122,11 @@ pub struct Config {
     pub subagent_indicator: bool,
     #[serde(default)]
     pub merge_strategy: MergeStrategy,
+    /// Prompt sent to an agent when requesting a PR. Defaults to "Commit any
+    /// remaining changes, push the branch, and open a pull request against main
+    /// following the project's PR conventions."
+    #[serde(default = "default_pr_prompt")]
+    pub pr_prompt: String,
     #[serde(default)]
     pub notify: NotifyConfig,
     #[serde(default)]
@@ -147,6 +158,7 @@ impl Default for Config {
             process_indicator: true,
             subagent_indicator: true,
             merge_strategy: MergeStrategy::default(),
+            pr_prompt: default_pr_prompt(),
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
             project_icon: ProjectIcon::default(),
@@ -255,6 +267,16 @@ mod tests {
         assert_eq!(MergeStrategy::Rebase.gh_flag(), "--rebase");
         assert_eq!(MergeStrategy::Squash.gh_flag(), "--squash");
         assert_eq!(MergeStrategy::Merge.gh_flag(), "--merge");
+    }
+
+    #[test]
+    fn pr_prompt_defaults_when_missing_from_config() {
+        let value = serde_json::to_value(Config::default()).unwrap();
+        let mut object = value.as_object().unwrap().clone();
+        object.remove("pr_prompt");
+
+        let config: Config = serde_json::from_value(object.into()).unwrap();
+        assert_eq!(config.pr_prompt, DEFAULT_PR_PROMPT);
     }
 
     #[test]

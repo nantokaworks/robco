@@ -29,6 +29,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 updated_at: Local::now(),
                 status: Status::Idle,
                 worktree_missing: false,
+                merge_error: None,
                 last_capture: None,
                 last_change_at: None,
                 last_auto_accept_at: None,

@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 34;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 36;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -22,14 +22,16 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("Repo"),
         Line::from("  a              add repository by path"),
         Line::from("  m              merge/land agent: merge PR + pull main (commit + PR needed)"),
+        Line::from("  p              request PR from selected running agent"),
         Line::from(""),
         Line::from("Indicators"),
         Line::from("  One primary per row: dead > running > waiting > TERM activity"),
         Line::from("    > subagents > dropr reload > static status"),
         Line::from("  ⠋… animated agent running   ? waiting   ✗ dead"),
         Line::from("  ⌦ worktree missing (appended after primary; alone if no primary)"),
-        Line::from("  ▖… animated TERM activity"),
-        Line::from("  ✻N active subagents   ⟳ manual dropr reload (r key)"),
+        Line::from("  merge-failed native merge failed (appended after primary)"),
+        Line::from("  ▖… animated TERM activity   ✻N active subagents"),
+        Line::from("  ⟳ manual dropr reload (r key)"),
         Line::from("  ✓ done   · idle   ⎇ branch only (static fallback)"),
         Line::from("  Collapsed repos: N ▶ is running; status glyphs/N ⌦ are child counts"),
         Line::from("  Child rows: * uncommitted changes   ⌁ tmux session"),

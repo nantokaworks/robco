@@ -69,6 +69,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y merge   n/esc cancel"),
             ],
         ),
+        Mode::ConfirmPr { branch, .. } => (
+            "request PR from agent?",
+            confirm_lines(branch.clone(), "y request   n/esc cancel"),
+        ),
         Mode::ConfirmDeleteBranch { repo, agent } => (
             "delete branch?",
             confirm_lines(

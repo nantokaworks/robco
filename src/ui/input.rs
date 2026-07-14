@@ -133,6 +133,20 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
+            Mode::ConfirmPr {
+                repo_path,
+                agent_id,
+                ..
+            } => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let repo_path = repo_path.clone();
+                    let agent_id = agent_id.clone();
+                    self.mode = Mode::Normal;
+                    self.request_pr(&repo_path, &agent_id)?;
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
+                _ => {}
+            },
             Mode::ConfirmDeleteBranch { repo, agent } => match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                     let repo = *repo;
@@ -250,6 +264,7 @@ impl App {
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('m') => self.merge_selected(),
+                KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char(',') => self.open_settings_editor(),
                 _ => {}

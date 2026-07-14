@@ -79,3 +79,11 @@ pub fn send_keys(session: &str, keys: &[&str]) -> Result<()> {
         .output()?;
     command_unit(output, "tmux send-keys")
 }
+
+pub fn send_literal_text(session: &str, text: &str) -> Result<()> {
+    let target = format!("={session}:");
+    let output = Command::new("tmux")
+        .args(["send-keys", "-t", &target, "-l", "--", text])
+        .output()?;
+    command_unit(output, "tmux send literal text")
+}

@@ -63,6 +63,11 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    ConfirmPr {
+        repo_path: PathBuf,
+        agent_id: String,
+        branch: String,
+    },
     ConfirmDeleteBranch {
         repo: usize,
         agent: usize,

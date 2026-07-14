@@ -9,10 +9,7 @@ use crate::{
     tmux,
 };
 
-use super::{
-    ToolResult, exec_err, find_agent, invalid_params, live_status, send_literal_text,
-    validate_non_blank,
-};
+use super::{ToolResult, exec_err, find_agent, invalid_params, live_status, validate_non_blank};
 
 #[derive(Deserialize)]
 pub(super) struct ReportArgs {
@@ -49,7 +46,7 @@ fn deliver_report_with_lookup(
 
     let sender = sender_label(&registry, identities.sender_agent_id.as_deref());
     let line = format_report_line(&sender, &message);
-    send_literal_text(&target.tmux_session, &line)?;
+    tmux::send_literal_text(&target.tmux_session, &line).map_err(exec_err)?;
     tmux::send_keys(&target.tmux_session, &["Enter"]).map_err(exec_err)?;
     Ok(())
 }

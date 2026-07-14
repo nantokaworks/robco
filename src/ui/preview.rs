@@ -64,7 +64,35 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         ),
         (PreviewPane::Info, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
-            agent_summary(repo, &repo.agents[agent])
+            let agent = &repo.agents[agent];
+            let (title, mut text) = agent_summary(repo, agent);
+            let mut details = Vec::new();
+            if agent.worktree_missing {
+                details.push(Line::from(vec![
+                    Span::styled("worktree missing: ", THEME.muted_style()),
+                    Span::styled(
+                        agent.worktree_path.display().to_string(),
+                        THEME.worktree_missing_style(false),
+                    ),
+                ]));
+            }
+            if let Some(error) = &agent.merge_error {
+                for (row, error_line) in error.split('\n').enumerate() {
+                    details.push(Line::from(vec![
+                        Span::styled(
+                            if row == 0 {
+                                "merge failed: "
+                            } else {
+                                "              "
+                            },
+                            THEME.muted_style(),
+                        ),
+                        Span::styled(error_line.to_string(), THEME.merge_failed_style(false)),
+                    ]));
+                }
+            }
+            text.lines.splice(3..3, details);
+            (title, text)
         }
         (PreviewPane::Claude, Some(Selection::Agent { repo, agent })) => {
             let selection = Some(Selection::Agent { repo, agent });
