@@ -90,7 +90,7 @@ impl App {
         if self.config.subagent_indicator {
             self.refresh_subagents();
         }
-        self.refresh_dropr_tasks();
+        self.refresh_dropr_tasks(false);
         self.refresh_orphans();
     }
 
