@@ -114,7 +114,8 @@ pub fn refresh_repo_main(
         last_capture: repo.main_last_capture.take(),
         last_change_at: repo.main_last_change_at.take(),
     };
-    repo.main_status = Some(classify_capture(&capture, &mut state, Local::now()).status);
+    let report = classify_capture(&capture, &mut state, Local::now());
+    repo.main_status = Some(downgrade_running_shell_pane(report, session).status);
     repo.main_last_capture = state.last_capture;
     repo.main_last_change_at = state.last_change_at;
     repo.main_shell_working = shell_session_working(session);
@@ -164,14 +165,15 @@ pub fn classify_agent_status(
             // A transient capture failure should not corrupt the signal; keep
             // the previous status until the next successful capture.
             let capture = tmux::capture_text(tmux_session).ok()?;
-            classify_agent_observation(
+            let report = classify_agent_observation(
                 true,
                 Some(&capture),
                 worktree_path.exists(),
                 false,
                 state,
                 Local::now(),
-            )
+            )?;
+            Some(downgrade_running_shell_pane(report, tmux_session))
         }
         Ok(false) => {
             let worktree_exists = worktree_path.exists();
@@ -188,6 +190,21 @@ pub fn classify_agent_status(
         }
         Err(_) => None,
     }
+}
+
+fn downgrade_running_shell_pane(report: StatusReport, session: &str) -> StatusReport {
+    if report.status != Status::Running {
+        return report;
+    }
+    let pane_command = tmux::pane_current_command(session).ok().flatten();
+    shell_pane_downgrade(report, pane_command.as_deref())
+}
+
+fn shell_pane_downgrade(mut report: StatusReport, pane_command: Option<&str>) -> StatusReport {
+    if report.status == Status::Running && pane_command.is_some_and(proc::is_shell_name) {
+        report.status = Status::Idle;
+    }
+    report
 }
 
 fn classify_agent_observation(
@@ -315,5 +332,54 @@ mod tests {
         assert!(!branch_only.worktree_missing);
         assert_eq!(dead.status, Status::Dead);
         assert!(!dead.worktree_missing);
+    }
+
+    fn report(status: Status) -> StatusReport {
+        StatusReport {
+            status,
+            awaiting_confirmation: true,
+            worktree_missing: true,
+        }
+    }
+
+    #[test]
+    fn shell_pane_downgrade_only_changes_running_shells() {
+        assert_eq!(
+            shell_pane_downgrade(report(Status::Running), Some("zsh")).status,
+            Status::Idle
+        );
+        for command in [Some("claude"), Some("2_1_208"), None] {
+            assert_eq!(
+                shell_pane_downgrade(report(Status::Running), command).status,
+                Status::Running
+            );
+        }
+        for status in [
+            Status::Idle,
+            Status::Waiting,
+            Status::Done,
+            Status::Dead,
+            Status::BranchOnly,
+        ] {
+            let unchanged = shell_pane_downgrade(report(status), Some("bash"));
+            assert_eq!(unchanged.status, status);
+            assert!(unchanged.awaiting_confirmation);
+            assert!(unchanged.worktree_missing);
+        }
+    }
+
+    #[test]
+    fn stale_working_marker_in_shell_pane_is_not_running() {
+        let classified = classify_capture(
+            "Generating response (esc to interrupt)",
+            &mut WatchStatusState::default(),
+            now(),
+        );
+
+        assert_eq!(classified.status, Status::Running);
+        assert_eq!(
+            shell_pane_downgrade(classified, Some("zsh")).status,
+            Status::Idle
+        );
     }
 }
