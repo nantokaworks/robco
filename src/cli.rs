@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
-use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
+use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -22,10 +22,6 @@ pub struct Args {
     #[arg(short = 'y', long = "autoyes")]
     pub auto_yes: bool,
 
-    /// Print discovered repositories and exit.
-    #[arg(long)]
-    pub list: bool,
-
     /// Disable best-effort dropr read-only workspace overlay.
     #[arg(long)]
     pub no_dropr: bool,
@@ -40,6 +36,8 @@ pub enum Command {
     Debug,
     /// Register RobCo's MCP server in supported client configs.
     Install(InstallArgs),
+    /// Print discovered repositories and exit.
+    List(ListArgs),
     /// Run an MCP server over stdio for agent state and control.
     McpStdio,
     /// Create a child agent linked to the calling agent session.
@@ -50,6 +48,14 @@ pub enum Command {
     Reset,
     /// Remove RobCo's MCP server from supported client configs.
     Uninstall(InstallArgs),
+    /// Print version information.
+    Version,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ListArgs {
+    /// Directory whose direct children should be scanned for git repositories.
+    pub dir: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -93,6 +99,29 @@ pub struct InstallArgs {
     pub all: bool,
 }
 
+pub(crate) fn invocation_targets_report(args: &[OsString]) -> bool {
+    Args::command()
+        .ignore_errors(true)
+        .try_get_matches_from(args)
+        .is_ok_and(|matches| matches.subcommand_name() == Some("report"))
+}
+
+pub(crate) fn report_parse_error_message(
+    error: &clap::Error,
+    invocation_targets_report: bool,
+) -> Option<&'static str> {
+    if invocation_targets_report
+        && !matches!(
+            error.kind(),
+            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+        )
+    {
+        Some("robco report: invalid arguments (see --help)")
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,5 +153,44 @@ mod tests {
         };
         assert_eq!(args.title, "x");
         assert_eq!(args.prompt.as_deref(), Some("y"));
+    }
+
+    #[test]
+    fn parses_version_subcommand() {
+        let args = Args::try_parse_from(["robco", "version"]).unwrap();
+        assert!(matches!(args.command, Some(Command::Version)));
+    }
+
+    #[test]
+    fn parses_list_subcommand_with_default_directory() {
+        let args = Args::try_parse_from(["robco", "list"]).unwrap();
+        let Some(Command::List(args)) = args.command else {
+            panic!("expected list command");
+        };
+        assert_eq!(args.dir, None);
+    }
+
+    #[test]
+    fn parses_list_subcommand_with_directory() {
+        let args = Args::try_parse_from(["robco", "list", "/some/dir"]).unwrap();
+        let Some(Command::List(args)) = args.command else {
+            panic!("expected list command");
+        };
+        assert_eq!(args.dir, Some(PathBuf::from("/some/dir")));
+    }
+
+    #[test]
+    fn parses_list_subcommand_after_launch_directory() {
+        let args = Args::try_parse_from(["robco", "/some/dir", "list"]).unwrap();
+        assert_eq!(args.launch_dir, PathBuf::from("/some/dir"));
+        let Some(Command::List(args)) = args.command else {
+            panic!("expected list command");
+        };
+        assert_eq!(args.dir, None);
+    }
+
+    #[test]
+    fn rejects_removed_list_flag() {
+        assert!(Args::try_parse_from(["robco", "--list"]).is_err());
     }
 }
