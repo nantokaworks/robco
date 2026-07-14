@@ -41,6 +41,17 @@ pub(crate) fn footer_zones(footer: Rect, ident_width: u16) -> FooterZones {
 }
 
 pub(crate) fn root(area: Rect) -> RootLayout {
+    // CRT-bezel breathing space: a constant 1-row top margin and 1-column
+    // left/right margins. The bottom edge stays untouched so the status row
+    // keeps sitting on the last terminal row (a Layout::margin(1) would lift
+    // it off). Saturating arithmetic keeps tiny terminals from underflowing.
+    let area = Rect {
+        x: area.x.saturating_add(1),
+        y: area.y.saturating_add(1),
+        width: area.width.saturating_sub(2),
+        height: area.height.saturating_sub(1),
+    };
+
     // Two rows only: the body fills everything, and a single status row at the
     // bottom carries the ROBCO brand (left) plus key hints. The old top banner
     // row is gone — the brand now lives in the bottom-left status line.
@@ -148,4 +159,40 @@ fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
         }
     }
     offset
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_insets_top_and_sides_and_keeps_footer_on_last_row() {
+        let layout = root(Rect::new(0, 0, 80, 24));
+
+        assert_eq!(layout.body, Rect::new(1, 1, 78, 22));
+        // Footer sits on the last terminal row, inset one column on each side.
+        assert_eq!(layout.footer, Rect::new(1, 23, 78, 1));
+    }
+
+    #[test]
+    fn root_inset_is_relative_to_a_non_origin_area() {
+        let layout = root(Rect::new(5, 3, 40, 10));
+
+        assert_eq!(layout.body, Rect::new(6, 4, 38, 8));
+        assert_eq!(layout.footer, Rect::new(6, 12, 38, 1));
+    }
+
+    #[test]
+    fn root_does_not_underflow_on_tiny_terminals() {
+        for (width, height) in [(0, 0), (1, 1), (2, 1), (1, 2), (2, 2), (3, 3)] {
+            let layout = root(Rect::new(0, 0, width, height));
+
+            let expected_width = width.saturating_sub(2);
+            assert_eq!(layout.body.width, expected_width);
+            assert_eq!(layout.footer.width, expected_width);
+            // The inset area never extends past the original bottom edge
+            // (the y+1 shift itself is the only row on a height-0 area).
+            assert!(layout.footer.bottom() <= height.max(1));
+        }
+    }
 }

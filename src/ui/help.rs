@@ -45,8 +45,12 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
     ]
 }
 
+/// Rows the frame loses around the help content: the 1-row top margin and
+/// 1-row footer from `layout::root`, plus the popup's two border rows.
+const FRAME_OVERHEAD_ROWS: u16 = 4;
+
 pub(crate) fn max_scroll(frame_height: u16) -> u16 {
-    let visible_rows = frame_height.saturating_sub(3);
+    let visible_rows = frame_height.saturating_sub(FRAME_OVERHEAD_ROWS);
     CONTENT_LINE_COUNT.saturating_sub(visible_rows)
 }
 
@@ -65,7 +69,7 @@ pub(crate) fn scroll_down(scroll: u16, frame_height: u16) -> u16 {
 pub(crate) fn terminal_height() -> u16 {
     crossterm::terminal::size()
         .map(|(_, height)| height)
-        .unwrap_or(CONTENT_LINE_COUNT + 3)
+        .unwrap_or(CONTENT_LINE_COUNT + FRAME_OVERHEAD_ROWS)
 }
 
 pub(crate) fn scroll_title(scroll: u16, frame_height: u16) -> Option<String> {
