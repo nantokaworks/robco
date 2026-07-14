@@ -16,10 +16,11 @@ mod status;
 pub mod subagents;
 mod tmux;
 mod ui;
+mod version;
 
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
-use clap::{CommandFactory, Parser, error::ErrorKind};
+use clap::{Parser, error::ErrorKind};
 use cli::{Args, Command, ReportArgs};
 use config::Config;
 use registry::Registry;
@@ -66,8 +67,12 @@ async fn main() -> ExitCode {
     let args = match Args::try_parse_from(&raw_args) {
         Ok(args) => args,
         Err(err) => {
+            if err.kind() == ErrorKind::DisplayVersion {
+                version::print();
+                return ExitCode::SUCCESS;
+            }
             if let Some(message) =
-                report_parse_error_message(&err, invocation_targets_report(&raw_args))
+                cli::report_parse_error_message(&err, cli::invocation_targets_report(&raw_args))
             {
                 eprintln!("{message}");
                 return ExitCode::from(3);
@@ -75,6 +80,10 @@ async fn main() -> ExitCode {
             err.exit();
         }
     };
+    if matches!(&args.command, Some(Command::Version)) {
+        version::print();
+        return ExitCode::SUCCESS;
+    }
     if let Some(Command::Report(report_args)) = &args.command {
         return run_report(report_args);
     }
@@ -85,29 +94,6 @@ async fn main() -> ExitCode {
             eprintln!("robco: {err}");
             ExitCode::FAILURE
         }
-    }
-}
-
-fn invocation_targets_report(args: &[OsString]) -> bool {
-    Args::command()
-        .ignore_errors(true)
-        .try_get_matches_from(args)
-        .is_ok_and(|matches| matches.subcommand_name() == Some("report"))
-}
-
-fn report_parse_error_message(
-    error: &clap::Error,
-    invocation_targets_report: bool,
-) -> Option<&'static str> {
-    if invocation_targets_report
-        && !matches!(
-            error.kind(),
-            ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-        )
-    {
-        Some("robco report: invalid arguments (see --help)")
-    } else {
-        None
     }
 }
 
@@ -127,34 +113,11 @@ async fn run(args: Args) -> Result<()> {
         if matches!(command, Command::McpStdio) {
             return mcp::run_stdio();
         }
-        return run_command(command, &config);
+        return run_command(command, &config, &args.launch_dir);
     }
 
     let indicator = loading::Indicator::start("Scanning repositories...");
-    let mut discovered = discover::discover_repos(&args.launch_dir)?;
-    if config.dropr_overlay {
-        indicator.set_message("Loading dropr workspaces...");
-        let overlay = dropr::DroprOverlay::load_best_effort();
-        for repo in &mut discovered {
-            if let Some(remote) = &repo.remote_url {
-                repo.dropr = overlay.find_by_repo_url(remote).cloned();
-            }
-        }
-    }
-
-    if args.list {
-        indicator.finish();
-        for repo in &discovered {
-            let remote = repo.remote_url.as_deref().unwrap_or("-");
-            let dropr = repo
-                .dropr
-                .as_ref()
-                .map(|workspace| format!(" dropr:{}", workspace.id))
-                .unwrap_or_default();
-            println!("{}\t{}{}", repo.path.display(), remote, dropr);
-        }
-        return Ok(());
-    }
+    let discovered = discover_with_overlay(&args.launch_dir, &config, &indicator)?;
 
     let mut registry = Registry::load()?;
     agent::normalize_adopted_titles(&mut registry.repos, &config);
@@ -165,7 +128,7 @@ async fn run(args: Args) -> Result<()> {
     ui::run(registry, config, launch_dir)
 }
 
-fn run_command(command: Command, config: &Config) -> Result<()> {
+fn run_command(command: Command, config: &Config, launch_dir: &std::path::Path) -> Result<()> {
     match command {
         Command::Debug => {
             println!("config: {}", config::config_file_path()?.display());
@@ -176,6 +139,10 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
             println!("auto_accept: {}", config.auto_accept);
         }
         Command::Install(args) => setup::install(&args)?,
+        Command::List(args) => {
+            let dir = resolve_list_dir(args.dir.as_deref(), launch_dir);
+            list_repositories(dir, config)?;
+        }
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::New(args) => new_agent::run(args, config)?,
         Command::Report(_) => unreachable!("report is handled before config loading"),
@@ -189,6 +156,48 @@ fn run_command(command: Command, config: &Config) -> Result<()> {
             }
         }
         Command::Uninstall(args) => setup::uninstall(&args)?,
+        Command::Version => unreachable!("version is handled before config loading"),
+    }
+    Ok(())
+}
+
+fn resolve_list_dir<'a>(
+    list_dir: Option<&'a std::path::Path>,
+    launch_dir: &'a std::path::Path,
+) -> &'a std::path::Path {
+    list_dir.unwrap_or(launch_dir)
+}
+
+fn discover_with_overlay(
+    dir: &std::path::Path,
+    config: &Config,
+    indicator: &loading::Indicator,
+) -> Result<Vec<model::RepoNode>> {
+    let mut discovered = discover::discover_repos(dir)?;
+    if config.dropr_overlay {
+        indicator.set_message("Loading dropr workspaces...");
+        let overlay = dropr::DroprOverlay::load_best_effort();
+        for repo in &mut discovered {
+            if let Some(remote) = &repo.remote_url {
+                repo.dropr = overlay.find_by_repo_url(remote).cloned();
+            }
+        }
+    }
+    Ok(discovered)
+}
+
+fn list_repositories(dir: &std::path::Path, config: &Config) -> Result<()> {
+    let indicator = loading::Indicator::start("Scanning repositories...");
+    let discovered = discover_with_overlay(dir, config, &indicator)?;
+    indicator.finish();
+    for repo in &discovered {
+        let remote = repo.remote_url.as_deref().unwrap_or("-");
+        let dropr = repo
+            .dropr
+            .as_ref()
+            .map(|workspace| format!(" dropr:{}", workspace.id))
+            .unwrap_or_default();
+        println!("{}\t{}{}", repo.path.display(), remote, dropr);
     }
     Ok(())
 }
@@ -218,81 +227,67 @@ fn run_report(args: &ReportArgs) -> ExitCode {
 mod tests {
     use super::*;
 
-    fn parse_error(args: &[&str]) -> clap::Error {
-        Args::try_parse_from(args).unwrap_err()
+    fn parsed_list_directory(args: &[&str]) -> PathBuf {
+        let args = Args::try_parse_from(args).unwrap();
+        let Some(Command::List(list_args)) = args.command else {
+            panic!("expected list command");
+        };
+        resolve_list_dir(list_args.dir.as_deref(), &args.launch_dir).to_path_buf()
     }
 
     fn mapped_report_error(args: &[&str]) -> Option<&'static str> {
-        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
-        report_parse_error_message(&parse_error(args), invocation_targets_report(&raw_args))
+        let raw = args.iter().map(OsString::from).collect::<Vec<_>>();
+        let error = Args::try_parse_from(args).unwrap_err();
+        cli::report_parse_error_message(&error, cli::invocation_targets_report(&raw))
     }
 
     #[test]
-    fn report_missing_message_maps_to_one_line_exit_three_error() {
-        let message = mapped_report_error(&["robco", "report"]).unwrap();
-        assert_eq!(message.lines().count(), 1);
-        assert_eq!(message, "robco report: invalid arguments (see --help)");
+    fn list_directory_defaults_to_current_directory() {
+        assert_eq!(
+            parsed_list_directory(&["robco", "list"]),
+            PathBuf::from(".")
+        );
     }
 
     #[test]
-    fn report_unknown_flag_maps_to_exit_three_error() {
-        assert!(mapped_report_error(&["robco", "report", "--unknown"]).is_some());
+    fn list_directory_prefers_subcommand_directory() {
+        assert_eq!(
+            parsed_list_directory(&["robco", "list", "/d"]),
+            PathBuf::from("/d")
+        );
     }
 
     #[test]
-    fn report_after_leading_positional_maps_to_exit_three_error() {
+    fn list_directory_falls_back_to_launch_directory() {
+        assert_eq!(
+            parsed_list_directory(&["robco", "/d", "list"]),
+            PathBuf::from("/d")
+        );
+    }
+
+    #[test]
+    fn report_argument_errors_use_concise_mapping() {
+        let expected = Some("robco report: invalid arguments (see --help)");
         for args in [
-            &["robco", ".", "report", "--unknown"][..],
-            &["robco", "/some/dir", "report"][..],
-        ] {
-            assert!(mapped_report_error(args).is_some());
-        }
-    }
-
-    #[test]
-    fn report_after_program_option_maps_to_exit_three_error() {
-        for args in [
-            &["robco", "--program", "x", "report"][..],
+            &["robco", "report"][..],
+            &["robco", "report", "--unknown"][..],
+            &["robco", "/d", "report"][..],
             &["robco", "--program=x", "report", "--unknown"][..],
         ] {
-            assert!(mapped_report_error(args).is_some());
+            assert_eq!(mapped_report_error(args), expected);
         }
     }
 
     #[test]
-    fn report_consumed_as_program_value_keeps_clap_mapping() {
-        let args = ["robco", "--program", "report"];
-        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
-        assert!(!invocation_targets_report(&raw_args));
-    }
-
-    #[test]
-    fn report_help_keeps_clap_output_and_success_exit() {
-        let args = ["robco", "report", "--help"];
-        let error = parse_error(&args);
-        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
-        assert_eq!(error.kind(), ErrorKind::DisplayHelp);
-        assert_eq!(error.exit_code(), 0);
-        assert!(error.to_string().lines().count() > 1);
-        assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
-    }
-
-    #[test]
-    fn report_version_keeps_clap_output_and_success_exit() {
-        let args = ["robco", "report", "--version"];
-        let error = parse_error(&args);
-        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
-        assert_eq!(error.kind(), ErrorKind::DisplayVersion);
-        assert_eq!(error.exit_code(), 0);
-        assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
-    }
-
-    #[test]
-    fn another_subcommand_parse_error_keeps_clap_mapping() {
-        let args = ["robco", "install", "--unknown"];
-        let error = parse_error(&args);
-        let raw_args = args.iter().map(OsString::from).collect::<Vec<_>>();
-        assert_eq!(error.exit_code(), 2);
-        assert!(report_parse_error_message(&error, invocation_targets_report(&raw_args)).is_none());
+    fn non_argument_report_errors_keep_clap_mapping() {
+        for args in [
+            &["robco", "report", "--help"][..],
+            &["robco", "report", "--version"][..],
+            &["robco", "install", "--unknown"][..],
+        ] {
+            assert_eq!(mapped_report_error(args), None);
+        }
+        let raw = ["robco", "--program", "report"].map(OsString::from);
+        assert!(!cli::invocation_targets_report(&raw));
     }
 }
