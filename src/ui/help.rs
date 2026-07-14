@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 33;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 34;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -24,10 +24,11 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  m              merge/land agent: merge PR + pull main (commit + PR needed)"),
         Line::from(""),
         Line::from("Indicators"),
-        Line::from("  One per row (highest wins): dead > running > waiting > missing"),
-        Line::from("    > TERM activity > subagents > dropr reload > static status"),
+        Line::from("  One primary per row: dead > running > waiting > TERM activity"),
+        Line::from("    > subagents > dropr reload > static status"),
         Line::from("  ⠋… animated agent running   ? waiting   ✗ dead"),
-        Line::from("  ⌦ worktree missing   ▖… animated TERM activity"),
+        Line::from("  ⌦ worktree missing (appended after primary; alone if no primary)"),
+        Line::from("  ▖… animated TERM activity"),
         Line::from("  ✻N active subagents   ⟳ manual dropr reload (r key)"),
         Line::from("  ✓ done   · idle   ⎇ branch only (static fallback)"),
         Line::from("  Collapsed repos: N ▶ is running; status glyphs/N ⌦ are child counts"),
@@ -78,7 +79,7 @@ pub(crate) fn scroll_title(scroll: u16, frame_height: u16) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::{backend::TestBackend, Terminal};
+    use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
     use crate::{config::Config, registry::Registry};

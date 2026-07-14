@@ -11,7 +11,7 @@ use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
 use activity::activity_span;
-use indicator::{Indicator, IndicatorState, select};
+use indicator::{Indicator, IndicatorState, select, select_supplementary};
 
 mod activity;
 mod hints;
@@ -23,11 +23,12 @@ fn status_style(status: Status) -> Style {
 
 fn indicator_spans(
     indicator: Option<Indicator>,
+    worktree_missing: bool,
     selected: bool,
     elapsed: std::time::Duration,
     gap: &str,
 ) -> Vec<Span<'static>> {
-    match indicator {
+    let mut spans = match indicator {
         Some(Indicator::Status(status)) => vec![Span::styled(
             format!("{gap}{}", status.glyph()),
             if selected {
@@ -44,10 +45,6 @@ fn indicator_spans(
                 status_style(Status::Running)
             },
         )],
-        Some(Indicator::WorktreeMissing) => vec![Span::styled(
-            format!("{gap}⌦"),
-            THEME.worktree_missing_style(selected),
-        )],
         Some(Indicator::ShellActivity) => vec![Span::styled(
             format!("{gap}{}", super::spinner::term_frame(elapsed)),
             THEME.term_style(),
@@ -58,7 +55,15 @@ fn indicator_spans(
             THEME.hint_style(),
         )],
         None => Vec::new(),
+    };
+    if worktree_missing {
+        let prefix = if spans.is_empty() { gap } else { " " };
+        spans.push(Span::styled(
+            format!("{prefix}⌦"),
+            THEME.worktree_missing_style(selected),
+        ));
     }
+    spans
 }
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
@@ -103,6 +108,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.dropr_refresh = dropr_refresh;
                 spans.extend(indicator_spans(
                     select(indicator_state),
+                    select_supplementary(indicator_state),
                     selected,
                     app.started.elapsed(),
                     "  ",
@@ -191,6 +197,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.subagents_active = active;
                 spans.extend(indicator_spans(
                     select(indicator_state),
+                    select_supplementary(indicator_state),
                     selected,
                     app.started.elapsed(),
                     " ",
