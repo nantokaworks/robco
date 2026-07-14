@@ -4,7 +4,6 @@ use crate::model::Status;
 pub(super) enum Indicator {
     Status(Status),
     Running,
-    WorktreeMissing,
     ShellActivity,
     SubagentActivity(usize),
     DroprRefresh,
@@ -39,11 +38,11 @@ impl IndicatorState {
     }
 }
 
-/// Selects exactly one row indicator in this order, highest priority first:
-/// dead/error status, running spinner, waiting status, missing worktree,
-/// shell activity, active subagent count, repo dropr refresh, then the static
-/// Done/Idle/BranchOnly status glyph. The static glyph is the fallback when no
-/// higher-priority transient condition is present.
+/// Selects the primary row indicator in this order, highest priority first:
+/// dead/error status, running spinner, waiting status, shell activity, active
+/// subagent count, repo dropr refresh, then the static Done/Idle/BranchOnly
+/// status glyph. Worktree-missing state is supplementary and is selected
+/// separately by [`select_supplementary`].
 pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
     if state.dead {
         Some(Indicator::Status(Status::Dead))
@@ -51,8 +50,6 @@ pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
         Some(Indicator::Running)
     } else if state.waiting {
         Some(Indicator::Status(Status::Waiting))
-    } else if state.worktree_missing {
-        Some(Indicator::WorktreeMissing)
     } else if state.shell_active {
         Some(Indicator::ShellActivity)
     } else if state.subagents_active > 0 {
@@ -62,6 +59,10 @@ pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
     } else {
         state.static_status.map(Indicator::Status)
     }
+}
+
+pub(super) fn select_supplementary(state: IndicatorState) -> bool {
+    state.worktree_missing
 }
 
 #[cfg(test)]
@@ -89,10 +90,13 @@ mod tests {
     }
 
     #[test]
-    fn waiting_beats_missing_worktree() {
+    fn waiting_pairs_with_missing_worktree() {
         let mut state = IndicatorState::with_status(Some(Status::Waiting));
         state.worktree_missing = true;
-        assert_eq!(select(state), Some(Indicator::Status(Status::Waiting)));
+        assert_eq!(
+            (select(state), select_supplementary(state)),
+            (Some(Indicator::Status(Status::Waiting)), true)
+        );
     }
 
     #[test]
@@ -103,12 +107,42 @@ mod tests {
     }
 
     #[test]
-    fn missing_worktree_beats_shell_and_subagent_activity() {
+    fn shell_activity_pairs_with_missing_worktree() {
         let mut state = idle_state();
         state.worktree_missing = true;
         state.shell_active = true;
+        assert_eq!(
+            (select(state), select_supplementary(state)),
+            (Some(Indicator::ShellActivity), true)
+        );
+    }
+
+    #[test]
+    fn subagent_activity_pairs_with_missing_worktree() {
+        let mut state = idle_state();
+        state.worktree_missing = true;
         state.subagents_active = 2;
-        assert_eq!(select(state), Some(Indicator::WorktreeMissing));
+        assert_eq!(
+            (select(state), select_supplementary(state)),
+            (Some(Indicator::SubagentActivity(2)), true)
+        );
+    }
+
+    #[test]
+    fn missing_worktree_is_the_only_indicator_without_a_primary() {
+        let mut state = idle_state();
+        state.worktree_missing = true;
+        assert_eq!((select(state), select_supplementary(state)), (None, true));
+    }
+
+    #[test]
+    fn row_without_missing_worktree_has_no_supplementary_indicator() {
+        let mut state = idle_state();
+        state.shell_active = true;
+        assert_eq!(
+            (select(state), select_supplementary(state)),
+            (Some(Indicator::ShellActivity), false)
+        );
     }
 
     #[test]
