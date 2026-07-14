@@ -1,15 +1,15 @@
 use ratatui::{
+    Frame,
     layout::Alignment,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
-    Frame,
 };
 
 use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
-use super::{layout, theme::DEFAULT as THEME, App};
+use super::{App, layout, theme::DEFAULT as THEME};
 use activity::{activity_spans, shows_process};
 
 mod activity;
@@ -94,7 +94,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         Status::Done,
                         Status::Idle,
                         Status::Dead,
-                        Status::Orphaned,
                         Status::BranchOnly,
                     ]
                     .map(|status| {
@@ -124,6 +123,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                             status_style(status),
                         ));
                         first = false;
+                    }
+                    let missing_count = repo
+                        .agents
+                        .iter()
+                        .filter(|agent| agent.worktree_missing)
+                        .count();
+                    if missing_count > 0 {
+                        spans.push(Span::styled(if first { "  " } else { " · " }, style));
+                        spans.push(Span::styled(
+                            format!("{missing_count} ⌦"),
+                            THEME.worktree_missing_style(selected),
+                        ));
                     }
                 }
                 lines.push(Line::from(spans));
@@ -161,6 +172,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     Span::raw(" "),
                     Span::styled(status_text, status_style),
                 ];
+                if agent.worktree_missing {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled("⌦", THEME.worktree_missing_style(selected)));
+                }
                 if agent.shell_working {
                     spans.push(Span::raw(" "));
                     spans.push(Span::styled(

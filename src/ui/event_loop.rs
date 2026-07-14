@@ -33,18 +33,22 @@ pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let mut app = App::new(registry, config, launch_dir);
+    // Establish live status before the watcher records its first baseline.
+    // Otherwise deserialized `worktree_missing = false` can race the first tick.
+    app.tick();
+
     let (notify_tx, notify_rx) = mpsc::channel::<String>();
-    let notify_targets = Arc::new(Mutex::new(watch_targets(&registry)));
+    let notify_targets = Arc::new(Mutex::new(watch_targets(&app.registry)));
     let notify_running = Arc::new(AtomicBool::new(true));
     let notify_handle = notify::spawn_watcher(
         notify_targets.clone(),
-        config.notify,
-        config.openclaw.clone(),
+        app.config.notify,
+        app.config.openclaw.clone(),
         notify_tx,
         notify_running.clone(),
-        Duration::from_millis(config.poll_interval_ms),
+        Duration::from_millis(app.config.poll_interval_ms),
     );
-    let mut app = App::new(registry, config, launch_dir);
 
     let result = run_loop(&mut terminal, &mut app, &notify_rx, &notify_targets);
 
@@ -143,6 +147,7 @@ fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
                 repo: repo.name.clone(),
                 label: agent.title.clone(),
                 status: agent.status,
+                worktree_missing: agent.worktree_missing,
             })
         })
         .collect()

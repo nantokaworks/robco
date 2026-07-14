@@ -25,11 +25,13 @@ pub struct WatchTarget {
     pub repo: String,
     pub label: String,
     pub status: Status,
+    pub worktree_missing: bool,
 }
 
 #[derive(Debug, Default)]
 struct WatchEntry {
     previous: Option<Status>,
+    previous_worktree_missing: Option<bool>,
 }
 
 struct Notifier {
@@ -112,7 +114,15 @@ pub fn spawn_watcher(
                     );
                     openclaw::post_transition(&openclaw_cfg, &target);
                 }
+                if should_notify_worktree_missing_transition(
+                    entry.previous_worktree_missing,
+                    target.worktree_missing,
+                    notify_cfg,
+                ) {
+                    notifier.notify("robco", &format!("{}: worktree gone", target.label));
+                }
                 entry.previous = Some(current);
+                entry.previous_worktree_missing = Some(target.worktree_missing);
             }
 
             entries.retain(|session, _| live_sessions.iter().any(|live| live == session));
@@ -129,8 +139,15 @@ pub fn human_status(status: Status) -> &'static str {
         Status::Dead => "session died",
         Status::Running => "running",
         Status::BranchOnly => "branch only",
-        Status::Orphaned => "worktree gone",
     }
+}
+
+fn should_notify_worktree_missing_transition(
+    previous: Option<bool>,
+    current: bool,
+    notify_cfg: NotifyConfig,
+) -> bool {
+    notify_cfg.enabled && previous == Some(false) && current
 }
 
 fn should_notify_transition(
@@ -209,6 +226,35 @@ mod tests {
             Some(Status::Idle),
             Status::Running,
             cfg
+        ));
+    }
+
+    #[test]
+    fn worktree_missing_predicate_fires_once_on_transition() {
+        let cfg = NotifyConfig::default();
+        assert!(!should_notify_worktree_missing_transition(None, true, cfg));
+        assert!(should_notify_worktree_missing_transition(
+            Some(false),
+            true,
+            cfg
+        ));
+        assert!(!should_notify_worktree_missing_transition(
+            Some(true),
+            true,
+            cfg
+        ));
+        assert!(!should_notify_worktree_missing_transition(
+            Some(false),
+            false,
+            cfg
+        ));
+        assert!(!should_notify_worktree_missing_transition(
+            Some(false),
+            true,
+            NotifyConfig {
+                enabled: false,
+                ..cfg
+            }
         ));
     }
 }

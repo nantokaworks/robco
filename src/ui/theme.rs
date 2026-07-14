@@ -17,7 +17,6 @@ pub struct Theme {
     pub idle: Color,
     pub dead: Color,
     pub branch_only: Color,
-    pub orphaned: Color,
     /// Colour of the companion TERM (shell) session's working mark.
     pub term: Color,
     pub proc: Color,
@@ -38,7 +37,6 @@ pub const DEFAULT: Theme = Theme {
     idle: Color::Gray,
     dead: Color::Red,
     branch_only: Color::DarkGray,
-    orphaned: Color::Magenta,
     term: Color::Blue,
     proc: Color::LightMagenta,
     subagent: Color::LightCyan,
@@ -89,7 +87,6 @@ impl Theme {
             Status::Idle => self.idle,
             Status::Dead => self.dead,
             Status::BranchOnly => self.branch_only,
-            Status::Orphaned => self.orphaned,
         }
     }
 
@@ -114,5 +111,14 @@ impl Theme {
         Style::default()
             .fg(self.status_color(status))
             .add_modifier(Modifier::BOLD)
+    }
+
+    pub fn worktree_missing_style(self, selected: bool) -> Style {
+        let style = Style::default().fg(Color::Red);
+        if selected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
+        }
     }
 }

@@ -23,6 +23,7 @@ fn claude_squad_permission_marker_waits() {
     let report = classify_capture(capture, &mut state, fixed_now());
     assert_eq!(report.status, Status::Waiting);
     assert!(report.awaiting_confirmation);
+    assert!(!report.worktree_missing);
 }
 
 #[test]
@@ -76,6 +77,7 @@ fn finished_at_input_prompt_is_done_not_waiting() {
     let report = classify_capture(capture, &mut state, fixed_now());
     assert_eq!(report.status, Status::Done);
     assert!(!report.awaiting_confirmation);
+    assert!(!report.worktree_missing);
 }
 
 #[test]

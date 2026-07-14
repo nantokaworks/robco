@@ -125,6 +125,7 @@ fn agent_titled(title: &str, branch: &str) -> AgentNode {
         created_at: now,
         updated_at: now,
         status: Default::default(),
+        worktree_missing: false,
         last_capture: None,
         last_change_at: None,
         last_auto_accept_at: None,
