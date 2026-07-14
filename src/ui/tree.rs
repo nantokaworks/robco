@@ -1,18 +1,19 @@
 use ratatui::{
-    Frame,
     layout::Alignment,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
+    Frame,
 };
 
 use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
-use super::{App, layout, theme::DEFAULT as THEME};
+use super::{layout, theme::DEFAULT as THEME, App};
 use activity::{activity_spans, shows_process};
 
 mod activity;
+mod hints;
 
 fn status_style(status: Status) -> Style {
     THEME.status_style(status)
@@ -48,6 +49,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     spans.push(Span::styled(
                         format!("  {}", short_path(&repo.path)),
                         if selected { style } else { THEME.muted_style() },
+                    ));
+                }
+                if repo
+                    .dropr
+                    .as_ref()
+                    .is_some_and(|workspace| app.dropr_refresh_in_flight(&workspace.id))
+                {
+                    spans.push(Span::styled(
+                        format!("  ⟳ {}", super::spinner::frame(app.started.elapsed())),
+                        THEME.hint_style(),
                     ));
                 }
                 if let Some(status) = repo.main_status {
@@ -248,7 +259,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     ]));
     frame.render_widget(ident, zones.ident);
 
-    let hints = Paragraph::new(hints_line(message)).alignment(Alignment::Center);
+    let hints = Paragraph::new(hints::hints_line(
+        message,
+        hints::r_hint_label(app.selected_item()),
+    ))
+    .alignment(Alignment::Center);
     frame.render_widget(hints, zones.hints);
 }
 
@@ -257,39 +272,4 @@ fn short_path(path: &std::path::Path) -> String {
         Some(rest) => format!("~/{}", rest.display()),
         None => path.display().to_string(),
     }
-}
-
-const KEY_HINTS: &[(&str, &str)] = &[
-    ("↑↓/jk", "move"),
-    ("⇞⇟", "scroll"),
-    ("⇥", "pane"),
-    ("↵", "attach"),
-    ("n/N", "new"),
-    ("r", "restart"),
-    ("m", "merge"),
-    ("x", "kill"),
-    ("?", "help"),
-    ("q", "quit"),
-];
-
-fn hints_line(message: Option<&str>) -> Line<'static> {
-    if let Some(text) = message {
-        return Line::from(Span::styled(text.to_string(), THEME.hint_style()));
-    }
-
-    let mut spans = Vec::with_capacity(KEY_HINTS.len() * 5);
-    for (idx, (key, label)) in KEY_HINTS.iter().enumerate() {
-        if idx > 0 {
-            spans.push(Span::raw(" "));
-        }
-        spans.push(Span::styled("[", THEME.accent_style()));
-        spans.push(Span::styled(*key, THEME.accent_bold_style()));
-        spans.push(Span::styled("]", THEME.accent_style()));
-        spans.push(Span::styled(
-            format!(" {}", label.to_uppercase()),
-            THEME.hint_style(),
-        ));
-    }
-
-    Line::from(spans)
 }

@@ -10,11 +10,21 @@ use super::super::App;
 
 const REFRESH_STALE_AFTER: Duration = Duration::from_secs(30);
 
+pub(super) enum DroprTaskReload {
+    Running,
+    Failed,
+    NoLinkedWorkspaces,
+}
+
+fn refresh_is_fresh(started: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(started) < REFRESH_STALE_AFTER
+}
+
 fn refresh_is_current(in_flight: &mut HashMap<String, Instant>, workspace_id: &str) -> bool {
     let now = Instant::now();
     let is_current = in_flight
         .get(workspace_id)
-        .is_some_and(|started| now.saturating_duration_since(*started) < REFRESH_STALE_AFTER);
+        .is_some_and(|started| refresh_is_fresh(*started, now));
     if !is_current {
         in_flight.remove(workspace_id);
     }
@@ -22,7 +32,7 @@ fn refresh_is_current(in_flight: &mut HashMap<String, Instant>, workspace_id: &s
 }
 
 impl App {
-    pub(in crate::ui) fn refresh_dropr_tasks(&mut self) {
+    pub(super) fn refresh_dropr_tasks(&mut self) -> DroprTaskReload {
         self.ingest_dropr_tasks();
         let workspace_ids = self
             .registry
@@ -30,27 +40,31 @@ impl App {
             .iter()
             .filter_map(|repo| repo.dropr.as_ref().map(|workspace| workspace.id.clone()))
             .collect::<Vec<_>>();
+        if workspace_ids.is_empty() {
+            return DroprTaskReload::NoLinkedWorkspaces;
+        }
+        let mut any_running = false;
         for workspace_id in workspace_ids {
-            self.schedule_dropr_tasks(workspace_id);
+            any_running |= self.schedule_dropr_tasks(workspace_id);
+        }
+        if any_running {
+            DroprTaskReload::Running
+        } else {
+            DroprTaskReload::Failed
         }
     }
 
-    pub(in crate::ui) fn refresh_repo_dropr_tasks(&mut self, repo_index: usize) -> bool {
-        self.ingest_dropr_tasks();
-        let Some(workspace_id) = self.registry.repos[repo_index]
-            .dropr
-            .as_ref()
-            .map(|workspace| workspace.id.clone())
-        else {
-            return false;
-        };
-        self.schedule_dropr_tasks(workspace_id);
-        true
+    pub(in crate::ui) fn dropr_refresh_in_flight(&self, workspace_id: &str) -> bool {
+        let now = Instant::now();
+        self.dropr_task_refresh
+            .in_flight
+            .get(workspace_id)
+            .is_some_and(|started| refresh_is_fresh(*started, now))
     }
 
-    fn schedule_dropr_tasks(&mut self, workspace_id: String) {
+    fn schedule_dropr_tasks(&mut self, workspace_id: String) -> bool {
         if refresh_is_current(&mut self.dropr_task_refresh.in_flight, &workspace_id) {
-            return;
+            return true;
         }
         let started = Instant::now();
         self.dropr_task_refresh
@@ -73,6 +87,7 @@ impl App {
         {
             self.dropr_task_refresh.in_flight.remove(&workspace_id);
         }
+        spawn_result.is_ok()
     }
 
     fn ingest_dropr_tasks(&mut self) {

@@ -4,7 +4,10 @@ use crate::{
     tmux,
 };
 
-use super::super::{App, suspend_terminal};
+use super::{
+    super::{App, suspend_terminal},
+    dropr_tasks::DroprTaskReload,
+};
 
 impl App {
     /// Suspend the TUI and hand the terminal to a tmux session. A failure here
@@ -123,11 +126,11 @@ impl App {
     }
 
     pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
-        if let Some(Selection::Repo(repo)) = self.selected_item() {
-            let message = if self.refresh_repo_dropr_tasks(repo) {
-                "refreshed repo tasks"
-            } else {
-                "repo is not linked to dropr"
+        if let Some(Selection::Repo(_)) = self.selected_item() {
+            let message = match self.refresh_dropr_tasks() {
+                DroprTaskReload::Running => "reloading dropr tasks…",
+                DroprTaskReload::Failed => "failed to start dropr task reload",
+                DroprTaskReload::NoLinkedWorkspaces => "no dropr-linked repos",
             };
             self.show_message(message);
             return Ok(());
