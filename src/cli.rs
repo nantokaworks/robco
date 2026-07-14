@@ -42,12 +42,25 @@ pub enum Command {
     Install(InstallArgs),
     /// Run an MCP server over stdio for agent state and control.
     McpStdio,
+    /// Create a child agent linked to the calling agent session.
+    New(NewArgs),
     /// Report turn completion to a controller agent.
     Report(ReportArgs),
     /// Remove RobCo's persisted state file.
     Reset,
     /// Remove RobCo's MCP server from supported client configs.
     Uninstall(InstallArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct NewArgs {
+    /// Title for the child agent.
+    #[arg(short, long)]
+    pub title: String,
+
+    /// Initial prompt for the launched program.
+    #[arg(long)]
+    pub prompt: Option<String>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -101,5 +114,15 @@ mod tests {
         };
         assert_eq!(report.message, "turn finished");
         assert_eq!(report.target.as_deref(), Some("controller"));
+    }
+
+    #[test]
+    fn parses_new_subcommand() {
+        let args = Args::try_parse_from(["robco", "new", "--title", "x", "--prompt", "y"]).unwrap();
+        let Some(Command::New(args)) = args.command else {
+            panic!("expected new command");
+        };
+        assert_eq!(args.title, "x");
+        assert_eq!(args.prompt.as_deref(), Some("y"));
     }
 }

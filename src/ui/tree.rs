@@ -124,7 +124,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 }
             }
             Selection::Agent { repo, agent } => {
-                let agent = &app.registry.repos[repo].agents[agent];
+                let repo = &app.registry.repos[repo];
+                let depth = crate::model::agent_depth(&repo.agents, agent);
+                let agent = &repo.agents[agent];
                 let agent_style = if selected {
                     style
                 } else if agent.status == Status::BranchOnly {
@@ -143,7 +145,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     status_style(agent.status)
                 };
                 let mut spans = vec![
-                    Span::styled(format!("{marker}   "), style),
+                    Span::styled(format!("{marker}   {}", "  ".repeat(depth)), style),
                     Span::styled(&agent.title, agent_style),
                     Span::raw(" "),
                     Span::styled(status_text, status_style),
@@ -168,7 +170,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 lines.push(Line::from(spans));
             }
             Selection::ChildWorktree { repo, agent, child } => {
-                let child = &app.registry.repos[repo].agents[agent].children[child];
+                let repo = &app.registry.repos[repo];
+                let depth = crate::model::agent_depth(&repo.agents, agent);
+                let child = &repo.agents[agent].children[child];
                 let label = child.branch.as_deref().unwrap_or_else(|| {
                     child
                         .path
@@ -177,7 +181,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         .unwrap_or("worktree")
                 });
                 let child_style = if selected { style } else { THEME.hint_style() };
-                let mut spans = vec![Span::styled(format!("{marker}     └ {label}"), child_style)];
+                let mut spans = vec![Span::styled(
+                    format!("{marker}     {}└ {label}", "  ".repeat(depth)),
+                    child_style,
+                )];
                 if child.clean == Some(false) {
                     spans.push(Span::styled(" *", child_style));
                 }

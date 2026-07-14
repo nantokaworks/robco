@@ -1,5 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
+use nanoid::nanoid;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -31,7 +33,12 @@ impl Registry {
         ensure_robco_dir()?;
         let path = state_path()?;
         let raw = serde_json::to_string_pretty(self)?;
-        fs::write(path, raw)?;
+        let temp_path = path.with_extension(format!("json.{}.tmp", nanoid!()));
+        let written = fs::write(&temp_path, raw).and_then(|()| fs::rename(&temp_path, &path));
+        if let Err(error) = written {
+            let _ = fs::remove_file(temp_path);
+            return Err(error.into());
+        }
         Ok(())
     }
 
@@ -103,6 +110,7 @@ mod tests {
         let now = chrono::Local::now();
         AgentNode {
             id: "agent123".to_string(),
+            parent_agent_id: None,
             title: "t".to_string(),
             worktree_path: "/tmp/wt".into(),
             branch: "b".to_string(),
@@ -206,6 +214,20 @@ mod tests {
         legacy.as_object_mut().unwrap().remove("pinned");
         let legacy: RepoNode = serde_json::from_value(legacy).unwrap();
         assert!(!legacy.pinned);
+    }
+
+    #[test]
+    fn parent_agent_id_defaults_and_round_trips() {
+        let mut agent = dummy_agent();
+        let mut legacy = serde_json::to_value(&agent).unwrap();
+        legacy.as_object_mut().unwrap().remove("parent_agent_id");
+        let loaded: AgentNode = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.parent_agent_id, None);
+
+        agent.parent_agent_id = Some("parent123".into());
+        let loaded: AgentNode =
+            serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
+        assert_eq!(loaded.parent_agent_id.as_deref(), Some("parent123"));
     }
 
     #[test]

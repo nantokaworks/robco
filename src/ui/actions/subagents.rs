@@ -104,6 +104,7 @@ mod tests {
             pinned: false,
             agents: vec![AgentNode {
                 id: "agent".into(),
+                parent_agent_id: None,
                 title: "task".into(),
                 worktree_path: worktree_path.into(),
                 branch: "task".into(),

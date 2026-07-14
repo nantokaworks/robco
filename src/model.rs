@@ -46,6 +46,8 @@ pub struct RepoNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentNode {
     pub id: String,
+    #[serde(default)]
+    pub parent_agent_id: Option<String>,
     pub title: String,
     pub worktree_path: PathBuf,
     pub branch: String,
@@ -76,6 +78,66 @@ pub struct AgentNode {
     pub subagents: Vec<TaskSubagent>,
     #[serde(skip)]
     pub children: Vec<ChildWorktree>,
+}
+
+/// Agent indices and identity-tree depths in display order.
+pub fn agent_order(agents: &[AgentNode]) -> Vec<(usize, usize)> {
+    use std::collections::{HashMap, HashSet};
+
+    let by_id: HashMap<&str, usize> = agents
+        .iter()
+        .enumerate()
+        .map(|(index, agent)| (agent.id.as_str(), index))
+        .collect();
+    let mut children = vec![Vec::new(); agents.len()];
+    for (index, agent) in agents.iter().enumerate() {
+        if let Some(parent) = agent
+            .parent_agent_id
+            .as_deref()
+            .and_then(|id| by_id.get(id).copied())
+        {
+            children[parent].push(index);
+        }
+    }
+
+    fn visit(
+        index: usize,
+        depth: usize,
+        children: &[Vec<usize>],
+        visited: &mut HashSet<usize>,
+        ordered: &mut Vec<(usize, usize)>,
+    ) {
+        if !visited.insert(index) {
+            return;
+        }
+        ordered.push((index, depth));
+        for &child in &children[index] {
+            visit(child, depth + 1, children, visited, ordered);
+        }
+    }
+
+    let mut visited = HashSet::new();
+    let mut ordered = Vec::with_capacity(agents.len());
+    for (index, agent) in agents.iter().enumerate() {
+        let known_parent = agent
+            .parent_agent_id
+            .as_deref()
+            .is_some_and(|id| by_id.contains_key(id));
+        if !known_parent {
+            visit(index, 0, &children, &mut visited, &mut ordered);
+        }
+    }
+    for index in 0..agents.len() {
+        visit(index, 0, &children, &mut visited, &mut ordered);
+    }
+    ordered
+}
+
+pub fn agent_depth(agents: &[AgentNode], index: usize) -> usize {
+    agent_order(agents)
+        .into_iter()
+        .find_map(|(candidate, depth)| (candidate == index).then_some(depth))
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +207,47 @@ mod tests {
         assert_eq!(Status::Dead.glyph(), "✗");
         assert_eq!(Status::BranchOnly.glyph(), "⎇");
         assert_eq!(Status::Orphaned.glyph(), "⌦");
+    }
+
+    #[test]
+    fn agent_order_nests_children_and_keeps_cycles_visible() {
+        fn agent(id: &str, parent: Option<&str>) -> AgentNode {
+            let now = Local::now();
+            AgentNode {
+                id: id.into(),
+                parent_agent_id: parent.map(str::to_string),
+                title: id.into(),
+                worktree_path: PathBuf::from(id),
+                branch: id.into(),
+                base_commit: String::new(),
+                program: String::new(),
+                profile: None,
+                tmux_session: id.into(),
+                created_at: now,
+                updated_at: now,
+                status: Status::Idle,
+                last_capture: None,
+                last_change_at: None,
+                last_auto_accept_at: None,
+                shell_working: false,
+                pane_pid: None,
+                tracked_command: None,
+                subagents: Vec::new(),
+                children: Vec::new(),
+            }
+        }
+        let agents = vec![
+            agent("parent", None),
+            agent("other", None),
+            agent("child", Some("parent")),
+        ];
+        assert_eq!(agent_order(&agents), vec![(0, 0), (2, 1), (1, 0)]);
+
+        let cycle = vec![agent("a", Some("b")), agent("b", Some("a"))];
+        assert_eq!(agent_order(&cycle), vec![(0, 0), (1, 1)]);
+
+        let self_parent = vec![agent("self", Some("self")), agent("child", Some("self"))];
+        assert_eq!(agent_order(&self_parent), vec![(0, 0), (1, 1)]);
     }
 }
 

@@ -66,6 +66,7 @@ fn adopt_strips_branch_prefix_to_match_created_session_name() {
         Some("dropr/support-open-claw".to_string()),
         None,
         None,
+        None,
     );
     // Same session name create_agent(title = "support-open-claw") produces.
     assert_eq!(adopted.tmux_session, "robco_dropr_support-open-claw");
@@ -84,16 +85,36 @@ fn adopt_binds_to_existing_session_over_derived_name() {
         Some("dropr/support-open-claw".to_string()),
         None,
         Some("robco_dropr_legacy-name".to_string()),
+        None,
     );
     assert_eq!(adopted.tmux_session, "robco_dropr_legacy-name");
     // Title still derives from the branch — only the session binding differs.
     assert_eq!(adopted.title, "support-open-claw");
 }
 
+#[test]
+fn adopt_preserves_recovered_identity() {
+    let adopted = adopt_worktree(
+        &repo_named("dropr"),
+        &Config::default(),
+        "/tmp/wt".into(),
+        Some("dropr/child".into()),
+        None,
+        Some("robco_dropr_child".into()),
+        Some(RecoveredIdentity {
+            id: "child-id".into(),
+            parent_agent_id: Some("parent-id".into()),
+        }),
+    );
+    assert_eq!(adopted.id, "child-id");
+    assert_eq!(adopted.parent_agent_id.as_deref(), Some("parent-id"));
+}
+
 fn agent_titled(title: &str, branch: &str) -> AgentNode {
     let now = chrono::Local::now();
     AgentNode {
         id: "agent123".to_string(),
+        parent_agent_id: None,
         title: title.to_string(),
         worktree_path: "/tmp/wt".into(),
         branch: branch.to_string(),
@@ -166,6 +187,7 @@ fn adopt_keeps_full_label_for_foreign_branch() {
         Some("feature/x".to_string()),
         None,
         None,
+        None,
     );
     assert_eq!(adopted.tmux_session, "robco_dropr_feature-x");
 }
@@ -212,6 +234,7 @@ fn kill_agent_rejects_registered_nested_worktree() {
         &config,
         agent_path.clone(),
         Some("agent".into()),
+        None,
         None,
         None,
     );
