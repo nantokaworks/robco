@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io,
     path::PathBuf,
     sync::mpsc::{self, Receiver, Sender},
@@ -111,6 +111,7 @@ struct DroprTaskRefresh {
     sender: Sender<DroprTaskResult>,
     receiver: Receiver<DroprTaskResult>,
     in_flight: HashMap<String, Instant>,
+    manual: HashSet<String>,
 }
 
 impl DroprTaskRefresh {
@@ -120,6 +121,7 @@ impl DroprTaskRefresh {
             sender,
             receiver,
             in_flight: HashMap::new(),
+            manual: HashSet::new(),
         }
     }
 }

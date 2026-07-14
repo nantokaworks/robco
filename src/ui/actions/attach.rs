@@ -127,7 +127,7 @@ impl App {
 
     pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
         if let Some(Selection::Repo(_)) = self.selected_item() {
-            let message = match self.refresh_dropr_tasks() {
+            let message = match self.refresh_dropr_tasks(true) {
                 DroprTaskReload::Running => "reloading dropr tasks…",
                 DroprTaskReload::Failed => "failed to start dropr task reload",
                 DroprTaskReload::NoLinkedWorkspaces => "no dropr-linked repos",
