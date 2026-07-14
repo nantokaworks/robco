@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 30;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 29;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -26,7 +26,6 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("Indicators"),
         Line::from("  ▶ running   ? waiting   ✓ done   · idle"),
         Line::from("  ✗ dead   ⎇ branch only   ⌦ worktree missing"),
-        Line::from("  ⚙ <command>  latest tracked process under the session"),
         Line::from("  ✻N active subagents   ▖… TERM working (animated)"),
         Line::from("  * uncommitted changes   ⌁ tmux session (child rows)"),
         Line::from(""),
