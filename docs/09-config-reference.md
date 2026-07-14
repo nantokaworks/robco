@@ -20,6 +20,7 @@ does not require any config at all.
   "process_indicator": true,
   "subagent_indicator": true,
   "merge_strategy": "rebase",
+  "pr_prompt": "Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions.",
   "notify": {
     "enabled": true,
     "waiting": true,
@@ -49,6 +50,7 @@ default.
 | `process_indicator` | boolean | `true` | Enables `⚙ <cmd>` child-process detection. When enabled, each UI poll takes one system-wide `ps` snapshot shared by all rows; `false` skips that call and hides the indicator. |
 | `subagent_indicator` | boolean | `true` | Enables passive Claude Code session reads, the `✻N` counts, and subagent details in the agent INFO pane. `false` skips the periodic `~/.claude/projects` filesystem reads and clears cached subagent activity. |
 | `merge_strategy` | enum | `"rebase"` | Strategy passed to `gh pr merge` when landing an agent's branch. See [merge_strategy](#merge_strategy). |
+| `pr_prompt` | string | `"Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions."` | Prompt sent to the selected agent when `p` is confirmed. |
 | `notify` | object | (all `true`) | Desktop-notification toggles per status. See [notify](#notify). |
 | `project_icon` | enum | `"none"` | Marker style for the PROJECTS tree rows. See [project_icon](#project_icon). |
 

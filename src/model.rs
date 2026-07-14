@@ -64,6 +64,9 @@ pub struct AgentNode {
     /// only; orthogonal to the captured AI status.
     #[serde(skip)]
     pub worktree_missing: bool,
+    /// Detail from the latest failed native merge attempt. Runtime only.
+    #[serde(skip)]
+    pub merge_error: Option<String>,
     #[serde(skip)]
     pub last_capture: Option<String>,
     #[serde(skip)]
@@ -226,6 +229,7 @@ mod tests {
                 updated_at: now,
                 status: Status::Idle,
                 worktree_missing: false,
+                merge_error: None,
                 last_capture: None,
                 last_change_at: None,
                 last_auto_accept_at: None,
@@ -248,6 +252,40 @@ mod tests {
 
         let self_parent = vec![agent("self", Some("self")), agent("child", Some("self"))];
         assert_eq!(agent_order(&self_parent), vec![(0, 0), (1, 1)]);
+    }
+
+    #[test]
+    fn merge_error_is_not_persisted() {
+        let now = Local::now();
+        let agent = AgentNode {
+            id: "agent".into(),
+            parent_agent_id: None,
+            title: "task".into(),
+            worktree_path: "/tmp/task".into(),
+            branch: "task".into(),
+            base_commit: String::new(),
+            program: "claude".into(),
+            profile: None,
+            tmux_session: "robco_task".into(),
+            created_at: now,
+            updated_at: now,
+            status: Status::Idle,
+            worktree_missing: false,
+            merge_error: Some("merge failed".into()),
+            last_capture: None,
+            last_change_at: None,
+            last_auto_accept_at: None,
+            shell_working: false,
+            pane_pid: None,
+            tracked_command: None,
+            subagents: Vec::new(),
+            children: Vec::new(),
+        };
+
+        let json = serde_json::to_string(&agent).unwrap();
+        assert!(!json.contains("merge_error"));
+        let restored: AgentNode = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.merge_error, None);
     }
 }
 

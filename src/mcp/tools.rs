@@ -1,4 +1,3 @@
-use std::process::Command;
 use std::time::SystemTime;
 
 use serde::Deserialize;
@@ -170,7 +169,7 @@ fn question_list(registry: &Registry) -> ToolResult<Value> {
 
 fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> {
     let (_, agent) = find_agent(registry, agent_id)?;
-    send_literal_text(&agent.tmux_session, text)?;
+    tmux::send_literal_text(&agent.tmux_session, text).map_err(exec_err)?;
     tmux::send_keys(&agent.tmux_session, &["Enter"]).map_err(exec_err)?;
     Ok(json!({ "ok": true }))
 }
@@ -179,20 +178,6 @@ fn approve(registry: &Registry, agent_id: &str) -> ToolResult<Value> {
     let (_, agent) = find_agent(registry, agent_id)?;
     tmux::send_keys(&agent.tmux_session, &["y", "Enter"]).map_err(exec_err)?;
     Ok(json!({ "ok": true }))
-}
-
-fn send_literal_text(session: &str, text: &str) -> ToolResult<()> {
-    let target = format!("={session}:");
-    let output = Command::new("tmux")
-        .args(["send-keys", "-t", &target, "-l", "--", text])
-        .output()
-        .map_err(exec_err)?;
-    if !output.status.success() {
-        return Err(exec_err(
-            String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        ));
-    }
-    Ok(())
 }
 
 fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {

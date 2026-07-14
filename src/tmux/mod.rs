@@ -4,7 +4,7 @@ mod env;
 mod keys;
 mod session;
 
-pub use attach::{attach, send_keys};
+pub use attach::{attach, send_keys, send_literal_text};
 pub use capture::{
     capture_plain, capture_scrollback, capture_text, history_size, pane_current_command, pane_pid,
 };

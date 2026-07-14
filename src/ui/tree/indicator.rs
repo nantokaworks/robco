@@ -15,6 +15,7 @@ pub(super) struct IndicatorState {
     pub running: bool,
     pub waiting: bool,
     pub worktree_missing: bool,
+    pub merge_failed: bool,
     pub shell_active: bool,
     pub subagents_active: usize,
     pub dropr_refresh: bool,
@@ -28,6 +29,7 @@ impl IndicatorState {
             running: status == Some(Status::Running),
             waiting: status == Some(Status::Waiting),
             worktree_missing: false,
+            merge_failed: false,
             shell_active: false,
             subagents_active: 0,
             dropr_refresh: false,
@@ -61,8 +63,17 @@ pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
     }
 }
 
-pub(super) fn select_supplementary(state: IndicatorState) -> bool {
-    state.worktree_missing
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct SupplementaryIndicators {
+    pub worktree_missing: bool,
+    pub merge_failed: bool,
+}
+
+pub(super) fn select_supplementary(state: IndicatorState) -> SupplementaryIndicators {
+    SupplementaryIndicators {
+        worktree_missing: state.worktree_missing,
+        merge_failed: state.merge_failed,
+    }
 }
 
 #[cfg(test)]
@@ -95,7 +106,13 @@ mod tests {
         state.worktree_missing = true;
         assert_eq!(
             (select(state), select_supplementary(state)),
-            (Some(Indicator::Status(Status::Waiting)), true)
+            (
+                Some(Indicator::Status(Status::Waiting)),
+                SupplementaryIndicators {
+                    worktree_missing: true,
+                    merge_failed: false,
+                }
+            )
         );
     }
 
@@ -113,7 +130,13 @@ mod tests {
         state.shell_active = true;
         assert_eq!(
             (select(state), select_supplementary(state)),
-            (Some(Indicator::ShellActivity), true)
+            (
+                Some(Indicator::ShellActivity),
+                SupplementaryIndicators {
+                    worktree_missing: true,
+                    merge_failed: false,
+                }
+            )
         );
     }
 
@@ -124,7 +147,13 @@ mod tests {
         state.subagents_active = 2;
         assert_eq!(
             (select(state), select_supplementary(state)),
-            (Some(Indicator::SubagentActivity(2)), true)
+            (
+                Some(Indicator::SubagentActivity(2)),
+                SupplementaryIndicators {
+                    worktree_missing: true,
+                    merge_failed: false,
+                }
+            )
         );
     }
 
@@ -132,7 +161,16 @@ mod tests {
     fn missing_worktree_is_the_only_indicator_without_a_primary() {
         let mut state = idle_state();
         state.worktree_missing = true;
-        assert_eq!((select(state), select_supplementary(state)), (None, true));
+        assert_eq!(
+            (select(state), select_supplementary(state)),
+            (
+                None,
+                SupplementaryIndicators {
+                    worktree_missing: true,
+                    merge_failed: false,
+                }
+            )
+        );
     }
 
     #[test]
@@ -141,7 +179,26 @@ mod tests {
         state.shell_active = true;
         assert_eq!(
             (select(state), select_supplementary(state)),
-            (Some(Indicator::ShellActivity), false)
+            (
+                Some(Indicator::ShellActivity),
+                SupplementaryIndicators {
+                    worktree_missing: false,
+                    merge_failed: false,
+                }
+            )
+        );
+    }
+
+    #[test]
+    fn merge_failure_is_supplementary() {
+        let mut state = IndicatorState::with_status(Some(Status::Done));
+        state.merge_failed = true;
+        assert_eq!(
+            select_supplementary(state),
+            SupplementaryIndicators {
+                worktree_missing: false,
+                merge_failed: true,
+            }
         );
     }
 

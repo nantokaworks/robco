@@ -115,4 +115,13 @@ impl Theme {
             style
         }
     }
+
+    pub fn merge_failed_style(self, selected: bool) -> Style {
+        let style = Style::default().fg(Color::Red);
+        if selected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
+        }
+    }
 }

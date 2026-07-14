@@ -122,6 +122,7 @@ mod tests {
             updated_at: now,
             status: Default::default(),
             worktree_missing: false,
+            merge_error: None,
             last_capture: None,
             last_change_at: None,
             last_auto_accept_at: None,
