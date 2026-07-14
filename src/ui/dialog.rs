@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, layout, theme::DEFAULT as THEME};
+use super::{App, Mode, help, layout, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let (title, lines): (&str, Vec<Line<'static>>) = match &app.mode {
@@ -80,45 +80,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             "kill session?",
             confirm_lines(session.clone(), "y kill   n/esc cancel"),
         ),
-        Mode::Help => (
-            "help",
-            vec![
-                Line::from("Navigation"),
-                Line::from("  j/k or arrows  move selection"),
-                Line::from("  h/l            collapse or expand repo"),
-                Line::from("  tab/shift-tab  cycle claude / diff / terminal view"),
-                Line::from(""),
-                Line::from("Sessions"),
-                Line::from("  n              new agent under selected repo"),
-                Line::from("  N              new agent with initial prompt: title | prompt"),
-                Line::from(
-                    "  enter          attach: claude, or terminal (agent shell / repo main worktree)",
-                ),
-                Line::from("  ctrl-q         return from attached tmux session"),
-                Line::from("  r              restart agent / refresh repo tasks"),
-                Line::from("  x              remove selected agent worktree or pinned repo"),
-                Line::from(""),
-                Line::from("Repo"),
-                Line::from("  a              add repository by path"),
-                Line::from(
-                    "  m              merge/land selected agent: merge PR + pull main (needs commit + open PR)",
-                ),
-                Line::from(""),
-                Line::from("Indicators"),
-                Line::from("  ▶ running   ? waiting   ✓ done   · idle"),
-                Line::from("  ✗ dead   ⎇ branch only   ⌦ orphaned"),
-                Line::from("  ⚙ <command>  latest tracked process under the session"),
-                Line::from("  ✻N active subagents   ▖… TERM working (animated)"),
-                Line::from("  * uncommitted changes   ⌁ tmux session (child rows)"),
-                Line::from(""),
-                Line::from("General"),
-                Line::from("  ,              edit settings (config.json) in $EDITOR"),
-                Line::from("  ?              show this help"),
-                Line::from("  q              quit without stopping agents"),
-                Line::from(""),
-                hint_line("press any key to close"),
-            ],
-        ),
+        Mode::Help { .. } => ("help", help::lines()),
         Mode::Normal => return,
     };
 
@@ -130,18 +92,31 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         .max(title.len()) as u16
         + 4;
     let height = lines.len() as u16 + 2;
-    let area = if matches!(&app.mode, Mode::Help) {
+    let height = if matches!(&app.mode, Mode::Help { .. }) {
+        height.min(layout::root(frame.area()).body.height)
+    } else {
+        height
+    };
+    let area = if matches!(&app.mode, Mode::Help { .. }) {
         layout::centered_area(frame, width, height)
     } else {
         layout::popup_area(frame, app, visible, width, height)
     };
 
+    let (title, scroll) = match app.mode {
+        Mode::Help { scroll } => (
+            help::scroll_title(scroll, frame.area().height).unwrap_or_else(|| title.to_string()),
+            help::clamp_scroll(scroll, frame.area().height),
+        ),
+        _ => (title.to_string(), 0),
+    };
     let block = Block::default()
         .title(title)
         .title_style(Style::default().add_modifier(Modifier::BOLD))
         .borders(Borders::ALL)
         .border_style(THEME.dialog_border_style());
     let dialog = Paragraph::new(lines)
+        .scroll((scroll, 0))
         .block(block)
         .style(THEME.accent_style());
     let body = layout::root(frame.area()).body;
