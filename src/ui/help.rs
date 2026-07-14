@@ -16,7 +16,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  N              new agent with initial prompt: title | prompt"),
         Line::from("  enter          attach Claude/terminal (agent shell or main worktree)"),
         Line::from("  ctrl-q         return from attached tmux session"),
-        Line::from("  r              restart agent / refresh repo tasks"),
+        Line::from("  r              restart agent / reload dropr tasks (all workspaces)"),
         Line::from("  x              remove selected agent worktree or pinned repo"),
         Line::from(""),
         Line::from("Repo"),
