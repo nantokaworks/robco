@@ -77,6 +77,15 @@ fn refresh_visible(refresh: &DroprTaskRefresh, workspace_id: &str) -> bool {
             .is_some_and(|started| refresh_is_fresh(*started, now))
 }
 
+fn apply_fetched_tasks(
+    current: &mut Vec<DroprTaskCandidate>,
+    fetched: Option<Vec<DroprTaskCandidate>>,
+) {
+    if let Some(tasks) = fetched {
+        *current = tasks;
+    }
+}
+
 impl App {
     pub(super) fn refresh_dropr_tasks(&mut self, manual: bool) -> DroprTaskReload {
         self.ingest_dropr_tasks();
@@ -118,7 +127,7 @@ impl App {
             .name("dropr-task-refresh".into())
             .spawn(move || {
                 let tasks = panic::catch_unwind(AssertUnwindSafe(|| {
-                    dropr::fetch_ready_tasks(&worker_workspace_id)
+                    dropr::fetch_repo_tasks(&worker_workspace_id)
                 }))
                 .ok()
                 .flatten();
@@ -143,7 +152,7 @@ impl App {
             self.dropr_task_refresh.manual.remove(&workspace_id);
             for repo in &mut self.registry.repos {
                 if repo.dropr.as_ref().map(|workspace| &workspace.id) == Some(&workspace_id) {
-                    repo.dropr_tasks = tasks.clone().unwrap_or_default();
+                    apply_fetched_tasks(&mut repo.dropr_tasks, tasks.clone());
                 }
             }
         }
@@ -153,6 +162,42 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn task(display_id: &str) -> DroprTaskCandidate {
+        DroprTaskCandidate {
+            display_id: display_id.to_owned(),
+            title: display_id.to_owned(),
+            priority: String::new(),
+            status: "ready".to_owned(),
+        }
+    }
+
+    #[test]
+    fn fetched_rows_overwrite_current_tasks() {
+        let mut current = vec![task("#1")];
+
+        apply_fetched_tasks(&mut current, Some(vec![task("#2")]));
+
+        assert_eq!(current, vec![task("#2")]);
+    }
+
+    #[test]
+    fn fetched_empty_rows_clear_current_tasks() {
+        let mut current = vec![task("#1")];
+
+        apply_fetched_tasks(&mut current, Some(Vec::new()));
+
+        assert!(current.is_empty());
+    }
+
+    #[test]
+    fn failed_fetch_retains_current_tasks() {
+        let mut current = vec![task("#1")];
+
+        apply_fetched_tasks(&mut current, None);
+
+        assert_eq!(current, vec![task("#1")]);
+    }
 
     #[test]
     fn background_refresh_is_hidden_from_ui() {
