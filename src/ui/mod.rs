@@ -23,6 +23,7 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
 mod blockfont;
+mod confirm_pr;
 mod dialog;
 mod event_loop;
 mod help;
@@ -67,6 +68,7 @@ enum Mode {
         repo_path: PathBuf,
         agent_id: String,
         branch: String,
+        input: String,
     },
     ConfirmDeleteBranch {
         repo: usize,
@@ -227,4 +229,62 @@ fn suspend_terminal(action: impl FnOnce() -> Result<()>) -> Result<()> {
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     enable_raw_mode()?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    use super::*;
+    use crate::{config::Config, registry::Registry};
+
+    fn test_app() -> App {
+        let temp = tempfile::tempdir().unwrap();
+        App::new(Registry::default(), Config::default(), temp.path().into())
+    }
+
+    #[test]
+    fn visible_message_does_not_swallow_next_key() {
+        let mut app = test_app();
+        app.show_message("done");
+        let quit = app
+            .handle_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE))
+            .unwrap();
+
+        assert!(!quit);
+        assert!(app.message.is_none());
+        assert!(matches!(app.mode, Mode::Help { scroll: 0 }));
+    }
+
+    #[test]
+    fn confirm_pr_y_and_n_edit_and_escape_cancels() {
+        let mut app = test_app();
+        app.mode = Mode::ConfirmPr {
+            repo_path: "/repo".into(),
+            agent_id: "agent".to_string(),
+            branch: "feature/agent".to_string(),
+            input: "prompt".to_string(),
+        };
+
+        for code in [KeyCode::Char('y'), KeyCode::Char('n'), KeyCode::Backspace] {
+            app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
+                .unwrap();
+        }
+        assert!(matches!(
+            &app.mode,
+            Mode::ConfirmPr { input, .. } if input == "prompty"
+        ));
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap();
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
+    fn confirm_pr_prompt_scrolls_to_the_editing_end() {
+        let line = dialog::input_line_scrolled("prompt", "abcdefghijklmnopqrstuvwxyz", 16);
+
+        assert!(line.width() <= 16);
+        assert!(line.to_string().ends_with("uvwxyz_"));
+    }
 }

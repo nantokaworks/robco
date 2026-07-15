@@ -11,6 +11,8 @@ use crate::model::Selection;
 use super::{App, Mode, help, layout, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
+    let body = layout::root(frame.area()).body;
+    let content_width = body.width.saturating_sub(4) as usize;
     let (title, lines): (&str, Vec<Line<'static>>) = match &app.mode {
         Mode::PromptAgent {
             with_prompt, input, ..
@@ -69,9 +71,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y merge   n/esc cancel"),
             ],
         ),
-        Mode::ConfirmPr { branch, .. } => (
+        Mode::ConfirmPr { branch, input, .. } => (
             "request PR from agent?",
-            confirm_lines(branch.clone(), "y request   n/esc cancel"),
+            vec![
+                Line::from(format!("branch: {branch}")),
+                input_line_scrolled("prompt", input, content_width),
+                hint_line("enter send   ctrl-s save only   esc cancel"),
+            ],
         ),
         Mode::ConfirmDeleteBranch { repo, agent } => (
             "delete branch?",
@@ -88,13 +94,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         Mode::Normal => return,
     };
 
-    let width = lines
+    let width = (lines
         .iter()
         .map(Line::width)
         .max()
         .unwrap_or(0)
         .max(title.len()) as u16
-        + 4;
+        + 4)
+    .min(body.width);
     let height = lines.len() as u16 + 2;
     let height = if matches!(&app.mode, Mode::Help { .. }) {
         height.min(layout::root(frame.area()).body.height)
@@ -123,7 +130,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         .scroll((scroll, 0))
         .block(block)
         .style(THEME.accent_style());
-    let body = layout::root(frame.area()).body;
     frame.render_widget(Block::default().style(THEME.backdrop_style()), body);
 
     // `Clear` only resets cells *inside* the popup rect, so a full-width (CJK)
@@ -169,6 +175,16 @@ fn input_line(label: &str, input: &str) -> Line<'static> {
         Span::styled(input.to_string(), THEME.input_style()),
         Span::styled("_", THEME.accent_style()),
     ])
+}
+
+pub(super) fn input_line_scrolled(label: &str, input: &str, max_width: usize) -> Line<'static> {
+    let label_width = label.len() + 3;
+    let available = max_width.saturating_sub(label_width + 1);
+    let mut visible = input;
+    while Line::from(visible).width() > available {
+        visible = &visible[visible.chars().next().map(char::len_utf8).unwrap_or(0)..];
+    }
+    input_line(label, visible)
 }
 
 fn hint_line(text: &str) -> Line<'static> {
