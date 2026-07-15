@@ -55,25 +55,64 @@ impl DroprOverlay {
 }
 
 pub fn fetch_ready_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
-    let output = Command::new("dropr")
-        .args([
-            "task",
-            "ready",
-            "--workspace",
-            workspace_id,
-            "--limit",
-            "3",
-            "--json",
-        ])
-        .output()
-        .ok()?;
+    fetch_tasks(&[
+        "task",
+        "ready",
+        "--workspace",
+        workspace_id,
+        "--limit",
+        "3",
+        "--json",
+    ])
+}
+
+pub fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
+    fetch_tasks(&[
+        "task",
+        "list",
+        "--workspace",
+        workspace_id,
+        "--status",
+        "in_progress",
+        "--limit",
+        "3",
+        "--json",
+    ])
+}
+
+pub fn fetch_repo_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
+    merge_repo_tasks(
+        fetch_in_progress_tasks(workspace_id),
+        fetch_ready_tasks(workspace_id),
+    )
+}
+
+fn fetch_tasks(args: &[&str]) -> Option<Vec<DroprTaskCandidate>> {
+    let output = Command::new("dropr").args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
-    parse_ready_tasks(&output.stdout)
+    parse_tasks(&output.stdout)
 }
 
-fn parse_ready_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
+fn merge_repo_tasks(
+    in_progress: Option<Vec<DroprTaskCandidate>>,
+    ready: Option<Vec<DroprTaskCandidate>>,
+) -> Option<Vec<DroprTaskCandidate>> {
+    if in_progress.is_none() && ready.is_none() {
+        return None;
+    }
+    let mut tasks = in_progress.unwrap_or_default();
+    for task in &mut tasks {
+        if task.status.is_empty() {
+            task.status = "in_progress".to_string();
+        }
+    }
+    tasks.extend(ready.unwrap_or_default());
+    Some(tasks)
+}
+
+fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
     let value: serde_json::Value = serde_json::from_slice(raw).ok()?;
     let tasks = match value {
         serde_json::Value::Array(tasks) => tasks,
@@ -161,7 +200,7 @@ mod tests {
 
     #[test]
     fn parses_ready_tasks_array() {
-        let tasks = parse_ready_tasks(
+        let tasks = parse_tasks(
             br##"[{"display_id":"#42","title":"Ship it","priority":"high","status":"ready"}]"##,
         )
         .unwrap();
@@ -173,7 +212,7 @@ mod tests {
 
     #[test]
     fn parses_ready_tasks_object_and_global_id() {
-        let tasks = parse_ready_tasks(
+        let tasks = parse_tasks(
             br##"{"tasks":[{"global_display_id":"#7","title":"Polish UI","priority":"medium","status":"ready"}]}"##,
         )
         .unwrap();
@@ -182,7 +221,7 @@ mod tests {
 
     #[test]
     fn skips_malformed_ready_tasks() {
-        let tasks = parse_ready_tasks(
+        let tasks = parse_tasks(
             br##"[
                 {"display_id":"#1","title":"First"},
                 {"display_id":"#2"},
@@ -198,18 +237,61 @@ mod tests {
             ["#1", "#3"]
         );
     }
-
     #[test]
     fn accepts_ready_tasks_without_priority_or_status() {
-        let tasks = parse_ready_tasks(br##"[{"display_id":"#42","title":"Ship it"}]"##).unwrap();
+        let tasks = parse_tasks(br##"[{"display_id":"#42","title":"Ship it"}]"##).unwrap();
         assert_eq!(tasks[0].display_id, "#42");
         assert_eq!(tasks[0].priority, "");
         assert_eq!(tasks[0].status, "");
     }
-
     #[test]
     fn rejects_malformed_ready_tasks() {
-        assert!(parse_ready_tasks(b"not json").is_none());
-        assert!(parse_ready_tasks(br#"{"items":[]}"#).is_none());
+        assert!(parse_tasks(b"not json").is_none());
+        assert!(parse_tasks(br#"{"items":[]}"#).is_none());
+    }
+    #[test]
+    fn parses_in_progress_tasks_tolerantly_in_both_shapes() {
+        let array = parse_tasks(br##"[{"display_id":"#8","title":"Active"},{"display_id":"#9"}]"##)
+            .unwrap();
+        let object = parse_tasks(
+            br##"{"tasks":[{"display_id":"#10","title":"Also active","status":"in_progress"}]}"##,
+        )
+        .unwrap();
+        assert_eq!(array.len(), 1);
+        assert_eq!(array[0].priority, "");
+        assert_eq!(array[0].status, "");
+        assert_eq!(object[0].status, "in_progress");
+    }
+    fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
+        DroprTaskCandidate {
+            display_id: display_id.to_string(),
+            title: display_id.to_string(),
+            priority: String::new(),
+            status: status.to_string(),
+        }
+    }
+
+    #[test]
+    fn merges_repo_task_results() {
+        assert_eq!(merge_repo_tasks(None, None), None);
+        assert_eq!(
+            merge_repo_tasks(None, Some(vec![task("#2", "ready")])).unwrap()[0].display_id,
+            "#2"
+        );
+        assert_eq!(
+            merge_repo_tasks(Some(vec![task("#1", "")]), None).unwrap()[0].status,
+            "in_progress"
+        );
+
+        let tasks = merge_repo_tasks(
+            Some(vec![task("#1", "in_progress")]),
+            Some(vec![task("#2", "ready")]),
+        )
+        .unwrap();
+        let ids = tasks
+            .iter()
+            .map(|task| task.display_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["#1", "#2"]);
     }
 }
