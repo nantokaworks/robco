@@ -1,8 +1,9 @@
 mod attach;
 mod children;
 mod discovery;
-mod dropr_tasks;
+pub(super) mod dropr_tasks;
 mod lifecycle;
+pub(super) mod merge;
 mod orphans;
 mod settings;
 mod slots;
