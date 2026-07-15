@@ -55,7 +55,7 @@ fn indicator_spans(
         )],
         Some(Indicator::SubagentActivity(active)) => vec![activity_span(active, gap)],
         Some(Indicator::DroprRefresh) => vec![Span::styled(
-            format!("{gap}⟳ {}", super::spinner::frame(elapsed)),
+            format!("{gap}{}", super::spinner::frame(elapsed)),
             THEME.hint_style(),
         )],
         None => Vec::new(),
