@@ -24,6 +24,7 @@ mod actions;
 mod blockfont;
 mod confirm_pr;
 mod dialog;
+mod error_dialog;
 mod event_loop;
 mod help;
 mod input;
@@ -83,6 +84,11 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    ErrorDialog {
+        title: String,
+        lines: Vec<String>,
+        force_kill: Option<ForceKillTarget>,
+    },
     // Holds the session NAME, not an index into `App::orphans` — the orphan
     // list is rebuilt on every discovery tick, so an index captured when the
     // dialog opened could point at a different session by the time the user
@@ -90,6 +96,12 @@ enum Mode {
     ConfirmKillOrphan {
         session: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ForceKillTarget {
+    repo_path: PathBuf,
+    agent_id: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

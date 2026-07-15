@@ -148,7 +148,7 @@ fn run_merge(target: &MergeTarget, sender: &Sender<MergeEvent>) -> Result<()> {
     git::pull_ff_only(&target.repo_path)?;
     send_step(sender, CLEANING_UP);
     if target.worktree_path.exists() {
-        git::remove_worktree(&target.repo_path, &target.worktree_path)?;
+        git::remove_worktree(&target.repo_path, &target.worktree_path, false)?;
     }
     if git::branch_exists(&target.repo_path, &target.branch)? {
         git::delete_branch(&target.repo_path, &target.branch)?;
