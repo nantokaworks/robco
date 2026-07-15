@@ -84,6 +84,13 @@ fn partition_tasks(
 fn dropr_task_lines(tasks: &[DroprTaskCandidate]) -> Vec<Line<'static>> {
     let (in_progress, next) = partition_tasks(tasks);
     let mut lines = Vec::new();
+    if !next.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled("next tasks", THEME.accent_style())));
+        for task in next.into_iter().take(3) {
+            lines.push(Line::from(format!("{}  {}", task.display_id, task.title)));
+        }
+    }
     if !in_progress.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -92,13 +99,6 @@ fn dropr_task_lines(tasks: &[DroprTaskCandidate]) -> Vec<Line<'static>> {
         )));
         for task in in_progress.into_iter().take(3) {
             lines.push(Line::from(format!("▸ {}  {}", task.display_id, task.title)));
-        }
-    }
-    if !next.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("next tasks", THEME.accent_style())));
-        for task in next.into_iter().take(3) {
-            lines.push(Line::from(format!("{}  {}", task.display_id, task.title)));
         }
     }
     lines
@@ -273,11 +273,11 @@ mod tests {
     }
 
     #[test]
-    fn renders_in_progress_before_next_tasks() {
+    fn renders_in_progress_after_next_tasks() {
         let lines = rendered_lines(&[task("#2", "ready"), task("#1", "in_progress")]);
         let in_progress = lines.iter().position(|line| line == "in progress").unwrap();
         let next = lines.iter().position(|line| line == "next tasks").unwrap();
-        assert!(in_progress < next);
+        assert!(next < in_progress);
         assert!(lines.iter().any(|line| line == "▸ #1  Task #1"));
     }
 
