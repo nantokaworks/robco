@@ -54,10 +54,6 @@ fn resolve_agent(repos: &[RepoNode], repo_path: &Path, agent_id: &str) -> Option
     Some((repo, agent))
 }
 
-fn clear_merge_error(error: &mut Option<String>) {
-    *error = None;
-}
-
 fn set_merge_error(error: &mut Option<String>, detail: &str) {
     *error = Some(detail.to_string());
 }
@@ -101,24 +97,28 @@ impl App {
                     repo_path: target.repo_path,
                     agent_id: target.agent_id,
                     branch: target.branch,
+                    input: self.config.pr_prompt.clone(),
                 };
             }
             Err(err) => self.show_message(err.to_string()),
         }
     }
 
-    pub(in crate::ui) fn request_pr(&mut self, repo_path: &Path, agent_id: &str) -> Result<()> {
-        let Some((repo, agent_idx)) = resolve_agent(&self.registry.repos, repo_path, agent_id)
-        else {
+    pub(crate) fn request_pr(
+        &mut self,
+        path: &Path,
+        id: &str,
+        prompt: &str,
+        send: impl FnOnce(&str, &str) -> Result<()>,
+    ) -> Result<()> {
+        let Some((repo, agent_idx)) = resolve_agent(&self.registry.repos, path, id) else {
             self.show_message("agent no longer exists; PR request cancelled");
             return Ok(());
         };
         let selected = &self.registry.repos[repo].agents[agent_idx];
         let session = selected.tmux_session.clone();
         let branch = selected.branch.clone();
-        if let Err(err) = crate::tmux::send_literal_text(&session, &self.config.pr_prompt)
-            .and_then(|()| crate::tmux::send_keys(&session, &["Enter"]))
-        {
+        if let Err(err) = send(&session, prompt) {
             self.show_message(err.to_string());
             return Ok(());
         }
@@ -246,7 +246,7 @@ impl App {
             return;
         };
 
-        clear_merge_error(&mut self.registry.repos[repo].agents[agent_idx].merge_error);
+        self.registry.repos[repo].agents[agent_idx].merge_error = None;
         let repo_node = self.registry.repos[repo].clone();
         let selected = repo_node.agents[agent_idx].clone();
         if selected.status == Status::BranchOnly {
@@ -392,9 +392,10 @@ impl App {
 #[cfg(test)]
 mod tests {
     use chrono::Local;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::*;
-    use crate::model::AgentNode;
+    use crate::{config::Config, model::AgentNode, registry::Registry};
 
     fn agent(id: &str) -> AgentNode {
         let now = Local::now();
@@ -472,6 +473,32 @@ mod tests {
     }
 
     #[test]
+    fn confirm_pr_enter_forwards_edited_prompt_to_request() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.registry.repos = vec![repo("/repo", vec![agent("one")])];
+        app.mode = Mode::ConfirmPr {
+            repo_path: "/repo".into(),
+            agent_id: "one".into(),
+            branch: "feature/one".into(),
+            input: "edited prompt".into(),
+        };
+        let mut sent = None;
+
+        app.handle_key_with_pr_sender(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            |session, prompt| {
+                sent = Some((session.to_string(), prompt.to_string()));
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(sent, Some(("robco_one".into(), "edited prompt".into())));
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
     fn confirm_pr_target_resolves_after_reordering_and_not_after_pruning() {
         let target = PrTarget {
             repo_path: "/repo-b".into(),
@@ -504,7 +531,7 @@ mod tests {
         set_merge_error(&mut error, "gh failed\nretry later");
         assert_eq!(error.as_deref(), Some("gh failed\nretry later"));
 
-        clear_merge_error(&mut error);
+        error = None;
         assert_eq!(error, None);
     }
 }

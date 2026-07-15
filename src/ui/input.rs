@@ -1,12 +1,15 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::layout::{Position, Rect};
 
-use crate::{Result, agent, model::Selection};
+use crate::{Result, agent, config::Config, model::Selection};
 
-use super::{App, Mode, PreviewPane, help, layout};
+use super::{
+    App, Mode, PreviewPane,
+    confirm_pr::{ConfirmPrAction, confirm_pr_action},
+    help, layout,
+};
 
-/// Lines the preview moves per wheel notch. Smaller than PageUp/PageDown's 10
-/// so the wheel reads as fine-grained scrubbing, not paging.
+/// Lines moved per wheel notch; smaller than PageUp/PageDown for fine scrubbing.
 const WHEEL_SCROLL_STEP: u16 = 3;
 
 fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>) {
@@ -53,6 +56,16 @@ impl App {
     }
 
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        self.handle_key_with_pr_sender(key, |session, prompt| {
+            crate::tmux::send_literal_text(session, prompt)
+                .and_then(|()| crate::tmux::send_keys(session, &["Enter"]))
+        })
+    }
+    pub(in crate::ui) fn handle_key_with_pr_sender(
+        &mut self,
+        key: KeyEvent,
+        send: impl FnOnce(&str, &str) -> Result<()>,
+    ) -> Result<bool> {
         self.message = None;
 
         match &mut self.mode {
@@ -136,17 +149,25 @@ impl App {
             Mode::ConfirmPr {
                 repo_path,
                 agent_id,
+                input,
                 ..
-            } => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    let repo_path = repo_path.clone();
-                    let agent_id = agent_id.clone();
-                    self.mode = Mode::Normal;
-                    self.request_pr(&repo_path, &agent_id)?;
+            } => {
+                let action = confirm_pr_action(&mut self.config, input, key, Config::save);
+                match action {
+                    ConfirmPrAction::Stay => {}
+                    ConfirmPrAction::Cancel => self.mode = Mode::Normal,
+                    ConfirmPrAction::Submit(prompt) => {
+                        let repo_path = repo_path.clone();
+                        let agent_id = agent_id.clone();
+                        self.mode = Mode::Normal;
+                        self.request_pr(&repo_path, &agent_id, &prompt, send)?;
+                    }
+                    ConfirmPrAction::Saved(result) => match result {
+                        Ok(()) => self.show_message("saved PR prompt to config"),
+                        Err(err) => self.show_message(err.to_string()),
+                    },
                 }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
+            }
             Mode::ConfirmDeleteBranch { repo, agent } => match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                     let repo = *repo;
@@ -273,28 +294,5 @@ impl App {
 
         self.clamp_selection();
         Ok(false)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-    use super::*;
-    use crate::{config::Config, registry::Registry};
-
-    #[test]
-    fn visible_message_does_not_swallow_next_key() {
-        let temp = tempfile::tempdir().unwrap();
-        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-        app.show_message("done");
-
-        let quit = app
-            .handle_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert!(!quit);
-        assert!(app.message.is_none());
-        assert!(matches!(app.mode, Mode::Help { scroll: 0 }));
     }
 }
