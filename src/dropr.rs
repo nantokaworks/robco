@@ -2,6 +2,8 @@ use std::{collections::HashMap, process::Command};
 
 use serde::{Deserialize, Serialize};
 
+mod mcp;
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DroprTaskCandidate {
     #[serde(alias = "global_display_id")]
@@ -67,17 +69,7 @@ pub fn fetch_ready_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> 
 }
 
 pub fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
-    fetch_tasks(&[
-        "task",
-        "list",
-        "--workspace",
-        workspace_id,
-        "--status",
-        "in_progress",
-        "--limit",
-        "3",
-        "--json",
-    ])
+    mcp::fetch_in_progress_tasks(workspace_id)
 }
 
 pub fn fetch_repo_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
@@ -112,7 +104,7 @@ fn merge_repo_tasks(
     Some(tasks)
 }
 
-fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
+pub(super) fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
     let value: serde_json::Value = serde_json::from_slice(raw).ok()?;
     let tasks = match value {
         serde_json::Value::Array(tasks) => tasks,
