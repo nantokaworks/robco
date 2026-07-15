@@ -5,7 +5,7 @@ use crate::{
     config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
 };
 
-use super::command_unit;
+use super::{command_unit, env::color_env_mirror};
 
 pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
     format!(
@@ -116,11 +116,25 @@ pub(super) fn has_server() -> Result<bool> {
 /// Environment injection uses `new-session -e`, which requires tmux >= 3.2.
 /// Missing robco identity keys are assigned empty values so the new session
 /// cannot inherit stale identities from the tmux server's global environment.
+/// Missing color keys are unset in the command shell rather than with `env -u`
+/// so shell builtins and every command in a compound program see the change.
 pub fn new_session_command(
     session: &str,
     cwd: &Path,
     program: &str,
     envs: &[(&str, String)],
+) -> Command {
+    new_session_command_with_lookup(session, cwd, program, envs, |key| {
+        std::env::var_os(key).map(|value| value.to_string_lossy().into_owned())
+    })
+}
+
+pub(super) fn new_session_command_with_lookup(
+    session: &str,
+    cwd: &Path,
+    program: &str,
+    envs: &[(&str, String)],
+    lookup: impl Fn(&str) -> Option<String>,
 ) -> Command {
     let mut command = Command::new("tmux");
     command
@@ -131,10 +145,25 @@ pub fn new_session_command(
             command.arg("-e").arg(format!("{key}="));
         }
     }
+    let (mirror, unset) = color_env_mirror(lookup);
+    for (key, value) in mirror {
+        if !envs.iter().any(|(candidate, _)| *candidate == key) {
+            command.arg("-e").arg(format!("{key}={value}"));
+        }
+    }
     for (key, value) in envs {
         command.arg("-e").arg(format!("{key}={value}"));
     }
-    command.arg(program);
+    let unset = unset
+        .into_iter()
+        .filter(|key| !envs.iter().any(|(candidate, _)| candidate == key))
+        .collect::<Vec<_>>();
+    if unset.is_empty() {
+        command.arg(program);
+    } else {
+        let keys = unset.join(" ");
+        command.arg(format!("unset {keys}; {program}"));
+    }
     command
 }
 
@@ -217,42 +246,35 @@ mod tests {
 
     #[test]
     fn new_session_command_includes_environment_pairs() {
-        let command = new_session_command(
+        let command = new_session_command_with_lookup(
             "robco_repo_agent",
             Path::new("/repo"),
             "codex",
             &[("FIRST", "one".to_string()), ("SECOND", "two".to_string())],
+            |_| None,
         );
         let args = command
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
 
+        assert!(args.windows(2).any(|args| args == ["-e", "FIRST=one"]));
+        assert!(args.windows(2).any(|args| args == ["-e", "SECOND=two"]));
         assert_eq!(
-            args,
-            [
-                "new-session",
-                "-d",
-                "-s",
-                "robco_repo_agent",
-                "-c",
-                "/repo",
-                "-e",
-                "ROBCO_AGENT_ID=",
-                "-e",
-                "ROBCO_PARENT_AGENT_ID=",
-                "-e",
-                "FIRST=one",
-                "-e",
-                "SECOND=two",
-                "codex",
-            ]
+            args.last().map(String::as_str),
+            Some("unset NO_COLOR FORCE_COLOR COLORTERM CLICOLOR CLICOLOR_FORCE; codex")
         );
     }
 
     #[test]
     fn new_session_command_neutralizes_missing_identity() {
-        let command = new_session_command("robco_repo_shell", Path::new("/repo"), "zsh", &[]);
+        let command = new_session_command_with_lookup(
+            "robco_repo_shell",
+            Path::new("/repo"),
+            "zsh",
+            &[],
+            |_| None,
+        );
         let args = command
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
