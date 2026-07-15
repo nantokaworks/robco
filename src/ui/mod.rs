@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     io,
     path::PathBuf,
-    sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
 
@@ -64,15 +63,6 @@ enum Mode {
     ConfirmMerge {
         repo: usize,
         agent: usize,
-    },
-    MergeInProgress {
-        repo_path: PathBuf,
-        agent_id: String,
-        branch: String,
-        step: &'static str,
-    },
-    MergeComplete {
-        branch: String,
     },
     ConfirmPr {
         repo_path: PathBuf,
@@ -164,7 +154,8 @@ pub struct App {
     force_redraw: bool,
     mode: Mode,
     message: Option<(String, Instant)>,
-    merge_receiver: Option<Receiver<actions::merge::MergeEvent>>,
+    merge_job: Option<actions::merge::MergeJob>,
+    merge_outcome: Option<actions::merge::MergeOutcome>,
     dropr_task_refresh: DroprTaskRefresh,
 }
 
@@ -187,7 +178,8 @@ impl App {
             force_redraw: false,
             mode: Mode::Normal,
             message: None,
-            merge_receiver: None,
+            merge_job: None,
+            merge_outcome: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
         };
         if app.prune_unmanaged_agents() {

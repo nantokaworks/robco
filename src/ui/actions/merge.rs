@@ -22,6 +22,22 @@ pub(in crate::ui) enum MergeEvent {
     Finished(std::result::Result<(), String>),
 }
 
+pub(in crate::ui) struct MergeJob {
+    pub repo_path: PathBuf,
+    pub agent_id: String,
+    pub branch: String,
+    pub step: &'static str,
+    receiver: Receiver<MergeEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::ui) struct MergeOutcome {
+    pub repo_path: PathBuf,
+    pub agent_id: String,
+    pub branch: String,
+    pub result: std::result::Result<(), String>,
+}
+
 struct MergeTarget {
     repo_path: PathBuf,
     branch: String,
@@ -33,12 +49,17 @@ struct MergeTarget {
 
 impl App {
     pub(in crate::ui) fn start_merge(&mut self, repo: usize, agent_idx: usize) {
+        if let Some(job) = &self.merge_job {
+            self.mode = super::super::Mode::Normal;
+            self.show_message(format!("merge already in progress: {}", job.branch));
+            return;
+        }
         let Some(repo_node) = self.registry.repos.get(repo) else {
-            self.mode = Mode::Normal;
+            self.mode = super::super::Mode::Normal;
             return;
         };
         let Some(selected) = repo_node.agents.get(agent_idx) else {
-            self.mode = Mode::Normal;
+            self.mode = super::super::Mode::Normal;
             return;
         };
         let repo_path = repo_node.path.clone();
@@ -53,21 +74,23 @@ impl App {
             shell_session: agent::shell_session_name(selected),
         };
 
-        self.merge_receiver = Some(spawn(target));
-        self.mode = Mode::MergeInProgress {
+        self.merge_outcome = None;
+        self.merge_job = Some(MergeJob {
             repo_path,
             agent_id,
             branch,
             step: MERGING_PR,
-        };
+            receiver: spawn(target),
+        });
+        self.mode = super::super::Mode::Normal;
     }
 
     pub(in crate::ui) fn drain_merge_events(&mut self) -> Result<()> {
         let mut events = Vec::new();
         let mut disconnected = false;
-        if let Some(receiver) = &self.merge_receiver {
+        if let Some(job) = &self.merge_job {
             loop {
-                match receiver.try_recv() {
+                match job.receiver.try_recv() {
                     Ok(event) => events.push(event),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
@@ -80,33 +103,43 @@ impl App {
         for event in events {
             match event {
                 MergeEvent::Step(next) => {
-                    if let Mode::MergeInProgress { step, .. } = &mut self.mode {
-                        *step = next;
+                    if let Some(job) = &mut self.merge_job {
+                        job.step = next;
                     }
                 }
                 MergeEvent::Finished(result) => self.finish_merge(result)?,
             }
         }
-        if disconnected && self.merge_receiver.is_some() {
+        if disconnected && self.merge_job.is_some() {
             self.finish_merge(Err(WORKER_TERMINATED.into()))?;
         }
         Ok(())
     }
 
     fn finish_merge(&mut self, result: std::result::Result<(), String>) -> Result<()> {
-        self.merge_receiver = None;
-        let Mode::MergeInProgress {
+        self.finish_merge_with(result, crate::registry::Registry::save)
+    }
+
+    fn finish_merge_with(
+        &mut self,
+        result: std::result::Result<(), String>,
+        save: impl FnOnce(&crate::registry::Registry) -> Result<()>,
+    ) -> Result<()> {
+        let Some(job) = self.merge_job.take() else {
+            return Ok(());
+        };
+        let MergeJob {
             repo_path,
             agent_id,
             branch,
             ..
-        } = &self.mode
-        else {
-            return Ok(());
-        };
-        let repo_path = repo_path.clone();
-        let agent_id = agent_id.clone();
-        let branch = branch.clone();
+        } = job;
+        self.merge_outcome = Some(MergeOutcome {
+            repo_path: repo_path.clone(),
+            agent_id: agent_id.clone(),
+            branch: branch.clone(),
+            result: result.clone(),
+        });
 
         match result {
             Ok(()) => {
@@ -114,12 +147,19 @@ impl App {
                     resolve_agent(&self.registry.repos, &repo_path, &agent_id)
                 {
                     self.registry.repos[repo].agents.remove(agent);
-                    self.registry.save()?;
+                    let dialog_closed = self.remap_dialog_after_agent_removal(repo, agent);
+                    save(&self.registry)?;
+                    if dialog_closed {
+                        self.show_message("closed dialog because its agent was merged");
+                    } else {
+                        self.show_message(format!("merge complete: {branch}"));
+                    }
+                } else {
+                    self.show_message(format!("merge complete: {branch}"));
                 }
-                self.mode = Mode::MergeComplete { branch };
+                self.clamp_selection();
             }
             Err(detail) => {
-                self.mode = Mode::Normal;
                 if let Some((repo, agent)) =
                     resolve_agent(&self.registry.repos, &repo_path, &agent_id)
                 {
@@ -130,6 +170,54 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    fn remap_dialog_after_agent_removal(&mut self, repo: usize, removed: usize) -> bool {
+        let agent = match &mut self.mode {
+            Mode::ConfirmKill {
+                repo: dialog_repo,
+                agent,
+            }
+            | Mode::ConfirmMerge {
+                repo: dialog_repo,
+                agent,
+            }
+            | Mode::ConfirmDeleteBranch {
+                repo: dialog_repo,
+                agent,
+            } if *dialog_repo == repo => agent,
+            _ => return false,
+        };
+
+        match (*agent).cmp(&removed) {
+            std::cmp::Ordering::Greater => {
+                *agent -= 1;
+                false
+            }
+            std::cmp::Ordering::Equal => {
+                self.mode = Mode::Normal;
+                true
+            }
+            std::cmp::Ordering::Less => false,
+        }
+    }
+
+    pub(in crate::ui) fn merge_job(&self) -> Option<&MergeJob> {
+        self.merge_job.as_ref()
+    }
+
+    pub(in crate::ui) fn merge_outcome(&self) -> Option<&MergeOutcome> {
+        self.merge_outcome.as_ref()
+    }
+
+    pub(in crate::ui) fn is_merging_agent(
+        &self,
+        repo_path: &std::path::Path,
+        agent_id: &str,
+    ) -> bool {
+        self.merge_job
+            .as_ref()
+            .is_some_and(|job| job.repo_path == repo_path && job.agent_id == agent_id)
     }
 }
 

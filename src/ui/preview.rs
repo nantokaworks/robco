@@ -10,7 +10,7 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     ui::{
-        App, PreviewPane, layout, panes_for, scrollback,
+        App, PreviewPane, layout, merge_dialog, panes_for, scrollback,
         summary::{agent_summary, child_summary, repo_summary},
         theme::DEFAULT as THEME,
     },
@@ -31,7 +31,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
 
-    let (title, text) = match (pane, selection) {
+    let (title, mut text) = match (pane, selection) {
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
@@ -103,8 +103,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 return render_branch_only(
                     frame,
                     panes.preview,
-                    pane,
-                    selection,
+                    (app, pane, selection),
                     title,
                     &agent.branch,
                     &ai_label,
@@ -129,8 +128,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 return render_branch_only(
                     frame,
                     panes.preview,
-                    pane,
-                    selection,
+                    (app, pane, selection),
                     title,
                     &agent.branch,
                     &ai_label,
@@ -155,8 +153,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 return render_branch_only(
                     frame,
                     panes.preview,
-                    pane,
-                    selection,
+                    (app, pane, selection),
                     title,
                     &agent.branch,
                     &ai_label,
@@ -213,6 +210,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             vec![Line::from("No repositories discovered.")].into(),
         ),
     };
+    merge_dialog::append_preview(app, pane, selection, &mut text);
 
     // Live tmux tabs already captured the scrolled-back window; scrolling the
     // paragraph on top of that would double-shift. Static tabs keep it.
@@ -221,14 +219,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     } else {
         scroll
     };
+    let mut block = Block::default()
+        .title_top(preview_tabs_line(pane, selection, &ai_label))
+        .title_top(Line::from(title).right_aligned())
+        .borders(Borders::ALL)
+        .padding(Padding::uniform(PREVIEW_PADDING));
+    if let Some(title) = merge_dialog::preview_title(app) {
+        block = block.title_bottom(title);
+    }
     let preview = Paragraph::new(text)
-        .block(
-            Block::default()
-                .title_top(preview_tabs_line(pane, selection, &ai_label))
-                .title_top(Line::from(title).right_aligned())
-                .borders(Borders::ALL)
-                .padding(Padding::uniform(PREVIEW_PADDING)),
-        )
+        .block(block)
         .style(THEME.accent_style())
         .wrap(Wrap { trim: false })
         .scroll((para_scroll, 0));
@@ -294,13 +294,13 @@ fn preview_tabs_line(
 fn render_branch_only(
     frame: &mut Frame<'_>,
     area: ratatui::layout::Rect,
-    active: PreviewPane,
-    selection: Option<Selection>,
+    preview: (&App, PreviewPane, Option<Selection>),
     title: String,
     branch: &str,
     ai_label: &str,
 ) {
-    let text = vec![
+    let (app, active, selection) = preview;
+    let mut text = vec![
         Line::from(Span::styled(
             "Worktree has been removed.",
             THEME.muted_style(),
@@ -313,15 +313,19 @@ fn render_branch_only(
             "Press x to delete the branch.",
             THEME.muted_style(),
         )),
-    ];
+    ]
+    .into();
+    merge_dialog::append_preview(app, active, selection, &mut text);
+    let mut block = Block::default()
+        .title_top(preview_tabs_line(active, selection, ai_label))
+        .title_top(Line::from(title).right_aligned())
+        .borders(Borders::ALL)
+        .padding(Padding::uniform(PREVIEW_PADDING));
+    if let Some(title) = merge_dialog::preview_title(app) {
+        block = block.title_bottom(title);
+    }
     let preview = Paragraph::new(text)
-        .block(
-            Block::default()
-                .title_top(preview_tabs_line(active, selection, ai_label))
-                .title_top(Line::from(title).right_aligned())
-                .borders(Borders::ALL)
-                .padding(Padding::uniform(PREVIEW_PADDING)),
-        )
+        .block(block)
         .style(THEME.muted_style())
         .wrap(Wrap { trim: false });
     frame.render_widget(preview, area);

@@ -67,6 +67,9 @@ impl App {
         send: impl FnOnce(&str, &str) -> Result<()>,
     ) -> Result<bool> {
         self.message = None;
+        if matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Ok(true);
+        }
 
         match &mut self.mode {
             Mode::PromptAgent {
@@ -198,8 +201,6 @@ impl App {
                     self.force_kill(target)?;
                 }
             }
-            Mode::MergeInProgress { .. } => {}
-            Mode::MergeComplete { .. } => self.mode = Mode::Normal,
             Mode::Help { scroll } => {
                 let height = help::terminal_height();
                 if help::max_scroll(height) == 0 {
@@ -217,9 +218,14 @@ impl App {
                 }
             }
             Mode::Normal => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    return Ok(true);
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    if let Some(branch) = self.merge_job().map(|job| job.branch.clone()) {
+                        self.show_message(format!(
+                            "merge in progress: {branch} — wait or ctrl-c to force quit"
+                        ));
+                    } else {
+                        return Ok(true);
+                    }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
                     self.move_selection_down();

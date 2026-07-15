@@ -3,6 +3,7 @@ use crate::model::Status;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Indicator {
     Status(Status),
+    Merging,
     Running,
     ShellActivity,
     SubagentActivity(usize),
@@ -12,6 +13,7 @@ pub(super) enum Indicator {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct IndicatorState {
     pub dead: bool,
+    pub merging: bool,
     pub running: bool,
     pub waiting: bool,
     pub worktree_missing: bool,
@@ -26,6 +28,7 @@ impl IndicatorState {
     pub(super) fn with_status(status: Option<Status>) -> Self {
         Self {
             dead: status == Some(Status::Dead),
+            merging: false,
             running: status == Some(Status::Running),
             waiting: status == Some(Status::Waiting),
             worktree_missing: false,
@@ -41,13 +44,15 @@ impl IndicatorState {
 }
 
 /// Selects the primary row indicator in this order, highest priority first:
-/// dead/error status, running spinner, waiting status, shell activity, active
+/// dead/error status, merge activity, running spinner, waiting status, shell activity, active
 /// subagent count, repo dropr refresh, then the static Done/Idle/BranchOnly
 /// status glyph. Worktree-missing state is supplementary and is selected
 /// separately by [`select_supplementary`].
 pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
     if state.dead {
         Some(Indicator::Status(Status::Dead))
+    } else if state.merging {
+        Some(Indicator::Merging)
     } else if state.running {
         Some(Indicator::Running)
     } else if state.waiting {
@@ -89,6 +94,18 @@ mod tests {
         let mut state = idle_state();
         state.dead = true;
         state.running = true;
+        assert_eq!(select(state), Some(Indicator::Status(Status::Dead)));
+    }
+
+    #[test]
+    fn merging_is_high_priority_but_does_not_hide_dead_state() {
+        let mut state = idle_state();
+        state.merging = true;
+        state.running = true;
+        state.shell_active = true;
+        assert_eq!(select(state), Some(Indicator::Merging));
+
+        state.dead = true;
         assert_eq!(select(state), Some(Indicator::Status(Status::Dead)));
     }
 

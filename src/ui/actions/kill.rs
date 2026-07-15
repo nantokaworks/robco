@@ -46,6 +46,12 @@ impl App {
                 self.show_message("kill is not available for child worktrees");
             }
             Some(Selection::Agent { repo, agent }) => {
+                let repo_node = &self.registry.repos[repo];
+                let agent_node = &repo_node.agents[agent];
+                if self.is_merging_agent(&repo_node.path, &agent_node.id) {
+                    self.show_message("cannot kill an agent while it is merging");
+                    return;
+                }
                 if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
                     self.mode = Mode::ConfirmDeleteBranch { repo, agent };
                 } else {
@@ -94,6 +100,11 @@ impl App {
     }
 
     fn kill_target(&mut self, target: ForceKillTarget, force: bool) -> Result<()> {
+        if self.is_merging_agent(&target.repo_path, &target.agent_id) {
+            self.mode = Mode::Normal;
+            self.show_message("cannot kill an agent while it is merging");
+            return Ok(());
+        }
         let Some((repo, agent_idx)) =
             resolve_agent(&self.registry.repos, &target.repo_path, &target.agent_id)
         else {
@@ -155,6 +166,11 @@ impl App {
         let Some(agent_node) = repo_node.agents.get(agent_idx) else {
             return Ok(());
         };
+        if self.is_merging_agent(&repo_node.path, &agent_node.id) {
+            self.mode = Mode::Normal;
+            self.show_message("cannot delete a branch while its agent is merging");
+            return Ok(());
+        }
         let selected_repo = repo_node.clone();
         let selected_agent = agent_node.clone();
         match git::delete_branch(&selected_repo.path, &selected_agent.branch) {
