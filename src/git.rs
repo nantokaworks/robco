@@ -88,13 +88,13 @@ pub fn add_worktree(repo: &Path, worktree: &Path, branch: &str, base: &str) -> R
     command_unit(output, "git worktree add")
 }
 
-pub fn remove_worktree(repo: &Path, worktree: &Path) -> Result<()> {
-    let output = Command::new("git")
-        .args(["-C"])
-        .arg(repo)
-        .args(["worktree", "remove"])
-        .arg(worktree)
-        .output()?;
+pub fn remove_worktree(repo: &Path, worktree: &Path, force: bool) -> Result<()> {
+    let mut command = Command::new("git");
+    command.args(["-C"]).arg(repo).args(["worktree", "remove"]);
+    if force {
+        command.arg("--force");
+    }
+    let output = command.arg(worktree).output()?;
     command_unit(output, "git worktree remove")?;
     prune_worktrees(repo)
 }

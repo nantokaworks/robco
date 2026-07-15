@@ -2,6 +2,7 @@ mod attach;
 mod children;
 mod discovery;
 pub(super) mod dropr_tasks;
+mod kill;
 mod lifecycle;
 pub(super) mod merge;
 mod orphans;

@@ -242,7 +242,7 @@ fn kill_agent_rejects_registered_nested_worktree() {
     );
 
     assert!(matches!(
-        kill_agent(&repo, &agent),
+        kill_agent(&repo, &agent, false),
         Err(crate::Error::ChildWorktreesPresent(path)) if path == agent_path
     ));
 }

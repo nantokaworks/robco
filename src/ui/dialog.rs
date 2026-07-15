@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, help, layout, merge_dialog, theme::DEFAULT as THEME};
+use super::{App, Mode, error_dialog, help, layout, merge_dialog, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let body = layout::root(frame.area()).body;
@@ -90,6 +90,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             "kill session?",
             confirm_lines(session.clone(), "y kill   n/esc cancel"),
         ),
+        Mode::ErrorDialog {
+            title,
+            lines,
+            force_kill,
+        } => (title, error_dialog::content(lines, force_kill.is_some())),
         Mode::MergeInProgress { branch, step, .. } => merge_dialog::in_progress(app, branch, step),
         Mode::MergeComplete { branch } => merge_dialog::complete(branch),
         Mode::Help { .. } => ("help", help::lines()),

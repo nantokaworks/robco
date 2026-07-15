@@ -189,6 +189,15 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
+            Mode::ErrorDialog { force_kill, .. } => {
+                let target = force_kill.clone();
+                self.mode = Mode::Normal;
+                if matches!(key.code, KeyCode::Char('f') | KeyCode::Char('F'))
+                    && let Some(target) = target
+                {
+                    self.force_kill(target)?;
+                }
+            }
             Mode::MergeInProgress { .. } => {}
             Mode::MergeComplete { .. } => self.mode = Mode::Normal,
             Mode::Help { scroll } => {

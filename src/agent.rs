@@ -234,7 +234,7 @@ pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode
     tmux::new_session(&session, &repo.path, &config.default_program_command(), &[])
 }
 
-pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
+pub fn kill_agent(repo: &RepoNode, agent: &AgentNode, force: bool) -> Result<()> {
     let parent = agent
         .worktree_path
         .canonicalize()
@@ -251,7 +251,7 @@ pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
         ));
     }
     let worktree_exists = agent.worktree_path.exists();
-    if worktree_exists && !git::tracked_tree_is_clean(&agent.worktree_path)? {
+    if !force && worktree_exists && !git::tracked_tree_is_clean(&agent.worktree_path)? {
         return Err(crate::Error::DirtyWorktree(agent.worktree_path.clone()));
     }
 
@@ -259,7 +259,7 @@ pub fn kill_agent(repo: &RepoNode, agent: &AgentNode) -> Result<()> {
     let _ = tmux::kill_session(&shell_session_name(agent));
 
     if worktree_exists {
-        git::remove_worktree(&repo.path, &agent.worktree_path)
+        git::remove_worktree(&repo.path, &agent.worktree_path, force)
     } else {
         // The worktree directory is already gone (e.g. a dead agent whose
         // directory was deleted out from under robco). `git worktree remove`

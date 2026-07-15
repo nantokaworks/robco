@@ -1,5 +1,5 @@
 use crate::{
-    Result, agent, git,
+    Result, git,
     model::{RepoNode, Selection, Status},
 };
 use std::path::Path;
@@ -127,88 +127,6 @@ impl App {
             return Ok(());
         }
         self.show_message(format!("PR requested: {branch}"));
-        Ok(())
-    }
-
-    pub(in crate::ui) fn confirm_kill_selected(&mut self) {
-        match self.selected_item() {
-            Some(Selection::ChildWorktree { .. }) => {
-                self.show_message("kill is not available for child worktrees");
-            }
-            Some(Selection::Agent { repo, agent }) => {
-                if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
-                    self.mode = Mode::ConfirmDeleteBranch { repo, agent };
-                } else {
-                    self.mode = Mode::ConfirmKill { repo, agent };
-                }
-            }
-            Some(Selection::Repo(repo)) => {
-                let repo_node = &self.registry.repos[repo];
-                if repo_node.pinned {
-                    if repo_node.agents.is_empty() {
-                        self.mode = Mode::ConfirmRemoveRepo {
-                            path: repo_node.path.clone(),
-                        };
-                    } else {
-                        self.show_message("remove agents first");
-                    }
-                }
-            }
-            Some(Selection::Orphan(orphan)) => {
-                if let Some(orphan) = self.orphans.get(orphan) {
-                    self.mode = Mode::ConfirmKillOrphan {
-                        session: orphan.name.clone(),
-                    };
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub(in crate::ui) fn kill_agent(&mut self, repo: usize, agent_idx: usize) -> Result<()> {
-        if repo < self.registry.repos.len() && agent_idx < self.registry.repos[repo].agents.len() {
-            let selected_repo = self.registry.repos[repo].clone();
-            let selected_agent = selected_repo.agents[agent_idx].clone();
-            match agent::kill_agent(&selected_repo, &selected_agent) {
-                Ok(()) => {
-                    if crate::git::branch_exists(&selected_repo.path, &selected_agent.branch)
-                        .unwrap_or(false)
-                    {
-                        self.registry.repos[repo].agents[agent_idx].status = Status::BranchOnly;
-                        self.registry.save()?;
-                        self.mode = Mode::ConfirmDeleteBranch {
-                            repo,
-                            agent: agent_idx,
-                        };
-                    } else {
-                        self.registry.repos[repo].agents.remove(agent_idx);
-                        self.registry.save()?;
-                        self.show_message(format!("killed {}", selected_agent.title));
-                    }
-                }
-                Err(err) => self.show_message(err.to_string()),
-            }
-        }
-        Ok(())
-    }
-
-    pub(in crate::ui) fn delete_agent_branch(
-        &mut self,
-        repo: usize,
-        agent_idx: usize,
-    ) -> Result<()> {
-        if repo < self.registry.repos.len() && agent_idx < self.registry.repos[repo].agents.len() {
-            let selected_repo = self.registry.repos[repo].clone();
-            let selected_agent = selected_repo.agents[agent_idx].clone();
-            match crate::git::delete_branch(&selected_repo.path, &selected_agent.branch) {
-                Ok(()) => {
-                    self.registry.repos[repo].agents.remove(agent_idx);
-                    self.registry.save()?;
-                    self.show_message(format!("deleted branch {}", selected_agent.branch));
-                }
-                Err(err) => self.show_message(err.to_string()),
-            }
-        }
         Ok(())
     }
 
