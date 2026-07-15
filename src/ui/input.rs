@@ -140,8 +140,7 @@ impl App {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                     let repo = *repo;
                     let agent = *agent;
-                    self.mode = Mode::Normal;
-                    self.perform_merge(repo, agent)?;
+                    self.start_merge(repo, agent);
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
@@ -190,6 +189,8 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
+            Mode::MergeInProgress { .. } => {}
+            Mode::MergeComplete { .. } => self.mode = Mode::Normal,
             Mode::Help { scroll } => {
                 let height = help::terminal_height();
                 if help::max_scroll(height) == 0 {

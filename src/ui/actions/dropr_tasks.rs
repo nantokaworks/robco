@@ -1,13 +1,36 @@
 use std::{
+    collections::{HashMap, HashSet},
     panic::{self, AssertUnwindSafe},
+    sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
 
-use crate::dropr;
+use crate::{dropr, dropr::DroprTaskCandidate};
 
-use super::super::{App, DroprTaskRefresh};
+use super::super::App;
 
 const REFRESH_STALE_AFTER: Duration = Duration::from_secs(30);
+
+type DroprTaskResult = (String, Instant, Option<Vec<DroprTaskCandidate>>);
+
+pub(in crate::ui) struct DroprTaskRefresh {
+    sender: Sender<DroprTaskResult>,
+    receiver: Receiver<DroprTaskResult>,
+    in_flight: HashMap<String, Instant>,
+    manual: HashSet<String>,
+}
+
+impl DroprTaskRefresh {
+    pub(in crate::ui) fn new() -> Self {
+        let (sender, receiver) = mpsc::channel();
+        Self {
+            sender,
+            receiver,
+            in_flight: HashMap::new(),
+            manual: HashSet::new(),
+        }
+    }
+}
 
 pub(super) enum DroprTaskReload {
     Running,

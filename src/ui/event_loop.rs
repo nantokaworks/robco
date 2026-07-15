@@ -91,6 +91,7 @@ fn run_loop<B: ratatui::backend::Backend>(
             *targets = watch_targets(&app.registry);
         }
         drain_stdout_notifications(notify_rx, app);
+        app.drain_merge_events()?;
 
         if app
             .message

@@ -45,7 +45,11 @@ fn require_no_open_pr(exists: bool) -> std::result::Result<(), &'static str> {
     (!exists).then_some(()).ok_or("PR is already open")
 }
 
-fn resolve_agent(repos: &[RepoNode], repo_path: &Path, agent_id: &str) -> Option<(usize, usize)> {
+pub(super) fn resolve_agent(
+    repos: &[RepoNode],
+    repo_path: &Path,
+    agent_id: &str,
+) -> Option<(usize, usize)> {
     let repo = repos.iter().position(|repo| repo.path == repo_path)?;
     let agent = repos[repo]
         .agents
@@ -283,57 +287,12 @@ impl App {
         }
     }
 
-    pub(in crate::ui) fn perform_merge(&mut self, repo: usize, agent_idx: usize) -> Result<()> {
-        if repo >= self.registry.repos.len() || agent_idx >= self.registry.repos[repo].agents.len()
-        {
-            return Ok(());
-        }
-
-        let repo_node = self.registry.repos[repo].clone();
-        let selected = repo_node.agents[agent_idx].clone();
-        if let Err(err) = git::merge_pr(
-            &repo_node.path,
-            &selected.branch,
-            self.config.merge_strategy.gh_flag(),
-        ) {
-            self.record_merge_error(repo, agent_idx, err.to_string());
-            return Ok(());
-        }
-        if let Err(err) = git::pull_ff_only(&repo_node.path) {
-            self.record_merge_error(repo, agent_idx, err.to_string());
-            return Ok(());
-        }
-        if selected.worktree_path.exists()
-            && let Err(err) = git::remove_worktree(&repo_node.path, &selected.worktree_path)
-        {
-            self.record_merge_error(repo, agent_idx, err.to_string());
-            return Ok(());
-        }
-        match git::branch_exists(&repo_node.path, &selected.branch) {
-            Ok(true) => {
-                if let Err(err) = git::delete_branch(&repo_node.path, &selected.branch) {
-                    self.record_merge_error(repo, agent_idx, err.to_string());
-                    return Ok(());
-                }
-            }
-            Ok(false) => {}
-            Err(err) => {
-                self.record_merge_error(repo, agent_idx, err.to_string());
-                return Ok(());
-            }
-        }
-        let _ = git::delete_remote_branch(&repo_node.path, &selected.branch);
-
-        let _ = crate::tmux::kill_session(&selected.tmux_session);
-        let _ = crate::tmux::kill_session(&agent::shell_session_name(&selected));
-
-        self.registry.repos[repo].agents.remove(agent_idx);
-        self.registry.save()?;
-        self.show_message(format!("merged & landed {}", selected.branch));
-        Ok(())
-    }
-
-    fn record_merge_error(&mut self, repo: usize, agent_idx: usize, detail: String) {
+    pub(in crate::ui) fn record_merge_error(
+        &mut self,
+        repo: usize,
+        agent_idx: usize,
+        detail: String,
+    ) {
         set_merge_error(
             &mut self.registry.repos[repo].agents[agent_idx].merge_error,
             &detail,

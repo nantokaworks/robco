@@ -1,8 +1,8 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     io,
     path::PathBuf,
-    sync::mpsc::{self, Receiver, Sender},
+    sync::mpsc::Receiver,
     time::{Duration, Instant},
 };
 
@@ -12,10 +12,9 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 
-use crate::{
-    Result, agent, config::Config, dropr::DroprTaskCandidate, model::Selection, registry::Registry,
-    status,
-};
+use crate::{Result, agent, config::Config, model::Selection, registry::Registry, status};
+
+use actions::dropr_tasks::DroprTaskRefresh;
 
 /// How often the launch directory and each repo's worktrees are re-scanned to
 /// pick up projects or worktrees created outside robco.
@@ -30,6 +29,7 @@ mod help;
 mod input;
 mod layout;
 mod list;
+mod merge_dialog;
 mod preview;
 mod repo_description;
 mod scrollback;
@@ -63,6 +63,15 @@ enum Mode {
     ConfirmMerge {
         repo: usize,
         agent: usize,
+    },
+    MergeInProgress {
+        repo_path: PathBuf,
+        agent_id: String,
+        branch: String,
+        step: &'static str,
+    },
+    MergeComplete {
+        branch: String,
     },
     ConfirmPr {
         repo_path: PathBuf,
@@ -112,27 +121,6 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
     }
 }
 
-type DroprTaskResult = (String, Instant, Option<Vec<DroprTaskCandidate>>);
-
-struct DroprTaskRefresh {
-    sender: Sender<DroprTaskResult>,
-    receiver: Receiver<DroprTaskResult>,
-    in_flight: HashMap<String, Instant>,
-    manual: HashSet<String>,
-}
-
-impl DroprTaskRefresh {
-    fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
-        Self {
-            sender,
-            receiver,
-            in_flight: HashMap::new(),
-            manual: HashSet::new(),
-        }
-    }
-}
-
 fn default_pane(selection: Option<Selection>) -> PreviewPane {
     panes_for(selection)
         .first()
@@ -164,6 +152,7 @@ pub struct App {
     force_redraw: bool,
     mode: Mode,
     message: Option<(String, Instant)>,
+    merge_receiver: Option<Receiver<actions::merge::MergeEvent>>,
     dropr_task_refresh: DroprTaskRefresh,
 }
 
@@ -186,6 +175,7 @@ impl App {
             force_redraw: false,
             mode: Mode::Normal,
             message: None,
+            merge_receiver: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
         };
         if app.prune_unmanaged_agents() {

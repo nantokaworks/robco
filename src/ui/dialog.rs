@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, help, layout, theme::DEFAULT as THEME};
+use super::{App, Mode, help, layout, merge_dialog, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let body = layout::root(frame.area()).body;
@@ -64,7 +64,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             confirm_lines(path.display().to_string(), "y remove   n/esc cancel"),
         ),
         Mode::ConfirmMerge { repo, agent } => (
-            "merge / land?",
+            "merge?",
             vec![
                 Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
                 Line::from(format!("strategy: {:?}", app.config.merge_strategy).to_lowercase()),
@@ -90,6 +90,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             "kill session?",
             confirm_lines(session.clone(), "y kill   n/esc cancel"),
         ),
+        Mode::MergeInProgress { branch, step, .. } => merge_dialog::in_progress(app, branch, step),
+        Mode::MergeComplete { branch } => merge_dialog::complete(branch),
         Mode::Help { .. } => ("help", help::lines()),
         Mode::Normal => return,
     };
@@ -218,7 +220,7 @@ mod tests {
                 ]);
                 frame.render_widget(bg, area);
 
-                // Odd x so the left border lands on the right half of a wide glyph.
+                // Odd x so the left border sits on the right half of a wide glyph.
                 let popup = Rect {
                     x: 3,
                     y: 1,

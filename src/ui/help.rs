@@ -21,7 +21,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from(""),
         Line::from("Repo"),
         Line::from("  a              add repository by path"),
-        Line::from("  m              merge/land agent: merge PR + pull main (commit + PR needed)"),
+        Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),
         Line::from("  p              edit and request PR from selected running agent"),
         Line::from(""),
         Line::from("Indicators"),
