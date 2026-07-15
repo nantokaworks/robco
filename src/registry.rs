@@ -1,5 +1,10 @@
-use std::{collections::BTreeMap, fs};
+use std::{
+    collections::BTreeMap,
+    fs::{self, OpenOptions},
+    path::Path,
+};
 
+use fd_lock::RwLock;
 use nanoid::nanoid;
 
 use serde::{Deserialize, Serialize};
@@ -32,9 +37,63 @@ impl Registry {
     pub fn save(&self) -> Result<()> {
         ensure_robco_dir()?;
         let path = state_path()?;
-        let raw = serde_json::to_string_pretty(self)?;
+        self.save_at(&path)
+    }
+
+    /// Serialize a registry read-modify-write transaction across processes.
+    pub fn locked_update<F>(f: F) -> Result<Registry>
+    where
+        F: FnOnce(&mut Registry),
+    {
+        ensure_robco_dir()?;
+        Self::locked_update_at(&state_path()?, f)
+    }
+
+    fn locked_update_at<F>(path: &Path, f: F) -> Result<Registry>
+    where
+        F: FnOnce(&mut Registry),
+    {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        Self::with_write_lock(path, || {
+            let mut registry = if path.exists() {
+                let raw = fs::read_to_string(path)?;
+                serde_json::from_str(&raw)?
+            } else {
+                Registry {
+                    version: 1,
+                    repos: Vec::new(),
+                }
+            };
+            f(&mut registry);
+            Self::write_unlocked(&registry, path)?;
+            Ok(registry)
+        })
+    }
+
+    fn save_at(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        Self::with_write_lock(path, || Self::write_unlocked(self, path))
+    }
+
+    fn with_write_lock<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let lock_file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(path.with_extension("json.lock"))?;
+        let mut lock = RwLock::new(lock_file);
+        let _guard = lock.write()?;
+        f()
+    }
+
+    fn write_unlocked(registry: &Registry, path: &Path) -> Result<()> {
+        let raw = serde_json::to_string_pretty(registry)?;
         let temp_path = path.with_extension(format!("json.{}.tmp", nanoid!()));
-        let written = fs::write(&temp_path, raw).and_then(|()| fs::rename(&temp_path, &path));
+        let written = fs::write(&temp_path, raw).and_then(|()| fs::rename(&temp_path, path));
         if let Err(error) = written {
             let _ = fs::remove_file(temp_path);
             return Err(error.into());
@@ -81,7 +140,7 @@ impl Registry {
 
 #[cfg(test)]
 mod tests {
-    use std::time::SystemTime;
+    use std::{sync::Arc, time::SystemTime};
 
     use super::*;
     use crate::model::{AgentNode, RepoNode};
@@ -256,5 +315,53 @@ mod tests {
 
         assert_eq!(registry.repos.len(), 1);
         assert!(registry.repos[0].pinned);
+    }
+
+    #[test]
+    fn legacy_state_deserializes_without_chief_fields() {
+        let registry: Registry = serde_json::from_str(r#"{"version":1,"repos":[]}"#).unwrap();
+        assert_eq!(registry.version, 1);
+        assert!(registry.repos.is_empty());
+    }
+
+    #[test]
+    fn locked_update_serializes_concurrent_writers() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = Arc::new(temp.path().join("state.json"));
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let path = Arc::clone(&path);
+                std::thread::spawn(move || {
+                    for _ in 0..25 {
+                        Registry::locked_update_at(&path, |registry| registry.version += 1)
+                            .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        let raw = fs::read_to_string(path.as_ref()).unwrap();
+        let registry: Registry = serde_json::from_str(&raw).unwrap();
+        assert_eq!(registry.version, 51);
+    }
+
+    #[test]
+    fn save_under_lock_round_trips() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("state.json");
+        let registry = Registry {
+            version: 7,
+            repos: vec![repo("/a/one", Vec::new())],
+        };
+
+        registry.save_at(&path).unwrap();
+
+        let raw = fs::read_to_string(path).unwrap();
+        let loaded: Registry = serde_json::from_str(&raw).unwrap();
+        assert_eq!(loaded.version, 7);
+        assert_eq!(loaded.repos.len(), 1);
     }
 }

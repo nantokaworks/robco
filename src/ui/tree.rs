@@ -92,6 +92,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         };
 
         match *item {
+            Selection::Chief => {
+                lines.push(Line::from(Span::styled(format!("{marker} CHIEF"), style)));
+            }
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
