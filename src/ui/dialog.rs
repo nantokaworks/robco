@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, error_dialog, help, layout, theme::DEFAULT as THEME};
+use super::{App, Mode, error_dialog, help, input_wrap, layout, theme::DEFAULT as THEME};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let body = layout::root(frame.area()).body;
@@ -71,14 +71,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y merge   n/esc cancel"),
             ],
         ),
-        Mode::ConfirmPr { branch, input, .. } => (
-            "request PR from agent?",
-            vec![
-                Line::from(format!("branch: {branch}")),
-                input_line_scrolled("prompt", input, content_width),
-                hint_line("enter send   ctrl-s save only   esc cancel"),
-            ],
-        ),
+        Mode::ConfirmPr { branch, input, .. } => {
+            let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
+            let mut lines = vec![Line::from(format!("branch: {branch}"))];
+            lines.extend(input_wrap::input_lines(
+                "prompt",
+                input,
+                content_width,
+                max_input_height,
+            ));
+            lines.push(hint_line("enter send   ctrl-s save only   esc cancel"));
+            ("request PR from agent?", lines)
+        }
         Mode::ConfirmDeleteBranch { repo, agent } => (
             "delete branch?",
             confirm_lines(
@@ -107,12 +111,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         .max(title.len()) as u16
         + 4)
     .min(body.width);
-    let height = lines.len() as u16 + 2;
-    let height = if matches!(&app.mode, Mode::Help { .. }) {
-        height.min(layout::root(frame.area()).body.height)
-    } else {
-        height
-    };
+    let height = (lines.len() as u16 + 2).min(body.height);
     let area = if matches!(&app.mode, Mode::Help { .. }) {
         layout::centered_area(frame, width, height)
     } else {
@@ -124,6 +123,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             help::scroll_title(scroll, frame.area().height).unwrap_or_else(|| title.to_string()),
             help::clamp_scroll(scroll, frame.area().height),
         ),
+        Mode::ConfirmPr { .. } => {
+            let cursor_row = lines.len().saturating_sub(2) as u16;
+            let visible_rows = height.saturating_sub(2);
+            (
+                title.to_string(),
+                cursor_row.saturating_add(1).saturating_sub(visible_rows),
+            )
+        }
         _ => (title.to_string(), 0),
     };
     let block = Block::default()
@@ -180,16 +187,6 @@ fn input_line(label: &str, input: &str) -> Line<'static> {
         Span::styled(input.to_string(), THEME.input_style()),
         Span::styled("_", THEME.accent_style()),
     ])
-}
-
-pub(super) fn input_line_scrolled(label: &str, input: &str, max_width: usize) -> Line<'static> {
-    let label_width = label.len() + 3;
-    let available = max_width.saturating_sub(label_width + 1);
-    let mut visible = input;
-    while Line::from(visible).width() > available {
-        visible = &visible[visible.chars().next().map(char::len_utf8).unwrap_or(0)..];
-    }
-    input_line(label, visible)
 }
 
 fn hint_line(text: &str) -> Line<'static> {
