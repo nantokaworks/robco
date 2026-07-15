@@ -145,6 +145,10 @@ impl App {
         }) = self.selected_item()
         {
             let selected = self.registry.repos[repo].agents[agent_idx].clone();
+            if self.is_merging_agent(&self.registry.repos[repo].path, &selected.id) {
+                self.show_message("cannot restart an agent while it is merging");
+                return Ok(());
+            }
             if selected.status == Status::BranchOnly {
                 self.show_message(format!("branch remains: {}", selected.branch));
                 return Ok(());

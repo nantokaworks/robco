@@ -45,6 +45,10 @@ fn indicator_spans(
                 status_style(Status::Running)
             },
         )],
+        Some(Indicator::Merging) => vec![Span::styled(
+            format!("{gap}⇄ {}", super::spinner::frame(elapsed)),
+            THEME.hint_style(),
+        )],
         Some(Indicator::ShellActivity) => vec![Span::styled(
             format!("{gap}{}", super::spinner::term_frame(elapsed)),
             THEME.term_style(),
@@ -211,6 +215,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     .filter(|subagent| subagent.status == SubagentStatus::Running)
                     .count();
                 let mut indicator_state = IndicatorState::with_status(Some(agent.status));
+                indicator_state.merging = app.is_merging_agent(&repo.path, &agent.id);
                 indicator_state.worktree_missing = agent.worktree_missing;
                 indicator_state.merge_failed = agent.merge_error.is_some();
                 indicator_state.shell_active = agent.shell_working;

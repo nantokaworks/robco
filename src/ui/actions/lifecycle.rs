@@ -156,6 +156,10 @@ impl App {
     }
 
     pub(in crate::ui) fn merge_selected(&mut self) {
+        if let Some(job) = self.merge_job() {
+            self.show_message(format!("merge already in progress: {}", job.branch));
+            return;
+        }
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
             self.show_message("merge is not available for child worktrees");
             return;
