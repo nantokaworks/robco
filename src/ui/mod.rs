@@ -22,11 +22,14 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 mod actions;
 mod blockfont;
 mod confirm_pr;
+#[cfg(test)]
+mod confirm_pr_tests;
 mod dialog;
 mod error_dialog;
 mod event_loop;
 mod help;
 mod input;
+mod input_wrap;
 mod layout;
 mod list;
 mod merge_dialog;
@@ -272,13 +275,5 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap();
         assert!(matches!(app.mode, Mode::Normal));
-    }
-
-    #[test]
-    fn confirm_pr_prompt_scrolls_to_the_editing_end() {
-        let line = dialog::input_line_scrolled("prompt", "abcdefghijklmnopqrstuvwxyz", 16);
-
-        assert!(line.width() <= 16);
-        assert!(line.to_string().ends_with("uvwxyz_"));
     }
 }
