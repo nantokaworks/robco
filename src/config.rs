@@ -16,7 +16,7 @@ fn default_pr_prompt() -> String {
     DEFAULT_PR_PROMPT.to_string()
 }
 
-use crate::{Result, model::Status, openclaw::OpenClawConfig};
+use crate::{Result, chief::config::ChiefConfig, model::Status, openclaw::OpenClawConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -133,19 +133,38 @@ pub struct Config {
     pub openclaw: OpenClawConfig,
     #[serde(default)]
     pub project_icon: ProjectIcon,
+    #[serde(default)]
+    pub chief: ChiefConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub name: String,
     pub program: String,
+    #[serde(default)]
+    pub autonomous_args: Vec<String>,
+}
+
+fn default_profiles() -> Vec<Profile> {
+    vec![
+        Profile {
+            name: "claude".to_string(),
+            program: "claude".to_string(),
+            autonomous_args: vec!["--dangerously-skip-permissions".to_string()],
+        },
+        Profile {
+            name: "codex".to_string(),
+            program: "codex".to_string(),
+            autonomous_args: vec!["--dangerously-bypass-approvals-and-sandbox".to_string()],
+        },
+    ]
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             default_program: "claude".to_string(),
-            profiles: Vec::new(),
+            profiles: default_profiles(),
             branch_prefix: None,
             worktree_root: home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
@@ -162,6 +181,7 @@ impl Default for Config {
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
             project_icon: ProjectIcon::default(),
+            chief: ChiefConfig::default(),
         }
     }
 }
@@ -219,7 +239,7 @@ pub fn config_file_path() -> Result<PathBuf> {
     config_path()
 }
 
-fn robco_dir() -> Result<PathBuf> {
+pub(crate) fn robco_dir() -> Result<PathBuf> {
     let home = home_dir().ok_or(crate::Error::HomeDir)?;
     Ok(home.join(".robco"))
 }
@@ -251,6 +271,7 @@ mod tests {
             profiles: vec![Profile {
                 name: "codex".to_string(),
                 program: "codex --ask-for-approval never".to_string(),
+                autonomous_args: Vec::new(),
             }],
             ..Config::default()
         };
@@ -258,6 +279,38 @@ mod tests {
         assert_eq!(
             config.default_program_command(),
             "codex --ask-for-approval never"
+        );
+    }
+
+    #[test]
+    fn legacy_config_defaults_chief_and_profile_autonomous_args() {
+        let mut value = serde_json::to_value(Config::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("chief");
+        for profile in object["profiles"].as_array_mut().unwrap() {
+            profile.as_object_mut().unwrap().remove("autonomous_args");
+        }
+
+        let config: Config = serde_json::from_value(value).unwrap();
+        assert_eq!(config.chief, ChiefConfig::default());
+        assert!(
+            config
+                .profiles
+                .iter()
+                .all(|profile| profile.autonomous_args.is_empty())
+        );
+    }
+
+    #[test]
+    fn built_in_profiles_have_autonomous_defaults() {
+        let config = Config::default();
+        assert_eq!(
+            config.profiles[0].autonomous_args,
+            ["--dangerously-skip-permissions"]
+        );
+        assert_eq!(
+            config.profiles[1].autonomous_args,
+            ["--dangerously-bypass-approvals-and-sandbox"]
         );
     }
 

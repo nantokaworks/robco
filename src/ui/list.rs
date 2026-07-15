@@ -8,6 +8,7 @@ impl App {
     /// path and agents on their unique id.
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
+            Selection::Chief => "chief".to_string(),
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
             }

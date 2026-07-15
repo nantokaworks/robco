@@ -1,4 +1,5 @@
 mod agent;
+mod chief;
 mod cli;
 mod config;
 mod discover;
@@ -119,10 +120,10 @@ async fn run(args: Args) -> Result<()> {
     let indicator = loading::Indicator::start("Scanning repositories...");
     let discovered = discover_with_overlay(&args.launch_dir, &config, &indicator)?;
 
-    let mut registry = Registry::load()?;
-    agent::normalize_adopted_titles(&mut registry.repos, &config);
-    registry.merge_discovered(discovered);
-    registry.save()?;
+    let registry = Registry::locked_update(|registry| {
+        agent::normalize_adopted_titles(&mut registry.repos, &config);
+        registry.merge_discovered(discovered);
+    })?;
     let launch_dir = args.launch_dir.canonicalize().unwrap_or(args.launch_dir);
     indicator.finish();
     ui::run(registry, config, launch_dir)

@@ -27,17 +27,22 @@ pub fn run(args: NewArgs, config: &Config) -> Result<()> {
         Some(&parent_id),
     )?;
 
-    let mut registry = Registry::load()?;
-    let repo_index = registry
-        .repos
-        .iter()
-        .position(|repo| repo.path == repo_path)
-        .ok_or_else(|| Error::CreatedChildRepoMissing {
-            worktree_path: child.worktree_path.clone(),
-            tmux_session: child.tmux_session.clone(),
-        })?;
-    registry.repos[repo_index].agents.push(child);
-    registry.save()?;
+    let missing_worktree_path = child.worktree_path.clone();
+    let missing_tmux_session = child.tmux_session.clone();
+    let mut repo_index = None;
+    let registry = Registry::locked_update(|registry| {
+        repo_index = registry
+            .repos
+            .iter()
+            .position(|repo| repo.path == repo_path);
+        if let Some(repo_index) = repo_index {
+            registry.repos[repo_index].agents.push(child);
+        }
+    })?;
+    let repo_index = repo_index.ok_or_else(|| Error::CreatedChildRepoMissing {
+        worktree_path: missing_worktree_path,
+        tmux_session: missing_tmux_session,
+    })?;
     let child = registry.repos[repo_index]
         .agents
         .last()
