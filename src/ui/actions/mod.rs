@@ -6,6 +6,7 @@ mod kill;
 mod lifecycle;
 pub(super) mod merge;
 mod orphans;
+mod pr;
 mod settings;
 mod slots;
 mod subagents;
