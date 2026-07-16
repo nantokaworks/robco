@@ -28,7 +28,7 @@ pub fn run(args: ChiefArgs, config: &Config) -> Result<()> {
         ChiefCommand::Stop => stop(),
         ChiefCommand::Set(args) => set(args.setting, args.value.enabled()),
         ChiefCommand::Panic => panic_stop(),
-        ChiefCommand::InstallService => install_service(),
+        ChiefCommand::InstallService => install_service().map(|_| ()),
     }
 }
 
@@ -184,7 +184,17 @@ pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Resu
     Ok(())
 }
 
-fn install_service() -> Result<()> {
+pub(crate) fn install_service() -> Result<std::path::PathBuf> {
+    let path = write_service_plist()?;
+    println!("wrote {}", path.display());
+    println!(
+        "load with: launchctl bootstrap gui/$(id -u) {}",
+        path.display()
+    );
+    Ok(path)
+}
+
+pub(crate) fn write_service_plist() -> Result<std::path::PathBuf> {
     let home = dirs::home_dir().ok_or(crate::Error::HomeDir)?;
     let dir = home.join("Library/LaunchAgents");
     fs::create_dir_all(&dir)?;
@@ -206,12 +216,7 @@ fn install_service() -> Result<()> {
         xml(&log.to_string_lossy())
     );
     fs::write(&path, plist)?;
-    println!("wrote {}", path.display());
-    println!(
-        "load with: launchctl bootstrap gui/$(id -u) {}",
-        path.display()
-    );
-    Ok(())
+    Ok(path)
 }
 
 fn read_pid() -> Option<u32> {

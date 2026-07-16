@@ -3,7 +3,24 @@ use std::{fs, str::FromStr};
 use serde_json::{Value, json};
 use toml_edit::DocumentMut;
 
-use super::{claude, codex, openclaw, read_optional_config};
+use super::{claude, codex, openclaw, read_optional_config, selected_targets};
+use crate::cli::{InstallArgs, InstallTarget};
+
+#[test]
+fn absent_install_target_normalizes_to_all_targets() {
+    let targets = selected_targets(&InstallArgs {
+        target: None,
+        all: false,
+    });
+    assert_eq!(
+        targets,
+        [
+            InstallTarget::Claude,
+            InstallTarget::Codex,
+            InstallTarget::Openclaw
+        ]
+    );
+}
 
 #[test]
 fn optional_config_read_treats_only_not_found_as_absent() {
@@ -21,9 +38,7 @@ fn optional_config_read_treats_only_not_found_as_absent() {
 fn optional_config_read_invalid_utf8_errors() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config");
-
     fs::write(&path, [0xff]).unwrap();
-
     assert!(read_optional_config(&path).is_err());
 }
 

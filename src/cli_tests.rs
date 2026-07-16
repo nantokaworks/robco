@@ -121,3 +121,29 @@ fn bare_invocation_has_no_ephemeral_root() {
 fn rejects_removed_list_flag() {
     assert!(Args::try_parse_from(["robco", "--list"]).is_err());
 }
+
+#[test]
+fn bare_install_requests_wizard() {
+    let args = Args::try_parse_from(["robco", "install"]).unwrap();
+    let Some(Command::Install(args)) = args.command else {
+        panic!("expected install command");
+    };
+    assert!(args.wants_wizard());
+    assert_eq!(args.target, None);
+}
+
+#[test]
+fn install_all_and_explicit_target_use_legacy_path() {
+    let all = Args::try_parse_from(["robco", "install", "--all"]).unwrap();
+    let Some(Command::Install(all)) = all.command else {
+        panic!("expected install command");
+    };
+    assert!(!all.wants_wizard());
+
+    let target = Args::try_parse_from(["robco", "install", "--target", "codex"]).unwrap();
+    let Some(Command::Install(target)) = target.command else {
+        panic!("expected install command");
+    };
+    assert!(!target.wants_wizard());
+    assert_eq!(target.target, Some(InstallTarget::Codex));
+}

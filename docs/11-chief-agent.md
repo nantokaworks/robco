@@ -211,9 +211,29 @@ expired `CONFIRM` reply is rejected in-channel without a decision-log entry.
 
 ## Setup runbook
 
+For first-time setup, run the interactive wizard from a terminal:
+
+```sh
+robco install
+```
+
+It probes `git`, `tmux`, `gh`, and `dropr`; offers MCP registration; walks through the
+Chief worker, triage, capacity, Discord, and macOS launchd settings; then writes
+`~/.robco/config.json` once at the end. Existing values are prompt defaults, so a
+second run that accepts every default leaves the configuration unchanged. Discord bot
+tokens are never stored: the wizard records only `token_env` and, with explicit
+confirmation on macOS, can copy that variable's current value into launchd.
+
+This is a behavior change for bare `robco install`, which now requires a TTY and starts
+the wizard. Automation and MCP-only setup must use `robco install --target
+claude|codex|openclaw|all` or `robco install --all`. Bare `robco uninstall` is unchanged
+and still targets every supported client.
+
 ### Prerequisites
 
-Chief expects `git`, `tmux`, `gh`, and `dropr` to be installed and authenticated. Add the
+Chief expects `git`, `tmux`, `gh`, and `dropr` to be installed and authenticated. The
+wizard treats missing `gh` or `dropr` as warnings and asks before continuing when
+`git` or `tmux` is missing. Add the
 repositories Chief should manage to RobCo's registry, and ensure their remotes map to
 accessible dropr workspaces. Configure at least one profile with suitable
 `autonomous_args`.

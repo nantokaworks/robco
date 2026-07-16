@@ -46,6 +46,24 @@ cd robco
 cargo install --path .
 ```
 
+Run the interactive setup after installing the binary:
+
+```bash
+robco install
+```
+
+The retro-styled wizard checks prerequisites, optionally registers the MCP server,
+configures Chief and Discord, and can install the macOS launchd service. Bare
+`robco install` now starts this wizard. For the previous non-interactive MCP-only
+behavior, specify `--target claude|codex|openclaw|all` or use `--all`:
+
+```bash
+robco install --target codex
+robco install --all
+```
+
+Bare `robco uninstall` continues to remove RobCo from every supported client.
+
 Useful checks:
 
 ```bash
@@ -90,6 +108,10 @@ isolated RobCo worktree/tmux workers, reconciles their progress, triages failure
 can merge protected pull requests after checks pass. Read the full architecture,
 configuration, security, and operations guide in
 [docs/11-chief-agent.md](docs/11-chief-agent.md).
+
+The recommended first-time setup is `robco install`, whose wizard preserves existing
+values when Enter accepts each default and saves the Chief configuration once at the
+end. Tokens are referenced by environment-variable name and are never stored.
 
 Start with dispatch disabled, inspect the daemon, then enable dispatch when ready:
 
