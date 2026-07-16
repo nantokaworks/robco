@@ -10,6 +10,10 @@ use crate::chief::{
 };
 use crate::{Result, config::Config, dropr, registry::Registry, spawn};
 
+/// `dropr task ready --limit` caps at 20; larger values make the CLI
+/// exit with an argument error and the fetch fails for every repo.
+const READY_FETCH_LIMIT: usize = 20;
+
 pub fn dispatch_pass(config: &mut Config, ledger: &mut Ledger, now: DateTime<Utc>) -> Result<()> {
     let preflight = plan_dispatch(&config.chief, ledger, &[], now);
     ledger.counters.date = Some(preflight.date);
@@ -91,28 +95,52 @@ fn open_circuit(config: &mut Config) -> Result<()> {
 
 fn gather_candidates() -> Result<Vec<Candidate>> {
     let registry = Registry::load()?;
-    let workspaces = dropr::DroprOverlay::load_best_effort_timeout(COMMAND_TIMEOUT);
+    let (workspaces, overlay_ok) = dropr::DroprOverlay::load_with_status_timeout(COMMAND_TIMEOUT);
+    if !overlay_ok {
+        // Without the workspace overlay every repo would be skipped silently;
+        // record the outage so an idle chief is diagnosable from decisions.jsonl.
+        log_global(DecisionKind::Skip, "dropr_overlay_unavailable")?;
+        return Ok(Vec::new());
+    }
     let mut candidates = Vec::new();
     for repo in &registry.repos {
         let Some(remote) = &repo.remote_url else {
             continue;
         };
         let Some(workspace) = workspaces.find_by_repo_url(remote) else {
+            log_repo_skip(
+                &repo.path.to_string_lossy(),
+                "workspace_unmatched",
+                logging::append,
+            )?;
             continue;
         };
-        let tasks =
-            match dropr::fetch_ready_dispatch_tasks_timeout(&workspace.id, 50, COMMAND_TIMEOUT) {
-                Ok(tasks) => tasks,
-                Err(error) => {
-                    log_ready_failure(
-                        &repo.path.to_string_lossy(),
-                        &workspace.id,
-                        error,
-                        logging::append,
-                    )?;
-                    continue;
-                }
-            };
+        if !repo.path.exists() {
+            // Dispatching into a missing checkout fails the spawn and feeds
+            // the failure circuit; skip stale registry entries instead.
+            log_repo_skip(
+                &repo.path.to_string_lossy(),
+                "repo_path_missing",
+                logging::append,
+            )?;
+            continue;
+        }
+        let tasks = match dropr::fetch_ready_dispatch_tasks_timeout(
+            &workspace.id,
+            READY_FETCH_LIMIT,
+            COMMAND_TIMEOUT,
+        ) {
+            Ok(tasks) => tasks,
+            Err(error) => {
+                log_ready_failure(
+                    &repo.path.to_string_lossy(),
+                    &workspace.id,
+                    error,
+                    logging::append,
+                )?;
+                continue;
+            }
+        };
         for task in tasks {
             candidates.push(Candidate {
                 task_id: if task.id.is_empty() {
@@ -183,6 +211,16 @@ fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) -> Result<(
     logging::append(&entry)
 }
 
+fn log_repo_skip<F>(repo: &str, reason: &str, append: F) -> Result<()>
+where
+    F: FnOnce(&DecisionEntry) -> Result<()>,
+{
+    let mut entry = DecisionEntry::new(DecisionKind::Skip, reason);
+    entry.repo = Some(repo.into());
+    entry.source = Some("dispatch".into());
+    append(&entry)
+}
+
 fn log_ready_failure<F>(
     repo: &str,
     workspace: &str,
@@ -245,6 +283,20 @@ mod tests {
         .unwrap();
         assert!(opened);
         assert_eq!(spawned, ["1"]);
+    }
+
+    #[test]
+    fn repo_skip_emits_skip_decision() {
+        let mut captured = None;
+        log_repo_skip("/repo", "repo_path_missing", |entry| {
+            captured = Some(entry.clone());
+            Ok(())
+        })
+        .unwrap();
+        let entry = captured.unwrap();
+        assert_eq!(entry.kind, DecisionKind::Skip);
+        assert_eq!(entry.reason, "repo_path_missing");
+        assert_eq!(entry.repo.as_deref(), Some("/repo"));
     }
 
     #[test]

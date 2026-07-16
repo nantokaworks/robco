@@ -201,17 +201,20 @@ pub(crate) fn write_service_plist() -> Result<std::path::PathBuf> {
     let path = dir.join("com.robco.chief.plist");
     let executable = std::env::current_exe()?;
     let log = chief_home()?.join("chief.log");
+    let path_env = service_path_env(std::env::var("PATH").ok().as_deref(), &home);
     let plist = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>com.robco.chief</string>
 <key>ProgramArguments</key><array><string>{}</string><string>chief</string><string>run</string></array>
+<key>EnvironmentVariables</key><dict><key>PATH</key><string>{}</string></dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string>
 </dict></plist>
 "#,
         xml(&executable.to_string_lossy()),
+        xml(&path_env),
         xml(&log.to_string_lossy()),
         xml(&log.to_string_lossy())
     );
@@ -246,9 +249,74 @@ fn phase_name(phase: LedgerPhase) -> &'static str {
         LedgerPhase::Escalated => "escalated",
     }
 }
+/// PATH for the launchd service. launchd agents get a bare system PATH
+/// (`/usr/bin:/bin:/usr/sbin:/sbin`) that hides the tools the daemon shells
+/// out to (dropr, tmux, git, the agent CLI). Start from the install-time
+/// PATH and ensure the common tool dirs and system dirs are present.
+fn service_path_env(current: Option<&str>, home: &std::path::Path) -> String {
+    let mut path = current.unwrap_or("").to_string();
+    let required = [
+        "/opt/homebrew/bin".to_string(),
+        "/usr/local/bin".to_string(),
+        home.join(".local/bin").to_string_lossy().into_owned(),
+        "/usr/bin".to_string(),
+        "/bin".to_string(),
+        "/usr/sbin".to_string(),
+        "/sbin".to_string(),
+    ];
+    for dir in required {
+        if !path.split(':').any(|entry| entry == dir) {
+            if !path.is_empty() {
+                path.push(':');
+            }
+            path.push_str(&dir);
+        }
+    }
+    path
+}
+
 fn xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::service_path_env;
+    use std::path::Path;
+
+    #[test]
+    fn service_path_env_appends_missing_tool_dirs() {
+        let path = service_path_env(
+            Some("/usr/bin:/bin:/usr/sbin:/sbin"),
+            Path::new("/Users/me"),
+        );
+        assert_eq!(
+            path,
+            "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:/Users/me/.local/bin"
+        );
+    }
+
+    #[test]
+    fn service_path_env_keeps_existing_order() {
+        let path = service_path_env(
+            Some("/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/me/.local/bin"),
+            Path::new("/Users/me"),
+        );
+        assert_eq!(
+            path,
+            "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/me/.local/bin:/usr/local/bin"
+        );
+    }
+
+    #[test]
+    fn service_path_env_builds_from_missing_path() {
+        let path = service_path_env(None, Path::new("/Users/me"));
+        assert_eq!(
+            path,
+            "/opt/homebrew/bin:/usr/local/bin:/Users/me/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        );
+    }
 }
