@@ -53,3 +53,7 @@ pub fn snapshots_path() -> Result<PathBuf> {
 pub fn triage_dir() -> Result<PathBuf> {
     Ok(chief_home()?.join("triage"))
 }
+
+pub fn discord_ops_dir() -> Result<PathBuf> {
+    Ok(chief_home()?.join("discord-ops"))
+}

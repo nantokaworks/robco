@@ -11,9 +11,19 @@ pub trait CommandExecutor {
 
 #[derive(Debug, Clone)]
 struct Pending {
+    channel_id: String,
     user_id: String,
+    case_id: Option<String>,
     command: Command,
     expires_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Handled {
+    pub response: String,
+    pub executed: Option<Command>,
+    pub case_id: Option<String>,
+    pub succeeded: bool,
 }
 
 pub struct Handler {
@@ -42,6 +52,7 @@ impl Handler {
         }
     }
 
+    #[cfg(test)]
     pub fn handle(
         &mut self,
         channel_id: &str,
@@ -50,7 +61,20 @@ impl Handler {
         now_secs: u64,
         executor: &mut dyn CommandExecutor,
     ) -> Option<String> {
-        if channel_id != self.channel_id
+        self.handle_allowed(channel_id, user_id, message, now_secs, false, executor)
+            .map(|handled| handled.response)
+    }
+
+    pub(crate) fn handle_allowed(
+        &mut self,
+        channel_id: &str,
+        user_id: &str,
+        message: &str,
+        now_secs: u64,
+        extra_channel: bool,
+        executor: &mut dyn CommandExecutor,
+    ) -> Option<Handled> {
+        if (channel_id != self.channel_id && !extra_channel)
             || !self.allowed_users.iter().any(|allowed| allowed == user_id)
         {
             return None;
@@ -58,20 +82,27 @@ impl Handler {
         self.pending
             .retain(|_, pending| pending.expires_at >= now_secs);
         match parse(message)? {
-            Input::Confirm(code) => self.confirm(&code, user_id, now_secs, executor),
+            Input::Confirm(code) => self.confirm(&code, channel_id, user_id, now_secs, executor),
             Input::Command(command) if impactful(&command) => {
-                let code = nanoid::nanoid!(8);
-                self.pending.insert(
-                    code.clone(),
-                    Pending {
-                        user_id: user_id.into(),
-                        command,
-                        expires_at: now_secs.saturating_add(self.confirmation_ttl_secs),
-                    },
-                );
-                Some(format!("reply `CONFIRM {code}` to execute"))
+                Some(self.queue_confirmation(channel_id, user_id, None, command, now_secs))
             }
-            Input::Command(command) => self.execute(command, user_id, now_secs, executor),
+            Input::Command(command) => Some(self.execute(command, user_id, now_secs, executor)),
+        }
+    }
+
+    pub(crate) fn submit_generated(
+        &mut self,
+        channel_id: &str,
+        user_id: &str,
+        case_id: Option<String>,
+        command: Command,
+        now_secs: u64,
+        executor: &mut dyn CommandExecutor,
+    ) -> Handled {
+        if impactful(&command) {
+            self.queue_confirmation(channel_id, user_id, case_id, command, now_secs)
+        } else {
+            self.execute(command, user_id, now_secs, executor)
         }
     }
 
@@ -87,17 +118,33 @@ impl Handler {
     fn confirm(
         &mut self,
         code: &str,
+        channel_id: &str,
         user_id: &str,
         now_secs: u64,
         executor: &mut dyn CommandExecutor,
-    ) -> Option<String> {
+    ) -> Option<Handled> {
         let Some(pending) = self.pending.remove(code) else {
-            return Some("confirmation rejected".into());
+            return Some(Handled {
+                response: "confirmation rejected".into(),
+                executed: None,
+                case_id: None,
+                succeeded: false,
+            });
         };
-        if pending.user_id != user_id || pending.expires_at < now_secs {
-            return Some("confirmation rejected".into());
+        if pending.user_id != user_id
+            || pending.channel_id != channel_id
+            || pending.expires_at < now_secs
+        {
+            return Some(Handled {
+                response: "confirmation rejected".into(),
+                executed: None,
+                case_id: None,
+                succeeded: false,
+            });
         }
-        self.execute(pending.command, user_id, now_secs, executor)
+        let mut handled = self.execute(pending.command, user_id, now_secs, executor);
+        handled.case_id = pending.case_id;
+        Some(handled)
     }
 
     fn execute(
@@ -106,7 +153,7 @@ impl Handler {
         user_id: &str,
         now_secs: u64,
         executor: &mut dyn CommandExecutor,
-    ) -> Option<String> {
+    ) -> Handled {
         if mutating(&command) {
             while self
                 .actions
@@ -117,16 +164,77 @@ impl Handler {
             }
             if self.actions.len() >= self.action_limit {
                 executor.refused(&command, user_id, "rate limit exceeded");
-                return Some("rate limit exceeded; try again later".into());
+                return Handled {
+                    response: "rate limit exceeded; try again later".into(),
+                    executed: None,
+                    case_id: None,
+                    succeeded: false,
+                };
             }
             self.actions.push_back(now_secs);
         }
-        Some(
-            executor
-                .execute(&command, user_id)
-                .unwrap_or_else(|error| format!("error: {error}")),
-        )
+        let result = executor.execute(&command, user_id);
+        let succeeded = result.is_ok();
+        let response = result.unwrap_or_else(|error| format!("error: {error}"));
+        Handled {
+            response,
+            executed: Some(command),
+            case_id: None,
+            succeeded,
+        }
     }
+
+    fn queue_confirmation(
+        &mut self,
+        channel_id: &str,
+        user_id: &str,
+        case_id: Option<String>,
+        command: Command,
+        now_secs: u64,
+    ) -> Handled {
+        let code = nanoid::nanoid!(8);
+        let response = format!(
+            "Confirm: {} — reply `CONFIRM {code}`",
+            describe_command(&command)
+        );
+        self.pending.insert(
+            code,
+            Pending {
+                channel_id: channel_id.into(),
+                user_id: user_id.into(),
+                case_id,
+                command,
+                expires_at: now_secs.saturating_add(self.confirmation_ttl_secs),
+            },
+        );
+        Handled {
+            response,
+            executed: None,
+            case_id: None,
+            succeeded: false,
+        }
+    }
+}
+
+fn describe_command(command: &Command) -> String {
+    match command {
+        Command::Status => "status".into(),
+        Command::Dispatch(value) => format!("dispatch {}", on_off(*value)),
+        Command::AutoMerge(value) => format!("automerge {}", on_off(*value)),
+        Command::Workers => "workers".into(),
+        Command::Tasks => "tasks".into(),
+        Command::Skip(task) => format!("skip {task}"),
+        Command::Retry(task) => format!("retry {task}"),
+        Command::Answer { agent, .. } => format!("answer {agent}"),
+        Command::Approve(agent) => format!("approve {agent}"),
+        Command::Kill(agent) => format!("kill {agent}"),
+        Command::Log(limit) => format!("log {limit}"),
+        Command::Panic => "panic".into(),
+    }
+}
+
+fn on_off(value: bool) -> &'static str {
+    if value { "on" } else { "off" }
 }
 
 fn impactful(command: &Command) -> bool {

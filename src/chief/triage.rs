@@ -76,6 +76,12 @@ fn run_session(
     if let Err(error) = fs::create_dir_all(&case_dir) {
         return SessionResult::LaunchFailed(error.to_string());
     }
+    if let Err(error) = serde_json::to_vec_pretty(case)
+        .map_err(std::io::Error::other)
+        .and_then(|raw| fs::write(case_dir.join("case.json"), raw))
+    {
+        return SessionResult::LaunchFailed(error.to_string());
+    }
     let pid_path = case_dir.join("session.pid");
     terminate_stale_session(&pid_path);
     let capture = recent_capture(&case.worker_id);
@@ -93,7 +99,7 @@ fn run_session(
     session.run_controlled(&result::is_complete, control, Some(&pid_path))
 }
 
-fn triage_profile(config: &Config) -> Option<Profile> {
+pub(crate) fn triage_profile(config: &Config) -> Option<Profile> {
     let name = config
         .chief
         .triage_profile
@@ -111,6 +117,10 @@ fn triage_profile(config: &Config) -> Option<Profile> {
                 autonomous_args: Vec::new(),
             })
         })
+}
+
+pub(crate) fn recent_worker_capture(worker_id: &str) -> String {
+    actions::recent_capture(worker_id)
 }
 
 #[cfg(test)]

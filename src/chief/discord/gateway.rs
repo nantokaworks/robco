@@ -4,8 +4,13 @@ use super::{
     handler::Handler,
     ledger_requests::LedgerRequest,
     notifications::{Notification, from_decision},
+    ops_agent::OpsAgent,
+    ops_gateway::process_effects,
+    ops_session::SystemSessionSpawner,
 };
-use crate::chief::{config::DiscordConfig, decision_log_path, discord_cursor_path};
+use crate::chief::{
+    config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir, triage_dir,
+};
 use serde_json::json;
 use std::{
     sync::{
@@ -40,6 +45,18 @@ pub async fn run(
         discord_cursor_path().map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
+    let ops_root = discord_ops_dir().map_err(|error| error.to_string())?;
+    let initial = config
+        .read()
+        .unwrap_or_else(|lock| lock.into_inner())
+        .clone();
+    let mut ops = OpsAgent::load(
+        initial.channel_id.unwrap_or_default(),
+        initial.allowed_user_ids,
+        triage_dir().map_err(|error| error.to_string())?,
+        ops_root.join("threads.json"),
+    )?;
+    let mut spawner = SystemSessionSpawner::new(ops_root.join("sessions"));
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut retry_at = tokio::time::Instant::now();
     let mut retry_delay = Duration::from_secs(1);
@@ -54,16 +71,42 @@ pub async fn run(
                         handler.update_config(&current);
                         let now = SystemTime::now().duration_since(UNIX_EPOCH)
                             .unwrap_or_default().as_secs();
-                        if let Some(response) = handler.handle(
-                            &message.channel_id.to_string(),
+                        let message_channel = message.channel_id.to_string();
+                        let thread = ops.is_thread(&message_channel);
+                        if let Some(handled) = handler.handle_allowed(
+                            &message_channel,
                             &message.author.id.to_string(),
                             &message.content,
                             now,
+                            thread,
                             &mut executor,
                         ) {
-                            if let Some(channel) = channel_id(&current) {
-                                send_text(&http, channel, &response).await;
+                            let _ = send_text(&http, message.channel_id, &handled.response).await;
+                            if thread && handled.succeeded {
+                                let effects = if let Some(command) = handled.executed.as_ref() {
+                                    ops.resolve_answer(
+                                        &message_channel,
+                                        handled.case_id.as_deref(),
+                                        command,
+                                    )?
+                                } else {
+                                    Vec::new()
+                                };
+                                process_effects(
+                                    &http, channel_id(&current), effects, &mut ops,
+                                    handler, &mut executor, now,
+                                ).await;
                             }
+                        } else if let Some(effect) = ops.route(
+                            &message_channel,
+                            &message.author.id.to_string(),
+                            &message.content,
+                            &mut spawner,
+                        ) {
+                            process_effects(
+                                &http, channel_id(&current), vec![effect], &mut ops,
+                                handler, &mut executor, now,
+                            ).await;
                         }
                     }
                     Ok(_) => {}
@@ -80,6 +123,18 @@ pub async fn run(
                 let current = config.read()
                     .unwrap_or_else(|lock| lock.into_inner()).clone();
                 handler.update_config(&current);
+                ops.update_access(
+                    current.channel_id.clone().unwrap_or_default(),
+                    current.allowed_user_ids.clone(),
+                );
+                let mut effects = ops.discover()?;
+                effects.extend(ops.poll());
+                let now = SystemTime::now().duration_since(UNIX_EPOCH)
+                    .unwrap_or_default().as_secs();
+                process_effects(
+                    &http, channel_id(&current), effects, &mut ops,
+                    handler, &mut executor, now,
+                ).await;
                 for _ in 0..20 {
                     let Some(pending) = cursor.next().map_err(|error| error.to_string())? else {
                         break;
@@ -111,10 +166,14 @@ fn channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {
     (raw != 0).then(|| Id::new(raw))
 }
 
-async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &str) {
+pub(super) async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &str) -> bool {
     let text: String = text.replace('@', "@\u{200b}").chars().take(1900).collect();
-    if let Err(error) = http.create_message(channel).content(&text).await {
-        eprintln!("chief: Discord response failed: {error}");
+    match http.create_message(channel).content(&text).await {
+        Ok(_) => true,
+        Err(error) => {
+            eprintln!("chief: Discord response failed: {error}");
+            false
+        }
     }
 }
 
@@ -162,6 +221,9 @@ async fn audit_permissions(http: &Client) {
         });
     let allowed = Permissions::VIEW_CHANNEL
         | Permissions::SEND_MESSAGES
+        | Permissions::SEND_MESSAGES_IN_THREADS
+        | Permissions::CREATE_PUBLIC_THREADS
+        | Permissions::MANAGE_THREADS
         | Permissions::EMBED_LINKS
         | Permissions::READ_MESSAGE_HISTORY;
     match bits {
