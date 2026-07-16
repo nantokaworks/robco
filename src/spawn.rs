@@ -5,14 +5,13 @@ use std::{
 
 use serde::Serialize;
 use serde_json::json;
-use toml_edit::{value, Array, DocumentMut};
+use toml_edit::{Array, DocumentMut, value};
 
 use crate::{
-    agent,
+    Error, Result, agent,
     config::Config,
     model::{AgentNode, RepoNode},
     registry::Registry,
-    Error, Result,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

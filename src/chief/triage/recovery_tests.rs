@@ -71,12 +71,14 @@ fn outcome_marker_prevents_action_reexecution() {
 fn dropping_session_handle_kills_worker_and_removes_pidfile() {
     let temp = tempfile::tempdir().unwrap();
     let script = executable_script(temp.path(), "while :; do :; done");
-    let mut config = Config::default();
-    config.profiles = vec![Profile {
-        name: "test".into(),
-        program: script.to_string_lossy().into_owned(),
-        autonomous_args: Vec::new(),
-    }];
+    let mut config = Config {
+        profiles: vec![Profile {
+            name: "test".into(),
+            program: script.to_string_lossy().into_owned(),
+            autonomous_args: Vec::new(),
+        }],
+        ..Default::default()
+    };
     config.chief.triage_profile = Some("test".into());
     config.chief.triage_timeout_mins = 1;
     let root = temp.path().join("cases");
