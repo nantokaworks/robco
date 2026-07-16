@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::Result;
 
 pub mod config;
+pub mod inbox;
 pub mod ledger;
 
 pub const CHIEF_AGENT_ID: &str = "chief";

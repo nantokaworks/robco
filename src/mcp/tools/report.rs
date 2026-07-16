@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
+    chief::{CHIEF_AGENT_ID, inbox::InboxReport},
     config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
     model::Status,
     registry::Registry,
@@ -23,13 +24,19 @@ pub(super) fn report(args: ReportArgs) -> ToolResult<Value> {
 }
 
 pub(crate) fn deliver_report(message: &str, target_agent_id: Option<&str>) -> ToolResult<()> {
-    deliver_report_with_lookup(message, target_agent_id, |key| std::env::var(key).ok())
+    deliver_report_with_lookup_and_append(
+        message,
+        target_agent_id,
+        |key| std::env::var(key).ok(),
+        crate::chief::inbox::append_report,
+    )
 }
 
-fn deliver_report_with_lookup(
+fn deliver_report_with_lookup_and_append(
     message: &str,
     target_agent_id: Option<&str>,
     lookup: impl Fn(&str) -> Option<String>,
+    append: impl FnOnce(&InboxReport) -> crate::Result<()>,
 ) -> ToolResult<()> {
     let message = sanitize_message(message)?;
     let identities = resolve_identities(target_agent_id, lookup)?;
@@ -37,6 +44,15 @@ fn deliver_report_with_lookup(
         &identities.target_agent_id,
         identities.sender_agent_id.as_deref(),
     )?;
+
+    if identities.target_agent_id == CHIEF_AGENT_ID {
+        let agent_id = identities
+            .sender_agent_id
+            .ok_or_else(|| invalid_params("ROBCO_AGENT_ID is required for chief reports"))?;
+        let report = InboxReport::lifecycle(agent_id, &message)
+            .ok_or_else(|| invalid_params("invalid chief report kind"))?;
+        return append(&report).map_err(exec_err);
+    }
 
     let registry = Registry::load().map_err(exec_err)?;
     let (repo, target) = find_agent(&registry, &identities.target_agent_id)?;
@@ -222,11 +238,12 @@ mod tests {
 
     #[test]
     fn guard_rejects_confirmation_and_unavailable_targets() {
-        let busy = StatusReport {
-            status: Status::Waiting,
-            awaiting_confirmation: true,
+        let report = |status, awaiting_confirmation| StatusReport {
+            status,
+            awaiting_confirmation,
             worktree_missing: false,
         };
+        let busy = report(Status::Waiting, true);
         assert!(
             guard_delivery(busy, true)
                 .unwrap_err()
@@ -234,11 +251,7 @@ mod tests {
                 .starts_with("target_busy:")
         );
 
-        let dead = StatusReport {
-            status: Status::Dead,
-            awaiting_confirmation: false,
-            worktree_missing: false,
-        };
+        let dead = report(Status::Dead, false);
         assert!(
             guard_delivery(dead, true)
                 .unwrap_err()
@@ -246,11 +259,7 @@ mod tests {
                 .starts_with("target_unavailable:")
         );
 
-        let idle = StatusReport {
-            status: Status::Idle,
-            awaiting_confirmation: false,
-            worktree_missing: false,
-        };
+        let idle = report(Status::Idle, false);
         assert!(
             guard_delivery(idle, false)
                 .unwrap_err()
@@ -266,5 +275,23 @@ mod tests {
         assert_eq!(report_exit_code(&exec_err("target_busy: retry")), 2);
         assert_eq!(report_exit_code(&exec_err("target_unavailable: gone")), 4);
         assert_eq!(report_exit_code(&exec_err("tmux failed")), 4);
+    }
+
+    #[test]
+    fn chief_parent_report_appends_to_inbox() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("chief/inbox.jsonl");
+        let lookup = |key: &str| match key {
+            ENV_PARENT_AGENT_ID => Some(CHIEF_AGENT_ID.into()),
+            ENV_AGENT_ID => Some("worker-1".into()),
+            _ => None,
+        };
+        let append = |report: &InboxReport| crate::chief::inbox::append_report_to(&path, report);
+        deliver_report_with_lookup_and_append("turn-done", None, lookup, append).unwrap();
+
+        let line = std::fs::read_to_string(path).unwrap();
+        let report: InboxReport = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(report.agent_id, "worker-1");
+        assert_eq!(report.kind, crate::chief::inbox::ReportKind::TurnDone);
     }
 }
