@@ -125,28 +125,41 @@ fn stop() -> Result<()> {
 }
 
 fn set(setting: ChiefSetting, enabled: bool) -> Result<()> {
-    let mut config = Config::load()?;
+    set_runtime(setting, enabled)?;
     let label = match setting {
+        ChiefSetting::Dispatch => "dispatch",
+        ChiefSetting::AutoMerge => "auto-merge",
+    };
+    println!("{label}: {}", on_off(enabled));
+    Ok(())
+}
+
+pub(crate) fn set_runtime(setting: ChiefSetting, enabled: bool) -> Result<()> {
+    let mut config = Config::load()?;
+    match setting {
         ChiefSetting::Dispatch => {
             config.chief.dispatch_enabled = enabled;
-            "dispatch"
         }
         ChiefSetting::AutoMerge => {
             config.chief.auto_merge = enabled;
-            "auto-merge"
         }
-    };
+    }
     config.save()?;
     if matches!(setting, ChiefSetting::Dispatch) && enabled {
         let mut ledger = Ledger::load()?;
         ledger.counters.consecutive_failures = 0;
         ledger.save()?;
     }
-    println!("{label}: {}", on_off(enabled));
     Ok(())
 }
 
 fn panic_stop() -> Result<()> {
+    panic_stop_attributed("cli", None)?;
+    println!("chief panic stop complete");
+    Ok(())
+}
+
+pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Result<()> {
     let mut config = Config::load()?;
     config.chief.dispatch_enabled = false;
     config.save()?;
@@ -165,9 +178,9 @@ fn panic_stop() -> Result<()> {
         DecisionKind::Escalate,
         "panic stop: dispatch disabled and workers terminated",
     );
-    entry.source = Some("cli".into());
+    entry.source = Some(source.into());
+    entry.user_id = user_id.map(str::to_owned);
     logging::append(&entry)?;
-    println!("chief panic stop complete");
     Ok(())
 }
 

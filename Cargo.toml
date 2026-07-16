@@ -12,11 +12,15 @@ dirs = "6.0.0"
 fd-lock = "4.0.2"
 nanoid = "0.4.0"
 ratatui = "0.29.0"
+rustls = { version = "0.23.35", default-features = false, features = ["ring", "std"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 thiserror = "2.0.17"
 tokio = { version = "1.48.0", features = ["full"] }
 toml_edit = "0.22.27"
+twilight-gateway = { version = "0.17.1", default-features = false, features = ["rustls-platform-verifier"] }
+twilight-http = { version = "0.17.1", default-features = false, features = ["rustls-platform-verifier"] }
+twilight-model = { version = "0.17.1", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.23.0"

@@ -5,6 +5,7 @@ use crate::Result;
 pub mod command;
 pub mod config;
 pub mod daemon;
+pub mod discord;
 pub mod dispatch;
 pub mod exec;
 pub mod inbox;
@@ -35,6 +36,10 @@ pub fn pidfile_path() -> Result<PathBuf> {
 
 pub fn decision_log_path() -> Result<PathBuf> {
     Ok(chief_home()?.join("decisions.jsonl"))
+}
+
+pub fn discord_cursor_path() -> Result<PathBuf> {
+    Ok(chief_home()?.join("discord.cursor"))
 }
 
 pub fn heartbeat_path() -> Result<PathBuf> {
