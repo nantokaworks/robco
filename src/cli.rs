@@ -32,6 +32,8 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Run and administer the autonomous Chief control plane.
+    Chief(ChiefArgs),
     /// Print config and state paths.
     Debug,
     /// Register RobCo's MCP server in supported client configs.
@@ -52,6 +54,54 @@ pub enum Command {
     Uninstall(InstallArgs),
     /// Print version information.
     Version,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ChiefArgs {
+    #[command(subcommand)]
+    pub command: ChiefCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ChiefCommand {
+    /// Run the Chief daemon in the foreground.
+    Run,
+    /// Show daemon, capacity, ledger, and decision status.
+    Status,
+    /// Gracefully stop the running daemon.
+    Stop,
+    /// Persist a runtime toggle in RobCo's JSON config.
+    Set(ChiefSetArgs),
+    /// Disable dispatch and terminate all Chief workers.
+    Panic,
+    /// Write a launchd service plist without loading it.
+    InstallService,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct ChiefSetArgs {
+    #[arg(value_enum)]
+    pub setting: ChiefSetting,
+    #[arg(value_enum)]
+    pub value: OnOff,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ChiefSetting {
+    Dispatch,
+    AutoMerge,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OnOff {
+    On,
+    Off,
+}
+
+impl OnOff {
+    pub fn enabled(self) -> bool {
+        matches!(self, Self::On)
+    }
 }
 
 #[derive(Debug, ClapArgs)]
@@ -148,94 +198,5 @@ pub(crate) fn report_parse_error_message(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_report_subcommand() {
-        let args = Args::try_parse_from([
-            "robco",
-            "report",
-            "--message",
-            "turn finished",
-            "--target",
-            "controller",
-        ])
-        .unwrap();
-
-        let Some(Command::Report(report)) = args.command else {
-            panic!("expected report command");
-        };
-        assert_eq!(report.message.as_deref(), Some("turn finished"));
-        assert_eq!(report.target.as_deref(), Some("controller"));
-    }
-
-    #[test]
-    fn parses_spawn_subcommand() {
-        let args = Args::try_parse_from([
-            "robco",
-            "spawn",
-            "--repo",
-            "repo",
-            "--title",
-            "task",
-            "--autonomous",
-        ])
-        .unwrap();
-        let Some(Command::Spawn(args)) = args.command else {
-            panic!("expected spawn command")
-        };
-        assert_eq!(args.repo, "repo");
-        assert_eq!(args.title, "task");
-        assert!(args.autonomous);
-    }
-
-    #[test]
-    fn parses_new_subcommand() {
-        let args = Args::try_parse_from(["robco", "new", "--title", "x", "--prompt", "y"]).unwrap();
-        let Some(Command::New(args)) = args.command else {
-            panic!("expected new command");
-        };
-        assert_eq!(args.title, "x");
-        assert_eq!(args.prompt.as_deref(), Some("y"));
-    }
-
-    #[test]
-    fn parses_version_subcommand() {
-        let args = Args::try_parse_from(["robco", "version"]).unwrap();
-        assert!(matches!(args.command, Some(Command::Version)));
-    }
-
-    #[test]
-    fn parses_list_subcommand_with_default_directory() {
-        let args = Args::try_parse_from(["robco", "list"]).unwrap();
-        let Some(Command::List(args)) = args.command else {
-            panic!("expected list command");
-        };
-        assert_eq!(args.dir, None);
-    }
-
-    #[test]
-    fn parses_list_subcommand_with_directory() {
-        let args = Args::try_parse_from(["robco", "list", "/some/dir"]).unwrap();
-        let Some(Command::List(args)) = args.command else {
-            panic!("expected list command");
-        };
-        assert_eq!(args.dir, Some(PathBuf::from("/some/dir")));
-    }
-
-    #[test]
-    fn parses_list_subcommand_after_launch_directory() {
-        let args = Args::try_parse_from(["robco", "/some/dir", "list"]).unwrap();
-        assert_eq!(args.launch_dir, PathBuf::from("/some/dir"));
-        let Some(Command::List(args)) = args.command else {
-            panic!("expected list command");
-        };
-        assert_eq!(args.dir, None);
-    }
-
-    #[test]
-    fn rejects_removed_list_flag() {
-        assert!(Args::try_parse_from(["robco", "--list"]).is_err());
-    }
-}
+#[path = "cli_tests.rs"]
+mod tests;

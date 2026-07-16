@@ -1,8 +1,9 @@
-use super::{decision_log_path, monitor::Action};
+use super::{
+    logging::{self, DecisionEntry, DecisionKind, log_message},
+    monitor::Action,
+};
 use crate::{Result, registry::Registry};
-use chrono::Utc;
 use fd_lock::RwLock;
-use serde_json::json;
 use std::{
     collections::HashSet,
     fs::{self, OpenOptions},
@@ -12,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
+pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) fn run_timeout(mut command: Command, timeout: Duration) -> std::io::Result<Output> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -63,8 +64,12 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
                 }
             }
             Action::Notify { message } => eprintln!("chief: {message}"),
-            Action::MarkFailed { task_id, reason } | Action::Escalate { task_id, reason } => {
-                log_message(Some(task_id), reason)?
+            Action::MarkFailed { task_id, reason } => log_message(Some(task_id), reason)?,
+            Action::Escalate { task_id, reason } => {
+                let mut entry = DecisionEntry::new(DecisionKind::Escalate, reason);
+                entry.task = Some(task_id.clone());
+                entry.source = Some("reconcile".into());
+                logging::append(&entry)?;
             }
             Action::LogDecision { task_id, message } => log_message(task_id.as_deref(), message)?,
         }
@@ -151,13 +156,6 @@ pub(crate) fn append_jsonl(path: &Path, value: &impl serde::Serialize) -> Result
     serde_json::to_writer(&mut file, value)?;
     file.write_all(b"\n")?;
     Ok(())
-}
-
-pub(crate) fn log_message(task_id: Option<&str>, message: &str) -> Result<()> {
-    append_jsonl(
-        &decision_log_path()?,
-        &json!({ "at": Utc::now(), "task_id": task_id, "message": message }),
-    )
 }
 
 pub(crate) struct PidGuard {

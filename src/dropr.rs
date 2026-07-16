@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process::Command};
+use std::{collections::HashMap, process::Command, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +13,32 @@ pub struct DroprTaskCandidate {
     pub priority: String,
     #[serde(default)]
     pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct DroprDispatchCandidate {
+    #[serde(default, alias = "task_id")]
+    pub id: String,
+    #[serde(flatten)]
+    pub task: DroprTaskCandidate,
+    #[serde(default, alias = "created_by", alias = "createdBy")]
+    pub author: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadyDispatchError {
+    Command,
+    Exit,
+    Parse,
+}
+
+impl ReadyDispatchError {
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::Command | Self::Exit => "ready_fetch_failed",
+            Self::Parse => "ready_parse_failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -51,19 +77,76 @@ impl DroprOverlay {
         Self { by_canonical_repo }
     }
 
+    pub fn load_best_effort_timeout(timeout: Duration) -> Self {
+        let mut command = Command::new("dropr");
+        command.args(["workspace", "list"]);
+        let Ok(output) = crate::chief::exec::run_timeout(command, timeout) else {
+            return Self::default();
+        };
+        if !output.status.success() {
+            return Self::default();
+        }
+        Self::from_workspace_list(&output.stdout)
+    }
+
+    fn from_workspace_list(raw: &[u8]) -> Self {
+        let stdout = String::from_utf8_lossy(raw);
+        let mut by_canonical_repo = HashMap::new();
+        for line in stdout.lines().skip(1) {
+            if let Some(workspace) = parse_workspace_line(line)
+                && let Some(canonical) = canonical_repo(&workspace.repo_url)
+            {
+                by_canonical_repo.insert(canonical, workspace);
+            }
+        }
+        Self { by_canonical_repo }
+    }
+
     pub fn find_by_repo_url(&self, repo_url: &str) -> Option<&DroprWorkspace> {
         canonical_repo(repo_url).and_then(|key| self.by_canonical_repo.get(&key))
     }
 }
 
-pub fn fetch_ready_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
-    fetch_tasks(&[
+pub fn fetch_ready_tasks(workspace_id: &str, limit: usize) -> Option<Vec<DroprTaskCandidate>> {
+    fetch_ready_as(workspace_id, limit)
+}
+
+pub fn fetch_ready_dispatch_tasks_timeout(
+    workspace_id: &str,
+    limit: usize,
+    timeout: Duration,
+) -> std::result::Result<Vec<DroprDispatchCandidate>, ReadyDispatchError> {
+    let limit = limit.to_string();
+    let mut command = Command::new("dropr");
+    command.args([
         "task",
         "ready",
         "--workspace",
         workspace_id,
         "--limit",
-        "3",
+        &limit,
+        "--json",
+    ]);
+    let output = crate::chief::exec::run_timeout(command, timeout)
+        .map_err(|_| ReadyDispatchError::Command)?;
+    if !output.status.success() {
+        return Err(ReadyDispatchError::Exit);
+    }
+    parse_as(&output.stdout).ok_or(ReadyDispatchError::Parse)
+}
+
+fn fetch_ready_as<T: for<'de> Deserialize<'de>>(
+    workspace_id: &str,
+    limit: usize,
+) -> Option<Vec<T>> {
+    let limit = limit.to_string();
+    fetch_as(&[
+        "task",
+        "ready",
+        "--workspace",
+        workspace_id,
+        "--limit",
+        &limit,
         "--json",
     ])
 }
@@ -75,16 +158,16 @@ pub fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandid
 pub fn fetch_repo_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
     merge_repo_tasks(
         fetch_in_progress_tasks(workspace_id),
-        fetch_ready_tasks(workspace_id),
+        fetch_ready_tasks(workspace_id, 3),
     )
 }
 
-fn fetch_tasks(args: &[&str]) -> Option<Vec<DroprTaskCandidate>> {
+fn fetch_as<T: for<'de> Deserialize<'de>>(args: &[&str]) -> Option<Vec<T>> {
     let output = Command::new("dropr").args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
-    parse_tasks(&output.stdout)
+    parse_as(&output.stdout)
 }
 
 fn merge_repo_tasks(
@@ -105,6 +188,10 @@ fn merge_repo_tasks(
 }
 
 pub(super) fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
+    parse_as(raw)
+}
+
+fn parse_as<T: for<'de> Deserialize<'de>>(raw: &[u8]) -> Option<Vec<T>> {
     let value: serde_json::Value = serde_json::from_slice(raw).ok()?;
     let tasks = match value {
         serde_json::Value::Array(tasks) => tasks,
@@ -114,7 +201,6 @@ pub(super) fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
     tasks
         .into_iter()
         .filter_map(|task| serde_json::from_value(task).ok())
-        .take(3)
         .collect::<Vec<_>>()
         .into()
 }
@@ -163,127 +249,5 @@ pub fn canonical_repo(url: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn canonicalizes_common_github_urls() {
-        assert_eq!(
-            canonical_repo("https://github.com/NantokaWorks/robco.git"),
-            Some("github:nantokaworks/robco".to_string())
-        );
-        assert_eq!(
-            canonical_repo("git@github.com:nantokaworks/dropr.git"),
-            Some("github:nantokaworks/dropr".to_string())
-        );
-    }
-
-    #[test]
-    fn parses_workspace_line() {
-        let line = "  materialised  Xdin9xDHmhuOohKzCBmZX                 dropr                 https://github.com/nantokaworks/dropr.git";
-        let workspace = parse_workspace_line(line).unwrap();
-        assert_eq!(workspace.kind, "materialised");
-        assert_eq!(workspace.name, "dropr");
-        assert_eq!(
-            workspace.repo_url,
-            "https://github.com/nantokaworks/dropr.git"
-        );
-    }
-
-    #[test]
-    fn parses_ready_tasks_array() {
-        let tasks = parse_tasks(
-            br##"[{"display_id":"#42","title":"Ship it","priority":"high","status":"ready"}]"##,
-        )
-        .unwrap();
-        assert_eq!(tasks[0].display_id, "#42");
-        assert_eq!(tasks[0].title, "Ship it");
-        assert_eq!(tasks[0].priority, "high");
-        assert_eq!(tasks[0].status, "ready");
-    }
-
-    #[test]
-    fn parses_ready_tasks_object_and_global_id() {
-        let tasks = parse_tasks(
-            br##"{"tasks":[{"global_display_id":"#7","title":"Polish UI","priority":"medium","status":"ready"}]}"##,
-        )
-        .unwrap();
-        assert_eq!(tasks[0].display_id, "#7");
-    }
-
-    #[test]
-    fn skips_malformed_ready_tasks() {
-        let tasks = parse_tasks(
-            br##"[
-                {"display_id":"#1","title":"First"},
-                {"display_id":"#2"},
-                {"global_display_id":"#3","title":"Third"}
-            ]"##,
-        )
-        .unwrap();
-        assert_eq!(
-            tasks
-                .iter()
-                .map(|task| task.display_id.as_str())
-                .collect::<Vec<_>>(),
-            ["#1", "#3"]
-        );
-    }
-    #[test]
-    fn accepts_ready_tasks_without_priority_or_status() {
-        let tasks = parse_tasks(br##"[{"display_id":"#42","title":"Ship it"}]"##).unwrap();
-        assert_eq!(tasks[0].display_id, "#42");
-        assert_eq!(tasks[0].priority, "");
-        assert_eq!(tasks[0].status, "");
-    }
-    #[test]
-    fn rejects_malformed_ready_tasks() {
-        assert!(parse_tasks(b"not json").is_none());
-        assert!(parse_tasks(br#"{"items":[]}"#).is_none());
-    }
-    #[test]
-    fn parses_in_progress_tasks_tolerantly_in_both_shapes() {
-        let array = parse_tasks(br##"[{"display_id":"#8","title":"Active"},{"display_id":"#9"}]"##)
-            .unwrap();
-        let object = parse_tasks(
-            br##"{"tasks":[{"display_id":"#10","title":"Also active","status":"in_progress"}]}"##,
-        )
-        .unwrap();
-        assert_eq!(array.len(), 1);
-        assert_eq!(array[0].priority, "");
-        assert_eq!(array[0].status, "");
-        assert_eq!(object[0].status, "in_progress");
-    }
-    fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
-        DroprTaskCandidate {
-            display_id: display_id.to_string(),
-            title: display_id.to_string(),
-            priority: String::new(),
-            status: status.to_string(),
-        }
-    }
-
-    #[test]
-    fn merges_repo_task_results() {
-        assert_eq!(merge_repo_tasks(None, None), None);
-        assert_eq!(
-            merge_repo_tasks(None, Some(vec![task("#2", "ready")])).unwrap()[0].display_id,
-            "#2"
-        );
-        assert_eq!(
-            merge_repo_tasks(Some(vec![task("#1", "")]), None).unwrap()[0].status,
-            "in_progress"
-        );
-
-        let tasks = merge_repo_tasks(
-            Some(vec![task("#1", "in_progress")]),
-            Some(vec![task("#2", "ready")]),
-        )
-        .unwrap();
-        let ids = tasks
-            .iter()
-            .map(|task| task.display_id.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(ids, ["#1", "#2"]);
-    }
-}
+#[path = "dropr_tests.rs"]
+mod tests;
