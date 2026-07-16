@@ -83,6 +83,7 @@ pub struct InboxReader {
     path: PathBuf,
     offset_path: PathBuf,
     offset: u64,
+    pending_offset: Option<u64>,
     rotation_threshold: u64,
 }
 
@@ -99,6 +100,7 @@ impl InboxReader {
             path,
             offset_path,
             offset,
+            pending_offset: None,
             rotation_threshold: ROTATION_THRESHOLD,
         })
     }
@@ -111,34 +113,48 @@ impl InboxReader {
         with_lock(&path, || self.read_locked())
     }
 
+    pub fn commit(&mut self) -> Result<()> {
+        let Some(offset) = self.pending_offset else {
+            return Ok(());
+        };
+        let path = self.path.clone();
+        with_lock(&path, || {
+            self.offset = offset;
+            if self.offset >= self.rotation_threshold && self.path.exists() {
+                self.rotate_locked()?;
+            } else {
+                persist_offset(&self.offset_path, self.offset)?;
+            }
+            self.pending_offset = None;
+            Ok(())
+        })
+    }
+
     fn read_locked(&mut self) -> Result<Vec<InboxReport>> {
         let file = match File::open(&self.path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                self.offset = 0;
-                persist_offset(&self.offset_path, 0)?;
+                self.pending_offset = Some(0);
                 return Ok(Vec::new());
             }
             Err(error) => return Err(error.into()),
         };
         let length = file.metadata()?.len();
-        if self.offset > length {
-            self.offset = 0;
-        }
+        let mut offset = if self.offset > length { 0 } else { self.offset };
         let mut reader = BufReader::new(file);
-        reader.seek(SeekFrom::Start(self.offset))?;
+        reader.seek(SeekFrom::Start(offset))?;
         let mut reports = Vec::new();
         let mut line = Vec::new();
 
         loop {
             line.clear();
-            let line_start = self.offset;
+            let line_start = offset;
             let read = reader.read_until(b'\n', &mut line)?;
             if read == 0 || !line.ends_with(b"\n") {
-                self.offset = line_start;
+                offset = line_start;
                 break;
             }
-            self.offset += read as u64;
+            offset += read as u64;
             match serde_json::from_slice::<InboxReport>(&line) {
                 Ok(report) => reports.push(report),
                 Err(error) => eprintln!(
@@ -147,11 +163,7 @@ impl InboxReader {
             }
         }
 
-        if self.offset >= self.rotation_threshold {
-            self.rotate_locked()?;
-        } else {
-            persist_offset(&self.offset_path, self.offset)?;
-        }
+        self.pending_offset = Some(offset);
         Ok(reports)
     }
 
@@ -211,6 +223,7 @@ fn atomic_replace(path: &Path, contents: &[u8]) -> Result<()> {
 fn with_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
     let lock_file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(path.with_extension("lock"))?;

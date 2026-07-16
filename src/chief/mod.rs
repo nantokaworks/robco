@@ -3,8 +3,12 @@ use std::path::PathBuf;
 use crate::Result;
 
 pub mod config;
+#[allow(dead_code)]
+pub mod daemon;
+pub mod exec;
 pub mod inbox;
 pub mod ledger;
+pub mod monitor;
 
 pub const CHIEF_AGENT_ID: &str = "chief";
 
@@ -30,6 +34,10 @@ pub fn decision_log_path() -> Result<PathBuf> {
 
 pub fn heartbeat_path() -> Result<PathBuf> {
     Ok(chief_home()?.join("heartbeat"))
+}
+
+pub fn snapshots_path() -> Result<PathBuf> {
+    Ok(chief_home()?.join("observations.jsonl"))
 }
 
 pub fn triage_dir() -> Result<PathBuf> {
