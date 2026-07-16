@@ -128,36 +128,21 @@ impl App {
             return;
         };
 
-        if self.registry.repos.iter().any(|repo| repo.path == path) {
-            self.show_message("repository already listed");
-            return;
+        let previous_len = self.registry.repos.len();
+        let changed = match self.registry.add_pinned(&path) {
+            Ok(added) => added,
+            Err(err) => {
+                self.show_message(err.to_string());
+                return;
+            }
+        };
+        if self.registry.repos.len() > previous_len {
+            self.expanded.push(true);
         }
-
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("repo")
-            .to_string();
-        let remote_url = crate::git::remote_url(&path).ok();
-        self.registry.repos.push(crate::model::RepoNode {
-            path,
-            name,
-            remote_url,
-            pinned: true,
-            agents: Vec::new(),
-            dropr: None,
-            dropr_tasks: Vec::new(),
-            main_status: None,
-            main_last_capture: None,
-            main_last_change_at: None,
-            main_shell_working: false,
-            main_pane_pid: None,
-            main_tracked_command: None,
-            main_subagents_active: 0,
-        });
-        self.expanded.push(true);
         if let Err(err) = self.registry.save() {
             self.show_message(err.to_string());
+        } else if !changed {
+            self.show_message("repository already listed");
         } else {
             self.show_message("repository added");
         }

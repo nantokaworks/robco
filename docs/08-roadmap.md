@@ -4,7 +4,7 @@
 
 The lean, fully-local cockpit:
 
-- **Discovery** — scan the launch directory for git repos (depth 1).
+- **Discovery** — scan the managed repos root plus an optional ephemeral root (depth 1).
 - **Project-first tree** — `repo → [agents]` model and UI.
 - **Agent lifecycle** — create worktree + branch, spawn `claude` in tmux.
 - **Preview** — polled `capture-pane`, color-preserving.
@@ -26,6 +26,13 @@ Deliberately skipped to keep v1 lean (these are ClaudeSquad extras, not the core
 - Embedded terminal emulator (tmux owns the PTYs in v1).
 
 ## Later — possible evolutions
+
+### Chief repository scheduling groundwork
+
+The shared managed repos root gives the TUI, CLI, and cwd-less Chief daemon one stable
+repository source. Daemon-side repository scheduling, filesystem watchers, registry IPC,
+and single-writer coordination remain deferred; polling and the current registry model
+stay unchanged.
 
 ### Optional dropr overlay (decoupled, read-only)
 

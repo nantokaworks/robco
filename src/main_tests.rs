@@ -1,11 +1,14 @@
 use super::*;
 
-fn parsed_list_directory(args: &[&str]) -> PathBuf {
+fn parsed_list_roots(args: &[&str]) -> Vec<PathBuf> {
     let args = Args::try_parse_from(args).unwrap();
     let Some(Command::List(list_args)) = args.command else {
         panic!("expected list command");
     };
-    resolve_list_dir(list_args.dir.as_deref(), &args.launch_dir).to_path_buf()
+    effective_roots(
+        std::path::Path::new("/managed"),
+        list_args.dir.as_deref().or(args.launch_dir.as_deref()),
+    )
 }
 
 fn mapped_report_error(args: &[&str]) -> Option<&'static str> {
@@ -15,26 +18,37 @@ fn mapped_report_error(args: &[&str]) -> Option<&'static str> {
 }
 
 #[test]
-fn list_directory_defaults_to_current_directory() {
+fn list_defaults_to_managed_root() {
     assert_eq!(
-        parsed_list_directory(&["robco", "list"]),
-        PathBuf::from(".")
+        parsed_list_roots(&["robco", "list"]),
+        vec![PathBuf::from("/managed")]
     );
 }
 
 #[test]
 fn list_directory_prefers_subcommand_directory() {
     assert_eq!(
-        parsed_list_directory(&["robco", "list", "/d"]),
-        PathBuf::from("/d")
+        parsed_list_roots(&["robco", "list", "/d"]),
+        vec![PathBuf::from("/managed"), PathBuf::from("/d")]
     );
 }
 
 #[test]
 fn list_directory_falls_back_to_launch_directory() {
     assert_eq!(
-        parsed_list_directory(&["robco", "/d", "list"]),
-        PathBuf::from("/d")
+        parsed_list_roots(&["robco", "/d", "list"]),
+        vec![PathBuf::from("/managed"), PathBuf::from("/d")]
+    );
+}
+
+#[test]
+fn effective_roots_deduplicates_identical_arguments() {
+    assert_eq!(
+        effective_roots(
+            std::path::Path::new("/managed"),
+            Some(std::path::Path::new("/managed"))
+        ),
+        vec![PathBuf::from("/managed")]
     );
 }
 

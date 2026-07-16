@@ -1,28 +1,43 @@
 # 05 — Discovery & Adding Work
 
-## Automatic discovery
+## Managed repositories and discovery
 
-On launch, RobCo scans the **immediate subdirectories of the launch directory** and keeps
-those that are git repositories.
+RobCo's persistent repository source is `repos_root` (default `~/.robco/repos`). Bare
+`robco` scans only its immediate children. The directory may be absent or empty; first
+launch still succeeds.
 
 ```
-$ cd ~/abyss && robco
-# discovers ~/abyss/nex, ~/abyss/dropr, ~/abyss/robco, … (each with a .git)
+$ robco add https://host/owner/nex.git
+# clones ~/.robco/repos/nex and immediately pins it in state.json
 ```
 
 Rules:
 
-- Only the **direct children** of the launch directory are scanned (depth 1). RobCo does
-  not recurse into nested trees.
+- Only the **direct children** of each root are scanned (depth 1); discovery never
+  recurses.
 - A child counts as a repo if it contains a `.git` directory or file (worktree/submodule
   form).
-- The launch directory can be overridden with a positional argument:
-  `robco ~/work` scans `~/work/*`.
+- Bare `robco` scans `{repos_root}` and no longer scans the current directory. Use
+  `robco .` to include the current directory explicitly.
+- `robco <dir>` scans `{repos_root} ∪ {dir}`. The positional directory is ephemeral for
+  that session and is never written to config or `state.json`.
+- Missing or unreadable roots are skipped, and repositories found through multiple
+  roots are deduplicated by canonical path.
 - For each discovered repo, RobCo resolves the remote URL (`git -C <dir> remote get-url`,
   preferring `origin`) for display and for the optional future dropr mapping.
 
 A repo is shown in the tree even with **zero agents** — discovery lists projects; agents
 are created on demand.
+
+## Cloning and adding repositories
+
+From the command line, `robco add <url> [--branch <branch>] [--name <name>]` clones into
+`repos_root` and immediately registers the result as pinned. URLs are host-agnostic:
+HTTP(S), SSH, git, file, and scp-style forms are handed directly to git for authentication.
+
+Inside the cockpit, **`a`** prompts for `<git-url> [branch]`. URL input clones in the
+background into `repos_root`; a local git-repository path keeps the legacy pinned-add
+behavior.
 
 ## Adding a repo by path (`n`)
 

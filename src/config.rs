@@ -111,6 +111,8 @@ pub struct Config {
     #[serde(default)]
     pub branch_prefix: Option<String>,
     pub worktree_root: PathBuf,
+    #[serde(default = "default_repos_root")]
+    pub repos_root: PathBuf,
     pub tmux_session_prefix: String,
     pub poll_interval_ms: u64,
     pub dropr_overlay: bool,
@@ -160,6 +162,13 @@ fn default_profiles() -> Vec<Profile> {
     ]
 }
 
+fn default_repos_root() -> PathBuf {
+    home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".robco")
+        .join("repos")
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -170,6 +179,7 @@ impl Default for Config {
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(".robco")
                 .join("worktrees"),
+            repos_root: default_repos_root(),
             tmux_session_prefix: "robco_".to_string(),
             poll_interval_ms: 750,
             dropr_overlay: true,
@@ -201,6 +211,7 @@ impl Config {
         // Expand a user-written `~` so paths match git's absolute worktree paths
         // and are not re-adopted as duplicates.
         config.worktree_root = expand_tilde(&config.worktree_root);
+        config.repos_root = expand_tilde(&config.repos_root);
         Ok(config)
     }
 
@@ -299,6 +310,14 @@ mod tests {
                 .iter()
                 .all(|profile| profile.autonomous_args.is_empty())
         );
+    }
+
+    #[test]
+    fn legacy_config_defaults_repos_root() {
+        let mut value = serde_json::to_value(Config::default()).unwrap();
+        value.as_object_mut().unwrap().remove("repos_root");
+        let config: Config = serde_json::from_value(value).unwrap();
+        assert_eq!(config.repos_root, default_repos_root());
     }
 
     #[test]

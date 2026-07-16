@@ -245,7 +245,7 @@ pub fn pull_ff_only(main_worktree: &Path) -> Result<()> {
     command_unit(output, "git pull --ff-only")
 }
 
-fn command_unit(output: std::process::Output, context: &'static str) -> Result<()> {
+pub(crate) fn command_unit(output: std::process::Output, context: &'static str) -> Result<()> {
     command_output(output, context).map(|_| ())
 }
 

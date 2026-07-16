@@ -8,7 +8,7 @@ use crate::{discover, dropr, git};
 use super::super::App;
 
 impl App {
-    /// Re-scan the launch directory for new projects and each repo for worktrees
+    /// Re-scan the effective roots for new projects and each repo for worktrees
     /// created outside robco, merging anything new into the registry. The
     /// current selection and per-repo expand/collapse state are preserved across
     /// the refresh even when repos are re-ordered.
@@ -16,9 +16,8 @@ impl App {
         if !self.config.subagent_indicator {
             self.refresh_subagents();
         }
-        let Ok(mut discovered) = discover::discover_repos(&self.launch_dir) else {
-            return;
-        };
+        let roots = self.effective_roots();
+        let mut discovered = discover::discover_all(roots);
 
         let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
 
@@ -140,7 +139,7 @@ fn prune_nested_agents(repo: &mut crate::model::RepoNode) {
 /// Canonical string key for a path, used to compare worktree paths that git and
 /// robco may spell differently (symlinks, trailing components). Falls back to
 /// the lexical path when the path cannot be canonicalized.
-pub(super) fn path_key(path: &Path) -> String {
+pub(in crate::ui) fn path_key(path: &Path) -> String {
     path.canonicalize()
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()

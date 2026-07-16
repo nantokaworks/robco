@@ -138,7 +138,7 @@ fn default_pane(selection: Option<Selection>) -> PreviewPane {
 pub struct App {
     pub(crate) registry: Registry,
     pub(crate) config: Config,
-    pub(crate) launch_dir: PathBuf,
+    pub(crate) ephemeral_root: Option<PathBuf>,
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
     chief_visible: bool,
@@ -162,17 +162,27 @@ pub struct App {
     message: Option<(String, Instant)>,
     merge_job: Option<actions::merge::MergeJob>,
     merge_outcome: Option<actions::merge::MergeOutcome>,
+    clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
 }
 
 impl App {
+    #[cfg(test)]
     pub fn new(registry: Registry, config: Config, launch_dir: PathBuf) -> Self {
+        Self::new_with_ephemeral(registry, config, Some(launch_dir))
+    }
+
+    pub fn new_with_ephemeral(
+        registry: Registry,
+        config: Config,
+        ephemeral_root: Option<PathBuf>,
+    ) -> Self {
         let expanded = vec![true; registry.repos.len()];
         let chief_visible = list::chief_is_visible();
         let mut app = Self {
             registry,
             config,
-            launch_dir,
+            ephemeral_root,
             selected: 0,
             expanded,
             chief_visible,
@@ -188,6 +198,7 @@ impl App {
             message: None,
             merge_job: None,
             merge_outcome: None,
+            clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
         };
         if app.prune_unmanaged_agents() {

@@ -1,6 +1,7 @@
 mod agent;
 mod chief;
 mod cli;
+mod clone;
 mod config;
 mod discover;
 mod dropr;
@@ -127,36 +128,53 @@ async fn run(args: Args) -> Result<()> {
         ) {
             return chief::daemon::run_daemon().await;
         }
-        return run_command(command, &config, &args.launch_dir);
+        return run_command(command, &config, args.launch_dir.as_deref());
     }
 
     let indicator = loading::Indicator::start("Scanning repositories...");
-    let discovered = discover_with_overlay(&args.launch_dir, &config, &indicator)?;
+    let roots = effective_roots(&config.repos_root, args.launch_dir.as_deref());
+    let discovered = discover::discover_with_overlay(&roots, &config, &indicator);
 
     let registry = Registry::locked_update(|registry| {
         agent::normalize_adopted_titles(&mut registry.repos, &config);
         registry.merge_discovered(discovered);
     })?;
-    let launch_dir = args.launch_dir.canonicalize().unwrap_or(args.launch_dir);
+    let ephemeral_root = args
+        .launch_dir
+        .map(|path| path.canonicalize().unwrap_or(path));
     indicator.finish();
-    ui::run(registry, config, launch_dir)
+    ui::run(registry, config, ephemeral_root)
 }
 
-fn run_command(command: Command, config: &Config, launch_dir: &std::path::Path) -> Result<()> {
+fn run_command(
+    command: Command,
+    config: &Config,
+    ephemeral_root: Option<&std::path::Path>,
+) -> Result<()> {
     match command {
+        Command::Add(args) => {
+            let path = clone::clone_and_register(
+                &args.url,
+                &config.repos_root,
+                args.branch.as_deref(),
+                args.name.as_deref(),
+            )?;
+            println!("added {}", path.display());
+        }
         Command::Chief(args) => chief::command::run(args, config)?,
         Command::Debug => {
             println!("config: {}", config::config_file_path()?.display());
             println!("state: {}", config::state_path()?.display());
             println!("worktrees: {}", config.worktree_root.display());
+            println!("repos: {}", config.repos_root.display());
             println!("program: {}", config.default_program_command());
             println!("dropr_overlay: {}", config.dropr_overlay);
             println!("auto_accept: {}", config.auto_accept);
         }
         Command::Install(args) => setup::install(&args)?,
         Command::List(args) => {
-            let dir = resolve_list_dir(args.dir.as_deref(), launch_dir);
-            list_repositories(dir, config)?;
+            let roots = effective_roots(&config.repos_root, args.dir.as_deref().or(ephemeral_root));
+            list_repositories(&roots, config)?;
         }
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::New(args) => new_agent::run(args, config)?,
@@ -207,34 +225,22 @@ fn run_command(command: Command, config: &Config, launch_dir: &std::path::Path) 
     Ok(())
 }
 
-fn resolve_list_dir<'a>(
-    list_dir: Option<&'a std::path::Path>,
-    launch_dir: &'a std::path::Path,
-) -> &'a std::path::Path {
-    list_dir.unwrap_or(launch_dir)
-}
-
-fn discover_with_overlay(
-    dir: &std::path::Path,
-    config: &Config,
-    indicator: &loading::Indicator,
-) -> Result<Vec<model::RepoNode>> {
-    let mut discovered = discover::discover_repos(dir)?;
-    if config.dropr_overlay {
-        indicator.set_message("Loading dropr workspaces...");
-        let overlay = dropr::DroprOverlay::load_best_effort();
-        for repo in &mut discovered {
-            if let Some(remote) = &repo.remote_url {
-                repo.dropr = overlay.find_by_repo_url(remote).cloned();
-            }
-        }
+fn effective_roots(
+    repos_root: &std::path::Path,
+    ephemeral_root: Option<&std::path::Path>,
+) -> Vec<PathBuf> {
+    let mut roots = vec![repos_root.to_path_buf()];
+    if let Some(root) = ephemeral_root
+        && root != repos_root
+    {
+        roots.push(root.to_path_buf());
     }
-    Ok(discovered)
+    roots
 }
 
-fn list_repositories(dir: &std::path::Path, config: &Config) -> Result<()> {
+fn list_repositories(roots: &[PathBuf], config: &Config) -> Result<()> {
     let indicator = loading::Indicator::start("Scanning repositories...");
-    let discovered = discover_with_overlay(dir, config, &indicator)?;
+    let discovered = discover::discover_with_overlay(roots, config, &indicator);
     indicator.finish();
     for repo in &discovered {
         let remote = repo.remote_url.as_deref().unwrap_or("-");

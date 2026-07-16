@@ -13,6 +13,7 @@ does not require any config at all.
   "profiles": [],
   "branch_prefix": null,
   "worktree_root": "~/.robco/worktrees",
+  "repos_root": "~/.robco/repos",
   "tmux_session_prefix": "robco_",
   "poll_interval_ms": 750,
   "dropr_overlay": true,
@@ -43,6 +44,7 @@ default.
 | `profiles` | array of `{name, program}` | `[]` | Named launch commands. When `default_program` matches a profile `name`, that profile's `program` is executed. See [Profiles](#profiles). |
 | `branch_prefix` | string or `null` | `null` | Prefix for branches RobCo creates. When `null`, it is derived as `<sanitized-repo-name>/` (e.g. `my.repo` → `my-repo/`). Set explicitly (e.g. `"robco/"`) to override. |
 | `worktree_root` | string (path) | `"~/.robco/worktrees"` | Directory under which git worktrees are created. A leading `~` is expanded to your home directory. |
+| `repos_root` | string (path) | `"~/.robco/repos"` | Persistent managed repository directory shared by the TUI, CLI, and Chief daemon. A leading `~` is expanded on load. |
 | `tmux_session_prefix` | string | `"robco_"` | Prefix applied to every tmux session name RobCo creates. |
 | `poll_interval_ms` | integer (ms) | `750` | How often RobCo re-polls tmux for each agent's preview and status. Lower = snappier and more CPU; higher = calmer. |
 | `dropr_overlay` | boolean | `true` | When `true`, best-effort reads `dropr workspace list` and shows matching workspace metadata in the repo preview. Read-only; disable with this flag or `--no-dropr`. |

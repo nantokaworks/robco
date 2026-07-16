@@ -20,7 +20,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  x              remove selected agent worktree or pinned repo"),
         Line::from(""),
         Line::from("Repo"),
-        Line::from("  a              add repository by path"),
+        Line::from("  a              clone <git-url> [branch], or add local repo path"),
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),
         Line::from("  p              edit and request PR from selected running agent"),
         Line::from(""),

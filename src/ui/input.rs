@@ -108,10 +108,10 @@ impl App {
             Mode::PromptRepo { input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Enter => {
-                    let path = input.trim().to_string();
+                    let value = input.trim().to_string();
                     self.mode = Mode::Normal;
-                    if !path.is_empty() {
-                        self.add_repo_path(&path);
+                    if !value.is_empty() {
+                        self.add_repo_input(&value);
                     }
                 }
                 KeyCode::Backspace => {

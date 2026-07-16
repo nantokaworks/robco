@@ -63,6 +63,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         }
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(
             &registry.repos[repo_idx],
+            &app.config.repos_root,
             panes.preview.width.saturating_sub(4),
         ),
         (PreviewPane::Info, Some(Selection::Agent { repo, agent })) => {
