@@ -5,6 +5,12 @@ mod gateway;
 pub mod handler;
 pub(crate) mod ledger_requests;
 mod notifications;
+mod ops_agent;
+mod ops_gateway;
+mod ops_messages;
+mod ops_result;
+mod ops_session;
+mod ops_state;
 
 use crate::chief::config::DiscordConfig;
 use std::{

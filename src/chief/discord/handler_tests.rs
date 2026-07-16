@@ -123,8 +123,9 @@ fn panic_disables_dispatch_requests_stop_and_audits_identity() {
 
 fn confirmation_code(prompt: &str) -> &str {
     prompt
-        .strip_prefix("reply `CONFIRM ")
-        .and_then(|value| value.strip_suffix("` to execute"))
+        .split("reply `CONFIRM ")
+        .nth(1)
+        .and_then(|value| value.strip_suffix('`'))
         .unwrap()
 }
 
@@ -146,7 +147,7 @@ fn dispatch_on_requires_confirmation_but_off_is_immediate() {
     let prompt = handler
         .handle("10", "20", "!dispatch on", 1, &mut executor)
         .unwrap();
-    assert!(prompt.starts_with("reply `CONFIRM "));
+    assert!(prompt.starts_with("Confirm: dispatch on — reply `CONFIRM "));
     assert!(executor.calls.is_empty());
     assert_eq!(
         handler.handle("10", "20", "!dispatch off", 2, &mut executor),
@@ -169,11 +170,31 @@ fn every_risk_increasing_mutation_requires_confirmation() {
         let mut executor = FakeExecutor::default();
         let response = handler.handle("10", "20", message, 1, &mut executor);
         assert!(
-            response.unwrap().starts_with("reply `CONFIRM "),
+            response.unwrap().contains(" — reply `CONFIRM "),
             "{message}"
         );
         assert!(executor.calls.is_empty(), "{message}");
     }
+}
+
+#[test]
+fn generated_confirmation_describes_the_validated_command() {
+    let mut handler = handler(10, 60);
+    let mut executor = FakeExecutor::default();
+    let prompt = handler.submit_generated(
+        "10",
+        "20",
+        Some("case-1".into()),
+        Command::Kill("worker-x".into()),
+        1,
+        &mut executor,
+    );
+    assert!(
+        prompt
+            .response
+            .starts_with("Confirm: kill worker-x — reply `CONFIRM ")
+    );
+    assert!(executor.calls.is_empty());
 }
 
 #[test]
