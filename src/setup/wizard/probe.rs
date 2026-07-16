@@ -10,25 +10,26 @@ pub(crate) struct ProbeResult {
 }
 
 pub(crate) fn run() -> Vec<ProbeResult> {
-    run_with(|name| {
+    run_with(|name, version_flag| {
         let mut command = Command::new(name);
-        command.arg("--version");
+        command.arg(version_flag);
         run_timeout(command, Duration::from_secs(5)).is_ok_and(|output| output.status.success())
     })
 }
 
-pub(crate) fn run_with(mut check: impl FnMut(&str) -> bool) -> Vec<ProbeResult> {
+pub(crate) fn run_with(mut check: impl FnMut(&str, &str) -> bool) -> Vec<ProbeResult> {
     [
-        ("git", true),
-        ("tmux", true),
-        ("gh", false),
-        ("dropr", false),
+        ("git", true, "--version"),
+        // tmux rejects the long `--version` flag; it only accepts `-V`.
+        ("tmux", true, "-V"),
+        ("gh", false, "--version"),
+        ("dropr", false, "--version"),
     ]
     .into_iter()
-    .map(|(name, required)| ProbeResult {
+    .map(|(name, required, version_flag)| ProbeResult {
         name,
         required,
-        ok: check(name),
+        ok: check(name, version_flag),
     })
     .collect()
 }
