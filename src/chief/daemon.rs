@@ -10,6 +10,7 @@ use super::{
     logging,
     monitor::{Action, ObservationSnapshot, reconcile},
     pidfile_path, snapshots_path,
+    triage::ExceptionQueue,
 };
 use crate::{Result, config::Config};
 use chrono::Utc;
@@ -28,6 +29,7 @@ pub async fn run_daemon() -> Result<()> {
     ledger.save()?;
     let mut inbox = InboxReader::new()?;
     let mut protections = merge::ProtectionCache::default();
+    let mut exceptions = ExceptionQueue::load()?;
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -50,10 +52,18 @@ pub async fn run_daemon() -> Result<()> {
         }
         let (mut next, actions) = reconcile(&ledger, &observed, now, config.chief.stuck_after_mins);
         account_failures(&ledger, &mut next, &actions);
+        if config.chief.triage_enabled {
+            exceptions.enqueue(&actions, &next, &observed)?;
+            exceptions.tick(&config, &mut next)?;
+        }
         execute_actions(&actions)?;
         merge::auto_merge_pass(&config, &mut next, &mut protections)?;
         dispatch_pass(&mut config, &mut next, now)?;
+        // Persist decisions before removing their queue item. A crash before this
+        // point replays the marker without repeating actions; after it, replay is
+        // an idempotent ledger update until the queue acknowledgement is saved.
         next.save()?;
+        exceptions.acknowledge_completion()?;
         inbox.commit()?;
         ledger = next;
         fs::write(heartbeat_path()?, now.to_rfc3339())?;

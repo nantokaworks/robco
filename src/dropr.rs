@@ -162,6 +162,49 @@ pub fn fetch_repo_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
     )
 }
 
+pub(crate) fn scribble_create_timeout(
+    task_id: &str,
+    content: &str,
+    timeout: Duration,
+) -> crate::Result<()> {
+    let mut command = Command::new("dropr");
+    command.args([
+        "scribble",
+        "create",
+        "--task",
+        task_id,
+        "--content",
+        content,
+    ]);
+    checked_timeout(command, timeout, "dropr scribble create")
+}
+
+pub(crate) fn task_status_update_timeout(
+    task_id: &str,
+    status: &str,
+    timeout: Duration,
+) -> crate::Result<()> {
+    let mut command = Command::new("dropr");
+    command.args(["task", "status", "update", task_id, status]);
+    checked_timeout(command, timeout, "dropr task status update")
+}
+
+fn checked_timeout(
+    command: Command,
+    timeout: Duration,
+    context: &'static str,
+) -> crate::Result<()> {
+    let output = crate::chief::exec::run_timeout(command, timeout)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(crate::Error::Command {
+            context,
+            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        })
+    }
+}
+
 fn fetch_as<T: for<'de> Deserialize<'de>>(args: &[&str]) -> Option<Vec<T>> {
     let output = Command::new("dropr").args(args).output().ok()?;
     if !output.status.success() {
