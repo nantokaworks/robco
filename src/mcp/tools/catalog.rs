@@ -30,6 +30,33 @@ pub fn list_tools() -> Value {
             agent_list_schema()
         ),
         tool_with_output(
+            "robco_agent_create",
+            "Create a worker agent in a registered repository.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "repo": { "type": "string" },
+                    "title": { "type": "string" },
+                    "prompt": { "type": "string" },
+                    "parent_agent_id": { "type": "string" },
+                    "autonomous": { "type": "boolean", "default": false }
+                },
+                "required": ["repo", "title"],
+                "additionalProperties": false
+            }),
+            json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string" },
+                    "branch": { "type": "string" },
+                    "worktree_path": { "type": "string" },
+                    "tmux_session": { "type": "string" }
+                },
+                "required": ["id", "branch", "worktree_path", "tmux_session"],
+                "additionalProperties": false
+            })
+        ),
+        tool_with_output(
             "robco_agent_status",
             "Get one agent's live status.",
             json!({

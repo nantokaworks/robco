@@ -44,6 +44,8 @@ pub enum Command {
     New(NewArgs),
     /// Report turn completion to a controller agent.
     Report(ReportArgs),
+    /// Create an agent in any registered repository.
+    Spawn(SpawnArgs),
     /// Remove RobCo's persisted state file.
     Reset,
     /// Remove RobCo's MCP server from supported client configs.
@@ -72,12 +74,35 @@ pub struct NewArgs {
 #[derive(Debug, ClapArgs)]
 pub struct ReportArgs {
     /// Report text. Exit codes: 0 delivered, 2 busy, 3 invalid, 4 unavailable.
-    #[arg(short, long)]
-    pub message: String,
+    #[arg(short, long, required_unless_present = "kind")]
+    pub message: Option<String>,
+
+    /// Lifecycle report kind used by autonomous agent hooks.
+    #[arg(long, conflicts_with = "message", required_unless_present = "message")]
+    pub kind: Option<String>,
 
     /// Agent id to report to; defaults to ROBCO_PARENT_AGENT_ID.
     #[arg(long)]
     pub target: Option<String>,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct SpawnArgs {
+    /// Registered repository name or absolute path.
+    #[arg(long)]
+    pub repo: String,
+    /// Title for the worker agent.
+    #[arg(long)]
+    pub title: String,
+    /// Initial prompt for the launched program.
+    #[arg(long)]
+    pub prompt: Option<String>,
+    /// Parent identity; defaults to ROBCO_AGENT_ID.
+    #[arg(long)]
+    pub parent: Option<String>,
+    /// Launch with the selected profile's autonomous settings.
+    #[arg(long)]
+    pub autonomous: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -141,8 +166,28 @@ mod tests {
         let Some(Command::Report(report)) = args.command else {
             panic!("expected report command");
         };
-        assert_eq!(report.message, "turn finished");
+        assert_eq!(report.message.as_deref(), Some("turn finished"));
         assert_eq!(report.target.as_deref(), Some("controller"));
+    }
+
+    #[test]
+    fn parses_spawn_subcommand() {
+        let args = Args::try_parse_from([
+            "robco",
+            "spawn",
+            "--repo",
+            "repo",
+            "--title",
+            "task",
+            "--autonomous",
+        ])
+        .unwrap();
+        let Some(Command::Spawn(args)) = args.command else {
+            panic!("expected spawn command")
+        };
+        assert_eq!(args.repo, "repo");
+        assert_eq!(args.title, "task");
+        assert!(args.autonomous);
     }
 
     #[test]

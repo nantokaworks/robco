@@ -137,6 +137,23 @@ fn activity_output_schemas_require_new_fields() {
     }
 }
 
+#[test]
+fn catalog_includes_agent_create_and_eight_tools() {
+    let tools = catalog::list_tools();
+    let tools = tools.as_array().unwrap();
+    assert_eq!(tools.len(), 8);
+    let create = tools
+        .iter()
+        .find(|tool| tool["name"] == "robco_agent_create")
+        .unwrap();
+    assert_eq!(create["inputSchema"]["required"], json!(["repo", "title"]));
+    assert!(
+        create["outputSchema"]["properties"]
+            .get("worktree_path")
+            .is_some()
+    );
+}
+
 fn subagent(id: &str, status: SubagentStatus) -> TaskSubagent {
     TaskSubagent {
         id: id.into(),

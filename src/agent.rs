@@ -22,6 +22,28 @@ pub fn create_agent(
     config: &Config,
     parent_agent_id: Option<&str>,
 ) -> Result<AgentNode> {
+    create_agent_with_launch(
+        repo,
+        title,
+        initial_prompt,
+        config,
+        parent_agent_id,
+        &[],
+        &[],
+        |_| Ok(()),
+    )
+}
+
+pub(crate) fn create_agent_with_launch(
+    repo: &RepoNode,
+    title: &str,
+    initial_prompt: Option<&str>,
+    config: &Config,
+    parent_agent_id: Option<&str>,
+    extra_args: &[String],
+    extra_env: &[(String, String)],
+    prepare_worktree: impl FnOnce(&std::path::Path) -> Result<()>,
+) -> Result<AgentNode> {
     let id = nanoid!(8);
     let clean_title = tmux::sanitize_target_part(title);
     let branch = format!(
@@ -38,14 +60,19 @@ pub fn create_agent(
 
     fs::create_dir_all(&config.worktree_root)?;
     git::add_worktree(&repo.path, &worktree_path, &branch, &base_commit)?;
+    prepare_worktree(&worktree_path)?;
     let program = config.default_program_command();
-    let command = launch_command(&program, initial_prompt);
-    tmux::new_session(
-        &tmux_session,
-        &worktree_path,
-        &command,
-        &agent_env(&id, parent_agent_id),
-    )?;
+    let command = launch_command(&program, initial_prompt, extra_args);
+    let mut owned_env = agent_env(&id, parent_agent_id)
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect::<Vec<_>>();
+    owned_env.extend(extra_env.iter().cloned());
+    let launch_env = owned_env
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.clone()))
+        .collect::<Vec<_>>();
+    tmux::new_session(&tmux_session, &worktree_path, &command, &launch_env)?;
 
     let now = Local::now();
     Ok(AgentNode {

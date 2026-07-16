@@ -1,8 +1,10 @@
 use crate::{
-    Error, Result, agent,
+    Error, Result,
+    chief::CHIEF_AGENT_ID,
     cli::NewArgs,
     config::{Config, ENV_AGENT_ID},
     registry::Registry,
+    spawn,
 };
 
 pub fn run(args: NewArgs, config: &Config) -> Result<()> {
@@ -13,43 +15,33 @@ pub fn run(args: NewArgs, config: &Config) -> Result<()> {
         .ok_or(Error::NewOutsideAgentSession)?;
 
     let registry = Registry::load()?;
-    let repo = registry
-        .repos
-        .iter()
-        .find(|repo| repo.agents.iter().any(|agent| agent.id == parent_id))
-        .ok_or_else(|| Error::ParentAgentNotFound(parent_id.clone()))?;
-    let repo_path = repo.path.clone();
-    let child = agent::create_agent(
-        repo,
-        &args.title,
-        args.prompt.as_deref(),
-        config,
-        Some(&parent_id),
-    )?;
-
-    let missing_worktree_path = child.worktree_path.clone();
-    let missing_tmux_session = child.tmux_session.clone();
-    let mut repo_index = None;
-    let registry = Registry::locked_update(|registry| {
-        repo_index = registry
+    let repo_path = if parent_id == CHIEF_AGENT_ID {
+        let cwd = std::env::current_dir()?.canonicalize()?;
+        registry.repos.iter().find(|repo| {
+            repo.path
+                .canonicalize()
+                .unwrap_or_else(|_| repo.path.clone())
+                == cwd
+        })
+    } else {
+        registry
             .repos
             .iter()
-            .position(|repo| repo.path == repo_path);
-        if let Some(repo_index) = repo_index {
-            registry.repos[repo_index].agents.push(child);
-        }
-    })?;
-    let repo_index = repo_index.ok_or_else(|| Error::CreatedChildRepoMissing {
-        worktree_path: missing_worktree_path,
-        tmux_session: missing_tmux_session,
-    })?;
-    let child = registry.repos[repo_index]
-        .agents
-        .last()
-        .expect("child was just inserted");
-    println!("id: {}", child.id);
-    println!("branch: {}", child.branch);
-    println!("worktree: {}", child.worktree_path.display());
-    println!("tmux: {}", child.tmux_session);
+            .find(|repo| repo.agents.iter().any(|agent| agent.id == parent_id))
+    }
+    .map(|repo| repo.path.clone())
+    .ok_or_else(|| Error::ParentAgentNotFound(parent_id.clone()))?;
+    let outcome = spawn::spawn_in_repo(
+        &repo_path.to_string_lossy(),
+        &args.title,
+        args.prompt.as_deref(),
+        Some(&parent_id),
+        &[],
+        config,
+    )?;
+    println!("id: {}", outcome.id);
+    println!("branch: {}", outcome.branch);
+    println!("worktree: {}", outcome.worktree_path.display());
+    println!("tmux: {}", outcome.tmux_session);
     Ok(())
 }
