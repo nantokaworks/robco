@@ -26,6 +26,8 @@ fn rotation_keeps_only_an_unconsumed_tail() {
     let mut reader = InboxReader::from_path(&path).unwrap();
     reader.rotation_threshold = 1;
     assert_eq!(reader.read_new().unwrap(), vec![report(ReportKind::Done)]);
+    assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 2);
+    reader.commit().unwrap();
     assert_eq!(fs::read_to_string(path).unwrap(), "partial");
 }
 
@@ -47,6 +49,7 @@ fn partial_line_is_retried_after_it_is_completed() {
     file.write_all(&line[split..]).unwrap();
     file.write_all(b"\n").unwrap();
     assert_eq!(reader.read_new().unwrap(), vec![expected]);
+    reader.commit().unwrap();
 }
 
 #[test]
@@ -82,13 +85,41 @@ fn stale_offset_after_interrupted_rotation_reads_tail_exactly_once() {
     persist_offset(&path.with_extension("offset"), 10_000).unwrap();
 
     let mut reader = InboxReader::from_path(&path).unwrap();
+    assert_eq!(reader.read_new().unwrap(), vec![unconsumed.clone()]);
     assert_eq!(reader.read_new().unwrap(), vec![unconsumed]);
+    reader.commit().unwrap();
     assert!(reader.read_new().unwrap().is_empty());
 
     // Rotation still converges afterwards.
     reader.rotation_threshold = 1;
     append_report_to(&path, &report(ReportKind::Done)).unwrap();
     assert_eq!(reader.read_new().unwrap(), vec![report(ReportKind::Done)]);
+    reader.commit().unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "");
     assert_eq!(load_offset(&path.with_extension("offset")).unwrap(), 0);
+}
+
+#[test]
+fn uncommitted_reports_are_reread_after_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("inbox.jsonl");
+    append_report_to(&path, &report(ReportKind::Done)).unwrap();
+
+    assert_eq!(
+        InboxReader::from_path(&path).unwrap().read_new().unwrap(),
+        vec![report(ReportKind::Done)]
+    );
+    let mut restarted = InboxReader::from_path(&path).unwrap();
+    assert_eq!(
+        restarted.read_new().unwrap(),
+        vec![report(ReportKind::Done)]
+    );
+    restarted.commit().unwrap();
+    assert!(
+        InboxReader::from_path(&path)
+            .unwrap()
+            .read_new()
+            .unwrap()
+            .is_empty()
+    );
 }
