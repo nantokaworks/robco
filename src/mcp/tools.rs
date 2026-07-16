@@ -16,6 +16,7 @@ const PROMPT_LINES: usize = 20;
 mod catalog;
 mod identity;
 mod report;
+mod spawn;
 
 pub use catalog::list_tools;
 pub(crate) use report::{deliver_report, report_exit_code};
@@ -46,6 +47,10 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
         "robco_agent_list" => {
             let registry = Registry::load().map_err(exec_err)?;
             agent_list(&registry)
+        }
+        "robco_agent_create" => {
+            let args: spawn::SpawnArgs = parse_args(arguments)?;
+            spawn::spawn(args)
         }
         "robco_agent_status" => {
             let args: AgentIdArgs = parse_args(arguments)?;

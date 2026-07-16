@@ -4,7 +4,7 @@ use std::process::Command;
 #[test]
 fn quotes_initial_prompt_for_shell_command() {
     assert_eq!(
-        launch_command("claude", Some("fix Bob's bug")),
+        launch_command("claude", Some("fix Bob's bug"), &[]),
         "claude 'fix Bob'\\''s bug'"
     );
 }

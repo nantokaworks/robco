@@ -13,6 +13,7 @@ mod notify;
 mod openclaw;
 mod registry;
 mod setup;
+mod spawn;
 mod status;
 pub mod subagents;
 mod tmux;
@@ -52,6 +53,10 @@ pub enum Error {
     NewOutsideAgentSession,
     #[error("parent robco agent not found in registry: {0}")]
     ParentAgentNotFound(String),
+    #[error("registered repository not found: {0}")]
+    RepoSelectorNotFound(String),
+    #[error("repository name is ambiguous; use an absolute path: {0}")]
+    RepoSelectorAmbiguous(String),
     #[error(
         "child worktree {worktree_path} and tmux session {tmux_session} were created, but the \
          repository disappeared from the registry; the TUI will adopt the child"
@@ -147,6 +152,37 @@ fn run_command(command: Command, config: &Config, launch_dir: &std::path::Path) 
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::New(args) => new_agent::run(args, config)?,
         Command::Report(_) => unreachable!("report is handled before config loading"),
+        Command::Spawn(args) => {
+            let parent = args.parent.or_else(|| {
+                std::env::var(config::ENV_AGENT_ID)
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            });
+            let extra_args = if args.autonomous {
+                config
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.name == config.default_program)
+                    .map(|profile| profile.autonomous_args.clone())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            let outcome = spawn::spawn_in_repo_with_mode(
+                &args.repo,
+                &args.title,
+                args.prompt.as_deref(),
+                parent.as_deref(),
+                &extra_args,
+                args.autonomous,
+                config,
+            )?;
+            println!("id: {}", outcome.id);
+            println!("branch: {}", outcome.branch);
+            println!("worktree: {}", outcome.worktree_path.display());
+            println!("tmux: {}", outcome.tmux_session);
+        }
         Command::Reset => {
             let path = config::state_path()?;
             if path.exists() {
@@ -204,7 +240,16 @@ fn list_repositories(dir: &std::path::Path, config: &Config) -> Result<()> {
 }
 
 fn run_report(args: &ReportArgs) -> ExitCode {
-    match mcp::deliver_report(&args.message, args.target.as_deref()) {
+    let message = args
+        .message
+        .as_deref()
+        .or(args.kind.as_deref())
+        .unwrap_or("");
+    if message.is_empty() {
+        eprintln!("robco report: --message or --kind is required");
+        return ExitCode::from(3);
+    }
+    match mcp::deliver_report(message, args.target.as_deref()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             let message: String = err
