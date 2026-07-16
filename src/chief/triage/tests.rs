@@ -183,7 +183,7 @@ fn queue_tick_starts_session_without_blocking_daemon() {
     let temp = tempfile::tempdir().unwrap();
     let script = executable_script(
         temp.path(),
-        "sleep 0.3\nprintf '{\"outcome\":\"skip\",\"reason\":\"done\"}' > result.json",
+        "touch ../../started\nwhile [ ! -f ../../release ]; do sleep 0.01; done\nprintf '{\"outcome\":\"skip\",\"reason\":\"done\"}' > result.json",
     );
     let mut config = Config::default();
     config.profiles = vec![Profile {
@@ -205,16 +205,30 @@ fn queue_tick_starts_session_without_blocking_daemon() {
         )
         .unwrap();
     let mut ledger = ledger();
-    let started = Instant::now();
+    let tick_started = Instant::now();
     queue.tick(&config, &mut ledger).unwrap();
-    assert!(started.elapsed() < Duration::from_millis(100));
+    assert!(
+        tick_started.elapsed() < Duration::from_secs(5),
+        "queue tick blocked the daemon"
+    );
     assert!(queue.is_active());
     assert_eq!(queue.pending_len(), 1);
-    for _ in 0..30 {
-        thread::sleep(Duration::from_millis(25));
+
+    let started = temp.path().join("started");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !started.exists() {
+        assert!(Instant::now() < deadline, "triage session did not start");
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(queue.is_active());
+
+    fs::write(temp.path().join("release"), []).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while queue.is_active() {
+        assert!(Instant::now() < deadline, "triage session did not complete");
         queue.tick(&config, &mut ledger).unwrap();
-        if !queue.is_active() {
-            break;
+        if queue.is_active() {
+            thread::sleep(Duration::from_millis(25));
         }
     }
     queue.acknowledge_completion().unwrap();
