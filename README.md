@@ -83,6 +83,27 @@ robco reset
 `debug` prints the config, state, worktree, and resolved program paths. `reset` removes
 RobCo's persisted state file but does not kill tmux sessions or delete worktrees.
 
+## Chief
+
+Chief is RobCo's local autonomous control system: it dispatches ready dropr tasks into
+isolated RobCo worktree/tmux workers, reconciles their progress, triages failures, and
+can merge protected pull requests after checks pass. Read the full architecture,
+configuration, security, and operations guide in
+[docs/11-chief-agent.md](docs/11-chief-agent.md).
+
+Start with dispatch disabled, inspect the daemon, then enable dispatch when ready:
+
+```bash
+robco chief set dispatch off
+robco chief run
+# In another terminal:
+robco chief status
+robco chief set dispatch on
+```
+
+On macOS, `robco chief install-service` writes a launchd plist; run the
+`launchctl bootstrap` command it prints to load the service.
+
 ## Release
 
 RobCo follows the same local release model as dropr:
