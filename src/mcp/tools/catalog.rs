@@ -24,6 +24,24 @@ pub fn list_tools() -> Value {
             })
         ),
         tool_with_output(
+            "robco_chief_policy",
+            "Read the Chief daemon's current local policy and health.",
+            empty_schema(),
+            json!({
+                "type": "object",
+                "properties": {
+                    "dispatch_enabled": { "type": "boolean" },
+                    "auto_merge": { "type": "boolean" },
+                    "max_workers": { "type": "integer", "minimum": 0 },
+                    "daemon_alive": { "type": "boolean" },
+                    "circuit_open": { "type": "boolean" }
+                },
+                "required": ["dispatch_enabled", "auto_merge", "max_workers",
+                    "daemon_alive", "circuit_open"],
+                "additionalProperties": false
+            })
+        ),
+        tool_with_output(
             "robco_agent_list",
             "List repos and agents with live status.",
             empty_schema(),

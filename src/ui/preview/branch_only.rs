@@ -1,0 +1,51 @@
+use ratatui::{
+    Frame,
+    layout::Rect,
+    text::{Line, Span},
+    widgets::{Block, Borders, Padding, Paragraph, Wrap},
+};
+
+use crate::model::Selection;
+
+use super::{PREVIEW_PADDING, preview_tabs_line};
+use crate::ui::{App, PreviewPane, merge_dialog, theme::DEFAULT as THEME};
+
+pub(super) fn render(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    preview: (&App, PreviewPane, Option<Selection>),
+    title: String,
+    branch: &str,
+    ai_label: &str,
+) {
+    let (app, active, selection) = preview;
+    let mut text = vec![
+        Line::from(Span::styled(
+            "Worktree has been removed.",
+            THEME.muted_style(),
+        )),
+        Line::from(vec![
+            Span::styled("branch: ", THEME.muted_style()),
+            Span::raw(branch.to_string()),
+        ]),
+        Line::from(Span::styled(
+            "Press x to delete the branch.",
+            THEME.muted_style(),
+        )),
+    ]
+    .into();
+    merge_dialog::append_preview(app, active, selection, &mut text);
+    let mut block = Block::default()
+        .title_top(preview_tabs_line(active, selection, ai_label))
+        .title_top(Line::from(title).right_aligned())
+        .borders(Borders::ALL)
+        .padding(Padding::uniform(PREVIEW_PADDING));
+    if let Some(title) = merge_dialog::preview_title(app) {
+        block = block.title_bottom(title);
+    }
+    let preview = Paragraph::new(text)
+        .block(block)
+        .style(THEME.muted_style())
+        .wrap(Wrap { trim: false });
+    frame.render_widget(preview, area);
+}

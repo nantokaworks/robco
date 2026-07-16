@@ -15,6 +15,7 @@ const PROMPT_LINES: usize = 20;
 
 mod catalog;
 mod identity;
+mod policy;
 mod report;
 mod spawn;
 
@@ -43,6 +44,10 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
         "robco_report" => {
             let args: report::ReportArgs = parse_args(arguments)?;
             report::report(args)
+        }
+        "robco_chief_policy" => {
+            let args: policy::PolicyArgs = parse_args(arguments)?;
+            policy::policy(args)
         }
         "robco_agent_list" => {
             let registry = Registry::load().map_err(exec_err)?;
