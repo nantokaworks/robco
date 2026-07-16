@@ -40,9 +40,41 @@ robco report --message "turn finished" \
 ```
 
 Omit `--target` to use `ROBCO_PARENT_AGENT_ID`. Successful delivery produces no
-output. Both interfaces reject self-reports, missing targets, busy targets awaiting
-confirmation, dead or missing sessions, and unknown agent ids. Delivery uses tmux
-literal input followed by Enter and requires tmux 3.2 or newer.
+output. For ordinary agent targets, both interfaces reject self-reports, missing
+targets, busy targets awaiting confirmation, dead or missing sessions, and unknown
+agent ids. Delivery uses tmux literal input followed by Enter and requires tmux 3.2 or
+newer.
+
+## Chief inbox routing
+
+When the resolved report target is the reserved agent id `chief`, delivery does not
+look for a tmux session. Instead, RobCo requires `ROBCO_AGENT_ID`, validates the report
+as a Chief lifecycle kind, and appends one JSON record to
+`~/.robco/chief/inbox.jsonl`. The same resolution rules apply: an explicit target wins,
+otherwise `ROBCO_PARENT_AGENT_ID` is used. Chief-spawned workers inherit
+`ROBCO_PARENT_AGENT_ID=chief`, so their hooks route there automatically.
+
+Use `--kind` from a shell hook:
+
+```sh
+robco report --kind claimed
+robco report --kind turn-done
+```
+
+The MCP interface uses the same exact strings as its `message` value. Chief accepts
+only these kinds:
+
+| Kind | Meaning to Chief |
+|------|------------------|
+| `claimed` | The worker claimed its assigned dropr task. |
+| `done` | The worker says its task is complete; Chief discovers the PR separately from the worker branch. |
+| `blocked` | Escalate the worker with the default `worker blocked` reason. |
+| `turn-done` | The agent client finished a turn; a dispatched or claimed worker becomes working. |
+| `waiting` | The agent client is waiting; a dispatched or claimed worker becomes working. |
+
+Lifecycle records written through the current report command contain the timestamp,
+sender agent id, and kind. They do not carry a task id, PR URL, or custom blocked
+reason. An unknown kind is rejected as invalid parameters (CLI exit code `3`).
 
 | Exit code | Meaning |
 |-----------|---------|
