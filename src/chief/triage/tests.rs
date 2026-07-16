@@ -185,12 +185,14 @@ fn queue_tick_starts_session_without_blocking_daemon() {
         temp.path(),
         "touch ../../started\nwhile [ ! -f ../../release ]; do sleep 0.01; done\nprintf '{\"outcome\":\"skip\",\"reason\":\"done\"}' > result.json",
     );
-    let mut config = Config::default();
-    config.profiles = vec![Profile {
-        name: "test".into(),
-        program: script.to_string_lossy().into_owned(),
-        autonomous_args: Vec::new(),
-    }];
+    let mut config = Config {
+        profiles: vec![Profile {
+            name: "test".into(),
+            program: script.to_string_lossy().into_owned(),
+            autonomous_args: Vec::new(),
+        }],
+        ..Default::default()
+    };
     config.chief.triage_profile = Some("test".into());
     config.chief.triage_timeout_mins = 1;
     let mut queue = test_queue(temp.path()).unwrap();

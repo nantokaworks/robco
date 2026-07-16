@@ -200,9 +200,11 @@ fn generated_confirmation_describes_the_validated_command() {
 #[test]
 fn config_reload_revokes_user_without_rebuilding_handler() {
     let mut handler = handler(10, 60);
-    let mut config = DiscordConfig::default();
-    config.channel_id = Some("10".into());
-    config.allowed_user_ids = vec!["other".into()];
+    let config = DiscordConfig {
+        channel_id: Some("10".into()),
+        allowed_user_ids: vec!["other".into()],
+        ..Default::default()
+    };
     handler.update_config(&config);
     let mut executor = FakeExecutor::default();
     assert_eq!(

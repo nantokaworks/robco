@@ -123,6 +123,7 @@ fn escalation(reason: String) -> Completion {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_completion(
     mut completion: Completion,
     replay: bool,

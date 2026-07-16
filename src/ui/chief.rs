@@ -161,9 +161,11 @@ fn append_ledger(lines: &mut Vec<Line<'static>>, config: &ChiefConfig, ledger: &
 }
 
 fn dispatches_on(ledger: &Ledger, today: NaiveDate) -> u32 {
-    (ledger.counters.date == Some(today))
-        .then_some(ledger.counters.dispatched_today)
-        .unwrap_or(0)
+    if ledger.counters.date == Some(today) {
+        ledger.counters.dispatched_today
+    } else {
+        0
+    }
 }
 
 fn append_decisions(lines: &mut Vec<Line<'static>>) {

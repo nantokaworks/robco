@@ -105,6 +105,8 @@ impl Registry {
     fn with_write_lock<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
         let lock_file = OpenOptions::new()
             .create(true)
+            // Lock file contents are irrelevant; keep them untouched.
+            .truncate(false)
             .read(true)
             .write(true)
             .open(path.with_extension("json.lock"))?;

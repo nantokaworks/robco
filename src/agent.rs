@@ -34,6 +34,7 @@ pub fn create_agent(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn create_agent_with_launch(
     repo: &RepoNode,
     title: &str,
