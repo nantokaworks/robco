@@ -221,6 +221,10 @@ mod tests {
         let config = Config {
             subagent_indicator: false,
             worktree_root: temp.path().into(),
+            // Keep discovery inside the temp dir; the default repos_root points
+            // at the real ~/.robco/repos, so a populated dev machine would
+            // discover live repos, reorder the registry, and overwrite state.
+            repos_root: temp.path().join("repos"),
             ..Default::default()
         };
         let registry = Registry {
