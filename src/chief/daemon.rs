@@ -1,3 +1,4 @@
+mod discord_events;
 mod merge;
 mod observations;
 
@@ -16,6 +17,7 @@ use crate::{Result, config::Config};
 use chrono::Utc;
 use std::{
     fs,
+    sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
 
@@ -24,6 +26,9 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 pub async fn run_daemon() -> Result<()> {
     let _pid_guard = PidGuard::acquire(pidfile_path()?)?;
     let mut config = Config::load()?;
+    let (ledger_request_tx, ledger_request_rx) = mpsc::channel();
+    let mut discord = None;
+    sync_discord(&mut discord, &config.chief.discord, &ledger_request_tx);
     let mut ledger = Ledger::load()?;
     observations::adopt_registry_children(&mut ledger)?;
     ledger.save()?;
@@ -37,6 +42,8 @@ pub async fn run_daemon() -> Result<()> {
         } else {
             logging::log_message(None, "config reload failed; retaining previous config")?;
         }
+        sync_discord(&mut discord, &config.chief.discord, &ledger_request_tx);
+        apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
         let now = Utc::now();
         let mut observed = observations::gather(&ledger, &mut inbox);
         if let Err(error) = append_jsonl(
@@ -51,6 +58,9 @@ pub async fn run_daemon() -> Result<()> {
                 .push(format!("snapshot write failed: {error}"));
         }
         let (mut next, actions) = reconcile(&ledger, &observed, now, config.chief.stuck_after_mins);
+        if config.chief.discord.enabled {
+            discord_events::record(&ledger, &next, &observed)?;
+        }
         account_failures(&ledger, &mut next, &actions);
         if config.chief.triage_enabled {
             exceptions.enqueue(&actions, &next, &observed)?;
@@ -73,6 +83,45 @@ pub async fn run_daemon() -> Result<()> {
             return Ok(());
         }
     }
+}
+
+fn sync_discord(
+    guard: &mut Option<super::discord::BotGuard>,
+    config: &super::config::DiscordConfig,
+    ledger_requests: &Sender<super::discord::ledger_requests::LedgerRequest>,
+) {
+    if !config.enabled {
+        *guard = None;
+    } else if let Some(guard) = guard {
+        guard.update_config(config.clone());
+    } else {
+        match super::discord::start(config.clone(), ledger_requests.clone()) {
+            Ok(started) => *guard = Some(started),
+            Err(error) => eprintln!("chief: Discord bot disabled: {error}"),
+        }
+    }
+}
+
+fn apply_ledger_requests(
+    ledger: &mut Ledger,
+    requests: &Receiver<super::discord::ledger_requests::LedgerRequest>,
+) -> Result<()> {
+    while let Ok(request) = requests.try_recv() {
+        let (task, user_id) = request.attribution();
+        let task = task.to_string();
+        let user_id = user_id.to_string();
+        if let Err(error) = super::discord::ledger_requests::apply(ledger, request) {
+            let mut entry = logging::DecisionEntry::new(
+                logging::DecisionKind::Hold,
+                format!("Discord ledger request refused: {error}"),
+            );
+            entry.task = Some(task);
+            entry.user_id = Some(user_id);
+            entry.source = Some("discord".into());
+            logging::append(&entry)?;
+        }
+    }
+    Ok(())
 }
 
 fn account_failures(previous: &Ledger, next: &mut Ledger, actions: &[Action]) {

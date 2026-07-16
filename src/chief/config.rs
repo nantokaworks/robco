@@ -71,6 +71,8 @@ pub struct DiscordConfig {
     pub notify_merged: bool,
     pub notify_circuit: bool,
     pub notify_worker_blocked: bool,
+    pub action_limit_per_hour: usize,
+    pub confirmation_ttl_secs: u64,
 }
 
 impl Default for DiscordConfig {
@@ -85,6 +87,8 @@ impl Default for DiscordConfig {
             notify_merged: true,
             notify_circuit: true,
             notify_worker_blocked: true,
+            action_limit_per_hour: 30,
+            confirmation_ttl_secs: 120,
         }
     }
 }

@@ -36,6 +36,8 @@ pub struct DecisionEntry {
     pub source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<String>,
 }
 
 impl DecisionEntry {
@@ -48,6 +50,7 @@ impl DecisionEntry {
             reason: reason.into(),
             source: None,
             user_id: None,
+            pr_url: None,
         }
     }
 }
