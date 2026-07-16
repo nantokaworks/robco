@@ -41,6 +41,8 @@ pub enum Error {
     Toml(#[from] toml_edit::TomlError),
     #[error("home directory could not be resolved")]
     HomeDir,
+    #[error("setup wizard: {0}")]
+    Wizard(String),
     #[error("{context} failed: {stderr}")]
     Command {
         context: &'static str,
@@ -171,7 +173,7 @@ fn run_command(
             println!("dropr_overlay: {}", config.dropr_overlay);
             println!("auto_accept: {}", config.auto_accept);
         }
-        Command::Install(args) => setup::install(&args)?,
+        Command::Install(args) => setup::install_command(&args)?,
         Command::List(args) => {
             let roots = effective_roots(&config.repos_root, args.dir.as_deref().or(ephemeral_root));
             list_repositories(&roots, config)?;

@@ -179,12 +179,18 @@ pub enum InstallTarget {
 #[derive(Debug, ClapArgs)]
 pub struct InstallArgs {
     /// Client config to update.
-    #[arg(long, value_enum, default_value_t = InstallTarget::All)]
-    pub target: InstallTarget,
+    #[arg(long, value_enum)]
+    pub target: Option<InstallTarget>,
 
     /// Update all supported client configs.
     #[arg(long)]
     pub all: bool,
+}
+
+impl InstallArgs {
+    pub fn wants_wizard(&self) -> bool {
+        self.target.is_none() && !self.all
+    }
 }
 
 pub(crate) fn invocation_targets_report(args: &[OsString]) -> bool {

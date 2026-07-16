@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod codex;
 pub mod openclaw;
+pub mod wizard;
 
 use std::{fs, io::ErrorKind, path::Path};
 
@@ -32,8 +33,20 @@ impl Action {
     }
 }
 
+pub fn install_command(args: &InstallArgs) -> Result<()> {
+    if args.wants_wizard() {
+        wizard::run()
+    } else {
+        install(args)
+    }
+}
+
 pub fn install(args: &InstallArgs) -> Result<()> {
-    for target in selected_targets(args) {
+    install_targets(&selected_targets(args))
+}
+
+pub(crate) fn install_targets(targets: &[InstallTarget]) -> Result<()> {
+    for &target in targets {
         let action = match target {
             InstallTarget::Claude => claude::install()?,
             InstallTarget::Codex => codex::install()?,
@@ -59,14 +72,15 @@ pub fn uninstall(args: &InstallArgs) -> Result<()> {
 }
 
 fn selected_targets(args: &InstallArgs) -> Vec<InstallTarget> {
-    if args.all || args.target == InstallTarget::All {
+    let target = args.target.unwrap_or(InstallTarget::All);
+    if args.all || target == InstallTarget::All {
         vec![
             InstallTarget::Claude,
             InstallTarget::Codex,
             InstallTarget::Openclaw,
         ]
     } else {
-        vec![args.target]
+        vec![target]
     }
 }
 
