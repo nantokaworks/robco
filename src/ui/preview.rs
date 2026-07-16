@@ -15,6 +15,8 @@ use crate::{
         theme::DEFAULT as THEME,
     },
 };
+
+mod branch_only;
 /// Inner padding between the preview border and its content, applied to every
 /// tab. `scrollback::capture` subtracts it when sizing mirrored tmux sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
@@ -32,6 +34,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let panes = layout::panes(root.body);
 
     let (title, mut text) = match (pane, selection) {
+        (PreviewPane::Info, Some(Selection::Chief)) => super::chief::summary(),
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
@@ -100,7 +103,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let agent = &repo.agents[agent];
             let title = format!("{} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(
+                return branch_only::render(
                     frame,
                     panes.preview,
                     (app, pane, selection),
@@ -125,7 +128,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let agent = &repo.agents[agent];
             let title = format!("{} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(
+                return branch_only::render(
                     frame,
                     panes.preview,
                     (app, pane, selection),
@@ -150,7 +153,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let agent = &repo.agents[agent];
             let title = format!("{} / {}", repo.name, agent.title);
             if agent.status == Status::BranchOnly {
-                return render_branch_only(
+                return branch_only::render(
                     frame,
                     panes.preview,
                     (app, pane, selection),
@@ -289,44 +292,4 @@ fn preview_tabs_line(
     }
 
     Line::from(spans)
-}
-
-fn render_branch_only(
-    frame: &mut Frame<'_>,
-    area: ratatui::layout::Rect,
-    preview: (&App, PreviewPane, Option<Selection>),
-    title: String,
-    branch: &str,
-    ai_label: &str,
-) {
-    let (app, active, selection) = preview;
-    let mut text = vec![
-        Line::from(Span::styled(
-            "Worktree has been removed.",
-            THEME.muted_style(),
-        )),
-        Line::from(vec![
-            Span::styled("branch: ", THEME.muted_style()),
-            Span::raw(branch.to_string()),
-        ]),
-        Line::from(Span::styled(
-            "Press x to delete the branch.",
-            THEME.muted_style(),
-        )),
-    ]
-    .into();
-    merge_dialog::append_preview(app, active, selection, &mut text);
-    let mut block = Block::default()
-        .title_top(preview_tabs_line(active, selection, ai_label))
-        .title_top(Line::from(title).right_aligned())
-        .borders(Borders::ALL)
-        .padding(Padding::uniform(PREVIEW_PADDING));
-    if let Some(title) = merge_dialog::preview_title(app) {
-        block = block.title_bottom(title);
-    }
-    let preview = Paragraph::new(text)
-        .block(block)
-        .style(THEME.muted_style())
-        .wrap(Wrap { trim: false });
-    frame.render_widget(preview, area);
 }

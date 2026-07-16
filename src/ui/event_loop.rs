@@ -1,4 +1,6 @@
 use std::{
+    collections::HashSet,
+    fs::OpenOptions,
     io::{self, Write},
     path::PathBuf,
     sync::{
@@ -18,6 +20,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use crate::{
     Result,
+    chief::ledger::{Ledger, LedgerPhase},
     config::Config,
     model::Selection,
     notify::{self, WatchTarget},
@@ -45,12 +48,20 @@ pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()
         notify_targets.clone(),
         app.config.notify,
         app.config.openclaw.clone(),
-        notify_tx,
+        notify_tx.clone(),
         notify_running.clone(),
         Duration::from_millis(app.config.poll_interval_ms),
     );
 
-    let result = run_loop(&mut terminal, &mut app, &notify_rx, &notify_targets);
+    let mut chief_escalations = escalation_keys();
+    let result = run_loop(
+        &mut terminal,
+        &mut app,
+        &notify_rx,
+        &notify_tx,
+        &notify_targets,
+        &mut chief_escalations,
+    );
 
     notify_running.store(false, Ordering::Relaxed);
     let _ = notify_handle.join();
@@ -70,7 +81,9 @@ fn run_loop<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,
     notify_rx: &mpsc::Receiver<String>,
+    notify_tx: &mpsc::Sender<String>,
     notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
+    chief_escalations: &mut HashSet<String>,
 ) -> Result<()> {
     const MESSAGE_DURATION: Duration = Duration::from_secs(4);
 
@@ -81,6 +94,7 @@ fn run_loop<B: ratatui::backend::Backend>(
     loop {
         if last_tick.elapsed() >= tick_interval {
             app.tick();
+            notify_new_escalations(chief_escalations, notify_tx, app.config.notify.enabled);
             last_tick = Instant::now();
         }
         if last_discovery.elapsed() >= DISCOVERY_INTERVAL {
@@ -160,5 +174,54 @@ fn drain_stdout_notifications(notify_rx: &mpsc::Receiver<String>, app: &mut App)
         let _ = out.write_all(payload.as_bytes());
         let _ = out.flush();
         app.force_redraw = true;
+    }
+}
+
+fn escalation_keys() -> HashSet<String> {
+    Ledger::load()
+        .map(|ledger| {
+            ledger
+                .entries
+                .into_iter()
+                .filter(|entry| entry.phase == LedgerPhase::Escalated)
+                .map(|entry| format!("{}@{}", entry.task_id, entry.dispatched_at))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn notify_new_escalations(
+    seen: &mut HashSet<String>,
+    notify_tx: &mpsc::Sender<String>,
+    enabled: bool,
+) {
+    let Ok(ledger) = Ledger::load() else {
+        return;
+    };
+    for entry in ledger
+        .entries
+        .into_iter()
+        .filter(|entry| entry.phase == LedgerPhase::Escalated)
+    {
+        let key = format!("{}@{}", entry.task_id, entry.dispatched_at);
+        if seen.insert(key) && enabled {
+            let body = format!("Chief escalation: {} ({})", entry.display_id, entry.repo);
+            route_notification(notify_tx, "robco", &body);
+        }
+    }
+}
+
+fn route_notification(stdout_tx: &mpsc::Sender<String>, title: &str, body: &str) {
+    let payload = notify::osc777(title, body);
+    let ttys = notify::attached_client_ttys();
+    if ttys.is_empty() {
+        let _ = stdout_tx.send(payload);
+        return;
+    }
+    for tty in ttys {
+        if let Ok(mut file) = OpenOptions::new().write(true).open(tty) {
+            let _ = file.write_all(payload.as_bytes());
+            let _ = file.flush();
+        }
     }
 }

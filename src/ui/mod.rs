@@ -21,6 +21,7 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
 mod blockfont;
+mod chief;
 mod confirm_pr;
 #[cfg(test)]
 mod confirm_pr_tests;
@@ -109,7 +110,7 @@ pub enum PreviewPane {
 /// first entry is the default tab used when nothing has been remembered yet.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        Some(Selection::Chief) => &[],
+        Some(Selection::Chief) => &[PreviewPane::Info],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -140,6 +141,7 @@ pub struct App {
     pub(crate) launch_dir: PathBuf,
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
+    chief_visible: bool,
     /// Whether the "other locations" section (off-launch-dir repos that still
     /// have agents) is collapsed to its header row.
     other_collapsed: bool,
@@ -166,12 +168,14 @@ pub struct App {
 impl App {
     pub fn new(registry: Registry, config: Config, launch_dir: PathBuf) -> Self {
         let expanded = vec![true; registry.repos.len()];
+        let chief_visible = list::chief_is_visible();
         let mut app = Self {
             registry,
             config,
             launch_dir,
             selected: 0,
             expanded,
+            chief_visible,
             other_collapsed: false,
             orphans: Vec::new(),
             orphans_collapsed: false,
@@ -199,6 +203,7 @@ impl App {
     }
 
     fn tick(&mut self) {
+        self.refresh_chief_visibility();
         let prefix = self.config.tmux_session_prefix.clone();
         let processes = self
             .config

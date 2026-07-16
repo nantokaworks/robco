@@ -1,4 +1,9 @@
-use crate::model::{RepoNode, Selection};
+use std::path::Path;
+
+use crate::{
+    chief,
+    model::{RepoNode, Selection},
+};
 
 use super::{App, default_pane, panes_for};
 
@@ -140,6 +145,9 @@ impl App {
     /// section listing them.
     pub(in crate::ui) fn visible(&self) -> Vec<Selection> {
         let mut visible = Vec::new();
+        if self.chief_visible {
+            visible.push(Selection::Chief);
+        }
         for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
             if self.repo_is_local(repo) {
                 self.push_repo_rows(&mut visible, repo_idx, repo);
@@ -194,5 +202,79 @@ impl App {
     pub(in crate::ui) fn set_orphans_collapsed(&mut self, collapsed: bool) {
         self.orphans_collapsed = collapsed;
         self.clamp_selection();
+    }
+
+    pub(in crate::ui) fn refresh_chief_visibility(&mut self) {
+        self.set_chief_visibility(chief_is_visible());
+    }
+
+    fn set_chief_visibility(&mut self, visible: bool) {
+        if self.chief_visible == visible {
+            return;
+        }
+        let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
+        self.chief_visible = visible;
+        self.restore_selection(selected_identity);
+    }
+}
+
+pub(super) fn chief_is_visible() -> bool {
+    chief::pidfile_path()
+        .ok()
+        .zip(chief::ledger_path().ok())
+        .is_some_and(|(pidfile, ledger)| chief_artifacts_exist(&pidfile, &ledger))
+}
+
+fn chief_artifacts_exist(pidfile: &Path, ledger: &Path) -> bool {
+    pidfile.is_file() && ledger.is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+    use crate::{config::Config, registry::Registry};
+
+    #[test]
+    fn chief_visibility_requires_both_daemon_artifacts() {
+        let temp = tempfile::tempdir().unwrap();
+        let pidfile = temp.path().join("chief.pid");
+        let ledger = temp.path().join("ledger.json");
+        assert!(!chief_artifacts_exist(&pidfile, &ledger));
+        fs::write(&pidfile, "123").unwrap();
+        assert!(!chief_artifacts_exist(&pidfile, &ledger));
+        fs::write(&ledger, "{}").unwrap();
+        assert!(chief_artifacts_exist(&pidfile, &ledger));
+        fs::remove_file(&pidfile).unwrap();
+        assert!(!chief_artifacts_exist(&pidfile, &ledger));
+    }
+
+    #[test]
+    fn selection_identity_survives_chief_row_toggle() {
+        let temp = tempfile::tempdir().unwrap();
+        let repo_path = temp.path().join("repo");
+        let repo = serde_json::from_value(serde_json::json!({
+            "path": repo_path,
+            "name": "repo",
+            "remote_url": null,
+            "agents": []
+        }))
+        .unwrap();
+        let registry = Registry {
+            version: 1,
+            repos: vec![repo],
+        };
+        let mut app = App::new(registry, Config::default(), temp.path().into());
+        app.set_chief_visibility(false);
+        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
+
+        app.set_chief_visibility(true);
+        assert_eq!(app.selected, 1);
+        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
+
+        app.set_chief_visibility(false);
+        assert_eq!(app.selected, 0);
+        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
     }
 }

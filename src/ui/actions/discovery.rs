@@ -109,7 +109,7 @@ impl App {
     }
 
     /// Re-point selection at the same item, falling back to a clamp.
-    fn restore_selection(&mut self, identity: Option<String>) {
+    pub(in crate::ui) fn restore_selection(&mut self, identity: Option<String>) {
         if let Some(identity) = identity
             && let Some(index) = self
                 .visible()
@@ -119,6 +119,7 @@ impl App {
             self.selected = index;
         }
         self.clamp_selection();
+        self.restore_preview();
     }
 }
 

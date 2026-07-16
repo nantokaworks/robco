@@ -1,0 +1,91 @@
+use std::{
+    fs,
+    path::Path,
+    time::{Duration, SystemTime},
+};
+
+use serde::Deserialize;
+use serde_json::{Value, json};
+
+use crate::{
+    chief::{heartbeat_path, ledger::Ledger},
+    config::Config,
+};
+
+use super::{ToolResult, exec_err};
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct PolicyArgs {}
+
+pub(super) fn policy(_args: PolicyArgs) -> ToolResult<Value> {
+    let heartbeat = heartbeat_path().map_err(exec_err)?;
+    policy_with(
+        || Config::load().map_err(exec_err),
+        || Ledger::load().map_err(exec_err),
+        &heartbeat,
+    )
+}
+
+fn policy_with(
+    load_config: impl FnOnce() -> ToolResult<Config>,
+    load_ledger: impl FnOnce() -> ToolResult<Ledger>,
+    heartbeat: &Path,
+) -> ToolResult<Value> {
+    let config = load_config()?.chief;
+    let ledger = load_ledger()?;
+    let daemon_alive = fs::metadata(heartbeat)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| {
+            age <= Duration::from_secs(config.poll_interval_secs.saturating_mul(2).max(5))
+        });
+    let circuit_open = ledger.counters.consecutive_failures >= config.failure_circuit_threshold;
+    Ok(json!({
+        "dispatch_enabled": config.dispatch_enabled,
+        "auto_merge": config.auto_merge,
+        "max_workers": config.max_workers,
+        "daemon_alive": daemon_alive,
+        "circuit_open": circuit_open,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_uses_config_from_each_call() {
+        let temp = tempfile::tempdir().unwrap();
+        let heartbeat = temp.path().join("heartbeat");
+        fs::write(&heartbeat, "tick").unwrap();
+        let first = policy_with(
+            || {
+                let mut config = Config::default();
+                config.chief.dispatch_enabled = false;
+                config.chief.max_workers = 2;
+                Ok(config)
+            },
+            || Ok(Ledger::default()),
+            &heartbeat,
+        )
+        .unwrap();
+        let second = policy_with(
+            || {
+                let mut config = Config::default();
+                config.chief.dispatch_enabled = true;
+                config.chief.max_workers = 7;
+                Ok(config)
+            },
+            || Ok(Ledger::default()),
+            &heartbeat,
+        )
+        .unwrap();
+        assert_eq!(first["dispatch_enabled"], false);
+        assert_eq!(first["max_workers"], 2);
+        assert_eq!(second["dispatch_enabled"], true);
+        assert_eq!(second["max_workers"], 7);
+        assert_eq!(second["daemon_alive"], true);
+    }
+}

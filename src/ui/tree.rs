@@ -1,6 +1,5 @@
 use ratatui::{
     Frame,
-    layout::Alignment,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph},
@@ -10,72 +9,12 @@ use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
-use activity::activity_span;
-use indicator::{Indicator, IndicatorState, SupplementaryIndicators, select, select_supplementary};
+use indicator::{IndicatorState, select, select_supplementary};
 
 mod activity;
+mod footer;
 mod hints;
 mod indicator;
-
-fn status_style(status: Status) -> Style {
-    THEME.status_style(status)
-}
-
-fn indicator_spans(
-    indicator: Option<Indicator>,
-    supplementary: SupplementaryIndicators,
-    selected: bool,
-    elapsed: std::time::Duration,
-    gap: &str,
-) -> Vec<Span<'static>> {
-    let mut spans = match indicator {
-        Some(Indicator::Status(status)) => vec![Span::styled(
-            format!("{gap}{}", status.glyph()),
-            if selected {
-                THEME.selected_status_style(status)
-            } else {
-                status_style(status)
-            },
-        )],
-        Some(Indicator::Running) => vec![Span::styled(
-            format!("{gap}{}", super::spinner::frame(elapsed)),
-            if selected {
-                THEME.selected_status_style(Status::Running)
-            } else {
-                status_style(Status::Running)
-            },
-        )],
-        Some(Indicator::Merging) => vec![Span::styled(
-            format!("{gap}⇄ {}", super::spinner::frame(elapsed)),
-            THEME.hint_style(),
-        )],
-        Some(Indicator::ShellActivity) => vec![Span::styled(
-            format!("{gap}{}", super::spinner::term_frame(elapsed)),
-            THEME.term_style(),
-        )],
-        Some(Indicator::SubagentActivity(active)) => vec![activity_span(active, gap)],
-        Some(Indicator::DroprRefresh) => vec![Span::styled(
-            format!("{gap}{}", super::spinner::frame(elapsed)),
-            THEME.hint_style(),
-        )],
-        None => Vec::new(),
-    };
-    if supplementary.worktree_missing {
-        let prefix = if spans.is_empty() { gap } else { " " };
-        spans.push(Span::styled(
-            format!("{prefix}⌦"),
-            THEME.worktree_missing_style(selected),
-        ));
-    }
-    if supplementary.merge_failed {
-        let prefix = if spans.is_empty() { gap } else { " " };
-        spans.push(Span::styled(
-            format!("{prefix}merge-failed"),
-            THEME.merge_failed_style(selected),
-        ));
-    }
-    spans
-}
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
@@ -93,7 +32,17 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
 
         match *item {
             Selection::Chief => {
-                lines.push(Line::from(Span::styled(format!("{marker} CHIEF"), style)));
+                let status = super::chief::status();
+                let mut spans = vec![Span::styled(format!("{marker} CHIEF"), style)];
+                let state = IndicatorState::with_status(Some(status));
+                spans.extend(indicator::spans(
+                    select(state),
+                    select_supplementary(state),
+                    selected,
+                    app.started.elapsed(),
+                    "  ",
+                ));
+                lines.push(Line::from(spans));
             }
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
@@ -120,7 +69,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.shell_active = repo.main_shell_working;
                 indicator_state.subagents_active = repo.main_subagents_active;
                 indicator_state.dropr_refresh = dropr_refresh;
-                spans.extend(indicator_spans(
+                spans.extend(indicator::spans(
                     select(indicator_state),
                     select_supplementary(indicator_state),
                     selected,
@@ -149,7 +98,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         if selected {
                             THEME.selected_status_style(status)
                         } else {
-                            status_style(status)
+                            THEME.status_style(status)
                         }
                     };
                     let mut first = true;
@@ -223,7 +172,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.merge_failed = agent.merge_error.is_some();
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.subagents_active = active;
-                spans.extend(indicator_spans(
+                spans.extend(indicator::spans(
                     select(indicator_state),
                     select_supplementary(indicator_state),
                     selected,
@@ -301,22 +250,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         .style(THEME.accent_style());
     frame.render_widget(tree, panes.tree);
 
-    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
-    let ident_width = ("ROBCO ".len() + version.chars().count() + 2) as u16;
-    let zones = layout::footer_zones(root.footer, ident_width);
-
-    let ident = Paragraph::new(Line::from(vec![
-        Span::styled("ROBCO", THEME.accent_bold_style()),
-        Span::styled(format!(" {version}"), THEME.hint_style()),
-    ]));
-    frame.render_widget(ident, zones.ident);
-
-    let hints = Paragraph::new(hints::hints_line(
-        message,
-        hints::r_hint_label(app.selected_item()),
-    ))
-    .alignment(Alignment::Center);
-    frame.render_widget(hints, zones.hints);
+    footer::draw(frame, app, root.footer, message);
 }
 
 fn short_path(path: &std::path::Path) -> String {
