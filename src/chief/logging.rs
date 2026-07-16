@@ -54,7 +54,7 @@ pub fn append(entry: &DecisionEntry) -> Result<()> {
     append_to(&super::decision_log_path()?, entry)
 }
 
-fn append_to(path: &Path, entry: &DecisionEntry) -> Result<()> {
+pub(crate) fn append_to(path: &Path, entry: &DecisionEntry) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
