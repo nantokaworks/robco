@@ -1,0 +1,268 @@
+use chrono::{DateTime, Utc};
+
+use super::{Candidate, plan_dispatch};
+use crate::chief::{
+    CHIEF_AGENT_ID,
+    exec::COMMAND_TIMEOUT,
+    ledger::{Ledger, LedgerEntry, LedgerPhase},
+    logging::{self, DecisionEntry, DecisionKind},
+    templates::worker_prompt,
+};
+use crate::{Result, config::Config, dropr, registry::Registry, spawn};
+
+pub fn dispatch_pass(config: &mut Config, ledger: &mut Ledger, now: DateTime<Utc>) -> Result<()> {
+    let preflight = plan_dispatch(&config.chief, ledger, &[], now);
+    ledger.counters.date = Some(preflight.date);
+    ledger.counters.dispatched_today = preflight.dispatched_today;
+    if preflight.circuit_opened {
+        open_circuit(config)?;
+        return Ok(());
+    }
+    if let Some(decision) = preflight.decisions.first() {
+        log_global(DecisionKind::Skip, &decision.reason)?;
+        return Ok(());
+    }
+
+    let candidates = gather_candidates()?;
+    let plan = plan_dispatch(&config.chief, ledger, &candidates, now);
+    let mut failures = ledger.counters.consecutive_failures;
+    let opened = execute_plan(
+        plan.decisions,
+        config.chief.failure_circuit_threshold,
+        &mut failures,
+        |candidate| spawn_candidate(config, ledger, candidate, now),
+        log_candidate,
+    )?;
+    ledger.counters.consecutive_failures = failures;
+    if opened {
+        open_circuit(config)?;
+    }
+    Ok(())
+}
+
+fn execute_plan<F, L>(
+    decisions: Vec<super::GateDecision>,
+    threshold: u32,
+    failures: &mut u32,
+    mut spawn: F,
+    mut log: L,
+) -> Result<bool>
+where
+    F: FnMut(&Candidate) -> Result<()>,
+    L: FnMut(DecisionKind, &Candidate, &str) -> Result<()>,
+{
+    for decision in decisions {
+        let Some(candidate) = decision.candidate else {
+            continue;
+        };
+        if !decision.dispatch {
+            log(DecisionKind::Skip, &candidate, &decision.reason)?;
+            continue;
+        }
+        if *failures >= threshold {
+            return Ok(true);
+        }
+        if let Err(error) = spawn(&candidate) {
+            *failures = failures.saturating_add(1);
+            log(
+                DecisionKind::Hold,
+                &candidate,
+                &format!("spawn_failed:{error}"),
+            )?;
+            if *failures >= threshold {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn open_circuit(config: &mut Config) -> Result<()> {
+    config.chief.dispatch_enabled = false;
+    config.save()?;
+    log_global(DecisionKind::CircuitOpen, "failure threshold reached")?;
+    log_global(
+        DecisionKind::Escalate,
+        "dispatch disabled pending operator reset",
+    )?;
+    eprintln!("chief: dispatch circuit opened; operator action required");
+    Ok(())
+}
+
+fn gather_candidates() -> Result<Vec<Candidate>> {
+    let registry = Registry::load()?;
+    let workspaces = dropr::DroprOverlay::load_best_effort_timeout(COMMAND_TIMEOUT);
+    let mut candidates = Vec::new();
+    for repo in &registry.repos {
+        let Some(remote) = &repo.remote_url else {
+            continue;
+        };
+        let Some(workspace) = workspaces.find_by_repo_url(remote) else {
+            continue;
+        };
+        let tasks =
+            match dropr::fetch_ready_dispatch_tasks_timeout(&workspace.id, 50, COMMAND_TIMEOUT) {
+                Ok(tasks) => tasks,
+                Err(error) => {
+                    log_ready_failure(
+                        &repo.path.to_string_lossy(),
+                        &workspace.id,
+                        error,
+                        logging::append,
+                    )?;
+                    continue;
+                }
+            };
+        for task in tasks {
+            candidates.push(Candidate {
+                task_id: if task.id.is_empty() {
+                    task.task.display_id.clone()
+                } else {
+                    task.id
+                },
+                display_id: task.task.display_id,
+                title: task.task.title,
+                repo: repo.path.to_string_lossy().into_owned(),
+                author: task.author,
+            });
+        }
+    }
+    Ok(candidates)
+}
+
+fn spawn_candidate(
+    config: &Config,
+    ledger: &mut Ledger,
+    task: &Candidate,
+    now: DateTime<Utc>,
+) -> Result<()> {
+    let mut worker_config = config.clone();
+    if let Some(profile) = &config.chief.worker_profile {
+        worker_config.default_program.clone_from(profile);
+    }
+    let extra_args = worker_config
+        .profiles
+        .iter()
+        .find(|profile| profile.name == worker_config.default_program)
+        .map(|profile| profile.autonomous_args.clone())
+        .unwrap_or_default();
+    let prompt = worker_prompt(&task.display_id, &task.task_id, &task.title, &task.repo);
+    let outcome = spawn::spawn_in_repo(
+        &task.repo,
+        &task.title,
+        Some(&prompt),
+        Some(CHIEF_AGENT_ID),
+        &extra_args,
+        &worker_config,
+    )?;
+    let retries = ledger
+        .entries
+        .iter()
+        .filter(|entry| entry.task_id == task.task_id)
+        .count() as u32;
+    ledger.entries.push(LedgerEntry {
+        task_id: task.task_id.clone(),
+        display_id: task.display_id.clone(),
+        repo: task.repo.clone(),
+        agent_id: outcome.id,
+        branch: outcome.branch,
+        phase: LedgerPhase::Dispatched,
+        dispatched_at: now,
+        retries,
+        pr_url: None,
+    });
+    ledger.counters.dispatched_today += 1;
+    log_candidate(DecisionKind::Dispatch, task, "worker spawned")
+}
+
+fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) -> Result<()> {
+    let mut entry = DecisionEntry::new(kind, reason);
+    entry.task = Some(task.task_id.clone());
+    entry.repo = Some(task.repo.clone());
+    entry.source = Some("dispatch".into());
+    logging::append(&entry)
+}
+
+fn log_ready_failure<F>(
+    repo: &str,
+    workspace: &str,
+    error: dropr::ReadyDispatchError,
+    append: F,
+) -> Result<()>
+where
+    F: FnOnce(&DecisionEntry) -> Result<()>,
+{
+    let mut entry = DecisionEntry::new(DecisionKind::Skip, error.reason());
+    entry.repo = Some(repo.into());
+    entry.source = Some("dispatch".into());
+    entry.reason = format!("{}:{workspace}", error.reason());
+    append(&entry)
+}
+
+fn log_global(kind: DecisionKind, reason: &str) -> Result<()> {
+    let mut entry = DecisionEntry::new(kind, reason);
+    entry.source = Some("dispatch".into());
+    logging::append(&entry)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chief::dispatch::GateDecision;
+
+    fn candidate(id: &str) -> Candidate {
+        Candidate {
+            task_id: id.into(),
+            display_id: format!("#{id}"),
+            title: id.into(),
+            repo: format!("/{id}"),
+            author: "allowed".into(),
+        }
+    }
+
+    #[test]
+    fn circuit_stops_mid_plan() {
+        let decisions = [candidate("1"), candidate("2")]
+            .into_iter()
+            .map(|candidate| GateDecision {
+                candidate: Some(candidate),
+                dispatch: true,
+                reason: "ready".into(),
+            })
+            .collect();
+        let mut failures = 0;
+        let mut spawned = Vec::new();
+        let opened = execute_plan(
+            decisions,
+            1,
+            &mut failures,
+            |candidate| {
+                spawned.push(candidate.task_id.clone());
+                Err(std::io::Error::other("spawn failed").into())
+            },
+            |_, _, _| Ok(()),
+        )
+        .unwrap();
+        assert!(opened);
+        assert_eq!(spawned, ["1"]);
+    }
+
+    #[test]
+    fn fetch_failure_emits_skip_decision() {
+        let mut captured = None;
+        log_ready_failure(
+            "/repo",
+            "workspace-1",
+            dropr::ReadyDispatchError::Parse,
+            |entry| {
+                captured = Some(entry.clone());
+                Ok(())
+            },
+        )
+        .unwrap();
+        let entry = captured.unwrap();
+        assert_eq!(entry.kind, DecisionKind::Skip);
+        assert_eq!(entry.reason, "ready_parse_failed:workspace-1");
+        assert_eq!(entry.repo.as_deref(), Some("/repo"));
+    }
+}
