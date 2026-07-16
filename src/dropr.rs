@@ -77,16 +77,18 @@ impl DroprOverlay {
         Self { by_canonical_repo }
     }
 
-    pub fn load_best_effort_timeout(timeout: Duration) -> Self {
+    /// Load the workspace overlay, also reporting whether the
+    /// `dropr workspace list` invocation succeeded, so callers can tell
+    /// "no workspaces" apart from "dropr CLI unavailable or failing".
+    pub fn load_with_status_timeout(timeout: Duration) -> (Self, bool) {
         let mut command = Command::new("dropr");
         command.args(["workspace", "list"]);
-        let Ok(output) = crate::chief::exec::run_timeout(command, timeout) else {
-            return Self::default();
-        };
-        if !output.status.success() {
-            return Self::default();
+        match crate::chief::exec::run_timeout(command, timeout) {
+            Ok(output) if output.status.success() => {
+                (Self::from_workspace_list(&output.stdout), true)
+            }
+            _ => (Self::default(), false),
         }
-        Self::from_workspace_list(&output.stdout)
     }
 
     fn from_workspace_list(raw: &[u8]) -> Self {
