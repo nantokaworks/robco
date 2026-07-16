@@ -20,6 +20,25 @@ fn parses_report_subcommand() {
 }
 
 #[test]
+fn parses_add_subcommand() {
+    let args = Args::try_parse_from([
+        "robco",
+        "add",
+        "ssh://git@host:29418/owner/repo.git",
+        "--branch",
+        "dev",
+        "--name",
+        "local",
+    ])
+    .unwrap();
+    let Some(Command::Add(args)) = args.command else {
+        panic!("expected add command");
+    };
+    assert_eq!(args.branch.as_deref(), Some("dev"));
+    assert_eq!(args.name.as_deref(), Some("local"));
+}
+
+#[test]
 fn parses_spawn_subcommand() {
     let args = Args::try_parse_from([
         "robco",
@@ -85,11 +104,17 @@ fn parses_list_subcommand_with_directory() {
 #[test]
 fn parses_list_subcommand_after_launch_directory() {
     let args = Args::try_parse_from(["robco", "/some/dir", "list"]).unwrap();
-    assert_eq!(args.launch_dir, PathBuf::from("/some/dir"));
+    assert_eq!(args.launch_dir, Some(PathBuf::from("/some/dir")));
     let Some(Command::List(args)) = args.command else {
         panic!("expected list command");
     };
     assert_eq!(args.dir, None);
+}
+
+#[test]
+fn bare_invocation_has_no_ephemeral_root() {
+    let args = Args::try_parse_from(["robco"]).unwrap();
+    assert_eq!(args.launch_dir, None);
 }
 
 #[test]

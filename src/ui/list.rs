@@ -8,6 +8,14 @@ use crate::{
 use super::{App, default_pane, panes_for};
 
 impl App {
+    pub(crate) fn effective_roots(&self) -> impl Iterator<Item = &std::path::Path> {
+        std::iter::once(self.config.repos_root.as_path()).chain(
+            self.ephemeral_root
+                .as_deref()
+                .filter(|root| *root != self.config.repos_root),
+        )
+    }
+
     /// Stable identity for the current selection, used to remember its preview
     /// tab. Indices shift as items are added or removed, so repos key on their
     /// path and agents on their unique id.
@@ -120,10 +128,14 @@ impl App {
         let key = self.item_key(selection);
         self.preview_tabs.insert(key, next);
     }
-    /// Whether `repo` was discovered under the current launch directory (a
-    /// direct child), as opposed to carried over from a launch elsewhere.
+    /// Whether `repo` is a direct child of one of the effective discovery roots.
     pub(in crate::ui) fn repo_is_local(&self, repo: &RepoNode) -> bool {
-        repo.path.parent() == Some(self.launch_dir.as_path())
+        repo.path.parent().is_some_and(|parent| {
+            self.effective_roots().into_iter().any(|root| {
+                super::actions::discovery::path_key(parent)
+                    == super::actions::discovery::path_key(root)
+            })
+        })
     }
 
     /// Registry indices of off-launch-dir repos that still have agents or were

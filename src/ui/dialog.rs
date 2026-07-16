@@ -48,7 +48,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         Mode::PromptRepo { input } => (
             "add repo",
             vec![
-                input_line("repo path", input),
+                input_line("git URL or path", input),
+                hint_line("git format: <git-url> [branch]"),
                 hint_line("enter add   esc cancel"),
             ],
         ),

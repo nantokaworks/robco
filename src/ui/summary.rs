@@ -13,7 +13,11 @@ use crate::{
 
 use super::{blockfont, repo_description, theme::DEFAULT as THEME};
 
-pub(in crate::ui) fn repo_summary(repo: &RepoNode, width: u16) -> (String, Text<'static>) {
+pub(in crate::ui) fn repo_summary(
+    repo: &RepoNode,
+    repos_root: &std::path::Path,
+    width: u16,
+) -> (String, Text<'static>) {
     let rendered_name = blockfont::render_fitting(&repo.name, usize::from(width));
     let name_style = if rendered_name.is_some() {
         THEME.accent_style()
@@ -47,6 +51,10 @@ pub(in crate::ui) fn repo_summary(repo: &RepoNode, width: u16) -> (String, Text<
         Line::from(vec![
             Span::styled("agents: ", THEME.muted_style()),
             Span::raw(repo.agents.len().to_string()),
+        ]),
+        Line::from(vec![
+            Span::styled("repos root: ", THEME.muted_style()),
+            Span::raw(repos_root.display().to_string()),
         ]),
     ]);
 

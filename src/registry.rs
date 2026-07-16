@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs::{self, OpenOptions},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use fd_lock::RwLock;
@@ -38,6 +38,29 @@ impl Registry {
         ensure_robco_dir()?;
         let path = state_path()?;
         self.save_at(&path)
+    }
+
+    pub fn add_pinned(&mut self, path: &Path) -> Result<bool> {
+        let path = path.canonicalize()?;
+        Ok(self.add_canonical_pinned(path))
+    }
+
+    pub fn locked_add_pinned(path: &Path) -> Result<()> {
+        let path = path.canonicalize()?;
+        Self::locked_update(|registry| {
+            registry.add_canonical_pinned(path);
+        })
+        .map(|_| ())
+    }
+
+    fn add_canonical_pinned(&mut self, path: PathBuf) -> bool {
+        if let Some(repo) = self.repos.iter_mut().find(|repo| repo.path == path) {
+            let changed = !repo.pinned;
+            repo.pinned = true;
+            return changed;
+        }
+        self.repos.push(crate::discover::repo_node(path, true));
+        true
     }
 
     /// Serialize a registry read-modify-write transaction across processes.

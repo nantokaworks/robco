@@ -29,14 +29,14 @@ use crate::{
 
 use super::{App, DISCOVERY_INTERVAL, dialog, preview, spinner, tree};
 
-pub fn run(registry: Registry, config: Config, launch_dir: PathBuf) -> Result<()> {
+pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(registry, config, launch_dir);
+    let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
     // Establish live status before the watcher records its first baseline.
     // Otherwise deserialized `worktree_missing = false` can race the first tick.
     app.tick();
@@ -106,6 +106,7 @@ fn run_loop<B: ratatui::backend::Backend>(
         }
         drain_stdout_notifications(notify_rx, app);
         app.drain_merge_events()?;
+        app.drain_clone_events();
 
         if app
             .message

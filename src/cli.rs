@@ -11,8 +11,7 @@ use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, erro
 )]
 pub struct Args {
     /// Directory whose direct children should be scanned for git repositories.
-    #[arg(default_value = ".")]
-    pub launch_dir: PathBuf,
+    pub launch_dir: Option<PathBuf>,
 
     /// Program to launch for newly-created agents.
     #[arg(long)]
@@ -32,6 +31,8 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Clone a git repository into the managed repos directory.
+    Add(AddArgs),
     /// Run and administer the autonomous Chief control plane.
     Chief(ChiefArgs),
     /// Print config and state paths.
@@ -54,6 +55,18 @@ pub enum Command {
     Uninstall(InstallArgs),
     /// Print version information.
     Version,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct AddArgs {
+    /// Git URL to clone.
+    pub url: String,
+    /// Branch to check out while cloning.
+    #[arg(long)]
+    pub branch: Option<String>,
+    /// Destination directory name under repos_root.
+    #[arg(long)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, ClapArgs)]
