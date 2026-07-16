@@ -95,6 +95,48 @@ if command -v sccache >/dev/null 2>&1; then
   export SCCACHE_CACHE_SIZE="${SCCACHE_CACHE_SIZE:-20G}"
 fi
 
+# Called when preflight finds ${TAG} already on origin. Explains WHY the
+# release cannot proceed (fully published vs tag-only leftover) and what to
+# do next, then exits non-zero via die.
+diagnose_tag_exists() {
+  local release_exists="" release_state="unknown (gh unavailable or not authenticated)"
+  if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+    # Only a definite "release not found" means tag-only leftover; any other
+    # gh failure (network, permissions) leaves the state unknown so we never
+    # hand out a resume hint based on a transient error.
+    local gh_out gh_status=0
+    gh_out="$(gh release view "${TAG}" --repo "${RELEASES_REPO}" 2>&1)" || gh_status=$?
+    if [ "$gh_status" -eq 0 ]; then
+      release_exists=1
+      release_state="yes (fully published)"
+    elif grep -qi 'release not found' <<<"$gh_out"; then
+      release_exists=0
+      release_state="no (tag-only leftover)"
+    else
+      # First line only; parameter expansion avoids a pipeline that could
+      # SIGPIPE under pipefail on unusually large gh output.
+      release_state="unknown (gh release view failed: ${gh_out%%$'\n'*})"
+    fi
+  fi
+
+  # Tag is present locally here: preflight fetches origin with --tags first.
+  local ahead
+  ahead="$(git rev-list --count "${TAG}..origin/main" 2>/dev/null || echo "unknown")"
+
+  local next_version
+  next_version="$(printf '%s\n' "$VERSION" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')"
+
+  log "tag ${TAG} already exists on origin; diagnosis:"
+  log "  - GitHub release ${TAG} on ${RELEASES_REPO}: ${release_state}"
+  log "  - commits on origin/main since ${TAG}: ${ahead}"
+  case "$release_exists" in
+    1) log "  - next: ${VERSION} is already released; bump the version in Cargo.toml (e.g. ${next_version}), merge to main, then re-run task release" ;;
+    0) log "  - next: the tag was pushed but no GitHub release was published; resume with scripts/release.sh --from=build (or --from=publish if dist/ still holds the ${VERSION} artifacts)" ;;
+    *) log "  - next: could not determine the release state; check gh auth (gh auth login) and network, then re-run, or inspect https://github.com/${RELEASES_REPO}/releases/tag/${TAG} manually" ;;
+  esac
+  die "tag ${TAG} already exists on origin"
+}
+
 if stage_active preflight; then
   log "stage: preflight"
 
@@ -106,7 +148,7 @@ if stage_active preflight; then
   [ "$VERSION" = "$remote_version" ] || die "local Cargo.toml is ${VERSION}, origin/main is ${remote_version}; merge the bump first"
 
   if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-    die "tag ${TAG} already exists on origin"
+    diagnose_tag_exists
   fi
 
   command -v gh >/dev/null || die "gh CLI not found"
