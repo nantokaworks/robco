@@ -11,10 +11,10 @@ use crate::subagents::SubagentStatus;
 use super::{App, layout, theme::DEFAULT as THEME};
 use indicator::{IndicatorState, select, select_supplementary};
 
-mod activity;
 mod footer;
 mod hints;
 mod indicator;
+mod label;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
@@ -33,30 +33,36 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         match *item {
             Selection::Chief => {
                 let status = super::chief::status();
-                let mut spans = vec![Span::styled(format!("{marker} CHIEF"), style)];
                 let state = IndicatorState::with_status(Some(status));
-                spans.extend(indicator::spans(
-                    select(state),
+                let primary = select(state);
+                let right = indicator::supplementary_spans(
+                    primary,
                     select_supplementary(state),
                     selected,
-                    app.started.elapsed(),
                     "  ",
+                );
+                lines.push(label::labeled_row(
+                    panes.tree.width,
+                    format!("{marker} "),
+                    primary,
+                    "CHIEF",
+                    style,
+                    style,
+                    selected,
+                    app.started.elapsed(),
+                    right,
                 ));
-                lines.push(Line::from(spans));
             }
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
                 let prefix = app.config.project_icon.marker(expanded);
-                let mut spans = vec![
-                    Span::styled(format!("{marker} {prefix} {}", repo.name), style),
-                    Span::styled(
-                        format!(" {}", repo.agents.len()),
-                        if selected { style } else { THEME.hint_style() },
-                    ),
-                ];
+                let mut right = vec![Span::styled(
+                    format!(" {}", repo.agents.len()),
+                    if selected { style } else { THEME.hint_style() },
+                )];
                 if !app.repo_is_local(repo) {
-                    spans.push(Span::styled(
+                    right.push(Span::styled(
                         format!("  {}", short_path(&repo.path)),
                         if selected { style } else { THEME.muted_style() },
                     ));
@@ -69,11 +75,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.shell_active = repo.main_shell_working;
                 indicator_state.subagents_active = repo.main_subagents_active;
                 indicator_state.dropr_refresh = dropr_refresh;
-                spans.extend(indicator::spans(
-                    select(indicator_state),
+                let primary = select(indicator_state);
+                right.extend(indicator::supplementary_spans(
+                    primary,
                     select_supplementary(indicator_state),
                     selected,
-                    app.started.elapsed(),
                     "  ",
                 ));
                 if !expanded && !repo.agents.is_empty() {
@@ -106,8 +112,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         if count == 0 {
                             continue;
                         }
-                        spans.push(Span::styled(if first { "  " } else { " · " }, style));
-                        spans.push(Span::styled(
+                        right.push(Span::styled(if first { "  " } else { " · " }, style));
+                        right.push(Span::styled(
                             format!("{count} {}", status.glyph()),
                             status_style(status),
                         ));
@@ -119,8 +125,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         .filter(|agent| agent.worktree_missing)
                         .count();
                     if missing_count > 0 {
-                        spans.push(Span::styled(if first { "  " } else { " · " }, style));
-                        spans.push(Span::styled(
+                        right.push(Span::styled(if first { "  " } else { " · " }, style));
+                        right.push(Span::styled(
                             format!("{missing_count} ⌦"),
                             THEME.worktree_missing_style(selected),
                         ));
@@ -131,14 +137,24 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         .filter(|agent| agent.merge_error.is_some())
                         .count();
                     if merge_failed_count > 0 {
-                        spans.push(Span::styled(if first { "  " } else { " · " }, style));
-                        spans.push(Span::styled(
+                        right.push(Span::styled(if first { "  " } else { " · " }, style));
+                        right.push(Span::styled(
                             format!("{merge_failed_count} merge-failed"),
                             THEME.merge_failed_style(selected),
                         ));
                     }
                 }
-                lines.push(Line::from(spans));
+                lines.push(label::labeled_row(
+                    panes.tree.width,
+                    format!("{marker} {prefix} "),
+                    primary,
+                    &repo.name,
+                    style,
+                    style,
+                    selected,
+                    app.started.elapsed(),
+                    right,
+                ));
                 if expanded && repo.agents.is_empty() {
                     lines.push(Line::from(Span::styled(
                         "    (no agents)",
@@ -157,10 +173,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 } else {
                     style
                 };
-                let mut spans = vec![
-                    Span::styled(format!("{marker}   {}", "  ".repeat(depth)), style),
-                    Span::styled(&agent.title, agent_style),
-                ];
                 let active = agent
                     .subagents
                     .iter()
@@ -172,14 +184,24 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.merge_failed = agent.merge_error.is_some();
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.subagents_active = active;
-                spans.extend(indicator::spans(
-                    select(indicator_state),
+                let primary = select(indicator_state);
+                let right = indicator::supplementary_spans(
+                    primary,
                     select_supplementary(indicator_state),
                     selected,
-                    app.started.elapsed(),
                     " ",
+                );
+                lines.push(label::labeled_row(
+                    panes.tree.width,
+                    format!("{marker}   {}", "  ".repeat(depth)),
+                    primary,
+                    &agent.title,
+                    style,
+                    agent_style,
+                    selected,
+                    app.started.elapsed(),
+                    right,
                 ));
-                lines.push(Line::from(spans));
             }
             Selection::ChildWorktree { repo, agent, child } => {
                 let repo = &app.registry.repos[repo];

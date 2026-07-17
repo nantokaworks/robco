@@ -1,7 +1,7 @@
 use crate::model::Status;
 
 mod render;
-pub(in crate::ui::tree) use render::spans;
+pub(in crate::ui::tree) use render::{primary_span, supplementary_spans};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Indicator {
