@@ -223,6 +223,8 @@ impl App {
                         self.show_message(format!(
                             "merge in progress: {branch} — wait or ctrl-c to force quit"
                         ));
+                    } else if matches!(key.code, KeyCode::Esc) && self.dismiss_merge_outcome() {
+                        self.show_message("dismissed merge notice");
                     } else {
                         return Ok(true);
                     }

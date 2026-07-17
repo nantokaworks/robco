@@ -1,8 +1,9 @@
 use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
+    layout::Rect,
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
 };
 
 use crate::{
@@ -10,13 +11,17 @@ use crate::{
     model::{Selection, Status},
     registry::Registry,
     ui::{
-        App, PreviewPane, layout, merge_dialog, panes_for, scrollback,
+        App, PreviewPane, layout, merge_dialog, scrollback,
         summary::{agent_summary, child_summary, repo_summary},
         theme::DEFAULT as THEME,
     },
 };
 
 mod branch_only;
+#[cfg(test)]
+mod render_tests;
+mod tabs;
+use tabs::preview_tabs_line;
 /// Inner padding between the preview border and its content, applied to every
 /// tab. `scrollback::capture` subtracts it when sizing mirrored tmux sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
@@ -33,7 +38,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let root = layout::root(frame.area());
     let panes = layout::panes(root.body);
 
-    let (title, mut text) = match (pane, selection) {
+    let (title, text) = match (pane, selection) {
         (PreviewPane::Info, Some(Selection::Chief)) => super::chief::summary(),
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
@@ -214,8 +219,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             vec![Line::from("No repositories discovered.")].into(),
         ),
     };
-    merge_dialog::append_preview(app, pane, selection, &mut text);
-
     // Live tmux tabs already captured the scrolled-back window; scrolling the
     // paragraph on top of that would double-shift. Static tabs keep it.
     let para_scroll = if scrollback::live_session(app).is_some() {
@@ -228,7 +231,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         .title_top(Line::from(title).right_aligned())
         .borders(Borders::ALL)
         .padding(Padding::uniform(PREVIEW_PADDING));
-    if let Some(title) = merge_dialog::preview_title(app) {
+    if let Some(title) = merge_dialog::preview_title(app, selection) {
         block = block.title_bottom(title);
     }
     let preview = Paragraph::new(text)
@@ -237,12 +240,46 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         .wrap(Wrap { trim: false })
         .scroll((para_scroll, 0));
     frame.render_widget(preview, panes.preview);
+    render_merge_notice(frame, app, selection, panes.preview);
 }
 
-/// Resolve the label shown on the AI tab. Agents surface their own program
-/// (profile name, or the first token of the launch command); the main worktree
-/// falls back to the configured default program, which is known even when no AI
-/// session has been launched yet.
+pub(in crate::ui) fn render_merge_notice(
+    frame: &mut Frame<'_>,
+    app: &App,
+    selection: Option<Selection>,
+    area: Rect,
+) {
+    let notice = merge_dialog::notice_lines(app, selection);
+    if notice.is_empty() {
+        return;
+    }
+    let inner_width = area.width.saturating_sub(2).max(1);
+    let rows: u16 = notice
+        .iter()
+        .map(|line| {
+            let w = line.width() as u16;
+            (w / inner_width + u16::from(w % inner_width != 0)).max(1)
+        })
+        .fold(0u16, |acc, r| acc.saturating_add(r));
+    let height = rows.saturating_add(2).min(area.height);
+    let popup = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height,
+    };
+    frame.render_widget(Clear, popup);
+    let block = Block::default()
+        .title(" merge ")
+        .borders(Borders::ALL)
+        .border_style(THEME.accent_style());
+    let para = Paragraph::new(notice)
+        .block(block)
+        .style(THEME.accent_style())
+        .wrap(Wrap { trim: false });
+    frame.render_widget(para, popup);
+}
+
 fn ai_label(selection: Option<Selection>, registry: &Registry, default_program: &str) -> String {
     let raw = match selection {
         Some(Selection::Agent { repo, agent }) => {
@@ -259,38 +296,4 @@ fn ai_label(selection: Option<Selection>, registry: &Registry, default_program: 
         _ => default_program.to_string(),
     };
     raw.to_uppercase()
-}
-
-fn preview_tabs_line(
-    active: PreviewPane,
-    selection: Option<Selection>,
-    ai_label: &str,
-) -> Line<'static> {
-    let mut spans = Vec::new();
-    for (idx, pane) in panes_for(selection).iter().enumerate() {
-        if idx > 0 {
-            spans.push(Span::styled(" │ ", THEME.muted_style()));
-        }
-
-        let label = match pane {
-            PreviewPane::Info => "INFO",
-            PreviewPane::Claude => ai_label,
-            PreviewPane::Diff => "DIFF",
-            PreviewPane::Terminal => "TERM",
-        };
-        let is_active = *pane == active;
-        let text = if is_active {
-            format!("[{label}]")
-        } else {
-            format!(" {label} ")
-        };
-        let style = if is_active {
-            THEME.selection_style()
-        } else {
-            THEME.muted_style()
-        };
-        spans.push(Span::styled(text, style));
-    }
-
-    Line::from(spans)
 }

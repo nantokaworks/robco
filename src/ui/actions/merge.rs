@@ -48,6 +48,15 @@ struct MergeTarget {
 }
 
 impl App {
+    /// Clear a lingering merge outcome banner. No-op (returns false) while a
+    /// merge job is still running, so an in-progress merge cannot be dismissed.
+    pub(in crate::ui) fn dismiss_merge_outcome(&mut self) -> bool {
+        if self.merge_job.is_some() {
+            return false;
+        }
+        self.merge_outcome.take().is_some()
+    }
+
     pub(in crate::ui) fn start_merge(&mut self, repo: usize, agent_idx: usize) {
         if let Some(job) = &self.merge_job {
             self.mode = super::super::Mode::Normal;

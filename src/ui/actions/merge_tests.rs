@@ -1,13 +1,12 @@
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::text::Text;
 
 use super::*;
 use crate::{
     config::Config,
     model::{AgentNode, RepoNode, Selection, Status},
     registry::Registry,
-    ui::{Mode, PreviewPane},
+    ui::Mode,
 };
 
 fn agent(id: &str) -> AgentNode {
@@ -138,66 +137,97 @@ fn ctrl_c_force_quits_from_prompt_while_merging() {
 }
 
 #[test]
-fn merge_progress_banner_is_global_across_preview_panes() {
+fn merge_progress_banner_is_scoped_to_matching_agent() {
     let mut app = test_app();
     app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
     install_job(&mut app, "/repo", "wanted");
-    let mut text = Text::from("preview body");
-
-    crate::ui::merge_dialog::append_preview(
-        &app,
-        PreviewPane::Diff,
-        Some(Selection::Repo(0)),
-        &mut text,
-    );
-
-    assert!(
-        text.lines[0]
-            .to_string()
-            .starts_with("MERGING feature/wanted")
-    );
-    assert!(text.lines[0].to_string().contains(MERGING_PR));
-    assert_eq!(text.lines[2].to_string(), "preview body");
+    let notice =
+        crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 0 }));
+    assert!(notice[0].to_string().starts_with("MERGING feature/wanted"));
+    assert!(notice[0].to_string().contains(MERGING_PR));
+    assert!(crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Repo(0))).is_empty());
+    assert!(crate::ui::merge_dialog::notice_lines(&app, None).is_empty());
     assert_eq!(
-        crate::ui::merge_dialog::preview_title(&app)
+        crate::ui::merge_dialog::preview_title(&app, Some(Selection::Agent { repo: 0, agent: 0 }),)
             .unwrap()
             .to_string()
             .trim(),
         "MERGING feature/wanted · merging PR"
     );
+    assert!(crate::ui::merge_dialog::preview_title(&app, Some(Selection::Repo(0))).is_none());
 }
 
 #[test]
-fn merge_outcome_notice_is_global_across_preview_panes() {
+fn merge_outcome_notice_is_scoped_to_matching_agent() {
     let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted"), agent("not-wanted")])];
     app.merge_outcome = Some(MergeOutcome {
         repo_path: "/repo".into(),
         agent_id: "wanted".into(),
         branch: "feature/wanted".into(),
         result: Err("failed detail".into()),
     });
-    let mut text = Text::from("branch-only body");
-
-    crate::ui::merge_dialog::append_preview(
-        &app,
-        PreviewPane::Terminal,
-        Some(Selection::Agent { repo: 0, agent: 0 }),
-        &mut text,
-    );
-
-    assert_eq!(text.lines[0].to_string(), "MERGE FAILED");
+    let notice =
+        crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 0 }));
+    assert!(notice.iter().any(|line| line.to_string() == "MERGE FAILED"));
     assert!(
-        text.lines
+        notice
             .iter()
             .any(|line| line.to_string() == "failed detail")
     );
-    assert_eq!(text.lines.last().unwrap().to_string(), "branch-only body");
+    assert!(crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Repo(0))).is_empty());
+    assert!(
+        crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 1 }),)
+            .is_empty()
+    );
     assert_eq!(
-        crate::ui::merge_dialog::preview_title(&app)
+        crate::ui::merge_dialog::preview_title(&app, Some(Selection::Agent { repo: 0, agent: 0 }),)
             .unwrap()
             .to_string()
             .trim(),
         "MERGE FAILED feature/wanted"
+    );
+}
+
+#[test]
+fn merge_outcome_can_be_dismissed() {
+    let mut app = test_app();
+    let outcome = MergeOutcome {
+        repo_path: "/repo".into(),
+        agent_id: "wanted".into(),
+        branch: "feature/wanted".into(),
+        result: Err("failed detail".into()),
+    };
+    app.merge_outcome = Some(outcome.clone());
+
+    assert!(app.dismiss_merge_outcome());
+    assert!(app.merge_outcome().is_none());
+    assert!(!app.dismiss_merge_outcome());
+
+    app.merge_outcome = Some(outcome);
+    install_job(&mut app, "/repo", "wanted");
+    assert!(!app.dismiss_merge_outcome());
+    assert!(app.merge_outcome().is_some());
+}
+
+#[test]
+fn escape_dismisses_merge_outcome_before_quitting() {
+    let mut app = test_app();
+    app.merge_outcome = Some(MergeOutcome {
+        repo_path: "/repo".into(),
+        agent_id: "wanted".into(),
+        branch: "feature/wanted".into(),
+        result: Ok(()),
+    });
+
+    assert!(
+        !app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap()
+    );
+    assert!(app.merge_outcome().is_none());
+    assert!(
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+            .unwrap()
     );
 }
 
