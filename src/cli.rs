@@ -157,6 +157,9 @@ pub struct SpawnArgs {
     /// Title for the worker agent.
     #[arg(long)]
     pub title: String,
+    /// Explicit naming slug for branch/worktree/tmux; capped to 32 chars. Defaults to the sanitized title.
+    #[arg(long)]
+    pub name_slug: Option<String>,
     /// Initial prompt for the launched program.
     #[arg(long)]
     pub prompt: Option<String>,

@@ -25,6 +25,7 @@ pub struct SpawnOutcome {
 pub fn spawn_in_repo(
     repo_selector: &str,
     title: &str,
+    name_slug: Option<&str>,
     prompt: Option<&str>,
     parent_agent_id: Option<&str>,
     extra_args: &[String],
@@ -33,6 +34,7 @@ pub fn spawn_in_repo(
     spawn_in_repo_with_mode(
         repo_selector,
         title,
+        name_slug,
         prompt,
         parent_agent_id,
         extra_args,
@@ -41,9 +43,11 @@ pub fn spawn_in_repo(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_in_repo_with_mode(
     repo_selector: &str,
     title: &str,
+    name_slug: Option<&str>,
     prompt: Option<&str>,
     parent_agent_id: Option<&str>,
     extra_args: &[String],
@@ -61,6 +65,7 @@ pub(crate) fn spawn_in_repo_with_mode(
     let child = agent::create_agent_with_launch(
         &repo,
         title,
+        name_slug,
         prompt,
         config,
         parent_agent_id,

@@ -25,6 +25,7 @@ pub fn create_agent(
     create_agent_with_launch(
         repo,
         title,
+        None,
         initial_prompt,
         config,
         parent_agent_id,
@@ -38,6 +39,7 @@ pub fn create_agent(
 pub(crate) fn create_agent_with_launch(
     repo: &RepoNode,
     title: &str,
+    name_slug: Option<&str>,
     initial_prompt: Option<&str>,
     config: &Config,
     parent_agent_id: Option<&str>,
@@ -46,18 +48,14 @@ pub(crate) fn create_agent_with_launch(
     prepare_worktree: impl FnOnce(&std::path::Path) -> Result<()>,
 ) -> Result<AgentNode> {
     let id = nanoid!(8);
-    let clean_title = tmux::sanitize_target_part(title);
-    let branch = format!(
-        "{}{}",
-        resolve_branch_prefix(config, &repo.name),
-        clean_title
-    );
+    let name_slug = naming_slug(title, name_slug);
+    let branch = format!("{}{}", resolve_branch_prefix(config, &repo.name), name_slug);
     let base_commit = git::head_commit(&repo.path)?;
     let worktree_path =
         config
             .worktree_root
-            .join(format!("{}_{}_{}", repo.name, clean_title, &id[..6]));
-    let tmux_session = tmux::session_name(&config.tmux_session_prefix, &repo.name, &clean_title);
+            .join(format!("{}_{}_{}", repo.name, name_slug, &id[..6]));
+    let tmux_session = tmux::session_name(&config.tmux_session_prefix, &repo.name, &name_slug);
 
     fs::create_dir_all(&config.worktree_root)?;
     git::add_worktree(&repo.path, &worktree_path, &branch, &base_commit)?;
@@ -100,6 +98,36 @@ pub(crate) fn create_agent_with_launch(
         subagents: Vec::new(),
         children: Vec::new(),
     })
+}
+
+fn naming_slug(title: &str, explicit: Option<&str>) -> String {
+    let sanitized = tmux::sanitize_target_part(explicit.unwrap_or(title));
+    let capped = cap_name_slug(&sanitized);
+    if capped.is_empty() {
+        "agent".to_string()
+    } else {
+        capped
+    }
+}
+
+fn cap_name_slug(raw: &str) -> String {
+    const MAX_CHARS: usize = 32;
+
+    let hard_cap: String = raw.chars().take(MAX_CHARS).collect();
+    let mut capped = if raw.chars().count() > MAX_CHARS {
+        hard_cap.rfind('-').map_or_else(
+            || hard_cap.clone(),
+            |boundary| hard_cap[..boundary].to_string(),
+        )
+    } else {
+        hard_cap.clone()
+    };
+    capped.truncate(capped.trim_end_matches('-').len());
+    if capped.is_empty() && !raw.is_empty() {
+        hard_cap
+    } else {
+        capped
+    }
 }
 
 /// Build an [`AgentNode`] for a worktree that already exists on disk but is not

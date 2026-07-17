@@ -44,6 +44,21 @@ pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Res
             if let Some(prompt) = prompt {
                 command.args(["--prompt", prompt]);
             }
+            let display_id = case
+                .display_id
+                .trim()
+                .trim_start_matches('#')
+                .strip_prefix("task-")
+                .unwrap_or_else(|| case.display_id.trim().trim_start_matches('#'));
+            if !display_id.is_empty() {
+                command.args([
+                    "--name-slug",
+                    &format!(
+                        "task-{display_id}-{}",
+                        crate::tmux::sanitize_target_part(title)
+                    ),
+                ]);
+            }
             let output = run_timeout(command, COMMAND_TIMEOUT)?;
             if output.status.success() {
                 Ok(())
