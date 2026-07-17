@@ -56,10 +56,15 @@ pub(super) fn status() -> Status {
     let config = Config::load()
         .map(|config| config.chief)
         .unwrap_or_default();
-    heartbeat_path()
-        .ok()
-        .filter(|path| heartbeat_is_fresh(path, config.poll_interval_secs))
-        .map_or(Status::Dead, |_| Status::Running)
+    if crate::chief::daemon_pid_alive()
+        && heartbeat_path()
+            .ok()
+            .is_some_and(|path| heartbeat_is_fresh(&path, config.poll_interval_secs))
+    {
+        Status::Running
+    } else {
+        Status::Dead
+    }
 }
 
 pub(super) fn heartbeat_is_fresh(path: &Path, poll_secs: u64) -> bool {
@@ -88,7 +93,8 @@ fn append_health(
         .and_then(|metadata| metadata.modified())
         .ok()
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
-    let alive = heartbeat_is_fresh(path, config.poll_interval_secs);
+    let alive =
+        crate::chief::daemon_pid_alive() && heartbeat_is_fresh(path, config.poll_interval_secs);
     lines.push(pair(
         "daemon",
         if alive { "alive" } else { "STALE / OFFLINE" },
@@ -99,7 +105,15 @@ fn append_health(
         &age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
         !alive,
     ));
-    lines.push(pair("dispatch", on_off(config.dispatch_enabled), false));
+    let dispatch_without_daemon = config.dispatch_enabled && !alive;
+    lines.push(pair(
+        "dispatch",
+        on_off(config.dispatch_enabled),
+        dispatch_without_daemon,
+    ));
+    if dispatch_without_daemon {
+        lines.push(warning(crate::chief::DISPATCH_WITHOUT_DAEMON_HINT));
+    }
     lines.push(pair("auto-merge", on_off(config.auto_merge), false));
     let circuit_open = ledger.counters.consecutive_failures >= config.failure_circuit_threshold;
     lines.push(pair(

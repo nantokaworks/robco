@@ -26,7 +26,7 @@ pub fn run(args: ChiefArgs, config: &Config) -> Result<()> {
         ChiefCommand::Run => unreachable!("async chief run handled by main"),
         ChiefCommand::Status => status(config),
         ChiefCommand::Stop => stop(),
-        ChiefCommand::Set(args) => set(args.setting, args.value.enabled()),
+        ChiefCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         ChiefCommand::Panic => panic_stop(),
         ChiefCommand::InstallService => install_service().map(|_| ()),
     }
@@ -35,14 +35,11 @@ pub fn run(args: ChiefArgs, config: &Config) -> Result<()> {
 fn status(config: &Config) -> Result<()> {
     let ledger = Ledger::load()?;
     let pid = read_pid();
-    let alive = pid.is_some_and(process_alive);
     let heartbeat_age = fs::metadata(heartbeat_path()?)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
-    let fresh = heartbeat_age.is_some_and(|age| {
-        age <= Duration::from_secs(config.chief.poll_interval_secs.saturating_mul(2).max(5))
-    });
+    let healthy = daemon_healthy(config.chief.poll_interval_secs);
     let active: Vec<_> = ledger
         .entries
         .iter()
@@ -58,11 +55,7 @@ fn status(config: &Config) -> Result<()> {
     }
     println!(
         "daemon: {} pid={} heartbeat={}",
-        if alive && fresh {
-            "healthy"
-        } else {
-            "down/stale"
-        },
+        if healthy { "healthy" } else { "down/stale" },
         pid.map_or_else(|| "-".into(), |pid| pid.to_string()),
         heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs()))
     );
@@ -99,7 +92,22 @@ fn status(config: &Config) -> Result<()> {
             entry.reason
         );
     }
+    if config.chief.dispatch_enabled && !healthy {
+        println!("warning: {}", crate::chief::DISPATCH_WITHOUT_DAEMON_HINT);
+    }
     Ok(())
+}
+
+fn daemon_healthy(poll_interval_secs: u64) -> bool {
+    read_pid().is_some_and(process_alive)
+        && heartbeat_path()
+            .ok()
+            .and_then(|path| fs::metadata(path).ok())
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+            .is_some_and(|age| {
+                age <= Duration::from_secs(poll_interval_secs.saturating_mul(2).max(5))
+            })
 }
 
 fn stop() -> Result<()> {
@@ -124,13 +132,19 @@ fn stop() -> Result<()> {
     Ok(())
 }
 
-fn set(setting: ChiefSetting, enabled: bool) -> Result<()> {
+fn set(config: &Config, setting: ChiefSetting, enabled: bool) -> Result<()> {
     set_runtime(setting, enabled)?;
     let label = match setting {
         ChiefSetting::Dispatch => "dispatch",
         ChiefSetting::AutoMerge => "auto-merge",
     };
     println!("{label}: {}", on_off(enabled));
+    if matches!(setting, ChiefSetting::Dispatch)
+        && enabled
+        && !daemon_healthy(config.chief.poll_interval_secs)
+    {
+        println!("warning: {}", crate::chief::DISPATCH_WITHOUT_DAEMON_HINT);
+    }
     Ok(())
 }
 
