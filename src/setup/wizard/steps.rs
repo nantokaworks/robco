@@ -45,6 +45,12 @@ pub(crate) fn chief<R: BufRead, W: Write>(
         "Enable Chief dispatch?",
         chief.dispatch_enabled,
     )?;
+    if chief.dispatch_enabled {
+        writeln!(
+            output,
+            "▌ robco ▸ NOTE ············· dispatch needs the daemon running: `robco chief run` or `robco chief install-service`"
+        )?;
+    }
     let auto_merge = prompt::confirm(input, output, "Enable auto-merge?", chief.auto_merge)?;
     if auto_merge && !chief.auto_merge {
         writeln!(

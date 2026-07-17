@@ -24,6 +24,7 @@ pub(super) fn policy(_args: PolicyArgs) -> ToolResult<Value> {
         || Config::load().map_err(exec_err),
         || Ledger::load().map_err(exec_err),
         &heartbeat,
+        crate::chief::daemon_pid_alive(),
     )
 }
 
@@ -31,22 +32,25 @@ fn policy_with(
     load_config: impl FnOnce() -> ToolResult<Config>,
     load_ledger: impl FnOnce() -> ToolResult<Ledger>,
     heartbeat: &Path,
+    daemon_pid_alive: bool,
 ) -> ToolResult<Value> {
     let config = load_config()?.chief;
     let ledger = load_ledger()?;
-    let daemon_alive = fs::metadata(heartbeat)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-        .is_some_and(|age| {
-            age <= Duration::from_secs(config.poll_interval_secs.saturating_mul(2).max(5))
-        });
+    let daemon_alive = daemon_pid_alive
+        && fs::metadata(heartbeat)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+            .is_some_and(|age| {
+                age <= Duration::from_secs(config.poll_interval_secs.saturating_mul(2).max(5))
+            });
     let circuit_open = ledger.counters.consecutive_failures >= config.failure_circuit_threshold;
     Ok(json!({
         "dispatch_enabled": config.dispatch_enabled,
         "auto_merge": config.auto_merge,
         "max_workers": config.max_workers,
         "daemon_alive": daemon_alive,
+        "dispatch_without_daemon": config.dispatch_enabled && !daemon_alive,
         "circuit_open": circuit_open,
     }))
 }
@@ -69,6 +73,7 @@ mod tests {
             },
             || Ok(Ledger::default()),
             &heartbeat,
+            true,
         )
         .unwrap();
         let second = policy_with(
@@ -80,6 +85,7 @@ mod tests {
             },
             || Ok(Ledger::default()),
             &heartbeat,
+            true,
         )
         .unwrap();
         assert_eq!(first["dispatch_enabled"], false);
@@ -87,5 +93,35 @@ mod tests {
         assert_eq!(second["dispatch_enabled"], true);
         assert_eq!(second["max_workers"], 7);
         assert_eq!(second["daemon_alive"], true);
+        assert_eq!(second["dispatch_without_daemon"], false);
+
+        let missing_heartbeat = temp.path().join("missing-heartbeat");
+        let daemon_down = policy_with(
+            || {
+                let mut config = Config::default();
+                config.chief.dispatch_enabled = true;
+                Ok(config)
+            },
+            || Ok(Ledger::default()),
+            &missing_heartbeat,
+            true,
+        )
+        .unwrap();
+        assert_eq!(daemon_down["daemon_alive"], false);
+        assert_eq!(daemon_down["dispatch_without_daemon"], true);
+
+        let dead_pid = policy_with(
+            || {
+                let mut config = Config::default();
+                config.chief.dispatch_enabled = true;
+                Ok(config)
+            },
+            || Ok(Ledger::default()),
+            &heartbeat,
+            false,
+        )
+        .unwrap();
+        assert_eq!(dead_pid["daemon_alive"], false);
+        assert_eq!(dead_pid["dispatch_without_daemon"], true);
     }
 }
