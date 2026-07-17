@@ -34,6 +34,7 @@ pub fn run(args: NewArgs, config: &Config) -> Result<()> {
     let outcome = spawn::spawn_in_repo(
         &repo_path.to_string_lossy(),
         &args.title,
+        None,
         args.prompt.as_deref(),
         Some(&parent_id),
         &[],

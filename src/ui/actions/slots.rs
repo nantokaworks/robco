@@ -60,9 +60,13 @@ fn directory_is_slot(candidate: &Path, tracked: &Path) -> bool {
 }
 
 fn prefix_is_managed_task(prefix: &str) -> bool {
-    prefix
-        .rsplit_once("_task-")
-        .is_some_and(|(repo, task)| !repo.is_empty() && is_nonempty_digits(task))
+    prefix.rsplit_once("_task-").is_some_and(|(repo, task)| {
+        let valid_task = task.split_once('-').map_or_else(
+            || is_nonempty_digits(task),
+            |(task_id, slug)| is_nonempty_digits(task_id) && !slug.is_empty(),
+        );
+        !repo.is_empty() && valid_task
+    })
 }
 
 fn is_nonempty_digits(value: &str) -> bool {
@@ -88,6 +92,29 @@ mod tests {
             Some("unrelated"),
             &[owner],
         ));
+    }
+
+    #[test]
+    fn detects_old_and_slugged_managed_task_directory_slots() {
+        for owner_path in [
+            "/wt/dropr_task-749_gOQmxo",
+            "/wt/dropr_task-749-fix-chief_gOQmxo",
+        ] {
+            let owner = agent("owner", owner_path, "dropr/task-749-fix-chief");
+            let prefix = owner_path.rsplit_once('_').unwrap().0;
+            let slot_path = format!("{prefix}_slot750");
+
+            assert!(is_slot_worktree(
+                Path::new(&slot_path),
+                None,
+                std::slice::from_ref(&owner),
+            ));
+            assert!(is_slot_worktree(
+                Path::new("/wt/anything"),
+                Some("dropr/task-749-fix-chief-slot-750"),
+                &[owner],
+            ));
+        }
     }
 
     #[test]

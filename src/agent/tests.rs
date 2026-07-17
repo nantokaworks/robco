@@ -1,4 +1,74 @@
 use super::*;
+
+#[test]
+fn naming_slug_caps_at_word_boundary() {
+    assert_eq!(
+        cap_name_slug("task-145-this-is-a-very-long-task-title"),
+        "task-145-this-is-a-very-long"
+    );
+}
+
+#[test]
+fn naming_slug_trims_trailing_hyphen() {
+    assert_eq!(cap_name_slug("short-title-"), "short-title");
+}
+
+#[test]
+fn naming_slug_leaves_short_value_unchanged() {
+    assert_eq!(cap_name_slug("short-title"), "short-title");
+}
+
+#[test]
+fn naming_slug_hard_truncates_without_hyphens() {
+    assert_eq!(
+        cap_name_slug("abcdefghijklmnopqrstuvwxyz0123456789"),
+        "abcdefghijklmnopqrstuvwxyz012345"
+    );
+}
+
+#[test]
+fn naming_slug_leaves_exactly_32_characters_unchanged() {
+    let slug = "abcdefghijklmnopqrstuvwxyz012345";
+    assert_eq!(slug.chars().count(), 32);
+    assert_eq!(cap_name_slug(slug), slug);
+}
+
+#[test]
+fn naming_slug_caps_unicode_by_character_without_panicking() {
+    let slug = "é".repeat(40);
+    assert_eq!(cap_name_slug(&slug), "é".repeat(32));
+}
+
+#[test]
+fn naming_slug_falls_back_for_empty_input() {
+    assert_eq!(naming_slug("", None), "agent");
+}
+
+#[test]
+fn naming_slug_falls_back_when_title_sanitizes_to_empty() {
+    assert_eq!(naming_slug("✨", None), "agent");
+}
+
+#[test]
+fn naming_slug_falls_back_when_explicit_slug_is_only_hyphens() {
+    assert_eq!(naming_slug("ignored title", Some("---")), "agent");
+}
+
+#[test]
+fn naming_slug_sanitizes_explicit_value() {
+    assert_eq!(
+        naming_slug("ignored title", Some("task 145/explicit")),
+        "task-145-explicit"
+    );
+}
+
+#[test]
+fn naming_slug_prefers_explicit_value() {
+    assert_eq!(
+        naming_slug("ignored title", Some("task-145-explicit-name")),
+        "task-145-explicit-name"
+    );
+}
 use std::process::Command;
 
 #[test]

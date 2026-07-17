@@ -201,6 +201,7 @@ fn run_command(
             let outcome = spawn::spawn_in_repo_with_mode(
                 &args.repo,
                 &args.title,
+                args.name_slug.as_deref(),
                 args.prompt.as_deref(),
                 parent.as_deref(),
                 &extra_args,

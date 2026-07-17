@@ -32,6 +32,7 @@ pub(super) fn spawn(args: SpawnArgs) -> ToolResult<Value> {
     let outcome = spawn_in_repo_with_mode(
         &args.repo,
         &args.title,
+        None,
         args.prompt.as_deref(),
         args.parent_agent_id.as_deref(),
         &extra_args,

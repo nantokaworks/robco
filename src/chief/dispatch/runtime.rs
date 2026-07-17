@@ -175,9 +175,22 @@ fn spawn_candidate(
         .map(|profile| profile.autonomous_args.clone())
         .unwrap_or_default();
     let prompt = worker_prompt(&task.display_id, &task.task_id, &task.title, &task.repo);
+    let display_id = task
+        .display_id
+        .trim()
+        .trim_start_matches('#')
+        .strip_prefix("task-")
+        .unwrap_or_else(|| task.display_id.trim().trim_start_matches('#'));
+    let name_slug = (!display_id.is_empty()).then(|| {
+        format!(
+            "task-{display_id}-{}",
+            crate::tmux::sanitize_target_part(&task.title)
+        )
+    });
     let outcome = spawn::spawn_in_repo(
         &task.repo,
         &task.title,
+        name_slug.as_deref(),
         Some(&prompt),
         Some(CHIEF_AGENT_ID),
         &extra_args,
