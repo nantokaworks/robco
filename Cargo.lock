@@ -1131,6 +1131,7 @@ dependencies = [
  "twilight-gateway",
  "twilight-http",
  "twilight-model",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
