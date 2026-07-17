@@ -258,7 +258,7 @@ pub(in crate::ui) fn render_merge_notice(
         .iter()
         .map(|line| {
             let w = line.width() as u16;
-            (w / inner_width + u16::from(w % inner_width != 0)).max(1)
+            (w / inner_width + u16::from(!w.is_multiple_of(inner_width))).max(1)
         })
         .fold(0u16, |acc, r| acc.saturating_add(r));
     let height = rows.saturating_add(2).min(area.height);
