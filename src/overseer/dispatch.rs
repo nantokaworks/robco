@@ -165,6 +165,7 @@ fn apply_candidate_gates(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn candidate_skip<'a>(
     config: &OverseerConfig,
     ledger: &Ledger,

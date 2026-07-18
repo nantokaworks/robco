@@ -1,15 +1,15 @@
 use ratatui::{
+    Frame,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
-use super::{layout, theme::DEFAULT as THEME, App};
-use indicator::{select, select_supplementary, IndicatorState};
+use super::{App, layout, theme::DEFAULT as THEME};
+use indicator::{IndicatorState, select, select_supplementary};
 
 mod footer;
 mod hints;

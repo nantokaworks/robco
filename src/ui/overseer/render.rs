@@ -12,7 +12,7 @@ use crate::overseer::{
     logging::{self, DecisionKind},
 };
 
-use super::{heartbeat_is_fresh, App};
+use super::{App, heartbeat_is_fresh};
 use crate::ui::{inbox::InboxKind, theme::DEFAULT as THEME};
 
 pub(super) fn append_health(
@@ -190,11 +190,7 @@ pub(super) fn detail(label: &str, error: impl std::fmt::Display) -> Line<'static
     warning(&format!("{label}: {error}"))
 }
 fn on_off(value: bool) -> &'static str {
-    if value {
-        "on"
-    } else {
-        "off"
-    }
+    if value { "on" } else { "off" }
 }
 fn list_text(items: &[String]) -> String {
     if items.is_empty() {

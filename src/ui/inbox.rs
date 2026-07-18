@@ -113,7 +113,7 @@ pub(crate) fn aggregate(
         });
     }
 
-    items.sort_by(|left, right| right.at.cmp(&left.at));
+    items.sort_by_key(|item| std::cmp::Reverse(item.at));
     let mut seen = HashSet::new();
     items.retain(|item| seen.insert((item.kind, item.target_id.clone())));
     items

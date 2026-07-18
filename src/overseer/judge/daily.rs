@@ -21,9 +21,11 @@ impl DailyCounter {
     }
 
     pub(super) fn count_today(&self) -> u32 {
-        (self.date == Some(Utc::now().date_naive()))
-            .then_some(self.count)
-            .unwrap_or(0)
+        if self.date == Some(Utc::now().date_naive()) {
+            self.count
+        } else {
+            0
+        }
     }
 
     pub(super) fn increment(&mut self, path: &Path) -> Result<()> {
