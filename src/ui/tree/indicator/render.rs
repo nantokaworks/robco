@@ -38,6 +38,7 @@ pub(in crate::ui::tree) fn primary_span(
             crate::ui::spinner::frame(elapsed).to_string(),
             THEME.hint_style(),
         ),
+        Some(Indicator::Management(mode)) => (management_glyph(mode).into(), THEME.hint_style()),
         None => (String::new(), THEME.accent_style()),
     };
     Span::styled(label::pad_to_width(&glyph, width), style)
@@ -50,6 +51,12 @@ pub(in crate::ui::tree) fn supplementary_spans(
     gap: &str,
 ) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
+    if let Some(mode) = supplementary.management {
+        spans.push(Span::styled(
+            format!("{gap}{}", supplementary_glyph(Indicator::Management(mode))),
+            THEME.hint_style(),
+        ));
+    }
     if let Some(Indicator::SubagentActivity(active)) = indicator {
         spans.push(Span::styled(
             format!("{gap}{active}"),
@@ -71,4 +78,41 @@ pub(in crate::ui::tree) fn supplementary_spans(
         ));
     }
     spans
+}
+
+fn management_glyph(mode: crate::model::ManagementMode) -> &'static str {
+    match mode {
+        crate::model::ManagementMode::Auto => "Ⓐ",
+        crate::model::ManagementMode::Manual => "Ⓜ",
+    }
+}
+
+fn supplementary_glyph(indicator: Indicator) -> &'static str {
+    match indicator {
+        Indicator::Management(mode) => management_glyph(mode),
+        _ => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::ManagementMode;
+
+    #[test]
+    fn management_glyphs_are_rendered() {
+        for (mode, glyph) in [(ManagementMode::Auto, "Ⓐ"), (ManagementMode::Manual, "Ⓜ")] {
+            let spans = supplementary_spans(
+                None,
+                SupplementaryIndicators {
+                    worktree_missing: false,
+                    merge_failed: false,
+                    management: Some(mode),
+                },
+                false,
+                " ",
+            );
+            assert_eq!(spans[0].content.as_ref(), format!(" {glyph}"));
+        }
+    }
 }

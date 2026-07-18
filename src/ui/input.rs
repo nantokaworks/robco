@@ -8,6 +8,7 @@ use super::{
     help,
 };
 
+mod management;
 mod mouse;
 mod overseer;
 mod prompt_agent;
@@ -276,6 +277,7 @@ impl App {
                     },
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
+                KeyCode::Char('g') => management::toggle_selected(self)?,
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),

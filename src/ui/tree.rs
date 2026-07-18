@@ -168,6 +168,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.merge_failed = agent.merge_error.is_some();
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.subagents_active = active;
+                if crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref()) {
+                    indicator_state.management = Some(agent.management);
+                }
                 let primary = select(indicator_state);
                 let right = indicator::supplementary_spans(
                     primary,

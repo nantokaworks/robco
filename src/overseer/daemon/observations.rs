@@ -31,7 +31,18 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
             return observations;
         }
     };
-    for entry in &ledger.entries {
+    observations.manual_agents = registry
+        .repos
+        .iter()
+        .flat_map(|repo| &repo.agents)
+        .filter(|agent| agent.management == crate::model::ManagementMode::Manual)
+        .map(|agent| agent.id.clone())
+        .collect();
+    let mut auto_ledger = ledger.clone();
+    auto_ledger
+        .entries
+        .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
+    for entry in &auto_ledger.entries {
         let agent = registry
             .repos
             .iter()
@@ -70,8 +81,8 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
             });
         }
     }
-    gather_task_states(ledger, &mut observations);
-    gather_pr_states(ledger, &mut observations);
+    gather_task_states(&auto_ledger, &mut observations);
+    gather_pr_states(&auto_ledger, &mut observations);
     observations
 }
 
@@ -199,12 +210,16 @@ fn gather_pr_states(ledger: &Ledger, observations: &mut Observations) {
 
 pub(super) fn adopt_registry_children(ledger: &mut Ledger) -> Result<()> {
     let registry = Registry::load()?;
+    adopt_registry_children_from(ledger, &registry);
+    Ok(())
+}
+
+fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
     for repo in &registry.repos {
-        for agent in repo
-            .agents
-            .iter()
-            .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()))
-        {
+        for agent in repo.agents.iter().filter(|agent| {
+            is_overseer_child(agent.parent_agent_id.as_deref())
+                && agent.management == crate::model::ManagementMode::Auto
+        }) {
             if ledger
                 .entries
                 .iter()
@@ -225,5 +240,40 @@ pub(super) fn adopt_registry_children(ledger: &mut Ledger) -> Result<()> {
             });
         }
     }
-    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manual_overseer_children_are_not_adopted() {
+        let registry: Registry = serde_json::from_value(serde_json::json!({
+            "version": 1,
+            "repos": [{
+                "path": "/repo",
+                "name": "repo",
+                "remote_url": null,
+                "agents": [{
+                    "id": "manual-worker",
+                    "parent_agent_id": crate::overseer::OVERSEER_AGENT_ID,
+                    "management": "manual",
+                    "title": "#154",
+                    "worktree_path": "/repo/worker",
+                    "branch": "task-154",
+                    "base_commit": "",
+                    "program": "codex",
+                    "tmux_session": "robco_repo_task-154",
+                    "created_at": "2026-07-18T00:00:00+09:00",
+                    "updated_at": "2026-07-18T00:00:00+09:00"
+                }]
+            }]
+        }))
+        .unwrap();
+        let mut ledger = Ledger::default();
+
+        adopt_registry_children_from(&mut ledger, &registry);
+
+        assert!(ledger.entries.is_empty());
+    }
 }

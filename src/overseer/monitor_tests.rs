@@ -104,6 +104,18 @@ fn stuck_detection_uses_injected_now() {
             .any(|action| matches!(action, Action::MarkFailed { .. }))
     );
 }
+
+#[test]
+fn manual_worker_is_not_reconciled() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"manual_agents":["worker-1"],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (unchanged, actions) = reconcile(&ledger(), &observations, now, 30);
+    assert_eq!(unchanged.entries[0].phase, LedgerPhase::Dispatched);
+    assert!(actions.is_empty());
+}
 #[test]
 fn claimed_worker_without_activity_is_not_marked_stuck() {
     let mut claimed = ledger();

@@ -12,6 +12,7 @@ use crate::{
 fn agent(id: &str) -> AgentNode {
     let now = Local::now();
     AgentNode {
+        management: crate::model::ManagementMode::Manual,
         id: id.to_string(),
         parent_agent_id: None,
         title: id.to_string(),

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 use super::{Candidate, plan_dispatch};
 use crate::overseer::{
@@ -15,7 +16,8 @@ use crate::{Result, config::Config, dropr, registry::Registry, spawn};
 const READY_FETCH_LIMIT: usize = 20;
 
 pub fn dispatch_pass(config: &mut Config, ledger: &mut Ledger, now: DateTime<Utc>) -> Result<()> {
-    let preflight = plan_dispatch(&config.overseer, ledger, &[], now);
+    let worker_modes = worker_modes()?;
+    let preflight = plan_dispatch(&config.overseer, ledger, &[], now, &worker_modes);
     ledger.counters.date = Some(preflight.date);
     ledger.counters.dispatched_today = preflight.dispatched_today;
     if preflight.circuit_opened {
@@ -28,7 +30,7 @@ pub fn dispatch_pass(config: &mut Config, ledger: &mut Ledger, now: DateTime<Utc
     }
 
     let candidates = gather_candidates()?;
-    let plan = plan_dispatch(&config.overseer, ledger, &candidates, now);
+    let plan = plan_dispatch(&config.overseer, ledger, &candidates, now, &worker_modes);
     let mut failures = ledger.counters.consecutive_failures;
     let opened = execute_plan(
         plan.decisions,
@@ -42,6 +44,15 @@ pub fn dispatch_pass(config: &mut Config, ledger: &mut Ledger, now: DateTime<Utc
         open_circuit(config)?;
     }
     Ok(())
+}
+
+fn worker_modes() -> Result<HashMap<String, crate::model::ManagementMode>> {
+    Ok(Registry::load()?
+        .repos
+        .into_iter()
+        .flat_map(|repo| repo.agents)
+        .map(|agent| (agent.id, agent.management))
+        .collect())
 }
 
 fn execute_plan<F, L>(

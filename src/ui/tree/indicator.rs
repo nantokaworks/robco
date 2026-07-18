@@ -1,4 +1,4 @@
-use crate::model::Status;
+use crate::model::{ManagementMode, Status};
 
 mod render;
 pub(in crate::ui::tree) use render::{primary_span, supplementary_spans};
@@ -11,6 +11,7 @@ pub(super) enum Indicator {
     ShellActivity,
     SubagentActivity(usize),
     DroprRefresh,
+    Management(ManagementMode),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -24,6 +25,7 @@ pub(super) struct IndicatorState {
     pub shell_active: bool,
     pub subagents_active: usize,
     pub dropr_refresh: bool,
+    pub management: Option<ManagementMode>,
     pub static_status: Option<Status>,
 }
 
@@ -39,6 +41,7 @@ impl IndicatorState {
             shell_active: false,
             subagents_active: 0,
             dropr_refresh: false,
+            management: None,
             static_status: status.filter(|status| {
                 matches!(status, Status::Done | Status::Idle | Status::BranchOnly)
             }),
@@ -75,12 +78,14 @@ pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
 pub(super) struct SupplementaryIndicators {
     pub worktree_missing: bool,
     pub merge_failed: bool,
+    pub management: Option<ManagementMode>,
 }
 
 pub(super) fn select_supplementary(state: IndicatorState) -> SupplementaryIndicators {
     SupplementaryIndicators {
         worktree_missing: state.worktree_missing,
         merge_failed: state.merge_failed,
+        management: state.management,
     }
 }
 
@@ -131,6 +136,7 @@ mod tests {
                 SupplementaryIndicators {
                     worktree_missing: true,
                     merge_failed: false,
+                    management: None,
                 }
             )
         );
@@ -155,6 +161,7 @@ mod tests {
                 SupplementaryIndicators {
                     worktree_missing: true,
                     merge_failed: false,
+                    management: None,
                 }
             )
         );
@@ -172,6 +179,7 @@ mod tests {
                 SupplementaryIndicators {
                     worktree_missing: true,
                     merge_failed: false,
+                    management: None,
                 }
             )
         );
@@ -188,6 +196,7 @@ mod tests {
                 SupplementaryIndicators {
                     worktree_missing: true,
                     merge_failed: false,
+                    management: None,
                 }
             )
         );
@@ -204,6 +213,7 @@ mod tests {
                 SupplementaryIndicators {
                     worktree_missing: false,
                     merge_failed: false,
+                    management: None,
                 }
             )
         );
@@ -218,8 +228,20 @@ mod tests {
             SupplementaryIndicators {
                 worktree_missing: false,
                 merge_failed: true,
+                management: None,
             }
         );
+    }
+
+    #[test]
+    fn management_mode_is_supplementary() {
+        let mut state = IndicatorState::with_status(Some(Status::Running));
+        state.management = Some(ManagementMode::Manual);
+        assert_eq!(
+            select_supplementary(state).management,
+            Some(ManagementMode::Manual)
+        );
+        assert_eq!(select(state), Some(Indicator::Running));
     }
 
     #[test]

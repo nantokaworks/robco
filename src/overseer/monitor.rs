@@ -13,6 +13,7 @@ pub struct Observations {
     pub tasks: Vec<TaskObservation>,
     pub prs: Vec<PrObservation>,
     pub errors: Vec<String>,
+    pub manual_agents: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObservationSnapshot {
@@ -78,6 +79,9 @@ pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc
     let mut next = ledger.clone();
     let mut actions = observation_errors(observations);
     for entry in &mut next.entries {
+        if observations.manual_agents.contains(&entry.agent_id) {
+            continue;
+        }
         reconcile_entry(entry, observations, now, stuck_after_mins, &mut actions);
     }
     (next, actions)
@@ -267,9 +271,8 @@ fn escalate(entry: &mut LedgerEntry, reason: &str, actions: &mut Vec<Action>) {
         message: reason.into(),
     });
 }
-fn matches_entry(report: &InboxObservation, entry: &LedgerEntry) -> bool {
-    report.agent_id == entry.agent_id || report.task_id.as_deref() == Some(entry.task_id.as_str())
-}
+#[rustfmt::skip]
+fn matches_entry(report: &InboxObservation, entry: &LedgerEntry) -> bool { report.agent_id == entry.agent_id || report.task_id.as_deref() == Some(entry.task_id.as_str()) }
 fn is_worker_phase(phase: LedgerPhase) -> bool {
     matches!(
         phase,

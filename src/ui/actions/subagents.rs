@@ -103,6 +103,7 @@ mod tests {
             remote_url: None,
             pinned: false,
             agents: vec![AgentNode {
+                management: crate::model::ManagementMode::Manual,
                 id: "agent".into(),
                 parent_agent_id: None,
                 title: "task".into(),

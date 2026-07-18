@@ -55,6 +55,7 @@ pub(super) fn auto_merge_pass(
         .entries
         .iter_mut()
         .filter(|entry| entry.phase == LedgerPhase::PrOpened)
+        .filter(|entry| worker_is_auto(entry, &registry))
     {
         if !protection_verified(entry, &registry, cache)? {
             log(entry, DecisionKind::Hold, "unprotected")?;
@@ -126,6 +127,15 @@ pub(super) fn auto_merge_pass(
         }
     }
     Ok(())
+}
+
+fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {
+    registry
+        .repos
+        .iter()
+        .flat_map(|repo| &repo.agents)
+        .find(|agent| agent.id == entry.agent_id)
+        .is_none_or(|agent| agent.management == crate::model::ManagementMode::Auto)
 }
 
 fn protection_verified(
