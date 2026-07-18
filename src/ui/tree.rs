@@ -1,24 +1,29 @@
 use ratatui::{
-    Frame,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph},
+    widgets::{Block, Borders, Paragraph},
+    Frame,
 };
 
 use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
-use super::{App, layout, theme::DEFAULT as THEME};
-use indicator::{IndicatorState, select, select_supplementary};
+use super::{layout, theme::DEFAULT as THEME, App};
+use indicator::{select, select_supplementary, IndicatorState};
 
 mod footer;
 mod hints;
 mod indicator;
 mod label;
+mod overseer_frame;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
-    let panes = layout::panes(root.body);
+    let panes = layout::panes(root.body, app.overseer_visible);
+    if app.overseer_visible {
+        overseer_frame::draw(frame, app, panes.overseer);
+    }
+    let projects_width = panes.tree.width.saturating_sub(2);
 
     let mut lines = Vec::new();
     for (idx, item) in visible.iter().enumerate() {
@@ -31,28 +36,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         };
 
         match *item {
-            Selection::Overseer => {
-                let status = super::overseer::status();
-                let state = IndicatorState::with_status(Some(status));
-                let primary = select(state);
-                let right = indicator::supplementary_spans(
-                    primary,
-                    select_supplementary(state),
-                    selected,
-                    "  ",
-                );
-                lines.push(label::labeled_row(
-                    panes.tree.width,
-                    format!("{marker} "),
-                    primary,
-                    "OVERSEER",
-                    style,
-                    style,
-                    selected,
-                    app.started.elapsed(),
-                    right,
-                ));
-            }
+            Selection::Overseer => continue,
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
@@ -145,7 +129,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     }
                 }
                 lines.push(label::labeled_row(
-                    panes.tree.width,
+                    projects_width,
                     format!("{marker} {prefix} "),
                     primary,
                     &repo.name,
@@ -192,7 +176,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     " ",
                 );
                 lines.push(label::labeled_row(
-                    panes.tree.width,
+                    projects_width,
                     format!("{marker}   {}", "  ".repeat(depth)),
                     primary,
                     &agent.title,
@@ -267,6 +251,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         .block(
             Block::default()
                 .title("PROJECTS")
+                .borders(Borders::ALL)
                 .title_style(Style::default().add_modifier(Modifier::BOLD)),
         )
         .style(THEME.accent_style());

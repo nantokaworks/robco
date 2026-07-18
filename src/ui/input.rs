@@ -1,16 +1,14 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
-use ratatui::layout::{Position, Rect};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{Result, agent, config::Config, model::Selection};
 
 use super::{
     App, Mode, PreviewPane,
     confirm_pr::{ConfirmPrAction, confirm_pr_action},
-    help, layout,
+    help,
 };
 
-/// Lines moved per wheel notch; smaller than PageUp/PageDown for fine scrubbing.
-const WHEEL_SCROLL_STEP: u16 = 3;
+mod mouse;
 
 fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>) {
     if with_prompt {
@@ -28,33 +26,6 @@ fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>)
 }
 
 impl App {
-    /// Wheel-only mouse handling: the tree scrolls the selection, the preview
-    /// scrolls its capture. Clicks and drags are intentionally unhandled, and
-    /// any open dialog/prompt swallows mouse input entirely.
-    pub(crate) fn handle_mouse(&mut self, event: MouseEvent, area: Rect) {
-        if !matches!(self.mode, Mode::Normal) {
-            return;
-        }
-        let up = match event.kind {
-            MouseEventKind::ScrollUp => true,
-            MouseEventKind::ScrollDown => false,
-            _ => return,
-        };
-
-        let panes = layout::panes(layout::root(area).body);
-        let position = Position::new(event.column, event.row);
-        if panes.tree.contains(position) {
-            if up {
-                self.move_selection_up();
-            } else {
-                self.move_selection_down();
-            }
-            self.clamp_selection();
-        } else if panes.preview.contains(position) {
-            self.scroll_preview(up, WHEEL_SCROLL_STEP);
-        }
-    }
-
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
         self.handle_key_with_pr_sender(key, |session, prompt| {
             crate::tmux::send_literal_text(session, prompt)

@@ -1,6 +1,6 @@
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
+    Frame,
 };
 
 use crate::model::Selection;
@@ -10,6 +10,7 @@ use super::App;
 const TREE_WIDTH_RATIO: f32 = 0.30;
 const TREE_MIN_WIDTH: u16 = 24;
 const TREE_MAX_WIDTH: u16 = 48;
+const OVERSEER_FRAME_HEIGHT: u16 = 3;
 
 pub(crate) struct RootLayout {
     pub(crate) body: Rect,
@@ -17,8 +18,14 @@ pub(crate) struct RootLayout {
 }
 
 pub(crate) struct PaneLayout {
+    pub(crate) overseer: Rect,
     pub(crate) tree: Rect,
     pub(crate) preview: Rect,
+}
+
+pub(crate) struct TreeStackLayout {
+    pub(crate) overseer: Rect,
+    pub(crate) projects: Rect,
 }
 
 /// Split of the bottom status row: the `ROBCO v<x.y.z>` identity segment is
@@ -66,16 +73,40 @@ pub(crate) fn root(area: Rect) -> RootLayout {
     }
 }
 
-pub(crate) fn panes(body: Rect) -> PaneLayout {
+pub(crate) fn panes(body: Rect, overseer_visible: bool) -> PaneLayout {
     let tree_width = tree_width(body.width);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(tree_width), Constraint::Min(0)])
         .split(body);
 
+    let tree = tree_stack(chunks[0], overseer_visible);
     PaneLayout {
-        tree: chunks[0],
+        overseer: tree.overseer,
+        tree: tree.projects,
         preview: chunks[1],
+    }
+}
+
+pub(crate) fn tree_stack(tree: Rect, overseer_visible: bool) -> TreeStackLayout {
+    if !overseer_visible {
+        return TreeStackLayout {
+            overseer: Rect::default(),
+            projects: tree,
+        };
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(OVERSEER_FRAME_HEIGHT),
+            Constraint::Min(0),
+        ])
+        .split(tree);
+
+    TreeStackLayout {
+        overseer: chunks[0],
+        projects: chunks[1],
     }
 }
 
@@ -115,15 +146,19 @@ pub(in crate::ui) fn popup_area(
     height: u16,
 ) -> Rect {
     let container = root(frame.area()).body;
-    let tree = panes(container).tree;
+    let panes = panes(container, app.overseer_visible);
 
     let width = width.min(container.width);
     let height = height.min(container.height);
 
-    // The tree block reserves its top row for the "PROJECTS" title.
-    let anchor_row = tree.y + 1 + selected_row_offset(app, visible);
+    // Each bordered frame reserves its top row for its title/border.
+    let anchor_row = if matches!(app.selected_item(), Some(Selection::Overseer)) {
+        panes.overseer.y.saturating_add(1)
+    } else {
+        panes.tree.y + 1 + selected_row_offset(app, visible)
+    };
 
-    let x = tree.x.min(container.right().saturating_sub(width));
+    let x = panes.tree.x.min(container.right().saturating_sub(width));
     let below = anchor_row.saturating_add(1);
     let y = if below + height <= container.bottom() {
         below
@@ -146,9 +181,13 @@ pub(in crate::ui) fn popup_area(
 /// "(no agents)" line drawn under an expanded empty repo.
 fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
     let mut offset = 0u16;
-    for (idx, item) in visible.iter().enumerate() {
-        if idx == app.selected {
+    let selected = app.selected_item();
+    for item in visible {
+        if Some(*item) == selected {
             break;
+        }
+        if matches!(item, Selection::Overseer) {
+            continue;
         }
         offset += 1;
         if let Selection::Repo(repo_idx) = item {
@@ -194,5 +233,22 @@ mod tests {
             // (the y+1 shift itself is the only row on a height-0 area).
             assert!(layout.footer.bottom() <= height.max(1));
         }
+    }
+
+    #[test]
+    fn tree_stack_reserves_overseer_frame_above_projects() {
+        let layout = tree_stack(Rect::new(2, 4, 32, 20), true);
+
+        assert_eq!(layout.overseer, Rect::new(2, 4, 32, 3));
+        assert_eq!(layout.projects, Rect::new(2, 7, 32, 17));
+    }
+
+    #[test]
+    fn tree_stack_gives_projects_full_height_without_overseer() {
+        let tree = Rect::new(2, 4, 32, 20);
+        let layout = tree_stack(tree, false);
+
+        assert_eq!(layout.overseer, Rect::default());
+        assert_eq!(layout.projects, tree);
     }
 }
