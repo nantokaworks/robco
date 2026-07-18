@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::autonomy::AutonomyLevel;
+
 fn default_worker_blocklist() -> Vec<String> {
     ["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]
         .into_iter()
@@ -17,6 +19,8 @@ pub struct OverseerConfig {
     pub enabled: bool,
     pub dispatch_enabled: bool,
     pub auto_merge: bool,
+    pub autonomy_level: AutonomyLevel,
+    pub daily_llm_budget: u32,
     pub merge_strategy: String,
     pub worker_profile: Option<String>,
     pub max_workers: usize,
@@ -40,6 +44,8 @@ impl Default for OverseerConfig {
             enabled: false,
             dispatch_enabled: true,
             auto_merge: false,
+            autonomy_level: AutonomyLevel::Conservative,
+            daily_llm_budget: 200,
             merge_strategy: "squash".into(),
             worker_profile: None,
             max_workers: 3,

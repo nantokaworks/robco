@@ -8,15 +8,16 @@ use serde_json::Value;
 
 use super::COMMAND_TIMEOUT;
 use crate::{
-    Result,
     config::Config,
     dropr::canonical_repo,
     overseer::{
+        autonomy::{merge_envelope_decision, ChangeFacts, Decision},
         exec::run_timeout,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
     },
     registry::Registry,
+    Result,
 };
 
 const PROTECTION_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
@@ -97,6 +98,18 @@ pub(super) fn auto_merge_pass(
         };
         if !checks_green(&value) {
             log(entry, DecisionKind::Hold, "checks_not_green")?;
+            continue;
+        }
+        let facts = ChangeFacts::default();
+        if let Decision::Escalate(risks) =
+            merge_envelope_decision(true, true, &facts, &config.overseer)
+        {
+            let reason = if risks.is_empty() {
+                "autonomy_envelope".to_owned()
+            } else {
+                format!("autonomy_envelope:{risks:?}")
+            };
+            log(entry, DecisionKind::Escalate, &reason)?;
             continue;
         }
         let strategy = match config.overseer.merge_strategy.as_str() {
