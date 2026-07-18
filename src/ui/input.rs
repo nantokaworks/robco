@@ -9,21 +9,8 @@ use super::{
 };
 
 mod mouse;
-
-fn parse_agent_input(input: &str, with_prompt: bool) -> (String, Option<String>) {
-    if with_prompt {
-        let mut parts = input.splitn(2, '|');
-        let title = parts.next().unwrap_or_default().trim().to_string();
-        let prompt = parts
-            .next()
-            .map(str::trim)
-            .filter(|prompt| !prompt.is_empty())
-            .map(str::to_string);
-        (title, prompt)
-    } else {
-        (input.trim().to_string(), None)
-    }
-}
+mod overseer;
+mod prompt_agent;
 
 impl App {
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -50,7 +37,7 @@ impl App {
             } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Enter => {
-                    let (title, prompt) = parse_agent_input(input, *with_prompt);
+                    let (title, prompt) = prompt_agent::parse(input, *with_prompt);
                     let repo_idx = *repo;
                     self.mode = Mode::Normal;
                     if !title.is_empty() {
@@ -90,6 +77,14 @@ impl App {
                 }
                 KeyCode::Char(ch) => input.push(ch),
                 _ => {}
+            },
+            Mode::PromptOverseer { input } => match overseer::prompt_action(input, key) {
+                overseer::PromptAction::Stay => {}
+                overseer::PromptAction::Cancel => self.mode = Mode::Normal,
+                overseer::PromptAction::Submit(instruction) => {
+                    self.mode = Mode::Normal;
+                    self.instruct_overseer(&instruction);
+                }
             },
             Mode::ConfirmKill { repo, agent } => match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
@@ -252,6 +247,14 @@ impl App {
                 }
                 KeyCode::Char('a') => {
                     self.mode = Mode::PromptRepo {
+                        input: String::new(),
+                    };
+                }
+                KeyCode::Char('i')
+                    if matches!(self.selected_item(), Some(Selection::Overseer))
+                        && self.preview == PreviewPane::Claude =>
+                {
+                    self.mode = Mode::PromptOverseer {
                         input: String::new(),
                     };
                 }

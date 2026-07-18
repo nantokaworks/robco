@@ -10,6 +10,9 @@ use crate::model::Selection;
 
 use super::{App, Mode, error_dialog, help, input_wrap, layout, theme::DEFAULT as THEME};
 
+#[cfg(test)]
+mod tests;
+
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
     let body = layout::root(frame.area()).body;
     let content_width = body.width.saturating_sub(4) as usize;
@@ -53,6 +56,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("enter add   esc cancel"),
             ],
         ),
+        Mode::PromptOverseer { input } => {
+            let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
+            let mut lines =
+                input_wrap::input_lines("instruction", input, content_width, max_input_height);
+            lines.push(hint_line("enter send   esc cancel"));
+            ("instruct overseer control", lines)
+        }
         Mode::ConfirmKill { repo, agent } => (
             "delete worktree?",
             confirm_lines(
@@ -124,7 +134,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             help::scroll_title(scroll, frame.area().height).unwrap_or_else(|| title.to_string()),
             help::clamp_scroll(scroll, frame.area().height),
         ),
-        Mode::ConfirmPr { .. } => {
+        Mode::ConfirmPr { .. } | Mode::PromptOverseer { .. } => {
             let cursor_row = lines.len().saturating_sub(2) as u16;
             let visible_rows = height.saturating_sub(2);
             (
@@ -192,106 +202,4 @@ fn input_line(label: &str, input: &str) -> Line<'static> {
 
 fn hint_line(text: &str) -> Line<'static> {
     Line::from(Span::styled(text.to_string(), THEME.hint_style()))
-}
-
-#[cfg(test)]
-mod tests {
-    use ratatui::{
-        Terminal,
-        backend::TestBackend,
-        layout::Rect,
-        style::{Modifier, Style},
-        text::Line,
-        widgets::{Block, Borders, Clear, Paragraph},
-    };
-
-    /// A full-width background must keep clean popup borders.
-    #[test]
-    fn popup_border_survives_wide_char_background() {
-        let mut terminal = Terminal::new(TestBackend::new(20, 5)).unwrap();
-        terminal
-            .draw(|frame| {
-                let area = frame.area();
-                let bg = Paragraph::new(vec![
-                    Line::from("あいうえおかきくけこ"),
-                    Line::from("あいうえおかきくけこ"),
-                    Line::from("あいうえおかきくけこ"),
-                    Line::from("あいうえおかきくけこ"),
-                    Line::from("あいうえおかきくけこ"),
-                ]);
-                frame.render_widget(bg, area);
-
-                // Odd x so the left border sits on the right half of a wide glyph.
-                let popup = Rect {
-                    x: 3,
-                    y: 1,
-                    width: 10,
-                    height: 3,
-                };
-                let band = Rect {
-                    x: area.x,
-                    y: popup.y,
-                    width: area.width,
-                    height: popup.height,
-                };
-                frame.render_widget(Clear, band);
-                frame.render_widget(Block::default().borders(Borders::ALL), popup);
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        // Both vertical borders render as box-drawing, not CJK remnants.
-        assert_eq!(buf.cell((3, 2)).unwrap().symbol(), "│");
-        assert_eq!(buf.cell((12, 2)).unwrap().symbol(), "│");
-        // The cell just outside the left border is blanked (no stray wide half).
-        assert_eq!(buf.cell((2, 2)).unwrap().symbol(), " ");
-    }
-
-    /// The backdrop's DIM must not bleed into the popup.
-    #[test]
-    fn popup_cells_escape_backdrop_dim() {
-        let mut terminal = Terminal::new(TestBackend::new(20, 3)).unwrap();
-        terminal
-            .draw(|frame| {
-                let area = frame.area();
-                let backdrop = Style::default().add_modifier(Modifier::DIM);
-                frame.render_widget(Block::default().style(backdrop), area);
-
-                let popup = Rect {
-                    x: 5,
-                    y: 0,
-                    width: 10,
-                    height: 3,
-                };
-                frame.render_widget(Clear, area);
-                let right_x = popup.x + popup.width;
-                for side in [
-                    Rect {
-                        x: area.x,
-                        y: area.y,
-                        width: popup.x.saturating_sub(area.x),
-                        height: area.height,
-                    },
-                    Rect {
-                        x: right_x,
-                        y: area.y,
-                        width: (area.x + area.width).saturating_sub(right_x),
-                        height: area.height,
-                    },
-                ] {
-                    frame.render_widget(Block::default().style(backdrop), side);
-                }
-                let dialog = Paragraph::new("input").block(Block::default().borders(Borders::ALL));
-                frame.render_widget(dialog, popup);
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        // Dialog content and border cells carry no DIM.
-        assert!(!buf.cell((6, 1)).unwrap().modifier.contains(Modifier::DIM));
-        assert!(!buf.cell((5, 0)).unwrap().modifier.contains(Modifier::DIM));
-        // The band beside the popup stays dimmed.
-        assert!(buf.cell((2, 1)).unwrap().modifier.contains(Modifier::DIM));
-        assert!(buf.cell((17, 1)).unwrap().modifier.contains(Modifier::DIM));
-    }
 }

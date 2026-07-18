@@ -21,7 +21,6 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
 mod blockfont;
-mod overseer;
 mod confirm_pr;
 #[cfg(test)]
 mod confirm_pr_tests;
@@ -34,11 +33,14 @@ mod input_wrap;
 mod layout;
 mod list;
 mod merge_dialog;
+mod overseer;
 mod preview;
 mod repo_description;
 mod scrollback;
 pub(crate) mod spinner;
 mod summary;
+#[cfg(test)]
+mod tests;
 mod theme;
 mod tree;
 
@@ -55,6 +57,9 @@ enum Mode {
         input: String,
     },
     PromptRepo {
+        input: String,
+    },
+    PromptOverseer {
         input: String,
     },
     ConfirmKill {
@@ -110,7 +115,7 @@ pub enum PreviewPane {
 /// first entry is the default tab used when nothing has been remembered yet.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        Some(Selection::Overseer) => &[PreviewPane::Info],
+        Some(Selection::Overseer) => &[PreviewPane::Info, PreviewPane::Claude],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -243,54 +248,4 @@ fn suspend_terminal(action: impl FnOnce() -> Result<()>) -> Result<()> {
     execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
     enable_raw_mode()?;
     result
-}
-
-#[cfg(test)]
-mod tests {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
-    use super::*;
-    use crate::{config::Config, registry::Registry};
-
-    fn test_app() -> App {
-        let temp = tempfile::tempdir().unwrap();
-        App::new(Registry::default(), Config::default(), temp.path().into())
-    }
-
-    #[test]
-    fn visible_message_does_not_swallow_next_key() {
-        let mut app = test_app();
-        app.show_message("done");
-        let quit = app
-            .handle_key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE))
-            .unwrap();
-
-        assert!(!quit);
-        assert!(app.message.is_none());
-        assert!(matches!(app.mode, Mode::Help { scroll: 0 }));
-    }
-
-    #[test]
-    fn confirm_pr_y_and_n_edit_and_escape_cancels() {
-        let mut app = test_app();
-        app.mode = Mode::ConfirmPr {
-            repo_path: "/repo".into(),
-            agent_id: "agent".to_string(),
-            branch: "feature/agent".to_string(),
-            input: "prompt".to_string(),
-        };
-
-        for code in [KeyCode::Char('y'), KeyCode::Char('n'), KeyCode::Backspace] {
-            app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
-                .unwrap();
-        }
-        assert!(matches!(
-            &app.mode,
-            Mode::ConfirmPr { input, .. } if input == "prompty"
-        ));
-
-        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
-            .unwrap();
-        assert!(matches!(app.mode, Mode::Normal));
-    }
 }

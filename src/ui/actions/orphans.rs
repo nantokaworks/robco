@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{agent, model::OrphanSession, tmux};
+use crate::{agent, model::OrphanSession, overseer, tmux};
 
 use super::super::App;
 
@@ -18,6 +18,7 @@ impl App {
         };
 
         let mut known: HashSet<String> = HashSet::new();
+        known.insert(overseer::control_session_name(&prefix));
         for repo in &self.registry.repos {
             known.insert(agent::repo_claude_session_name(&prefix, repo));
             known.insert(agent::repo_shell_session_name(&prefix, repo));
