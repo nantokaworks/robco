@@ -48,6 +48,8 @@ fn policy_with(
     Ok(json!({
         "dispatch_enabled": config.dispatch_enabled,
         "auto_merge": config.auto_merge,
+        "autonomy_level": config.autonomy_level,
+        "daily_llm_budget": config.daily_llm_budget,
         "max_workers": config.max_workers,
         "daemon_alive": daemon_alive,
         "dispatch_without_daemon": config.dispatch_enabled && !daemon_alive,
@@ -69,6 +71,8 @@ mod tests {
                 let mut config = Config::default();
                 config.overseer.dispatch_enabled = false;
                 config.overseer.max_workers = 2;
+                config.overseer.autonomy_level = crate::overseer::autonomy::AutonomyLevel::FullAuto;
+                config.overseer.daily_llm_budget = 17;
                 Ok(config)
             },
             || Ok(Ledger::default()),
@@ -90,6 +94,8 @@ mod tests {
         .unwrap();
         assert_eq!(first["dispatch_enabled"], false);
         assert_eq!(first["max_workers"], 2);
+        assert_eq!(first["autonomy_level"], "full_auto");
+        assert_eq!(first["daily_llm_budget"], 17);
         assert_eq!(second["dispatch_enabled"], true);
         assert_eq!(second["max_workers"], 7);
         assert_eq!(second["daemon_alive"], true);

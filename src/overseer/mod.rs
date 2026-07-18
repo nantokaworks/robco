@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{Result, config::Config, tmux};
 
+pub mod autonomy;
 pub mod command;
 pub mod config;
 pub mod daemon;
