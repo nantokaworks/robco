@@ -27,32 +27,36 @@ pub(super) fn append_health(
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
     let alive =
         crate::overseer::daemon_pid_alive() && heartbeat_is_fresh(path, config.poll_interval_secs);
-    lines.push(pair(
-        "daemon",
-        if alive { "alive" } else { "STALE / OFFLINE" },
-        !alive,
-    ));
-    lines.push(pair(
-        "heartbeat",
-        &age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
-        !alive,
-    ));
+    lines.push(flags_line(&[
+        (
+            "daemon",
+            if alive { "alive" } else { "STALE / OFFLINE" }.into(),
+            !alive,
+        ),
+        (
+            "hb",
+            age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
+            !alive,
+        ),
+    ]));
     let dispatch_without_daemon = config.dispatch_enabled && !alive;
-    lines.push(pair(
-        "dispatch",
-        on_off(config.dispatch_enabled),
-        dispatch_without_daemon,
-    ));
+    let circuit_open = ledger.counters.consecutive_failures >= config.failure_circuit_threshold;
+    lines.push(flags_line(&[
+        (
+            "dispatch",
+            on_off(config.dispatch_enabled).into(),
+            dispatch_without_daemon,
+        ),
+        ("auto-merge", on_off(config.auto_merge).into(), false),
+        (
+            "circuit",
+            if circuit_open { "OPEN" } else { "closed" }.into(),
+            circuit_open,
+        ),
+    ]));
     if dispatch_without_daemon {
         lines.push(warning(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
     }
-    lines.push(pair("auto-merge", on_off(config.auto_merge), false));
-    let circuit_open = ledger.counters.consecutive_failures >= config.failure_circuit_threshold;
-    lines.push(pair(
-        "circuit",
-        if circuit_open { "OPEN" } else { "closed" },
-        circuit_open,
-    ));
     lines.push(Line::default());
 }
 
@@ -71,31 +75,39 @@ pub(super) fn append_ledger(
     for entry in &active {
         *repos.entry(entry.repo.as_str()).or_insert(0usize) += 1;
     }
-    for entry in &ledger.entries {
+    for entry in &active {
         *phases.entry(phase_name(entry.phase)).or_insert(0usize) += 1;
     }
-    lines.push(pair(
-        "dispatches today",
-        &format!(
-            "{} / {}",
-            dispatches_on(ledger, Utc::now().date_naive()),
-            config.daily_dispatch_limit
+    lines.push(flags_line(&[
+        (
+            "dispatches",
+            format!(
+                "{} / {}",
+                dispatches_on(ledger, Utc::now().date_naive()),
+                config.daily_dispatch_limit
+            ),
+            false,
         ),
-        false,
-    ));
-    lines.push(pair(
-        "workers",
-        &format!(
-            "{} / {} global; {} per repo",
-            active.len(),
-            config.max_workers,
-            config.per_repo_limit
+        (
+            "workers",
+            format!(
+                "{} / {} global, {}/repo",
+                active.len(),
+                config.max_workers,
+                config.per_repo_limit
+            ),
+            false,
         ),
-        false,
-    ));
-    lines.push(pair("workers by repo", &map_text(&repos), false));
-    lines.push(pair("ledger phases", &map_text(&phases), false));
-    lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
+    ]));
+    if !repos.is_empty() {
+        lines.push(pair("workers by repo", &map_text(&repos), false));
+    }
+    if !phases.is_empty() {
+        lines.push(pair("active phases", &map_text(&phases), false));
+    }
+    if !ledger.skip_list.is_empty() {
+        lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
+    }
     lines.push(Line::default());
 }
 
@@ -146,7 +158,7 @@ pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>) {
         "recent decisions",
         THEME.accent_bold_style(),
     )));
-    match logging::tail(8) {
+    match logging::tail(3) {
         Ok(entries) if entries.is_empty() => {
             lines.push(Line::from(Span::styled("  none", THEME.muted_style())))
         }
@@ -178,6 +190,23 @@ fn pair(label: &str, value: &str, warn: bool) -> Line<'static> {
         Span::styled(format!("{label}: "), THEME.muted_style()),
         Span::styled(value.to_string(), value_style),
     ])
+}
+
+pub(super) fn flags_line(segments: &[(&str, String, bool)]) -> Line<'static> {
+    let mut spans = Vec::new();
+    for (index, (label, value, warn)) in segments.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled(" · ", THEME.muted_style()));
+        }
+        spans.push(Span::styled(format!("{label}: "), THEME.muted_style()));
+        let value_style = if *warn {
+            Style::default().fg(Color::Red)
+        } else {
+            THEME.accent_style()
+        };
+        spans.push(Span::styled(value.clone(), value_style));
+    }
+    Line::from(spans)
 }
 
 pub(super) fn warning(text: &str) -> Line<'static> {
