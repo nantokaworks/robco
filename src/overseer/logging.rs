@@ -2,7 +2,7 @@ use std::{
     collections::VecDeque,
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, Seek, SeekFrom, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use chrono::{DateTime, Utc};
@@ -81,6 +81,85 @@ pub fn tail(limit: usize) -> Result<Vec<DecisionEntry>> {
     tail_from(&path, limit)
 }
 
+pub(crate) struct DigestCursor {
+    path: PathBuf,
+    offset: u64,
+}
+
+impl DigestCursor {
+    pub(crate) fn at_end() -> Result<Self> {
+        Self::at_end_of(super::decision_log_path()?)
+    }
+
+    fn at_end_of(path: PathBuf) -> Result<Self> {
+        let offset = match fs::metadata(&path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => return Err(error.into()),
+        };
+        Ok(Self { path, offset })
+    }
+
+    pub(crate) fn read_digest(&mut self) -> Result<Option<String>> {
+        let mut file = match File::open(&self.path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        if file.metadata()?.len() < self.offset {
+            return Ok(None);
+        }
+        file.seek(SeekFrom::Start(self.offset))?;
+        let mut reader = BufReader::new(file);
+        let mut entries = Vec::new();
+        loop {
+            let mut line = String::new();
+            let bytes = reader.read_line(&mut line)?;
+            if bytes == 0 || !line.ends_with('\n') {
+                break;
+            }
+            self.offset += bytes as u64;
+            if let Ok(entry) = serde_json::from_str(&line) {
+                entries.push(entry);
+            }
+        }
+        Ok(coalesce_digest(&entries))
+    }
+}
+
+pub fn coalesce_digest(entries: &[DecisionEntry]) -> Option<String> {
+    let alerts = entries
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.kind,
+                DecisionKind::Escalate | DecisionKind::CircuitOpen
+            )
+        })
+        .collect::<Vec<_>>();
+    if alerts.is_empty() {
+        return None;
+    }
+    let brief = alerts
+        .iter()
+        .take(3)
+        .map(|entry| {
+            let target = entry.task.as_deref().unwrap_or("overseer");
+            format!("{target}: {}", entry.reason)
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let remaining = alerts.len().saturating_sub(3);
+    Some(if remaining == 0 {
+        format!("{} overseer alert(s): {brief}", alerts.len())
+    } else {
+        format!(
+            "{} overseer alert(s): {brief}; +{remaining} more",
+            alerts.len()
+        )
+    })
+}
+
 fn tail_from(path: &Path, limit: usize) -> Result<Vec<DecisionEntry>> {
     let mut file = match File::open(path) {
         Ok(file) => file,
@@ -150,5 +229,36 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].reason, "1");
         assert_eq!(entries[1].reason, "2");
+    }
+
+    #[test]
+    fn escalation_batch_produces_one_digest_not_one_line_each() {
+        let entries = (0..4)
+            .map(|index| {
+                let mut entry =
+                    DecisionEntry::new(DecisionKind::Escalate, format!("reason-{index}"));
+                entry.task = Some(format!("task-{index}"));
+                entry
+            })
+            .collect::<Vec<_>>();
+        let digest = coalesce_digest(&entries).unwrap();
+        assert!(digest.starts_with("4 overseer alert(s):"));
+        assert_eq!(digest.lines().count(), 1);
+        assert!(digest.contains("+1 more"));
+    }
+
+    #[test]
+    fn offset_cursor_digests_large_gap_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("decisions.jsonl");
+        let mut cursor = DigestCursor::at_end_of(path.clone()).unwrap();
+        let entry = DecisionEntry::new(DecisionKind::Escalate, "same alert");
+        for _ in 0..250 {
+            append_to(&path, &entry).unwrap();
+        }
+
+        let digest = cursor.read_digest().unwrap().unwrap();
+        assert!(digest.starts_with("250 overseer alert(s):"));
+        assert!(cursor.read_digest().unwrap().is_none());
     }
 }

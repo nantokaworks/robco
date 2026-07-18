@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let panes = layout::panes(root.body, app.overseer_visible);
 
     let (title, text) = match (pane, selection) {
-        (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(),
+        (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(app),
         (PreviewPane::Claude, Some(Selection::Overseer)) => {
             overseer::control_preview(app, panes.preview, scroll)
         }

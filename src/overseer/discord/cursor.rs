@@ -36,23 +36,29 @@ impl DecisionCursor {
         })
     }
 
-    pub(crate) fn next(&self) -> crate::Result<Option<PendingDecision>> {
+    pub(crate) fn next_batch(&self, limit: usize) -> crate::Result<Vec<PendingDecision>> {
         let mut file = match File::open(&self.log_path) {
             Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
         };
         file.seek(SeekFrom::Start(self.offset))?;
         let mut reader = BufReader::new(file);
-        let mut line = String::new();
-        let bytes = reader.read_line(&mut line)?;
-        if bytes == 0 || !line.ends_with('\n') {
-            return Ok(None);
+        let mut pending = Vec::with_capacity(limit);
+        let mut offset = self.offset;
+        while pending.len() < limit {
+            let mut line = String::new();
+            let bytes = reader.read_line(&mut line)?;
+            if bytes == 0 || !line.ends_with('\n') {
+                break;
+            }
+            offset += bytes as u64;
+            pending.push(PendingDecision {
+                entry: serde_json::from_str(&line).ok(),
+                next_offset: offset,
+            });
         }
-        Ok(Some(PendingDecision {
-            entry: serde_json::from_str(&line).ok(),
-            next_offset: self.offset + bytes as u64,
-        }))
+        Ok(pending)
     }
 
     pub(crate) fn complete(
@@ -103,6 +109,8 @@ fn backlog_start(path: &PathBuf, limit: usize) -> crate::Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::overseer::config::DiscordConfig;
+    use crate::overseer::discord::gateway::{bounded_batch, next_notification};
     use crate::overseer::logging::{self, DecisionEntry, DecisionKind};
 
     #[test]
@@ -112,12 +120,73 @@ mod tests {
         let cursor_path = temp.path().join("discord.cursor");
         logging::append_to(&log, &DecisionEntry::new(DecisionKind::Hold, "event")).unwrap();
         let mut cursor = DecisionCursor::load(log, cursor_path.clone()).unwrap();
-        let pending = cursor.next().unwrap().unwrap();
+        let pending = cursor.next_batch(1).unwrap().pop().unwrap();
         assert!(!cursor.complete(pending, false).unwrap());
         assert!(!cursor_path.exists());
-        let pending = cursor.next().unwrap().unwrap();
+        let pending = cursor.next_batch(1).unwrap().pop().unwrap();
         assert!(cursor.complete(pending, true).unwrap());
         assert!(cursor_path.exists());
-        assert!(cursor.next().unwrap().is_none());
+        assert!(cursor.next_batch(1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn failed_front_entry_keeps_later_escalations_pending_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let log = temp.path().join("decisions.jsonl");
+        let cursor_path = temp.path().join("discord.cursor");
+        let mut first = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
+        first.source = Some("daemon_event".into());
+        logging::append_to(&log, &first).unwrap();
+        for reason in ["one", "two"] {
+            logging::append_to(&log, &DecisionEntry::new(DecisionKind::Escalate, reason)).unwrap();
+        }
+        let mut cursor = DecisionCursor::load(log, cursor_path).unwrap();
+
+        let mut batch = cursor.next_batch(3).unwrap();
+        assert_eq!(batch.len(), 3);
+        assert!(!cursor.complete(batch.remove(0), false).unwrap());
+        let retry = VecDeque::from(cursor.next_batch(3).unwrap());
+        assert_eq!(retry.len(), 3);
+        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "pr_opened");
+        let (count, notification) = next_notification(&DiscordConfig::default(), &retry);
+        assert_eq!(count, 1);
+        assert!(notification.is_some());
+
+        let mut retry = retry;
+        assert!(cursor.complete(retry.pop_front().unwrap(), true).unwrap());
+        let escalations = VecDeque::from(cursor.next_batch(3).unwrap());
+        assert_eq!(escalations.len(), 2);
+        let (count, notification) = next_notification(&DiscordConfig::default(), &escalations);
+        assert_eq!(count, 2);
+        assert!(notification.is_some());
+        for pending in escalations {
+            assert!(cursor.complete(pending, true).unwrap());
+        }
+        assert!(cursor.next_batch(3).unwrap().is_empty());
+    }
+
+    #[test]
+    fn escalation_run_beyond_tick_limit_is_one_atomic_digest() {
+        let temp = tempfile::tempdir().unwrap();
+        let log = temp.path().join("decisions.jsonl");
+        let cursor_path = temp.path().join("discord.cursor");
+        for index in 0..25 {
+            logging::append_to(
+                &log,
+                &DecisionEntry::new(DecisionKind::Escalate, format!("event {index}")),
+            )
+            .unwrap();
+        }
+        fs::write(&cursor_path, "0").unwrap();
+        let mut cursor = DecisionCursor::load(log, cursor_path).unwrap();
+        let mut pending = bounded_batch(cursor.next_batch(500).unwrap(), 20);
+
+        assert_eq!(pending.len(), 25);
+        let (count, notification) = next_notification(&DiscordConfig::default(), &pending);
+        assert_eq!(count, 25);
+        assert!(notification.is_some());
+        let last = pending.drain(..count).last().unwrap();
+        assert!(cursor.complete(last, true).unwrap());
+        assert!(cursor.next_batch(500).unwrap().is_empty());
     }
 }

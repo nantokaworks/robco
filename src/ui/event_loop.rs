@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     fs::OpenOptions,
     io::{self, Write},
     path::PathBuf,
@@ -20,10 +19,10 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use crate::{
     Result,
-    overseer::ledger::{Ledger, LedgerPhase},
     config::Config,
     model::Selection,
     notify::{self, WatchTarget},
+    overseer::logging,
     registry::Registry,
 };
 
@@ -53,14 +52,14 @@ pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) 
         Duration::from_millis(app.config.poll_interval_ms),
     );
 
-    let mut overseer_escalations = escalation_keys();
+    let mut decision_cursor = logging::DigestCursor::at_end()?;
     let result = run_loop(
         &mut terminal,
         &mut app,
         &notify_rx,
         &notify_tx,
         &notify_targets,
-        &mut overseer_escalations,
+        &mut decision_cursor,
     );
 
     notify_running.store(false, Ordering::Relaxed);
@@ -83,7 +82,7 @@ fn run_loop<B: ratatui::backend::Backend>(
     notify_rx: &mpsc::Receiver<String>,
     notify_tx: &mpsc::Sender<String>,
     notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
-    overseer_escalations: &mut HashSet<String>,
+    decision_cursor: &mut logging::DigestCursor,
 ) -> Result<()> {
     const MESSAGE_DURATION: Duration = Duration::from_secs(4);
 
@@ -94,7 +93,7 @@ fn run_loop<B: ratatui::backend::Backend>(
     loop {
         if last_tick.elapsed() >= tick_interval {
             app.tick();
-            notify_new_escalations(overseer_escalations, notify_tx, app.config.notify.enabled);
+            notify_new_decisions(decision_cursor, notify_tx, app.config.notify.enabled);
             last_tick = Instant::now();
         }
         if last_discovery.elapsed() >= DISCOVERY_INTERVAL {
@@ -178,37 +177,16 @@ fn drain_stdout_notifications(notify_rx: &mpsc::Receiver<String>, app: &mut App)
     }
 }
 
-fn escalation_keys() -> HashSet<String> {
-    Ledger::load()
-        .map(|ledger| {
-            ledger
-                .entries
-                .into_iter()
-                .filter(|entry| entry.phase == LedgerPhase::Escalated)
-                .map(|entry| format!("{}@{}", entry.task_id, entry.dispatched_at))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn notify_new_escalations(
-    seen: &mut HashSet<String>,
+fn notify_new_decisions(
+    cursor: &mut logging::DigestCursor,
     notify_tx: &mpsc::Sender<String>,
     enabled: bool,
 ) {
-    let Ok(ledger) = Ledger::load() else {
+    let Ok(digest) = cursor.read_digest() else {
         return;
     };
-    for entry in ledger
-        .entries
-        .into_iter()
-        .filter(|entry| entry.phase == LedgerPhase::Escalated)
-    {
-        let key = format!("{}@{}", entry.task_id, entry.dispatched_at);
-        if seen.insert(key) && enabled {
-            let body = format!("Overseer escalation: {} ({})", entry.display_id, entry.repo);
-            route_notification(notify_tx, "robco", &body);
-        }
+    if enabled && let Some(body) = digest {
+        route_notification(notify_tx, "robco", &body);
     }
 }
 

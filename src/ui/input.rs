@@ -87,6 +87,19 @@ impl App {
                     self.instruct_overseer(&instruction);
                 }
             },
+            Mode::PromptInbox {
+                target_session,
+                input,
+                ..
+            } => match overseer::prompt_action(input, key) {
+                overseer::PromptAction::Stay => {}
+                overseer::PromptAction::Cancel => self.mode = Mode::Normal,
+                overseer::PromptAction::Submit(answer) => {
+                    let session = target_session.clone();
+                    self.mode = Mode::Normal;
+                    self.answer_inbox(&session, &answer);
+                }
+            },
             Mode::ConfirmKill { repo, agent } => match key.code {
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                     let repo = *repo;
@@ -185,6 +198,7 @@ impl App {
                 }
             }
             Mode::Normal => match key.code {
+                code if overseer::handle_normal(self, code) => {}
                 KeyCode::Char('q') | KeyCode::Esc => {
                     if let Some(branch) = self.merge_job().map(|job| job.branch.clone()) {
                         self.show_message(format!(
@@ -248,14 +262,6 @@ impl App {
                 }
                 KeyCode::Char('a') => {
                     self.mode = Mode::PromptRepo {
-                        input: String::new(),
-                    };
-                }
-                KeyCode::Char('i')
-                    if matches!(self.selected_item(), Some(Selection::Overseer))
-                        && self.preview == PreviewPane::Claude =>
-                {
-                    self.mode = Mode::PromptOverseer {
                         input: String::new(),
                     };
                 }

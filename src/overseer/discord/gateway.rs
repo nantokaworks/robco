@@ -3,16 +3,18 @@ use super::{
     cursor::DecisionCursor,
     handler::Handler,
     ledger_requests::LedgerRequest,
-    notifications::{Notification, from_decision},
+    notifications::{Notification, digest, from_decision},
     ops_agent::OpsAgent,
     ops_gateway::process_effects,
     ops_session::SystemSessionSpawner,
 };
 use crate::overseer::{
-    config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir, triage_dir,
+    config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir,
+    logging::DecisionKind, triage_dir,
 };
 use serde_json::json;
 use std::{
+    collections::VecDeque,
     sync::{
         Arc, RwLock,
         atomic::{AtomicBool, Ordering},
@@ -135,12 +137,10 @@ pub async fn run(
                     &http, channel_id(&current), effects, &mut ops,
                     handler, &mut executor, now,
                 ).await;
-                for _ in 0..20 {
-                    let Some(pending) = cursor.next().map_err(|error| error.to_string())? else {
-                        break;
-                    };
-                    let notification = pending.entry.as_ref()
-                        .and_then(|entry| from_decision(&current, entry));
+                let pending = cursor.next_batch(500).map_err(|error| error.to_string())?;
+                let mut pending = bounded_batch(pending, 20);
+                while !pending.is_empty() {
+                    let (count, notification) = next_notification(&current, &pending);
                     let delivered = match (notification, channel_id(&current)) {
                         (Some(notification), Some(channel)) => {
                             send_embed(&http, channel, notification).await
@@ -148,17 +148,73 @@ pub async fn run(
                         (Some(_), None) => false,
                         (None, _) => true,
                     };
-                    if !cursor.complete(pending, delivered)
-                        .map_err(|error| error.to_string())? {
+                    if !delivered {
                         retry_at = tokio::time::Instant::now() + retry_delay;
                         retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
                         break;
                     }
+                    let mut completed = None;
+                    for _ in 0..count {
+                        completed = pending.pop_front();
+                    }
+                    cursor.complete(
+                        completed.expect("planned pending decision"),
+                        true,
+                    ).map_err(|error| error.to_string())?;
                     retry_delay = Duration::from_secs(1);
                 }
             }
         }
     }
+}
+
+pub(super) fn bounded_batch(
+    pending: Vec<super::cursor::PendingDecision>,
+    limit: usize,
+) -> VecDeque<super::cursor::PendingDecision> {
+    let mut end = pending.len().min(limit);
+    if end == 0 {
+        return VecDeque::new();
+    }
+    while end < pending.len()
+        && pending[end - 1].entry.as_ref().is_some_and(is_digest_entry)
+        && pending[end].entry.as_ref().is_some_and(is_digest_entry)
+    {
+        end += 1;
+    }
+    pending.into_iter().take(end).collect()
+}
+
+pub(super) fn next_notification(
+    config: &DiscordConfig,
+    pending: &VecDeque<super::cursor::PendingDecision>,
+) -> (usize, Option<Notification>) {
+    let first = pending.front().expect("non-empty pending decisions");
+    if first.entry.as_ref().is_some_and(is_digest_entry) {
+        let entries = pending
+            .iter()
+            .map(|item| item.entry.as_ref())
+            .take_while(|entry| entry.is_some_and(is_digest_entry))
+            .flatten()
+            .cloned()
+            .collect::<Vec<_>>();
+        return (entries.len(), digest(config, &entries));
+    }
+    (
+        1,
+        first
+            .entry
+            .as_ref()
+            .and_then(|entry| from_decision(config, entry)),
+    )
+}
+
+fn is_digest_entry(entry: &crate::overseer::logging::DecisionEntry) -> bool {
+    entry.source.as_deref() != Some("discord")
+        && matches!(
+            entry.kind,
+            DecisionKind::Escalate | DecisionKind::CircuitOpen
+        )
 }
 
 fn channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {
