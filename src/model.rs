@@ -48,6 +48,8 @@ pub struct AgentNode {
     pub id: String,
     #[serde(default)]
     pub parent_agent_id: Option<String>,
+    #[serde(default = "default_management_mode")]
+    pub management: ManagementMode,
     pub title: String,
     pub worktree_path: PathBuf,
     pub branch: String,
@@ -85,6 +87,26 @@ pub struct AgentNode {
     pub subagents: Vec<TaskSubagent>,
     #[serde(skip)]
     pub children: Vec<ChildWorktree>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagementMode {
+    Auto,
+    Manual,
+}
+
+fn default_management_mode() -> ManagementMode {
+    ManagementMode::Auto
+}
+
+impl ManagementMode {
+    pub fn toggled(self) -> Self {
+        match self {
+            Self::Auto => Self::Manual,
+            Self::Manual => Self::Auto,
+        }
+    }
 }
 
 /// Agent indices and identity-tree depths in display order.
@@ -218,6 +240,7 @@ mod tests {
             AgentNode {
                 id: id.into(),
                 parent_agent_id: parent.map(str::to_string),
+                management: ManagementMode::Manual,
                 title: id.into(),
                 worktree_path: PathBuf::from(id),
                 branch: id.into(),
@@ -260,6 +283,7 @@ mod tests {
         let agent = AgentNode {
             id: "agent".into(),
             parent_agent_id: None,
+            management: ManagementMode::Manual,
             title: "task".into(),
             worktree_path: "/tmp/task".into(),
             branch: "task".into(),

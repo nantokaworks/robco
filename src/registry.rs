@@ -168,7 +168,7 @@ mod tests {
     use std::{sync::Arc, time::SystemTime};
 
     use super::*;
-    use crate::model::{AgentNode, RepoNode};
+    use crate::model::{AgentNode, ManagementMode, RepoNode};
     use crate::subagents::{SubagentStatus, TaskSubagent};
 
     fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
@@ -195,6 +195,7 @@ mod tests {
         AgentNode {
             id: "agent123".to_string(),
             parent_agent_id: None,
+            management: ManagementMode::Manual,
             title: "t".to_string(),
             worktree_path: "/tmp/wt".into(),
             branch: "b".to_string(),
@@ -314,6 +315,35 @@ mod tests {
         let loaded: AgentNode =
             serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
         assert_eq!(loaded.parent_agent_id.as_deref(), Some("parent123"));
+    }
+
+    #[test]
+    fn management_mode_round_trips() {
+        let mut agent = dummy_agent();
+        agent.management = ManagementMode::Auto;
+        let loaded: AgentNode =
+            serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
+        assert_eq!(loaded.management, ManagementMode::Auto);
+
+        agent.management = ManagementMode::Manual;
+        let loaded: AgentNode =
+            serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
+        assert_eq!(loaded.management, ManagementMode::Manual);
+    }
+
+    #[test]
+    fn missing_management_field_defaults_to_auto() {
+        let registry = Registry {
+            version: 1,
+            repos: vec![repo("/repo", vec![dummy_agent()])],
+        };
+        let mut legacy = serde_json::to_value(&registry).unwrap();
+        legacy["repos"][0]["agents"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("management");
+        let loaded: Registry = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.repos[0].agents[0].management, ManagementMode::Auto);
     }
 
     #[test]

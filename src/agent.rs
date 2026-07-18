@@ -7,7 +7,8 @@ use crate::{
     Result,
     config::Config,
     git,
-    model::{AgentNode, RepoNode},
+    model::{AgentNode, ManagementMode, RepoNode},
+    overseer::is_overseer_child,
     tmux,
 };
 
@@ -77,6 +78,11 @@ pub(crate) fn create_agent_with_launch(
     Ok(AgentNode {
         id,
         parent_agent_id: parent_agent_id.map(str::to_string),
+        management: if is_overseer_child(parent_agent_id) {
+            ManagementMode::Auto
+        } else {
+            ManagementMode::Manual
+        },
         title: title.to_string(),
         worktree_path,
         branch,
@@ -177,6 +183,7 @@ pub fn adopt_worktree(
         .unwrap_or_else(|| (nanoid!(8), None));
     AgentNode {
         id,
+        management: ManagementMode::Manual,
         parent_agent_id,
         title: label,
         worktree_path,

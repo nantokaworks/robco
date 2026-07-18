@@ -178,11 +178,30 @@ fn adopt_preserves_recovered_identity() {
     );
     assert_eq!(adopted.id, "child-id");
     assert_eq!(adopted.parent_agent_id.as_deref(), Some("parent-id"));
+    assert_eq!(adopted.management, crate::model::ManagementMode::Manual);
+}
+
+#[test]
+fn adopted_overseer_worker_defaults_to_manual() {
+    let adopted = adopt_worktree(
+        &repo_named("dropr"),
+        &Config::default(),
+        "/tmp/wt".into(),
+        Some("dropr/worker".into()),
+        None,
+        Some("robco_dropr_worker".into()),
+        Some(RecoveredIdentity {
+            id: "worker-id".into(),
+            parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
+        }),
+    );
+    assert_eq!(adopted.management, crate::model::ManagementMode::Manual);
 }
 
 fn agent_titled(title: &str, branch: &str) -> AgentNode {
     let now = chrono::Local::now();
     AgentNode {
+        management: crate::model::ManagementMode::Manual,
         id: "agent123".to_string(),
         parent_agent_id: None,
         title: title.to_string(),

@@ -55,6 +55,7 @@ impl Fixture {
 fn test_agent(worktree_path: std::path::PathBuf) -> AgentNode {
     let now = Local::now();
     AgentNode {
+        management: crate::model::ManagementMode::Manual,
         id: "stable-agent".into(),
         parent_agent_id: None,
         title: "agent".into(),
