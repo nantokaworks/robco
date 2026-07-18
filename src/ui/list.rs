@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use crate::{
-    overseer,
     model::{RepoNode, Selection},
+    overseer,
 };
 
-use super::{App, default_pane, panes_for};
+use super::{default_pane, panes_for, App};
 
 impl App {
     pub(crate) fn effective_roots(&self) -> impl Iterator<Item = &std::path::Path> {
@@ -158,6 +158,8 @@ impl App {
     pub(in crate::ui) fn visible(&self) -> Vec<Selection> {
         let mut visible = Vec::new();
         if self.overseer_visible {
+            // This first focus entry maps to the dedicated OVERSEER frame;
+            // tree rendering excludes it from the PROJECTS frame.
             visible.push(Selection::Overseer);
         }
         for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
@@ -283,6 +285,10 @@ mod tests {
 
         app.set_overseer_visibility(true);
         assert_eq!(app.selected, 1);
+        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
+        app.move_selection_up();
+        assert_eq!(app.selected_item(), Some(Selection::Overseer));
+        app.move_selection_down();
         assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
         app.set_overseer_visibility(false);

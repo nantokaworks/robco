@@ -36,7 +36,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
 
     let ai_label = ai_label(selection, registry, default_program);
     let root = layout::root(frame.area());
-    let panes = layout::panes(root.body);
+    let panes = layout::panes(root.body, app.overseer_visible);
 
     let (title, text) = match (pane, selection) {
         (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(),
