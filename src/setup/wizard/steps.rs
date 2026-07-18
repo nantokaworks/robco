@@ -75,8 +75,14 @@ pub(crate) fn overseer<R: BufRead, W: Write>(
         "Triage profile",
         &overseer.triage_profile,
     )?;
-    overseer.max_workers =
-        prompt::number(input, output, "Maximum workers", overseer.max_workers, 0, 999)?;
+    overseer.max_workers = prompt::number(
+        input,
+        output,
+        "Maximum workers",
+        overseer.max_workers,
+        0,
+        999,
+    )?;
     overseer.per_repo_limit = prompt::number(
         input,
         output,

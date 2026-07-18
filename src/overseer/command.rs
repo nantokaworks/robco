@@ -14,10 +14,10 @@ use super::{
     pidfile_path,
 };
 use crate::{
+    Result,
     cli::{OverseerArgs, OverseerCommand, OverseerSetting},
     config::Config,
     registry::Registry,
-    Result,
 };
 
 mod service;
@@ -210,11 +210,7 @@ fn read_pid() -> Option<u32> {
         .ok()
 }
 fn on_off(value: bool) -> &'static str {
-    if value {
-        "on"
-    } else {
-        "off"
-    }
+    if value { "on" } else { "off" }
 }
 fn terminal(phase: LedgerPhase) -> bool {
     matches!(

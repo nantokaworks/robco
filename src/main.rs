@@ -1,5 +1,4 @@
 mod agent;
-mod overseer;
 mod cli;
 mod clone;
 mod config;
@@ -12,6 +11,7 @@ mod model;
 mod new_agent;
 mod notify;
 mod openclaw;
+mod overseer;
 mod registry;
 mod setup;
 mod spawn;

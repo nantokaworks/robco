@@ -58,7 +58,11 @@ pub(in crate::ui::tree) fn supplementary_spans(
         ));
     }
     if let Some(Indicator::SubagentActivity(active)) = indicator {
-        let style = if selected { sel } else { THEME.subagent_style() };
+        let style = if selected {
+            sel
+        } else {
+            THEME.subagent_style()
+        };
         spans.push(Span::styled(format!("{gap}{active}"), style));
     }
     if supplementary.worktree_missing {

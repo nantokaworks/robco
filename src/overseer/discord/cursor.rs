@@ -185,7 +185,7 @@ mod tests {
         let (count, notification) = next_notification(&DiscordConfig::default(), &pending);
         assert_eq!(count, 25);
         assert!(notification.is_some());
-        let last = pending.drain(..count).last().unwrap();
+        let last = pending.drain(..count).next_back().unwrap();
         assert!(cursor.complete(last, true).unwrap());
         assert!(cursor.next_batch(500).unwrap().is_empty());
     }

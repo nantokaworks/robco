@@ -104,14 +104,16 @@ fn every_merge_session_failure_escalates() {
 fn queue_tick_does_not_wait_for_running_session() {
     let temp = tempfile::tempdir().unwrap();
     let script = crate::overseer::session::executable_script(temp.path(), "sleep 30");
-    let mut config = Config::default();
-    config.profiles = vec![Profile {
-        name: "claude".into(),
-        program: script.to_string_lossy().into(),
-        autonomous_args: vec![],
-        model: None,
-        backend: None,
-    }];
+    let config = Config {
+        profiles: vec![Profile {
+            name: "claude".into(),
+            program: script.to_string_lossy().into(),
+            autonomous_args: vec![],
+            model: None,
+            backend: None,
+        }],
+        ..Default::default()
+    };
     let mut queue = test_queue(temp.path());
     assert!(queue.dispatch_advice(&[candidate("a")]).is_none());
     queue.tick(&config).unwrap();

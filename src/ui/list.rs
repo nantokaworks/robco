@@ -5,7 +5,7 @@ use crate::{
     overseer,
 };
 
-use super::{default_pane, panes_for, App};
+use super::{App, default_pane, panes_for};
 
 impl App {
     pub(crate) fn effective_roots(&self) -> impl Iterator<Item = &std::path::Path> {
