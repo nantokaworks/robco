@@ -9,7 +9,6 @@ use ratatui::{
 use crate::{
     agent, git,
     model::{Selection, Status},
-    registry::Registry,
     ui::{
         App, PreviewPane, layout, merge_dialog, scrollback,
         summary::{agent_summary, child_summary, repo_summary},
@@ -18,9 +17,12 @@ use crate::{
 };
 
 mod branch_only;
+mod labels;
+mod overseer;
 #[cfg(test)]
 mod render_tests;
 mod tabs;
+use labels::ai_label;
 use tabs::preview_tabs_line;
 /// Inner padding between the preview border and its content, applied to every
 /// tab. `scrollback::capture` subtracts it when sizing mirrored tmux sessions.
@@ -40,6 +42,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
 
     let (title, text) = match (pane, selection) {
         (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(),
+        (PreviewPane::Claude, Some(Selection::Overseer)) => {
+            overseer::control_preview(app, panes.preview, scroll)
+        }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
@@ -278,22 +283,4 @@ pub(in crate::ui) fn render_merge_notice(
         .style(THEME.accent_style())
         .wrap(Wrap { trim: false });
     frame.render_widget(para, popup);
-}
-
-fn ai_label(selection: Option<Selection>, registry: &Registry, default_program: &str) -> String {
-    let raw = match selection {
-        Some(Selection::Agent { repo, agent }) => {
-            let agent = &registry.repos[repo].agents[agent];
-            agent.profile.clone().unwrap_or_else(|| {
-                agent
-                    .program
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("AI")
-                    .to_string()
-            })
-        }
-        _ => default_program.to_string(),
-    };
-    raw.to_uppercase()
 }

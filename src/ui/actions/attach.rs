@@ -1,7 +1,7 @@
 use crate::{
     Result, agent,
     model::{Selection, Status},
-    tmux,
+    overseer, tmux,
 };
 
 use super::{
@@ -86,6 +86,16 @@ impl App {
 
     pub(in crate::ui) fn attach_claude_selected(&mut self) -> Result<()> {
         match self.selected_item() {
+            Some(Selection::Overseer) => {
+                let cwd = self
+                    .ephemeral_root
+                    .clone()
+                    .unwrap_or_else(|| self.config.repos_root.clone());
+                match overseer::ensure_control_session(&self.config, &cwd) {
+                    Ok(session) => self.attach_session(&session),
+                    Err(err) => self.show_message(err.to_string()),
+                }
+            }
             Some(Selection::Agent {
                 repo,
                 agent: agent_idx,
@@ -113,6 +123,21 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    pub(in crate::ui) fn instruct_overseer(&mut self, instruction: &str) {
+        let cwd = self
+            .ephemeral_root
+            .clone()
+            .unwrap_or_else(|| self.config.repos_root.clone());
+        let result = overseer::ensure_control_session(&self.config, &cwd).and_then(|session| {
+            tmux::send_literal_text(&session, instruction)?;
+            tmux::send_keys(&session, &["Enter"])
+        });
+        match result {
+            Ok(()) => self.show_message("instruction sent to overseer control"),
+            Err(err) => self.show_message(err.to_string()),
+        }
     }
 
     pub(in crate::ui) fn attach_orphan_selected(&mut self) {

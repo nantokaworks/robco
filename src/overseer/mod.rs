@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::Result;
+use crate::{Result, config::Config, tmux};
 
 pub mod command;
 pub mod config;
@@ -17,7 +17,24 @@ pub mod templates;
 pub mod triage;
 
 pub const OVERSEER_AGENT_ID: &str = "overseer";
+pub const CONTROL_SESSION_NAME: &str = "@overseer-control";
 const LEGACY_OVERSEER_AGENT_ID: &str = "chief";
+
+pub fn control_session_name(prefix: &str) -> String {
+    format!("{prefix}{CONTROL_SESSION_NAME}")
+}
+
+pub fn ensure_control_session(config: &Config, cwd: &Path) -> Result<String> {
+    let session = control_session_name(&config.tmux_session_prefix);
+    if !tmux::has_session(&session)?
+        && let Err(create_err) =
+            tmux::new_session(&session, cwd, &config.default_program_command(), &[])
+        && !matches!(tmux::has_session(&session), Ok(true))
+    {
+        return Err(create_err);
+    }
+    Ok(session)
+}
 
 /// Shown when dispatch is enabled but the Overseer daemon is not running: the
 /// toggle is on yet no poll loop consumes ready tasks, so name the two
@@ -108,7 +125,21 @@ pub fn discord_ops_dir() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_overseer_child, migrate_overseer_home};
+    use super::{control_session_name, is_overseer_child, migrate_overseer_home};
+    use crate::tmux;
+
+    #[test]
+    fn control_session_name_is_disjoint_from_worker_names() {
+        let prefix = "robco_";
+        let control = control_session_name(prefix);
+
+        assert_eq!(control, "robco_@overseer-control");
+        assert_ne!(control, tmux::session_name(prefix, "overseer", "control"));
+
+        let reserved_suffix = control.strip_prefix(prefix).unwrap();
+        assert!(reserved_suffix.contains('@'));
+        assert!(!tmux::sanitize_target_part(reserved_suffix).contains('@'));
+    }
 
     #[test]
     fn overseer_children_include_legacy_parent_id() {
