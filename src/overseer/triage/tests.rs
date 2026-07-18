@@ -69,6 +69,8 @@ fn timeout_escalates() {
         name: "test".into(),
         program: script.to_string_lossy().into_owned(),
         autonomous_args: Vec::new(),
+        model: None,
+        backend: None,
     };
     let result = EphemeralSession {
         profile: &profile,
@@ -146,6 +148,8 @@ fn partial_result_write_is_polled_until_json_is_complete() {
         name: "test".into(),
         program: script.to_string_lossy().into_owned(),
         autonomous_args: Vec::new(),
+        model: None,
+        backend: None,
     };
     let result = EphemeralSession {
         profile: &profile,
@@ -190,6 +194,8 @@ fn queue_tick_starts_session_without_blocking_daemon() {
             name: "test".into(),
             program: script.to_string_lossy().into_owned(),
             autonomous_args: Vec::new(),
+            model: None,
+            backend: None,
         }],
         ..Default::default()
     };

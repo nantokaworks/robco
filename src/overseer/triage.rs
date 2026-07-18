@@ -115,6 +115,8 @@ pub(crate) fn triage_profile(config: &Config) -> Option<Profile> {
                 name: name.clone(),
                 program: config.default_program_command(),
                 autonomous_args: Vec::new(),
+                model: None,
+                backend: None,
             })
         })
 }

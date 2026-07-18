@@ -7,6 +7,7 @@ use super::{
     exec::{PidGuard, append_jsonl, execute_actions},
     heartbeat_path,
     inbox::InboxReader,
+    judge::JudgmentQueue,
     ledger::{Ledger, LedgerPhase},
     logging,
     monitor::{Action, ObservationSnapshot, reconcile},
@@ -35,6 +36,7 @@ pub async fn run_daemon() -> Result<()> {
     let mut inbox = InboxReader::new()?;
     let mut protections = merge::ProtectionCache::default();
     let mut exceptions = ExceptionQueue::load()?;
+    let mut judgments = JudgmentQueue::load()?;
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -67,9 +69,10 @@ pub async fn run_daemon() -> Result<()> {
             exceptions.enqueue(&actions, &next, &observed)?;
             exceptions.tick(&config, &mut next)?;
         }
+        judgments.tick(&config)?;
         execute_actions(&actions)?;
-        merge::auto_merge_pass(&config, &mut next, &mut protections)?;
-        dispatch_pass(&mut config, &mut next, now)?;
+        merge::auto_merge_pass(&config, &mut next, &mut protections, &mut judgments)?;
+        dispatch_pass(&mut config, &mut next, now, &mut judgments)?;
         // Persist decisions before removing their queue item. A crash before this
         // point replays the marker without repeating actions; after it, replay is
         // an idempotent ledger update until the queue acknowledgement is saved.

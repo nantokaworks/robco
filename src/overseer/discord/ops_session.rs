@@ -178,6 +178,8 @@ mod tests {
             name: "test".into(),
             program: "/bin/true".into(),
             autonomous_args: Vec::new(),
+            model: None,
+            backend: None,
         };
         let start = Instant::now();
         let handle = spawn_session(

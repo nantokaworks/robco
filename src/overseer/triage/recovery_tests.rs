@@ -76,6 +76,8 @@ fn dropping_session_handle_kills_worker_and_removes_pidfile() {
             name: "test".into(),
             program: script.to_string_lossy().into_owned(),
             autonomous_args: Vec::new(),
+            model: None,
+            backend: None,
         }],
         ..Default::default()
     };
