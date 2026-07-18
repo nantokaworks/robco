@@ -1,4 +1,39 @@
 use super::*;
+use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
+use ratatui::style::Color;
+
+#[test]
+fn flags_line_joins_and_reds_warnings() {
+    let line = super::render::flags_line(&[
+        ("dispatch", "on".into(), false),
+        ("circuit", "OPEN".into(), true),
+    ]);
+    let rendered = line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert_eq!(rendered, "dispatch: on · circuit: OPEN");
+    assert_eq!(
+        line.spans
+            .iter()
+            .find(|span| span.content == "OPEN")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red)
+    );
+    assert_ne!(
+        line.spans
+            .iter()
+            .find(|span| span.content == "on")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red)
+    );
+}
 
 #[test]
 fn stale_heartbeat_is_not_fresh() {
@@ -36,5 +71,61 @@ fn stale_dispatch_counter_renders_zero() {
         .iter()
         .map(|span| span.content.as_ref())
         .collect::<String>();
-    assert!(rendered.starts_with("dispatches today: 0 / "));
+    assert!(rendered.starts_with("dispatches: 0 / "));
+}
+
+#[test]
+fn empty_ledger_hides_empty_detail_lines() {
+    let mut lines = Vec::new();
+    append_ledger(&mut lines, &OverseerConfig::default(), &Ledger::default());
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+    assert!(!rendered.contains("workers by repo"));
+    assert!(!rendered.contains("active phases"));
+    assert!(!rendered.contains("skip list"));
+}
+
+#[test]
+fn active_phases_excludes_terminal_entries() {
+    let ledger = Ledger {
+        entries: vec![
+            LedgerEntry {
+                task_id: "active".into(),
+                display_id: "#1".into(),
+                repo: "repo".into(),
+                agent_id: "agent".into(),
+                branch: "active".into(),
+                phase: LedgerPhase::Working,
+                dispatched_at: Utc::now(),
+                retries: 0,
+                pr_url: None,
+            },
+            LedgerEntry {
+                task_id: "terminal".into(),
+                display_id: "#2".into(),
+                repo: "repo".into(),
+                agent_id: "agent".into(),
+                branch: "terminal".into(),
+                phase: LedgerPhase::Merged,
+                dispatched_at: Utc::now(),
+                retries: 0,
+                pr_url: None,
+            },
+        ],
+        ..Ledger::default()
+    };
+    let mut lines = Vec::new();
+    append_ledger(&mut lines, &OverseerConfig::default(), &ledger);
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(rendered.contains("active phases"));
+    assert!(rendered.contains("working=1"));
+    assert!(!rendered.contains("merged"));
 }
