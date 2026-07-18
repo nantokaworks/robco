@@ -1,17 +1,19 @@
 use chrono::{DateTime, NaiveDate, Utc};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 use crate::model::ManagementMode;
 
 use super::{
     config::OverseerConfig,
+    judge::DispatchAdvice,
     ledger::{Ledger, LedgerPhase},
 };
 
 mod runtime;
 pub use runtime::dispatch_pass;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Candidate {
     pub task_id: String,
     pub display_id: String,
@@ -34,6 +36,45 @@ pub struct DispatchPlan {
     pub dispatch_enabled: bool,
     pub circuit_opened: bool,
     pub decisions: Vec<GateDecision>,
+}
+
+/// Applies advice only to candidates already approved by the deterministic gate.
+pub(crate) fn apply_judgment(
+    decisions: Vec<GateDecision>,
+    advice: &DispatchAdvice,
+) -> Vec<GateDecision> {
+    let mut rejected = Vec::new();
+    let mut approved = HashMap::new();
+    let mut approved_order = Vec::new();
+    for decision in decisions {
+        if decision.dispatch {
+            let id = decision
+                .candidate
+                .as_ref()
+                .expect("approved candidate")
+                .task_id
+                .clone();
+            approved_order.push(id.clone());
+            approved.insert(id, decision);
+        } else {
+            rejected.push(decision);
+        }
+    }
+    let mut advised = Vec::new();
+    for id in &advice.candidate_ids {
+        if let Some(decision) = approved.remove(id) {
+            advised.push(decision);
+        }
+    }
+    for id in approved_order {
+        if let Some(mut decision) = approved.remove(&id) {
+            decision.dispatch = false;
+            decision.reason = format!("judge_filtered:{}", advice.reason);
+            advised.push(decision);
+        }
+    }
+    rejected.extend(advised);
+    rejected
 }
 
 pub fn plan_dispatch(

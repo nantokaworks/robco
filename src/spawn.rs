@@ -230,6 +230,8 @@ mod tests {
                 name: "codex-autonomous".into(),
                 program: "/usr/local/bin/codex".into(),
                 autonomous_args: Vec::new(),
+                model: None,
+                backend: None,
             }],
             ..Config::default()
         };

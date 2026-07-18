@@ -203,3 +203,45 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
     assert_eq!(plan.decisions[1].reason, "ready");
     assert!(plan.decisions[1].dispatch);
 }
+
+#[test]
+fn judgment_cannot_add_a_candidate_rejected_by_rust_caps() {
+    let config = OverseerConfig {
+        max_workers: 1,
+        ..OverseerConfig::default()
+    };
+    let mut first = candidate("/first");
+    first.task_id = "first".into();
+    let mut second = candidate("/second");
+    second.task_id = "second".into();
+    let candidates = [first, second];
+    let plan = plan_dispatch(
+        &config,
+        &Ledger::default(),
+        &candidates,
+        now(),
+        &HashMap::new(),
+    );
+    assert!(plan.decisions[0].dispatch);
+    assert!(!plan.decisions[1].dispatch);
+    let advice = DispatchAdvice {
+        candidate_ids: vec![
+            plan.decisions[1]
+                .candidate
+                .as_ref()
+                .unwrap()
+                .task_id
+                .clone(),
+        ],
+        reason: "try rejected".into(),
+        fail_safe: false,
+    };
+    let judged = apply_judgment(plan.decisions, &advice);
+    assert!(!judged.iter().any(|decision| {
+        decision.dispatch
+            && decision
+                .candidate
+                .as_ref()
+                .is_some_and(|item| item.repo == "/second")
+    }));
+}

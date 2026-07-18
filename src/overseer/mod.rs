@@ -10,6 +10,7 @@ pub mod discord;
 pub mod dispatch;
 pub mod exec;
 pub mod inbox;
+pub mod judge;
 pub mod ledger;
 pub mod logging;
 pub mod monitor;
@@ -118,6 +119,10 @@ pub fn snapshots_path() -> Result<PathBuf> {
 
 pub fn triage_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("triage"))
+}
+
+pub fn judge_dir() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("judge"))
 }
 
 pub fn discord_ops_dir() -> Result<PathBuf> {

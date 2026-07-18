@@ -8,16 +8,17 @@ use serde_json::Value;
 
 use super::COMMAND_TIMEOUT;
 use crate::{
+    Result,
     config::Config,
     dropr::canonical_repo,
     overseer::{
-        autonomy::{merge_envelope_decision, ChangeFacts, Decision},
+        autonomy::{Decision, merge_envelope_decision},
         exec::run_timeout,
+        judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
         ledger::{Ledger, LedgerEntry, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
     },
     registry::Registry,
-    Result,
 };
 
 const PROTECTION_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
@@ -47,17 +48,21 @@ pub(super) fn auto_merge_pass(
     config: &Config,
     ledger: &mut Ledger,
     cache: &mut ProtectionCache,
+    judgments: &mut JudgmentQueue,
 ) -> Result<()> {
     if !config.overseer.auto_merge {
         return Ok(());
     }
     let registry = Registry::load()?;
-    for entry in ledger
-        .entries
-        .iter_mut()
-        .filter(|entry| entry.phase == LedgerPhase::PrOpened)
-        .filter(|entry| worker_is_auto(entry, &registry))
-    {
+    let consecutive_failures = ledger.counters.consecutive_failures;
+    for entry in ledger.entries.iter_mut() {
+        let reconsidering = entry.phase == LedgerPhase::Escalated
+            && judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref());
+        if (entry.phase != LedgerPhase::PrOpened && !reconsidering)
+            || !worker_is_auto(entry, &registry)
+        {
+            continue;
+        }
         if !protection_verified(entry, &registry, cache)? {
             log(entry, DecisionKind::Hold, "unprotected")?;
             continue;
@@ -72,7 +77,7 @@ pub(super) fn auto_merge_pass(
             "view",
             &url,
             "--json",
-            "state,statusCheckRollup",
+            "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid",
         ]);
         let output = match run_timeout(view, COMMAND_TIMEOUT) {
             Ok(output) if output.status.success() => output,
@@ -100,18 +105,42 @@ pub(super) fn auto_merge_pass(
             log(entry, DecisionKind::Hold, "checks_not_green")?;
             continue;
         }
-        let facts = ChangeFacts::default();
-        if let Decision::Escalate(risks) =
-            merge_envelope_decision(true, true, &facts, &config.overseer)
-        {
-            let reason = if risks.is_empty() {
-                "autonomy_envelope".to_owned()
-            } else {
-                format!("autonomy_envelope:{risks:?}")
-            };
-            log(entry, DecisionKind::Escalate, &reason)?;
+        let facts = change_facts(&value, consecutive_failures, judgments.llm_calls_today());
+        let case = merge_case(entry, &url, &value);
+        let Some(advice) =
+            judgment_after_gate(true, true, &facts, config, || judgments.merge_advice(case))
+        else {
+            if matches!(
+                merge_envelope_decision(true, true, &facts, &config.overseer),
+                Decision::Escalate(_)
+            ) {
+                log(entry, DecisionKind::Escalate, "autonomy_envelope")?;
+            }
             continue;
+        };
+        let advice = advice?;
+        let Some(advice) = advice else { continue };
+        let allows_merge = judgment_allows_merge(entry, advice.outcome);
+        match advice.outcome {
+            MergeJudgment::Allow => {}
+            MergeJudgment::Veto => {
+                log(
+                    entry,
+                    DecisionKind::Escalate,
+                    &format!("judge_veto:{}", advice.reason),
+                )?;
+                continue;
+            }
+            MergeJudgment::Escalate => {
+                log(
+                    entry,
+                    DecisionKind::Escalate,
+                    &format!("judge_escalate:{}", advice.reason),
+                )?;
+                continue;
+            }
         }
+        debug_assert!(allows_merge);
         let strategy = match config.overseer.merge_strategy.as_str() {
             "merge" => "--merge",
             "rebase" => "--rebase",
@@ -140,6 +169,15 @@ pub(super) fn auto_merge_pass(
         }
     }
     Ok(())
+}
+
+fn judgment_allows_merge(entry: &mut LedgerEntry, outcome: MergeJudgment) -> bool {
+    if outcome == MergeJudgment::Allow {
+        true
+    } else {
+        entry.phase = LedgerPhase::Escalated;
+        false
+    }
 }
 
 fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {
@@ -226,41 +264,5 @@ fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn unprotected_or_missing_status_checks_refuses() {
-        assert!(!protection_allows_merge(&json!({"message": "Not Found"})));
-        assert!(!protection_allows_merge(
-            &json!({"required_pull_request_reviews": {}, "required_status_checks": null})
-        ));
-        assert!(protection_allows_merge(
-            &json!({"required_pull_request_reviews": {}, "required_status_checks": {"contexts": ["test"]}})
-        ));
-    }
-
-    #[test]
-    fn any_non_success_check_holds() {
-        assert!(!checks_green(&json!({"state":"OPEN", "statusCheckRollup":[
-            {"conclusion":"SUCCESS"}, {"conclusion":"FAILURE"}
-        ]})));
-        assert!(checks_green(
-            &json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":"SUCCESS"}]})
-        ));
-    }
-
-    #[test]
-    fn positive_cache_expires_and_failures_are_not_remembered() {
-        let mut cache = ProtectionCache::default();
-        let now = Instant::now();
-        cache.remember_probe("/repo", now, None);
-        cache.remember_probe("/unprotected", now, Some(false));
-        assert!(cache.0.is_empty());
-
-        cache.remember_probe("/repo", now, Some(true));
-        assert!(cache.verified("/repo", now + PROTECTION_CACHE_TTL / 2));
-        assert!(!cache.verified("/repo", now + PROTECTION_CACHE_TTL));
-    }
-}
+#[path = "../judge/merge_tests.rs"]
+mod tests;
