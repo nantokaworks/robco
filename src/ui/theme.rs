@@ -65,6 +65,15 @@ impl Theme {
         Style::default().fg(self.selection_fg).bg(self.selection_bg)
     }
 
+    /// Selection-aware style for the leading indicator column (primary +
+    /// supplementary spans) so it joins the solid selection bar instead of
+    /// leaving a hollow gap. Reversed (`selection_fg` on `selection_bg`)
+    /// because a status colour such as `running` (green) would vanish on the
+    /// green selection background; bold keeps the glyph emphasised.
+    pub fn selected_indicator_style(self) -> Style {
+        self.selection_style().add_modifier(Modifier::BOLD)
+    }
+
     pub fn dialog_border_style(self) -> Style {
         Style::default().fg(self.dialog_border)
     }
