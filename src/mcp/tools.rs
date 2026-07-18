@@ -45,7 +45,7 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
             let args: report::ReportArgs = parse_args(arguments)?;
             report::report(args)
         }
-        "robco_chief_policy" => {
+        "robco_overseer_policy" | "robco_chief_policy" => {
             let args: policy::PolicyArgs = parse_args(arguments)?;
             policy::policy(args)
         }

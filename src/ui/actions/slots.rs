@@ -98,9 +98,9 @@ mod tests {
     fn detects_old_and_slugged_managed_task_directory_slots() {
         for owner_path in [
             "/wt/dropr_task-749_gOQmxo",
-            "/wt/dropr_task-749-fix-chief_gOQmxo",
+            "/wt/dropr_task-749-fix-overseer_gOQmxo",
         ] {
-            let owner = agent("owner", owner_path, "dropr/task-749-fix-chief");
+            let owner = agent("owner", owner_path, "dropr/task-749-fix-overseer");
             let prefix = owner_path.rsplit_once('_').unwrap().0;
             let slot_path = format!("{prefix}_slot750");
 
@@ -111,7 +111,7 @@ mod tests {
             ));
             assert!(is_slot_worktree(
                 Path::new("/wt/anything"),
-                Some("dropr/task-749-fix-chief-slot-750"),
+                Some("dropr/task-749-fix-overseer-slot-750"),
                 &[owner],
             ));
         }

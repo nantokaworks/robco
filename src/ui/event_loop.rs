@@ -20,7 +20,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use crate::{
     Result,
-    chief::ledger::{Ledger, LedgerPhase},
+    overseer::ledger::{Ledger, LedgerPhase},
     config::Config,
     model::Selection,
     notify::{self, WatchTarget},
@@ -53,14 +53,14 @@ pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) 
         Duration::from_millis(app.config.poll_interval_ms),
     );
 
-    let mut chief_escalations = escalation_keys();
+    let mut overseer_escalations = escalation_keys();
     let result = run_loop(
         &mut terminal,
         &mut app,
         &notify_rx,
         &notify_tx,
         &notify_targets,
-        &mut chief_escalations,
+        &mut overseer_escalations,
     );
 
     notify_running.store(false, Ordering::Relaxed);
@@ -83,7 +83,7 @@ fn run_loop<B: ratatui::backend::Backend>(
     notify_rx: &mpsc::Receiver<String>,
     notify_tx: &mpsc::Sender<String>,
     notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
-    chief_escalations: &mut HashSet<String>,
+    overseer_escalations: &mut HashSet<String>,
 ) -> Result<()> {
     const MESSAGE_DURATION: Duration = Duration::from_secs(4);
 
@@ -94,7 +94,7 @@ fn run_loop<B: ratatui::backend::Backend>(
     loop {
         if last_tick.elapsed() >= tick_interval {
             app.tick();
-            notify_new_escalations(chief_escalations, notify_tx, app.config.notify.enabled);
+            notify_new_escalations(overseer_escalations, notify_tx, app.config.notify.enabled);
             last_tick = Instant::now();
         }
         if last_discovery.elapsed() >= DISCOVERY_INTERVAL {
@@ -206,7 +206,7 @@ fn notify_new_escalations(
     {
         let key = format!("{}@{}", entry.task_id, entry.dispatched_at);
         if seen.insert(key) && enabled {
-            let body = format!("Chief escalation: {} ({})", entry.display_id, entry.repo);
+            let body = format!("Overseer escalation: {} ({})", entry.display_id, entry.repo);
             route_notification(notify_tx, "robco", &body);
         }
     }

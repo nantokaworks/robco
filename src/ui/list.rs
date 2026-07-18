@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    chief,
+    overseer,
     model::{RepoNode, Selection},
 };
 
@@ -21,7 +21,7 @@ impl App {
     /// path and agents on their unique id.
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
-            Selection::Chief => "chief".to_string(),
+            Selection::Overseer => "overseer".to_string(),
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
             }
@@ -157,8 +157,8 @@ impl App {
     /// section listing them.
     pub(in crate::ui) fn visible(&self) -> Vec<Selection> {
         let mut visible = Vec::new();
-        if self.chief_visible {
-            visible.push(Selection::Chief);
+        if self.overseer_visible {
+            visible.push(Selection::Overseer);
         }
         for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
             if self.repo_is_local(repo) {
@@ -216,28 +216,28 @@ impl App {
         self.clamp_selection();
     }
 
-    pub(in crate::ui) fn refresh_chief_visibility(&mut self) {
-        self.set_chief_visibility(chief_is_visible());
+    pub(in crate::ui) fn refresh_overseer_visibility(&mut self) {
+        self.set_overseer_visibility(overseer_is_visible());
     }
 
-    fn set_chief_visibility(&mut self, visible: bool) {
-        if self.chief_visible == visible {
+    fn set_overseer_visibility(&mut self, visible: bool) {
+        if self.overseer_visible == visible {
             return;
         }
         let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
-        self.chief_visible = visible;
+        self.overseer_visible = visible;
         self.restore_selection(selected_identity);
     }
 }
 
-pub(super) fn chief_is_visible() -> bool {
-    chief::pidfile_path()
+pub(super) fn overseer_is_visible() -> bool {
+    overseer::pidfile_path()
         .ok()
-        .zip(chief::ledger_path().ok())
-        .is_some_and(|(pidfile, ledger)| chief_artifacts_exist(&pidfile, &ledger))
+        .zip(overseer::ledger_path().ok())
+        .is_some_and(|(pidfile, ledger)| overseer_artifacts_exist(&pidfile, &ledger))
 }
 
-fn chief_artifacts_exist(pidfile: &Path, ledger: &Path) -> bool {
+fn overseer_artifacts_exist(pidfile: &Path, ledger: &Path) -> bool {
     pidfile.is_file() && ledger.is_file()
 }
 
@@ -249,21 +249,21 @@ mod tests {
     use crate::{config::Config, registry::Registry};
 
     #[test]
-    fn chief_visibility_requires_both_daemon_artifacts() {
+    fn overseer_visibility_requires_both_daemon_artifacts() {
         let temp = tempfile::tempdir().unwrap();
-        let pidfile = temp.path().join("chief.pid");
+        let pidfile = temp.path().join("overseer.pid");
         let ledger = temp.path().join("ledger.json");
-        assert!(!chief_artifacts_exist(&pidfile, &ledger));
+        assert!(!overseer_artifacts_exist(&pidfile, &ledger));
         fs::write(&pidfile, "123").unwrap();
-        assert!(!chief_artifacts_exist(&pidfile, &ledger));
+        assert!(!overseer_artifacts_exist(&pidfile, &ledger));
         fs::write(&ledger, "{}").unwrap();
-        assert!(chief_artifacts_exist(&pidfile, &ledger));
+        assert!(overseer_artifacts_exist(&pidfile, &ledger));
         fs::remove_file(&pidfile).unwrap();
-        assert!(!chief_artifacts_exist(&pidfile, &ledger));
+        assert!(!overseer_artifacts_exist(&pidfile, &ledger));
     }
 
     #[test]
-    fn selection_identity_survives_chief_row_toggle() {
+    fn selection_identity_survives_overseer_row_toggle() {
         let temp = tempfile::tempdir().unwrap();
         let repo_path = temp.path().join("repo");
         let repo = serde_json::from_value(serde_json::json!({
@@ -278,14 +278,14 @@ mod tests {
             repos: vec![repo],
         };
         let mut app = App::new(registry, Config::default(), temp.path().into());
-        app.set_chief_visibility(false);
+        app.set_overseer_visibility(false);
         assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
-        app.set_chief_visibility(true);
+        app.set_overseer_visibility(true);
         assert_eq!(app.selected, 1);
         assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
-        app.set_chief_visibility(false);
+        app.set_overseer_visibility(false);
         assert_eq!(app.selected, 0);
         assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
     }

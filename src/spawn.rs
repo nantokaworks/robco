@@ -57,7 +57,7 @@ pub(crate) fn spawn_in_repo_with_mode(
     let registry = Registry::load()?;
     let repo = resolve_repo(&registry, repo_selector)?.clone();
     let blocked_env = if autonomous {
-        agent::env::autonomous_env(&config.chief.worker_env_blocklist)
+        agent::env::autonomous_env(&config.overseer.worker_env_blocklist)
     } else {
         Vec::new()
     };

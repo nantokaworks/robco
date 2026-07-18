@@ -1,8 +1,8 @@
 use crate::{
     Error, Result,
-    chief::CHIEF_AGENT_ID,
     cli::NewArgs,
     config::{Config, ENV_AGENT_ID},
+    overseer::is_overseer_child,
     registry::Registry,
     spawn,
 };
@@ -15,7 +15,7 @@ pub fn run(args: NewArgs, config: &Config) -> Result<()> {
         .ok_or(Error::NewOutsideAgentSession)?;
 
     let registry = Registry::load()?;
-    let repo_path = if parent_id == CHIEF_AGENT_ID {
+    let repo_path = if is_overseer_child(Some(&parent_id)) {
         let cwd = std::env::current_dir()?.canonicalize()?;
         registry.repos.iter().find(|repo| {
             repo.path

@@ -24,8 +24,8 @@ pub fn list_tools() -> Value {
             })
         ),
         tool_with_output(
-            "robco_chief_policy",
-            "Read the Chief daemon's current local policy and health.",
+            "robco_overseer_policy",
+            "Read the Overseer daemon's current local policy and health.",
             empty_schema(),
             json!({
                 "type": "object",

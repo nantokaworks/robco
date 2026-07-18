@@ -291,7 +291,7 @@ mod tests {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
-    Chief,
+    Overseer,
     Repo(usize),
     Agent {
         repo: usize,

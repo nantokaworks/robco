@@ -33,8 +33,8 @@ pub struct Args {
 pub enum Command {
     /// Clone a git repository into the managed repos directory.
     Add(AddArgs),
-    /// Run and administer the autonomous Chief control plane.
-    Chief(ChiefArgs),
+    /// Run and administer the autonomous Overseer control plane.
+    Overseer(OverseerArgs),
     /// Print config and state paths.
     Debug,
     /// Register RobCo's MCP server in supported client configs.
@@ -70,37 +70,37 @@ pub struct AddArgs {
 }
 
 #[derive(Debug, ClapArgs)]
-pub struct ChiefArgs {
+pub struct OverseerArgs {
     #[command(subcommand)]
-    pub command: ChiefCommand,
+    pub command: OverseerCommand,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum ChiefCommand {
-    /// Run the Chief daemon in the foreground.
+pub enum OverseerCommand {
+    /// Run the Overseer daemon in the foreground.
     Run,
     /// Show daemon, capacity, ledger, and decision status.
     Status,
     /// Gracefully stop the running daemon.
     Stop,
     /// Persist a runtime toggle in RobCo's JSON config.
-    Set(ChiefSetArgs),
-    /// Disable dispatch and terminate all Chief workers.
+    Set(OverseerSetArgs),
+    /// Disable dispatch and terminate all Overseer workers.
     Panic,
     /// Write a launchd service plist without loading it.
     InstallService,
 }
 
 #[derive(Debug, ClapArgs)]
-pub struct ChiefSetArgs {
+pub struct OverseerSetArgs {
     #[arg(value_enum)]
-    pub setting: ChiefSetting,
+    pub setting: OverseerSetting,
     #[arg(value_enum)]
     pub value: OnOff,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum ChiefSetting {
+pub enum OverseerSetting {
     Dispatch,
     AutoMerge,
 }

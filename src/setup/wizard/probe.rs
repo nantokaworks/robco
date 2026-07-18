@@ -1,6 +1,6 @@
 use std::{io::Write, process::Command, time::Duration};
 
-use crate::chief::exec::run_timeout;
+use crate::overseer::exec::run_timeout;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProbeResult {

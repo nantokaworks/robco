@@ -1,5 +1,5 @@
 mod agent;
-mod chief;
+mod overseer;
 mod cli;
 mod clone;
 mod config;
@@ -124,11 +124,11 @@ async fn run(args: Args) -> Result<()> {
         }
         if matches!(
             command,
-            Command::Chief(cli::ChiefArgs {
-                command: cli::ChiefCommand::Run
+            Command::Overseer(cli::OverseerArgs {
+                command: cli::OverseerCommand::Run
             })
         ) {
-            return chief::daemon::run_daemon().await;
+            return overseer::daemon::run_daemon().await;
         }
         return run_command(command, &config, args.launch_dir.as_deref());
     }
@@ -163,7 +163,7 @@ fn run_command(
             )?;
             println!("added {}", path.display());
         }
-        Command::Chief(args) => chief::command::run(args, config)?,
+        Command::Overseer(args) => overseer::command::run(args, config)?,
         Command::Debug => {
             println!("config: {}", config::config_file_path()?.display());
             println!("state: {}", config::state_path()?.display());

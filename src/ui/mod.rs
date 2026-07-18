@@ -21,7 +21,7 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
 mod blockfont;
-mod chief;
+mod overseer;
 mod confirm_pr;
 #[cfg(test)]
 mod confirm_pr_tests;
@@ -110,7 +110,7 @@ pub enum PreviewPane {
 /// first entry is the default tab used when nothing has been remembered yet.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        Some(Selection::Chief) => &[PreviewPane::Info],
+        Some(Selection::Overseer) => &[PreviewPane::Info],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -141,7 +141,7 @@ pub struct App {
     pub(crate) ephemeral_root: Option<PathBuf>,
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
-    chief_visible: bool,
+    overseer_visible: bool,
     /// Whether the "other locations" section (off-launch-dir repos that still
     /// have agents) is collapsed to its header row.
     other_collapsed: bool,
@@ -178,14 +178,14 @@ impl App {
         ephemeral_root: Option<PathBuf>,
     ) -> Self {
         let expanded = vec![true; registry.repos.len()];
-        let chief_visible = list::chief_is_visible();
+        let overseer_visible = list::overseer_is_visible();
         let mut app = Self {
             registry,
             config,
             ephemeral_root,
             selected: 0,
             expanded,
-            chief_visible,
+            overseer_visible,
             other_collapsed: false,
             orphans: Vec::new(),
             orphans_collapsed: false,
@@ -214,7 +214,7 @@ impl App {
     }
 
     fn tick(&mut self) {
-        self.refresh_chief_visibility();
+        self.refresh_overseer_visibility();
         let prefix = self.config.tmux_session_prefix.clone();
         let processes = self
             .config
