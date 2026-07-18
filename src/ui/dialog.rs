@@ -63,6 +63,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             lines.push(hint_line("enter send   esc cancel"));
             ("instruct overseer control", lines)
         }
+        Mode::PromptInbox { label, input, .. } => {
+            let max_input_height = body.height.saturating_sub(5).clamp(1, 10) as usize;
+            let mut lines = vec![Line::from(format!("target: {label}"))];
+            lines.extend(input_wrap::input_lines(
+                "answer",
+                input,
+                content_width,
+                max_input_height,
+            ));
+            lines.push(hint_line("enter send   esc cancel"));
+            ("answer overseer inbox", lines)
+        }
         Mode::ConfirmKill { repo, agent } => (
             "delete worktree?",
             confirm_lines(
@@ -134,7 +146,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             help::scroll_title(scroll, frame.area().height).unwrap_or_else(|| title.to_string()),
             help::clamp_scroll(scroll, frame.area().height),
         ),
-        Mode::ConfirmPr { .. } | Mode::PromptOverseer { .. } => {
+        Mode::ConfirmPr { .. } | Mode::PromptOverseer { .. } | Mode::PromptInbox { .. } => {
             let cursor_row = lines.len().saturating_sub(2) as u16;
             let visible_rows = height.saturating_sub(2);
             (

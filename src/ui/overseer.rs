@@ -12,19 +12,19 @@ use ratatui::{
 };
 
 use crate::{
+    config::Config,
+    model::Status,
     overseer::{
         config::OverseerConfig,
         heartbeat_path,
         ledger::{Ledger, LedgerPhase},
         logging::{self, DecisionKind},
     },
-    config::Config,
-    model::Status,
 };
 
-use super::theme::DEFAULT as THEME;
+use super::{App, inbox::InboxKind, theme::DEFAULT as THEME};
 
-pub(super) fn summary() -> (String, Text<'static>) {
+pub(super) fn summary(app: &App) -> (String, Text<'static>) {
     let config = Config::load().map(|config| config.overseer);
     let ledger = Ledger::load();
     let heartbeat = heartbeat_path();
@@ -34,6 +34,7 @@ pub(super) fn summary() -> (String, Text<'static>) {
         (Ok(config), Ok(ledger), Ok(heartbeat)) => {
             append_health(&mut lines, &config, &ledger, &heartbeat);
             append_ledger(&mut lines, &config, &ledger);
+            append_inbox(&mut lines, app);
             append_decisions(&mut lines);
         }
         (config, ledger, heartbeat) => {
@@ -160,17 +161,40 @@ fn append_ledger(lines: &mut Vec<Line<'static>>, config: &OverseerConfig, ledger
     lines.push(pair("workers by repo", &map_text(&repos), false));
     lines.push(pair("ledger phases", &map_text(&phases), false));
     lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
-    let escalations = ledger
-        .entries
-        .iter()
-        .filter(|entry| entry.phase == LedgerPhase::Escalated)
-        .map(|entry| format!("{} {}", entry.display_id, entry.repo))
-        .collect::<Vec<_>>();
-    lines.push(pair(
-        "escalations",
-        &list_text(&escalations),
-        !escalations.is_empty(),
-    ));
+    lines.push(Line::default());
+}
+
+fn append_inbox(lines: &mut Vec<Line<'static>>, app: &App) {
+    lines.push(Line::from(Span::styled(
+        format!("inbox ({})", app.overseer_inbox.len()),
+        THEME.accent_bold_style(),
+    )));
+    if app.overseer_inbox.is_empty() {
+        lines.push(Line::from(Span::styled("  none", THEME.muted_style())));
+    }
+    for (index, item) in app.overseer_inbox.iter().enumerate() {
+        let marker = if index == app.overseer_inbox_selected {
+            ">"
+        } else {
+            " "
+        };
+        let kind = match item.kind {
+            InboxKind::Escalation => "ESC",
+            InboxKind::Question => "?",
+        };
+        let target = item
+            .target_session
+            .as_deref()
+            .map_or("display-only", |session| session);
+        lines.push(Line::from(format!(
+            " {marker} [{kind}] {} => {target}",
+            item.label
+        )));
+    }
+    lines.push(Line::from(Span::styled(
+        "  [/] select   a answer   y approve",
+        THEME.hint_style(),
+    )));
     lines.push(Line::default());
 }
 
@@ -269,45 +293,4 @@ fn phase_name(phase: LedgerPhase) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stale_heartbeat_is_not_fresh() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("heartbeat");
-        fs::write(&path, "tick").unwrap();
-        let modified = fs::metadata(&path).unwrap().modified().unwrap();
-        assert!(heartbeat_is_fresh_at(
-            &path,
-            10,
-            modified + Duration::from_secs(20)
-        ));
-        assert!(!heartbeat_is_fresh_at(
-            &path,
-            10,
-            modified + Duration::from_secs(21)
-        ));
-        assert!(!heartbeat_is_fresh_at(
-            &temp.path().join("missing"),
-            10,
-            modified
-        ));
-    }
-
-    #[test]
-    fn stale_dispatch_counter_renders_zero() {
-        let today = Utc::now().date_naive();
-        let mut ledger = Ledger::default();
-        ledger.counters.date = today.pred_opt();
-        ledger.counters.dispatched_today = 7;
-        let mut lines = Vec::new();
-        append_ledger(&mut lines, &OverseerConfig::default(), &ledger);
-        let rendered = lines[0]
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect::<String>();
-        assert!(rendered.starts_with("dispatches today: 0 / "));
-    }
-}
+mod tests;

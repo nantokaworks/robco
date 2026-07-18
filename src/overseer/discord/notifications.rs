@@ -47,6 +47,25 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     })
 }
 
+pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notification> {
+    let enabled = entries
+        .iter()
+        .filter(|entry| entry.source.as_deref() != Some("discord"))
+        .filter(|entry| match entry.kind {
+            DecisionKind::CircuitOpen => config.notify_circuit,
+            DecisionKind::Escalate => config.notify_escalation,
+            _ => false,
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let description = crate::overseer::logging::coalesce_digest(&enabled)?;
+    Some(Notification {
+        title: "Overseer digest".into(),
+        description,
+        color: 0xf1c40f,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +83,15 @@ mod tests {
                 .description
                 .contains("https://example.test/pull/1")
         );
+    }
+
+    #[test]
+    fn escalation_digest_is_one_notification() {
+        let entries = (0..3)
+            .map(|index| DecisionEntry::new(DecisionKind::Escalate, format!("blocked-{index}")))
+            .collect::<Vec<_>>();
+        let notification = digest(&DiscordConfig::default(), &entries).unwrap();
+        assert!(notification.description.starts_with("3 overseer alert(s):"));
+        assert_eq!(notification.description.lines().count(), 1);
     }
 }

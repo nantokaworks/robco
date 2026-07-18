@@ -1,14 +1,14 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Modifier, Style},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 use crate::model::Selection;
 
-use super::{label, select, select_supplementary, IndicatorState};
-use crate::ui::{theme::DEFAULT as THEME, App};
+use super::{IndicatorState, label, select, select_supplementary};
+use crate::ui::{App, theme::DEFAULT as THEME};
 
 pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect) {
     let selected = matches!(app.selected_item(), Some(Selection::Overseer));
@@ -17,7 +17,7 @@ pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect) {
     } else {
         THEME.accent_style()
     };
-    let (summary, _) = crate::ui::overseer::summary();
+    let (summary, _) = crate::ui::overseer::summary(app);
     let state = IndicatorState::with_status(Some(crate::ui::overseer::status()));
     let primary = select(state);
     let right =
@@ -26,7 +26,15 @@ pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect) {
         area.width.saturating_sub(2),
         if selected { "> " } else { "  " }.into(),
         primary,
-        summary.strip_prefix("OVERSEER / ").unwrap_or(&summary),
+        &format!(
+            "{}  inbox:{}/{} actionable  [a]nswer [y]approve [/]select",
+            summary.strip_prefix("OVERSEER / ").unwrap_or(&summary),
+            app.overseer_inbox
+                .iter()
+                .filter(|item| item.target_session.is_some())
+                .count(),
+            app.overseer_inbox.len(),
+        ),
         style,
         style,
         selected,

@@ -1,5 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
+use crate::{Result, model::Selection};
+
+use super::super::{App, Mode, PreviewPane};
+
 pub(super) enum PromptAction {
     Stay,
     Cancel,
@@ -23,8 +27,111 @@ pub(super) fn prompt_action(input: &mut String, key: KeyEvent) -> PromptAction {
     }
 }
 
+pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
+    if !matches!(app.selected_item(), Some(Selection::Overseer)) {
+        return false;
+    }
+    if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
+        app.mode = Mode::PromptOverseer {
+            input: String::new(),
+        };
+        return true;
+    }
+    if app.preview != PreviewPane::Info {
+        return false;
+    }
+    match code {
+        KeyCode::Char('[') => {
+            app.overseer_inbox_selected = app.overseer_inbox_selected.saturating_sub(1);
+        }
+        KeyCode::Char(']') => {
+            app.overseer_inbox_selected =
+                (app.overseer_inbox_selected + 1).min(app.overseer_inbox.len().saturating_sub(1));
+        }
+        KeyCode::Char('a') => {
+            if let Some(item) = app.overseer_inbox.get(app.overseer_inbox_selected) {
+                if let Some(target_session) = item.target_session.clone() {
+                    app.mode = Mode::PromptInbox {
+                        target_session,
+                        label: item.label.clone(),
+                        input: String::new(),
+                    };
+                } else {
+                    app.show_message("inbox item is display-only");
+                }
+            } else {
+                app.show_message("overseer inbox is empty");
+            }
+        }
+        KeyCode::Char('y') | KeyCode::Char('Y') => {
+            if let Some(session) = app
+                .overseer_inbox
+                .get(app.overseer_inbox_selected)
+                .and_then(|item| item.target_session.clone())
+            {
+                app.approve_inbox(&session);
+            } else {
+                app.show_message("overseer inbox is empty");
+            }
+        }
+        _ => return false,
+    }
+    true
+}
+
+pub(super) enum InboxResponse<'a> {
+    Answer(&'a str),
+    Approve,
+}
+
+pub(super) fn send_response(
+    session: &str,
+    response: InboxResponse<'_>,
+    mut literal: impl FnMut(&str, &str) -> Result<()>,
+    mut keys: impl FnMut(&str, &[&str]) -> Result<()>,
+) -> Result<()> {
+    match response {
+        InboxResponse::Answer(text) => {
+            literal(session, text)?;
+            keys(session, &["Enter"])
+        }
+        InboxResponse::Approve => keys(session, &["y", "Enter"]),
+    }
+}
+
+impl App {
+    pub(super) fn answer_inbox(&mut self, session: &str, answer: &str) {
+        let result = send_response(
+            session,
+            InboxResponse::Answer(answer),
+            crate::tmux::send_literal_text,
+            crate::tmux::send_keys,
+        );
+        self.response_message(result, "answer sent");
+    }
+
+    fn approve_inbox(&mut self, session: &str) {
+        let result = send_response(
+            session,
+            InboxResponse::Approve,
+            crate::tmux::send_literal_text,
+            crate::tmux::send_keys,
+        );
+        self.response_message(result, "approval sent");
+    }
+
+    fn response_message(&mut self, result: Result<()>, success: &str) {
+        match result {
+            Ok(()) => self.show_message(success),
+            Err(error) => self.show_message(error.to_string()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::*;
@@ -37,5 +144,44 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
         );
         assert!(matches!(action, PromptAction::Submit(text) if text == "review task"));
+    }
+
+    #[test]
+    fn answer_and_approve_use_existing_tmux_sequences() {
+        let calls = RefCell::new(Vec::new());
+        send_response(
+            "target",
+            InboxResponse::Answer("ship it"),
+            |session, text| {
+                calls.borrow_mut().push(format!("literal:{session}:{text}"));
+                Ok(())
+            },
+            |session, keys| {
+                calls
+                    .borrow_mut()
+                    .push(format!("keys:{session}:{}", keys.join(",")));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            calls.borrow().as_slice(),
+            ["literal:target:ship it", "keys:target:Enter"]
+        );
+
+        calls.borrow_mut().clear();
+        send_response(
+            "target",
+            InboxResponse::Approve,
+            |_, _| Ok(()),
+            |session, keys| {
+                calls
+                    .borrow_mut()
+                    .push(format!("keys:{session}:{}", keys.join(",")));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(calls.borrow().as_slice(), ["keys:target:y,Enter"]);
     }
 }

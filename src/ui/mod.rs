@@ -28,6 +28,7 @@ mod dialog;
 mod error_dialog;
 mod event_loop;
 mod help;
+mod inbox;
 mod input;
 mod input_wrap;
 mod layout;
@@ -60,6 +61,11 @@ enum Mode {
         input: String,
     },
     PromptOverseer {
+        input: String,
+    },
+    PromptInbox {
+        target_session: String,
+        label: String,
         input: String,
     },
     ConfirmKill {
@@ -169,6 +175,8 @@ pub struct App {
     merge_outcome: Option<actions::merge::MergeOutcome>,
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
+    overseer_inbox: Vec<inbox::InboxItem>,
+    overseer_inbox_selected: usize,
 }
 
 impl App {
@@ -205,6 +213,8 @@ impl App {
             merge_outcome: None,
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
+            overseer_inbox: Vec::new(),
+            overseer_inbox_selected: 0,
         };
         if app.prune_unmanaged_agents() {
             let _ = app.registry.save();
@@ -238,6 +248,13 @@ impl App {
                 );
             }
         }
+        let ledger = crate::overseer::ledger::Ledger::load().unwrap_or_default();
+        let decisions = crate::overseer::logging::tail(200).unwrap_or_default();
+        let reports = inbox::question_reports(&self.registry);
+        self.overseer_inbox = inbox::aggregate(&ledger, &decisions, &reports);
+        self.overseer_inbox_selected = self
+            .overseer_inbox_selected
+            .min(self.overseer_inbox.len().saturating_sub(1));
     }
 }
 
