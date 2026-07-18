@@ -42,7 +42,7 @@ fn run_interactive<R: io::BufRead, W: Write>(input: &mut R, output: &mut W) -> R
 
     steps::registration(input, output)?;
     let mut config = Config::load()?;
-    steps::chief(input, output, &mut config)?;
+    steps::overseer(input, output, &mut config)?;
     steps::discord(input, output, &mut config)?;
     let service = steps_service::configure(input, output, &config)?;
     writeln!(output, "▌ robco ▸ summary ··········· setup complete")?;

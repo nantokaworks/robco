@@ -45,14 +45,14 @@ targets, busy targets awaiting confirmation, dead or missing sessions, and unkno
 agent ids. Delivery uses tmux literal input followed by Enter and requires tmux 3.2 or
 newer.
 
-## Chief inbox routing
+## Overseer inbox routing
 
-When the resolved report target is the reserved agent id `chief`, delivery does not
+When the resolved report target is the reserved agent id `overseer`, delivery does not
 look for a tmux session. Instead, RobCo requires `ROBCO_AGENT_ID`, validates the report
-as a Chief lifecycle kind, and appends one JSON record to
-`~/.robco/chief/inbox.jsonl`. The same resolution rules apply: an explicit target wins,
-otherwise `ROBCO_PARENT_AGENT_ID` is used. Chief-spawned workers inherit
-`ROBCO_PARENT_AGENT_ID=chief`, so their hooks route there automatically.
+as a Overseer lifecycle kind, and appends one JSON record to
+`~/.robco/overseer/inbox.jsonl`. The same resolution rules apply: an explicit target wins,
+otherwise `ROBCO_PARENT_AGENT_ID` is used. Overseer-spawned workers inherit
+`ROBCO_PARENT_AGENT_ID=overseer`, so their hooks route there automatically.
 
 Use `--kind` from a shell hook:
 
@@ -61,13 +61,13 @@ robco report --kind claimed
 robco report --kind turn-done
 ```
 
-The MCP interface uses the same exact strings as its `message` value. Chief accepts
+The MCP interface uses the same exact strings as its `message` value. Overseer accepts
 only these kinds:
 
-| Kind | Meaning to Chief |
+| Kind | Meaning to Overseer |
 |------|------------------|
 | `claimed` | The worker claimed its assigned dropr task. |
-| `done` | The worker says its task is complete; Chief discovers the PR separately from the worker branch. |
+| `done` | The worker says its task is complete; Overseer discovers the PR separately from the worker branch. |
 | `blocked` | Escalate the worker with the default `worker blocked` reason. |
 | `turn-done` | The agent client finished a turn; a dispatched or claimed worker becomes working. |
 | `waiting` | The agent client is waiting; a dispatched or claimed worker becomes working. |

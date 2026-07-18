@@ -16,7 +16,7 @@ fn default_pr_prompt() -> String {
     DEFAULT_PR_PROMPT.to_string()
 }
 
-use crate::{Result, chief::config::ChiefConfig, model::Status, openclaw::OpenClawConfig};
+use crate::{Result, model::Status, openclaw::OpenClawConfig, overseer::config::OverseerConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -135,8 +135,8 @@ pub struct Config {
     pub openclaw: OpenClawConfig,
     #[serde(default)]
     pub project_icon: ProjectIcon,
-    #[serde(default)]
-    pub chief: ChiefConfig,
+    #[serde(default, alias = "chief")]
+    pub overseer: OverseerConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -191,7 +191,7 @@ impl Default for Config {
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
             project_icon: ProjectIcon::default(),
-            chief: ChiefConfig::default(),
+            overseer: OverseerConfig::default(),
         }
     }
 }
@@ -294,21 +294,43 @@ mod tests {
     }
 
     #[test]
-    fn legacy_config_defaults_chief_and_profile_autonomous_args() {
+    fn legacy_config_defaults_overseer_and_profile_autonomous_args() {
         let mut value = serde_json::to_value(Config::default()).unwrap();
         let object = value.as_object_mut().unwrap();
-        object.remove("chief");
+        object.remove("overseer");
         for profile in object["profiles"].as_array_mut().unwrap() {
             profile.as_object_mut().unwrap().remove("autonomous_args");
         }
 
         let config: Config = serde_json::from_value(value).unwrap();
-        assert_eq!(config.chief, ChiefConfig::default());
+        assert_eq!(config.overseer, OverseerConfig::default());
         assert!(
             config
                 .profiles
                 .iter()
                 .all(|profile| profile.autonomous_args.is_empty())
+        );
+    }
+
+    #[test]
+    fn legacy_chief_config_deserializes_and_serializes_as_overseer() {
+        let expected = OverseerConfig {
+            auto_merge: true,
+            max_workers: 9,
+            ..OverseerConfig::default()
+        };
+        let mut value = serde_json::to_value(Config::default()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("overseer");
+        object.insert("chief".into(), serde_json::to_value(&expected).unwrap());
+
+        let config: Config = serde_json::from_value(value).unwrap();
+        assert_eq!(config.overseer, expected);
+        let serialized = serde_json::to_value(config).unwrap();
+        assert!(serialized.get("chief").is_none());
+        assert_eq!(
+            serialized.get("overseer"),
+            Some(&serde_json::to_value(expected).unwrap())
         );
     }
 

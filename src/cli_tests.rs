@@ -59,12 +59,12 @@ fn parses_spawn_subcommand() {
 }
 
 #[test]
-fn parses_chief_set() {
-    let args = Args::try_parse_from(["robco", "chief", "set", "auto-merge", "on"]).unwrap();
-    let Some(Command::Chief(args)) = args.command else {
-        panic!("expected chief")
+fn parses_overseer_set() {
+    let args = Args::try_parse_from(["robco", "overseer", "set", "auto-merge", "on"]).unwrap();
+    let Some(Command::Overseer(args)) = args.command else {
+        panic!("expected overseer")
     };
-    assert!(matches!(args.command, ChiefCommand::Set(_)));
+    assert!(matches!(args.command, OverseerCommand::Set(_)));
 }
 
 #[test]

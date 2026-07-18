@@ -39,7 +39,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let panes = layout::panes(root.body);
 
     let (title, text) = match (pane, selection) {
-        (PreviewPane::Info, Some(Selection::Chief)) => super::chief::summary(),
+        (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(),
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);

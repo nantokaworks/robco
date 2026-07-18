@@ -31,8 +31,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         };
 
         match *item {
-            Selection::Chief => {
-                let status = super::chief::status();
+            Selection::Overseer => {
+                let status = super::overseer::status();
                 let state = IndicatorState::with_status(Some(status));
                 let primary = select(state);
                 let right = indicator::supplementary_spans(
@@ -45,7 +45,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     panes.tree.width,
                     format!("{marker} "),
                     primary,
-                    "CHIEF",
+                    "OVERSEER",
                     style,
                     style,
                     selected,

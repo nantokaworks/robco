@@ -8,8 +8,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
-    chief::{heartbeat_path, ledger::Ledger},
     config::Config,
+    overseer::{heartbeat_path, ledger::Ledger},
 };
 
 use super::{ToolResult, exec_err};
@@ -24,7 +24,7 @@ pub(super) fn policy(_args: PolicyArgs) -> ToolResult<Value> {
         || Config::load().map_err(exec_err),
         || Ledger::load().map_err(exec_err),
         &heartbeat,
-        crate::chief::daemon_pid_alive(),
+        crate::overseer::daemon_pid_alive(),
     )
 }
 
@@ -34,7 +34,7 @@ fn policy_with(
     heartbeat: &Path,
     daemon_pid_alive: bool,
 ) -> ToolResult<Value> {
-    let config = load_config()?.chief;
+    let config = load_config()?.overseer;
     let ledger = load_ledger()?;
     let daemon_alive = daemon_pid_alive
         && fs::metadata(heartbeat)
@@ -67,8 +67,8 @@ mod tests {
         let first = policy_with(
             || {
                 let mut config = Config::default();
-                config.chief.dispatch_enabled = false;
-                config.chief.max_workers = 2;
+                config.overseer.dispatch_enabled = false;
+                config.overseer.max_workers = 2;
                 Ok(config)
             },
             || Ok(Ledger::default()),
@@ -79,8 +79,8 @@ mod tests {
         let second = policy_with(
             || {
                 let mut config = Config::default();
-                config.chief.dispatch_enabled = true;
-                config.chief.max_workers = 7;
+                config.overseer.dispatch_enabled = true;
+                config.overseer.max_workers = 7;
                 Ok(config)
             },
             || Ok(Ledger::default()),
@@ -99,7 +99,7 @@ mod tests {
         let daemon_down = policy_with(
             || {
                 let mut config = Config::default();
-                config.chief.dispatch_enabled = true;
+                config.overseer.dispatch_enabled = true;
                 Ok(config)
             },
             || Ok(Ledger::default()),
@@ -113,7 +113,7 @@ mod tests {
         let dead_pid = policy_with(
             || {
                 let mut config = Config::default();
-                config.chief.dispatch_enabled = true;
+                config.overseer.dispatch_enabled = true;
                 Ok(config)
             },
             || Ok(Ledger::default()),

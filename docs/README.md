@@ -20,8 +20,8 @@ the implementation follows it.
 | [06-ui.md](06-ui.md) | Layout, keybindings, status indicators, aesthetic |
 | [07-lifecycle.md](07-lifecycle.md) | worktree × tmux lifecycle, status detection |
 | [09-config-reference.md](09-config-reference.md) | Full `~/.robco/config.json` reference — every field, default, and example |
-| [10-agent-reporting.md](10-agent-reporting.md) | Agent identity, activity, controller reports, and Chief inbox routing |
-| [11-chief-agent.md](11-chief-agent.md) | Autonomous Chief architecture, configuration, security, setup, and recovery |
+| [10-agent-reporting.md](10-agent-reporting.md) | Agent identity, activity, controller reports, and Overseer inbox routing |
+| [11-overseer-agent.md](11-overseer-agent.md) | Autonomous Overseer architecture, configuration, security, setup, and recovery |
 | [08-roadmap.md](08-roadmap.md) | v1 scope, explicitly deferred work |
 
 ## One-paragraph summary

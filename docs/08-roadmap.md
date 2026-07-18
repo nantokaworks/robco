@@ -27,9 +27,9 @@ Deliberately skipped to keep v1 lean (these are ClaudeSquad extras, not the core
 
 ## Later — possible evolutions
 
-### Chief repository scheduling groundwork
+### Overseer repository scheduling groundwork
 
-The shared managed repos root gives the TUI, CLI, and cwd-less Chief daemon one stable
+The shared managed repos root gives the TUI, CLI, and cwd-less Overseer daemon one stable
 repository source. Daemon-side repository scheduling, filesystem watchers, registry IPC,
 and single-writer coordination remain deferred; polling and the current registry model
 stay unchanged.

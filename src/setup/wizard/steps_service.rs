@@ -57,7 +57,7 @@ impl SetenvPlan {
     fn apply<W: Write>(self, output: &mut W) -> Result<()> {
         use std::{process::Command, time::Duration};
 
-        use crate::chief::exec::run_timeout;
+        use crate::overseer::exec::run_timeout;
 
         let Some(value) = self.value else {
             writeln!(
@@ -82,7 +82,7 @@ impl BootstrapPlan {
     fn apply<W: Write>(self, output: &mut W) -> Result<()> {
         use std::{process::Command, time::Duration};
 
-        use crate::chief::exec::run_timeout;
+        use crate::overseer::exec::run_timeout;
 
         if !self.execute {
             writeln!(
@@ -112,9 +112,9 @@ pub(crate) fn configure<R: BufRead, W: Write>(
     output: &mut W,
     config: &Config,
 ) -> Result<Option<ServicePlan>> {
-    use crate::chief::command::write_service_plist;
+    use crate::overseer::command::write_service_plist;
 
-    if !prompt::confirm(input, output, "Install Chief launchd service?", false)? {
+    if !prompt::confirm(input, output, "Install Overseer launchd service?", false)? {
         writeln!(output, "▌ robco ▸ launchd ··········· skipped")?;
         return Ok(None);
     }
@@ -140,10 +140,10 @@ fn discord_env_plan<R: BufRead, W: Write>(
     output: &mut W,
     config: &Config,
 ) -> Result<Option<SetenvPlan>> {
-    if !config.chief.discord.enabled {
+    if !config.overseer.discord.enabled {
         return Ok(None);
     }
-    let name = &config.chief.discord.token_env;
+    let name = &config.overseer.discord.token_env;
     let Ok(value) = std::env::var(name) else {
         return Ok(Some(SetenvPlan {
             name: name.clone(),
@@ -172,7 +172,7 @@ fn discord_env_plan<R: BufRead, W: Write>(
 fn command_stdout(program: &str, args: &[&str]) -> Result<String> {
     use std::{process::Command, time::Duration};
 
-    use crate::chief::exec::run_timeout;
+    use crate::overseer::exec::run_timeout;
 
     let mut command = Command::new(program);
     command.args(args);

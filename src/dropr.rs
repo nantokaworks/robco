@@ -83,7 +83,7 @@ impl DroprOverlay {
     pub fn load_with_status_timeout(timeout: Duration) -> (Self, bool) {
         let mut command = Command::new("dropr");
         command.args(["workspace", "list"]);
-        match crate::chief::exec::run_timeout(command, timeout) {
+        match crate::overseer::exec::run_timeout(command, timeout) {
             Ok(output) if output.status.success() => {
                 (Self::from_workspace_list(&output.stdout), true)
             }
@@ -129,7 +129,7 @@ pub fn fetch_ready_dispatch_tasks_timeout(
         &limit,
         "--json",
     ]);
-    let output = crate::chief::exec::run_timeout(command, timeout)
+    let output = crate::overseer::exec::run_timeout(command, timeout)
         .map_err(|_| ReadyDispatchError::Command)?;
     if !output.status.success() {
         return Err(ReadyDispatchError::Exit);
@@ -196,7 +196,7 @@ fn checked_timeout(
     timeout: Duration,
     context: &'static str,
 ) -> crate::Result<()> {
-    let output = crate::chief::exec::run_timeout(command, timeout)?;
+    let output = crate::overseer::exec::run_timeout(command, timeout)?;
     if output.status.success() {
         Ok(())
     } else {

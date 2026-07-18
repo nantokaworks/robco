@@ -228,3 +228,9 @@ fn whoami_treats_empty_identity_values_as_unset() {
         })
     );
 }
+
+#[test]
+fn legacy_chief_policy_name_is_dispatched_as_an_alias() {
+    let error = call_tool("robco_chief_policy", Some(json!({ "unexpected": true }))).unwrap_err();
+    assert!(!error.to_string().contains("unknown tool"));
+}

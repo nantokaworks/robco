@@ -53,7 +53,7 @@ robco install
 ```
 
 The retro-styled wizard checks prerequisites, optionally registers the MCP server,
-configures Chief and Discord, and can install the macOS launchd service. Bare
+configures Overseer and Discord, and can install the macOS launchd service. Bare
 `robco install` now starts this wizard. For the previous non-interactive MCP-only
 behavior, specify `--target claude|codex|openclaw|all` or use `--all`:
 
@@ -101,29 +101,29 @@ robco reset
 `debug` prints the config, state, worktree, and resolved program paths. `reset` removes
 RobCo's persisted state file but does not kill tmux sessions or delete worktrees.
 
-## Chief
+## Overseer
 
-Chief is RobCo's local autonomous control system: it dispatches ready dropr tasks into
+Overseer is RobCo's local autonomous control system: it dispatches ready dropr tasks into
 isolated RobCo worktree/tmux workers, reconciles their progress, triages failures, and
 can merge protected pull requests after checks pass. Read the full architecture,
 configuration, security, and operations guide in
-[docs/11-chief-agent.md](docs/11-chief-agent.md).
+[docs/11-overseer-agent.md](docs/11-overseer-agent.md).
 
 The recommended first-time setup is `robco install`, whose wizard preserves existing
-values when Enter accepts each default and saves the Chief configuration once at the
+values when Enter accepts each default and saves the Overseer configuration once at the
 end. Tokens are referenced by environment-variable name and are never stored.
 
 Start with dispatch disabled, inspect the daemon, then enable dispatch when ready:
 
 ```bash
-robco chief set dispatch off
-robco chief run
+robco overseer set dispatch off
+robco overseer run
 # In another terminal:
-robco chief status
-robco chief set dispatch on
+robco overseer status
+robco overseer set dispatch on
 ```
 
-On macOS, `robco chief install-service` writes a launchd plist; run the
+On macOS, `robco overseer install-service` writes a launchd plist; run the
 `launchctl bootstrap` command it prints to load the service.
 
 ## Release

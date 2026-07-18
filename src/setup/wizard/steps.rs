@@ -31,65 +31,65 @@ pub(crate) fn registration<R: BufRead, W: Write>(input: &mut R, output: &mut W) 
     }
 }
 
-pub(crate) fn chief<R: BufRead, W: Write>(
+pub(crate) fn overseer<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
     config: &mut Config,
 ) -> Result<()> {
     let default_program = config.default_program.clone();
     let profiles = config.profiles.clone();
-    let chief = &mut config.chief;
-    chief.dispatch_enabled = prompt::confirm(
+    let overseer = &mut config.overseer;
+    overseer.dispatch_enabled = prompt::confirm(
         input,
         output,
-        "Enable Chief dispatch?",
-        chief.dispatch_enabled,
+        "Enable Overseer dispatch?",
+        overseer.dispatch_enabled,
     )?;
-    if chief.dispatch_enabled {
+    if overseer.dispatch_enabled {
         writeln!(
             output,
-            "▌ robco ▸ NOTE ············· dispatch needs the daemon running: `robco chief run` or `robco chief install-service`"
+            "▌ robco ▸ NOTE ············· dispatch needs the daemon running: `robco overseer run` or `robco overseer install-service`"
         )?;
     }
-    let auto_merge = prompt::confirm(input, output, "Enable auto-merge?", chief.auto_merge)?;
-    if auto_merge && !chief.auto_merge {
+    let auto_merge = prompt::confirm(input, output, "Enable auto-merge?", overseer.auto_merge)?;
+    if auto_merge && !overseer.auto_merge {
         writeln!(
             output,
             "▌ robco ▸ WARN ············· branch protection and checks are required"
         )?;
     }
-    chief.auto_merge = auto_merge;
-    chief.worker_profile = profile(
+    overseer.auto_merge = auto_merge;
+    overseer.worker_profile = profile(
         input,
         output,
         &default_program,
         &profiles,
         "Worker profile",
-        &chief.worker_profile,
+        &overseer.worker_profile,
     )?;
-    chief.triage_profile = profile(
+    overseer.triage_profile = profile(
         input,
         output,
         &default_program,
         &profiles,
         "Triage profile",
-        &chief.triage_profile,
+        &overseer.triage_profile,
     )?;
-    chief.max_workers =
-        prompt::number(input, output, "Maximum workers", chief.max_workers, 0, 999)?;
-    chief.per_repo_limit = prompt::number(
+    overseer.max_workers =
+        prompt::number(input, output, "Maximum workers", overseer.max_workers, 0, 999)?;
+    overseer.per_repo_limit = prompt::number(
         input,
         output,
         "Per-repository worker limit",
-        chief.per_repo_limit,
+        overseer.per_repo_limit,
         0,
         999,
     )?;
-    chief.daily_dispatch_limit = prompt::number(
+    overseer.daily_dispatch_limit = prompt::number(
         input,
         output,
         "Daily dispatch limit",
-        chief.daily_dispatch_limit as usize,
+        overseer.daily_dispatch_limit as usize,
         0,
         u32::MAX as usize,
     )? as u32;
@@ -128,7 +128,7 @@ pub(crate) fn discord<R: BufRead, W: Write>(
     output: &mut W,
     config: &mut Config,
 ) -> Result<()> {
-    let discord = &mut config.chief.discord;
+    let discord = &mut config.overseer.discord;
     discord.enabled = prompt::confirm(input, output, "Configure Discord?", discord.enabled)?;
     if !discord.enabled {
         return Ok(());

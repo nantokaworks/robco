@@ -2,9 +2,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
-    chief::{CHIEF_AGENT_ID, inbox::InboxReport},
     config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
     model::Status,
+    overseer::{inbox::InboxReport, is_overseer_child},
     registry::Registry,
     status::StatusReport,
     tmux,
@@ -28,7 +28,7 @@ pub(crate) fn deliver_report(message: &str, target_agent_id: Option<&str>) -> To
         message,
         target_agent_id,
         |key| std::env::var(key).ok(),
-        crate::chief::inbox::append_report,
+        crate::overseer::inbox::append_report,
     )
 }
 
@@ -45,12 +45,12 @@ fn deliver_report_with_lookup_and_append(
         identities.sender_agent_id.as_deref(),
     )?;
 
-    if identities.target_agent_id == CHIEF_AGENT_ID {
+    if is_overseer_child(Some(&identities.target_agent_id)) {
         let agent_id = identities
             .sender_agent_id
-            .ok_or_else(|| invalid_params("ROBCO_AGENT_ID is required for chief reports"))?;
+            .ok_or_else(|| invalid_params("ROBCO_AGENT_ID is required for overseer reports"))?;
         let report = InboxReport::lifecycle(agent_id, &message)
-            .ok_or_else(|| invalid_params("invalid chief report kind"))?;
+            .ok_or_else(|| invalid_params("invalid overseer report kind"))?;
         return append(&report).map_err(exec_err);
     }
 
@@ -278,20 +278,38 @@ mod tests {
     }
 
     #[test]
-    fn chief_parent_report_appends_to_inbox() {
+    fn overseer_parent_report_appends_to_inbox() {
         let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("chief/inbox.jsonl");
+        let path = temp.path().join("overseer/inbox.jsonl");
         let lookup = |key: &str| match key {
-            ENV_PARENT_AGENT_ID => Some(CHIEF_AGENT_ID.into()),
+            ENV_PARENT_AGENT_ID => Some(crate::overseer::OVERSEER_AGENT_ID.into()),
             ENV_AGENT_ID => Some("worker-1".into()),
             _ => None,
         };
-        let append = |report: &InboxReport| crate::chief::inbox::append_report_to(&path, report);
+        let append = |report: &InboxReport| crate::overseer::inbox::append_report_to(&path, report);
         deliver_report_with_lookup_and_append("turn-done", None, lookup, append).unwrap();
 
         let line = std::fs::read_to_string(path).unwrap();
         let report: InboxReport = serde_json::from_str(line.trim()).unwrap();
         assert_eq!(report.agent_id, "worker-1");
-        assert_eq!(report.kind, crate::chief::inbox::ReportKind::TurnDone);
+        assert_eq!(report.kind, crate::overseer::inbox::ReportKind::TurnDone);
+    }
+
+    #[test]
+    fn legacy_chief_parent_report_appends_to_overseer_inbox() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("overseer/inbox.jsonl");
+        let lookup = |key: &str| match key {
+            ENV_PARENT_AGENT_ID => Some("chief".into()),
+            ENV_AGENT_ID => Some("legacy-worker".into()),
+            _ => None,
+        };
+        let append = |report: &InboxReport| crate::overseer::inbox::append_report_to(&path, report);
+
+        deliver_report_with_lookup_and_append("turn-done", None, lookup, append).unwrap();
+
+        let line = std::fs::read_to_string(path).unwrap();
+        let report: InboxReport = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(report.agent_id, "legacy-worker");
     }
 }

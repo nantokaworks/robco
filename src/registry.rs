@@ -343,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_state_deserializes_without_chief_fields() {
+    fn legacy_state_deserializes_without_overseer_fields() {
         let registry: Registry = serde_json::from_str(r#"{"version":1,"repos":[]}"#).unwrap();
         assert_eq!(registry.version, 1);
         assert!(registry.repos.is_empty());
