@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
-use crate::{config::Config, registry::Registry};
+use crate::{config::Config, model::OverseerCategory, registry::Registry};
 
 fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();
@@ -14,6 +14,36 @@ fn overseer_panes_show_info_then_claude() {
         panes_for(Some(Selection::Overseer)),
         &[PreviewPane::Info, PreviewPane::Claude]
     );
+}
+
+#[test]
+fn overseer_category_panes_match_root() {
+    assert_eq!(
+        panes_for(Some(Selection::OverseerCategory(OverseerCategory::Health))),
+        panes_for(Some(Selection::Overseer))
+    );
+}
+
+#[test]
+fn overseer_expand_collapse_keys_update_tree() {
+    let mut app = test_app();
+    app.overseer_visible = true;
+    app.selected = 0;
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.visible(), vec![Selection::Overseer]);
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+        .unwrap();
+    assert_eq!(app.visible().len(), 5);
+
+    app.selected = 1;
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.overseer_category_expanded(OverseerCategory::Health));
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
+        .unwrap();
+    assert!(!app.overseer_category_expanded(OverseerCategory::Health));
 }
 
 #[test]

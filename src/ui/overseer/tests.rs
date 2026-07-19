@@ -1,6 +1,12 @@
 use super::*;
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
+use crate::{config::Config, model::OverseerCategory, registry::Registry};
 use ratatui::style::Color;
+
+fn test_app() -> App {
+    let temp = tempfile::tempdir().unwrap();
+    App::new(Registry::default(), Config::default(), temp.path().into())
+}
 
 #[test]
 fn flags_line_joins_and_reds_warnings() {
@@ -81,6 +87,16 @@ fn open_circuit_shows_recovery_hint() {
         .collect::<String>();
     assert!(rendered.contains("circuit: OPEN"));
     assert!(rendered.contains("robco overseer set dispatch on"));
+    assert_eq!(
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content == "OPEN")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red)
+    );
 
     let mut closed = Ledger::default();
     closed.counters.consecutive_failures = 2;
@@ -92,6 +108,38 @@ fn open_circuit_shows_recovery_hint() {
         .map(|span| span.content.as_ref())
         .collect::<String>();
     assert!(!rendered.contains("robco overseer set dispatch on"));
+}
+
+#[test]
+fn health_summary_keeps_all_critical_badges() {
+    let config = OverseerConfig {
+        dispatch_enabled: true,
+        failure_circuit_threshold: 2,
+        ..OverseerConfig::default()
+    };
+    let mut ledger = Ledger::default();
+    ledger.counters.consecutive_failures = 2;
+    let (summary, warn) = super::categories::health_summary_from(&config, &ledger, false);
+
+    assert!(warn);
+    assert!(summary.contains("STALE/OFFLINE"));
+    assert!(summary.contains("circuit OPEN"));
+    assert!(summary.contains("dispatch/no daemon"));
+}
+
+#[test]
+fn every_category_has_summary_detail_and_preview() {
+    let app = test_app();
+    for category in OverseerCategory::ALL {
+        let (summary, _) = category_summary(&app, category);
+        let detail = category_detail(&app, category);
+        let (title, preview) = category_preview(&app, category);
+
+        assert!(!summary.is_empty());
+        assert!(!detail.is_empty());
+        assert_eq!(title, format!("OVERSEER / {}", category.label()));
+        assert_eq!(preview.lines, detail);
+    }
 }
 
 #[test]

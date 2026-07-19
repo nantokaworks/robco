@@ -11,7 +11,13 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 
-use crate::{Result, agent, config::Config, model::Selection, registry::Registry, status};
+use crate::{
+    Result, agent,
+    config::Config,
+    model::{OverseerCategory, Selection},
+    registry::Registry,
+    status,
+};
 
 use actions::dropr_tasks::DroprTaskRefresh;
 
@@ -121,7 +127,9 @@ pub enum PreviewPane {
 /// first entry is the default tab used when nothing has been remembered yet.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        Some(Selection::Overseer) => &[PreviewPane::Info, PreviewPane::Claude],
+        Some(Selection::Overseer | Selection::OverseerCategory(_)) => {
+            &[PreviewPane::Info, PreviewPane::Claude]
+        }
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -153,6 +161,8 @@ pub struct App {
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
     overseer_visible: bool,
+    overseer_collapsed: bool,
+    overseer_expanded: [bool; 4],
     /// Whether the "other locations" section (off-launch-dir repos that still
     /// have agents) is collapsed to its header row.
     other_collapsed: bool,
@@ -199,6 +209,8 @@ impl App {
             selected: 0,
             expanded,
             overseer_visible,
+            overseer_collapsed: false,
+            overseer_expanded: [false; 4],
             other_collapsed: false,
             orphans: Vec::new(),
             orphans_collapsed: false,
@@ -222,6 +234,17 @@ impl App {
         app.refresh_orphans();
         app.restore_preview();
         app
+    }
+
+    pub(in crate::ui) fn overseer_category_expanded(&self, category: OverseerCategory) -> bool {
+        self.overseer_expanded[category.index()]
+    }
+
+    pub(in crate::ui) fn overseer_frame_height(&self) -> u16 {
+        if !self.overseer_visible {
+            return 0;
+        }
+        layout::overseer_frame_height(tree::overseer_frame::content_lines(self).lines.len())
     }
 
     fn show_message(&mut self, text: impl Into<String>) {

@@ -10,7 +10,8 @@ use super::App;
 const TREE_WIDTH_RATIO: f32 = 0.30;
 const TREE_MIN_WIDTH: u16 = 24;
 const TREE_MAX_WIDTH: u16 = 48;
-const OVERSEER_FRAME_HEIGHT: u16 = 3;
+pub(in crate::ui) const OVERSEER_FRAME_MIN_HEIGHT: u16 = 3;
+pub(in crate::ui) const OVERSEER_FRAME_MAX_HEIGHT: u16 = 16;
 
 pub(crate) struct RootLayout {
     pub(crate) body: Rect,
@@ -73,14 +74,14 @@ pub(crate) fn root(area: Rect) -> RootLayout {
     }
 }
 
-pub(crate) fn panes(body: Rect, overseer_visible: bool) -> PaneLayout {
+pub(crate) fn panes(body: Rect, overseer_frame_height: u16) -> PaneLayout {
     let tree_width = tree_width(body.width);
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(tree_width), Constraint::Min(0)])
         .split(body);
 
-    let tree = tree_stack(chunks[0], overseer_visible);
+    let tree = tree_stack(chunks[0], overseer_frame_height);
     PaneLayout {
         overseer: tree.overseer,
         tree: tree.projects,
@@ -88,8 +89,8 @@ pub(crate) fn panes(body: Rect, overseer_visible: bool) -> PaneLayout {
     }
 }
 
-pub(crate) fn tree_stack(tree: Rect, overseer_visible: bool) -> TreeStackLayout {
-    if !overseer_visible {
+pub(crate) fn tree_stack(tree: Rect, overseer_frame_height: u16) -> TreeStackLayout {
+    if overseer_frame_height == 0 {
         return TreeStackLayout {
             overseer: Rect::default(),
             projects: tree,
@@ -99,7 +100,7 @@ pub(crate) fn tree_stack(tree: Rect, overseer_visible: bool) -> TreeStackLayout 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(OVERSEER_FRAME_HEIGHT),
+            Constraint::Length(overseer_frame_height),
             Constraint::Min(0),
         ])
         .split(tree);
@@ -108,6 +109,13 @@ pub(crate) fn tree_stack(tree: Rect, overseer_visible: bool) -> TreeStackLayout 
         overseer: chunks[0],
         projects: chunks[1],
     }
+}
+
+pub(in crate::ui) fn overseer_frame_height(content_rows: usize) -> u16 {
+    u16::try_from(content_rows)
+        .unwrap_or(u16::MAX)
+        .saturating_add(2)
+        .clamp(OVERSEER_FRAME_MIN_HEIGHT, OVERSEER_FRAME_MAX_HEIGHT)
 }
 
 fn tree_width(body_width: u16) -> u16 {
@@ -146,14 +154,22 @@ pub(in crate::ui) fn popup_area(
     height: u16,
 ) -> Rect {
     let container = root(frame.area()).body;
-    let panes = panes(container, app.overseer_visible);
+    let panes = panes(container, app.overseer_frame_height());
 
     let width = width.min(container.width);
     let height = height.min(container.height);
 
     // Each bordered frame reserves its top row for its title/border.
-    let anchor_row = if matches!(app.selected_item(), Some(Selection::Overseer)) {
-        panes.overseer.y.saturating_add(1)
+    let anchor_row = if matches!(
+        app.selected_item(),
+        Some(Selection::Overseer | Selection::OverseerCategory(_))
+    ) {
+        let content = super::tree::overseer_frame::content_lines(app);
+        let inner_height = panes.overseer.height.saturating_sub(2);
+        let row = content
+            .selected_row
+            .saturating_sub(content.scroll_offset(inner_height));
+        panes.overseer.y.saturating_add(1).saturating_add(row)
     } else {
         panes.tree.y + 1 + selected_row_offset(app, visible)
     };
@@ -186,7 +202,7 @@ fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
         if Some(*item) == selected {
             break;
         }
-        if matches!(item, Selection::Overseer) {
+        if matches!(item, Selection::Overseer | Selection::OverseerCategory(_)) {
             continue;
         }
         offset += 1;
@@ -237,18 +253,25 @@ mod tests {
 
     #[test]
     fn tree_stack_reserves_overseer_frame_above_projects() {
-        let layout = tree_stack(Rect::new(2, 4, 32, 20), true);
+        let layout = tree_stack(Rect::new(2, 4, 32, 20), 8);
 
-        assert_eq!(layout.overseer, Rect::new(2, 4, 32, 3));
-        assert_eq!(layout.projects, Rect::new(2, 7, 32, 17));
+        assert_eq!(layout.overseer, Rect::new(2, 4, 32, 8));
+        assert_eq!(layout.projects, Rect::new(2, 12, 32, 12));
     }
 
     #[test]
     fn tree_stack_gives_projects_full_height_without_overseer() {
         let tree = Rect::new(2, 4, 32, 20);
-        let layout = tree_stack(tree, false);
+        let layout = tree_stack(tree, 0);
 
         assert_eq!(layout.overseer, Rect::default());
         assert_eq!(layout.projects, tree);
+    }
+
+    #[test]
+    fn overseer_frame_height_clamps_content_plus_border() {
+        assert_eq!(overseer_frame_height(0), OVERSEER_FRAME_MIN_HEIGHT);
+        assert_eq!(overseer_frame_height(5), 7);
+        assert_eq!(overseer_frame_height(usize::MAX), OVERSEER_FRAME_MAX_HEIGHT);
     }
 }

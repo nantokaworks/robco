@@ -15,11 +15,11 @@ mod footer;
 mod hints;
 mod indicator;
 mod label;
-mod overseer_frame;
+pub(in crate::ui) mod overseer_frame;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
-    let panes = layout::panes(root.body, app.overseer_visible);
+    let panes = layout::panes(root.body, app.overseer_frame_height());
     if app.overseer_visible {
         overseer_frame::draw(frame, app, panes.overseer);
     }
@@ -36,7 +36,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         };
 
         match *item {
-            Selection::Overseer => continue,
+            Selection::Overseer | Selection::OverseerCategory(_) => continue,
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);

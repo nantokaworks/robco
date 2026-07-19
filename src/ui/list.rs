@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    model::{RepoNode, Selection},
+    model::{OverseerCategory, RepoNode, Selection},
     overseer,
 };
 
@@ -22,6 +22,9 @@ impl App {
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
             Selection::Overseer => "overseer".to_string(),
+            Selection::OverseerCategory(category) => {
+                format!("overseer:{}", category.label().to_lowercase())
+            }
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
             }
@@ -161,6 +164,13 @@ impl App {
             // This first focus entry maps to the dedicated OVERSEER frame;
             // tree rendering excludes it from the PROJECTS frame.
             visible.push(Selection::Overseer);
+            if !self.overseer_collapsed {
+                visible.extend(
+                    OverseerCategory::ALL
+                        .into_iter()
+                        .map(Selection::OverseerCategory),
+                );
+            }
         }
         for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
             if self.repo_is_local(repo) {
@@ -213,6 +223,25 @@ impl App {
         self.clamp_selection();
     }
 
+    pub(in crate::ui) fn set_overseer_collapsed(&mut self, collapsed: bool) {
+        self.overseer_collapsed = collapsed;
+        self.clamp_selection();
+    }
+
+    pub(in crate::ui) fn set_overseer_category_expanded(
+        &mut self,
+        category: OverseerCategory,
+        expanded: bool,
+    ) {
+        self.overseer_expanded[category.index()] = expanded;
+        self.clamp_selection();
+    }
+
+    pub(in crate::ui) fn toggle_overseer_category(&mut self, category: OverseerCategory) {
+        let expanded = !self.overseer_category_expanded(category);
+        self.set_overseer_category_expanded(category, expanded);
+    }
+
     pub(in crate::ui) fn set_orphans_collapsed(&mut self, collapsed: bool) {
         self.orphans_collapsed = collapsed;
         self.clamp_selection();
@@ -244,55 +273,5 @@ fn overseer_artifacts_exist(pidfile: &Path, ledger: &Path) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::*;
-    use crate::{config::Config, registry::Registry};
-
-    #[test]
-    fn overseer_visibility_requires_both_daemon_artifacts() {
-        let temp = tempfile::tempdir().unwrap();
-        let pidfile = temp.path().join("overseer.pid");
-        let ledger = temp.path().join("ledger.json");
-        assert!(!overseer_artifacts_exist(&pidfile, &ledger));
-        fs::write(&pidfile, "123").unwrap();
-        assert!(!overseer_artifacts_exist(&pidfile, &ledger));
-        fs::write(&ledger, "{}").unwrap();
-        assert!(overseer_artifacts_exist(&pidfile, &ledger));
-        fs::remove_file(&pidfile).unwrap();
-        assert!(!overseer_artifacts_exist(&pidfile, &ledger));
-    }
-
-    #[test]
-    fn selection_identity_survives_overseer_row_toggle() {
-        let temp = tempfile::tempdir().unwrap();
-        let repo_path = temp.path().join("repo");
-        let repo = serde_json::from_value(serde_json::json!({
-            "path": repo_path,
-            "name": "repo",
-            "remote_url": null,
-            "agents": []
-        }))
-        .unwrap();
-        let registry = Registry {
-            version: 1,
-            repos: vec![repo],
-        };
-        let mut app = App::new(registry, Config::default(), temp.path().into());
-        app.set_overseer_visibility(false);
-        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
-
-        app.set_overseer_visibility(true);
-        assert_eq!(app.selected, 1);
-        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
-        app.move_selection_up();
-        assert_eq!(app.selected_item(), Some(Selection::Overseer));
-        app.move_selection_down();
-        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
-
-        app.set_overseer_visibility(false);
-        assert_eq!(app.selected, 0);
-        assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
-    }
-}
+#[path = "list_tests.rs"]
+mod tests;

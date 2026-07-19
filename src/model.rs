@@ -314,8 +314,39 @@ mod tests {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverseerCategory {
+    Health,
+    Ledger,
+    Inbox,
+    Decisions,
+}
+
+impl OverseerCategory {
+    pub const ALL: [Self; 4] = [Self::Health, Self::Ledger, Self::Inbox, Self::Decisions];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Health => "Health",
+            Self::Ledger => "Ledger",
+            Self::Inbox => "Inbox",
+            Self::Decisions => "Decisions",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::Health => 0,
+            Self::Ledger => 1,
+            Self::Inbox => 2,
+            Self::Decisions => 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
     Overseer,
+    OverseerCategory(OverseerCategory),
     Repo(usize),
     Agent {
         repo: usize,

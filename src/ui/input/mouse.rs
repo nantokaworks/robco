@@ -19,7 +19,7 @@ impl App {
             _ => return,
         };
 
-        let panes = layout::panes(layout::root(area).body, self.overseer_visible);
+        let panes = layout::panes(layout::root(area).body, self.overseer_frame_height());
         let position = Position::new(event.column, event.row);
         if panes.tree.contains(position) || panes.overseer.contains(position) {
             if up {

@@ -38,11 +38,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
 
     let ai_label = ai_label(selection, registry, default_program);
     let root = layout::root(frame.area());
-    let panes = layout::panes(root.body, app.overseer_visible);
+    let panes = layout::panes(root.body, app.overseer_frame_height());
 
     let (title, text) = match (pane, selection) {
         (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(app),
-        (PreviewPane::Claude, Some(Selection::Overseer)) => {
+        (PreviewPane::Info, Some(Selection::OverseerCategory(category))) => {
+            super::overseer::category_preview(app, category)
+        }
+        (PreviewPane::Claude, Some(Selection::Overseer | Selection::OverseerCategory(_))) => {
             overseer::control_preview(app, panes.preview, scroll)
         }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
