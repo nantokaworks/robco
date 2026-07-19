@@ -1,110 +1,10 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Component, Path, PathBuf},
-};
-
-use crate::{discover, dropr, git};
+use std::path::{Component, Path, PathBuf};
 
 use super::super::App;
 
 impl App {
-    /// Re-scan the effective roots for new projects and each repo for worktrees
-    /// created outside robco, merging anything new into the registry. The
-    /// current selection and per-repo expand/collapse state are preserved across
-    /// the refresh even when repos are re-ordered.
-    pub(in crate::ui) fn refresh_discovery(&mut self) {
-        if !self.config.subagent_indicator {
-            self.refresh_subagents();
-        }
-        let roots = self.effective_roots();
-        let mut discovered = discover::discover_all(roots);
-
-        let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
-
-        let worktrees_removed = self.prune_unmanaged_agents();
-
-        let mut expected_paths: HashSet<String> =
-            discovered.iter().map(|repo| path_key(&repo.path)).collect();
-        for repo in &self.registry.repos {
-            if !repo.agents.is_empty() || repo.pinned {
-                expected_paths.insert(path_key(&repo.path));
-            }
-        }
-        let current_paths: HashSet<String> = self
-            .registry
-            .repos
-            .iter()
-            .map(|repo| path_key(&repo.path))
-            .collect();
-        let repos_changed = expected_paths != current_paths;
-
-        // Preserve expansion state when newly discovered repos change the order.
-        let expanded_by_path: HashMap<String, bool> = self
-            .registry
-            .repos
-            .iter()
-            .zip(self.expanded.iter())
-            .map(|(repo, expanded)| (path_key(&repo.path), *expanded))
-            .collect();
-
-        if repos_changed {
-            if self.config.dropr_overlay {
-                let overlay = dropr::DroprOverlay::load_best_effort();
-                for repo in &mut discovered {
-                    if let Some(remote) = &repo.remote_url {
-                        repo.dropr = overlay.find_by_repo_url(remote).cloned();
-                    }
-                }
-            }
-            self.registry.merge_discovered(discovered);
-            self.expanded = self
-                .registry
-                .repos
-                .iter()
-                .map(|repo| {
-                    expanded_by_path
-                        .get(&path_key(&repo.path))
-                        .copied()
-                        .unwrap_or(true)
-                })
-                .collect();
-        }
-
-        let mut worktrees_added = false;
-        let mut children_changed = false;
-        for repo in &mut self.registry.repos {
-            if let Ok(worktrees) = git::list_worktrees(&repo.path) {
-                let (added, changed) = super::children::reconcile(repo, &self.config, worktrees);
-                worktrees_added |= added;
-                children_changed |= changed;
-            }
-        }
-
-        if repos_changed || worktrees_added || worktrees_removed {
-            let _ = self.registry.save();
-        }
-        if repos_changed || worktrees_added || worktrees_removed || children_changed {
-            self.restore_selection(selected_identity);
-        }
-        if self.config.subagent_indicator {
-            self.refresh_subagents();
-        }
-        self.refresh_dropr_tasks(false);
-        self.refresh_orphans();
-    }
-
     pub(in crate::ui) fn prune_unmanaged_agents(&mut self) -> bool {
-        let mut removed = false;
-        for repo in &mut self.registry.repos {
-            let previous_len = repo.agents.len();
-            repo.agents.retain(|tracked| {
-                is_managed_worktree(&tracked.worktree_path, &self.config.worktree_root)
-            });
-            super::slots::prune_slot_agents(repo);
-            prune_nested_agents(repo);
-            removed |= repo.agents.len() != previous_len;
-        }
-        removed
+        prune_unmanaged(&mut self.registry.repos, &self.config.worktree_root)
     }
 
     /// Re-point selection at the same item, falling back to a clamp.
@@ -120,6 +20,19 @@ impl App {
         self.clamp_selection();
         self.restore_preview();
     }
+}
+
+pub(super) fn prune_unmanaged(repos: &mut [crate::model::RepoNode], worktree_root: &Path) -> bool {
+    let mut removed = false;
+    for repo in repos {
+        let previous_len = repo.agents.len();
+        repo.agents
+            .retain(|tracked| is_managed_worktree(&tracked.worktree_path, worktree_root));
+        super::slots::prune_slot_agents(repo);
+        prune_nested_agents(repo);
+        removed |= repo.agents.len() != previous_len;
+    }
+    removed
 }
 
 fn prune_nested_agents(repo: &mut crate::model::RepoNode) {

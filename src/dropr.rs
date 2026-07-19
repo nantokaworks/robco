@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 mod mcp;
 
+const WORKSPACE_LIST_TIMEOUT: Duration = Duration::from_secs(3);
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DroprTaskCandidate {
     #[serde(alias = "global_display_id")]
@@ -56,25 +58,7 @@ pub struct DroprOverlay {
 
 impl DroprOverlay {
     pub fn load_best_effort() -> Self {
-        let Ok(output) = Command::new("dropr").args(["workspace", "list"]).output() else {
-            return Self::default();
-        };
-
-        if !output.status.success() {
-            return Self::default();
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut by_canonical_repo = HashMap::new();
-        for line in stdout.lines().skip(1) {
-            if let Some(workspace) = parse_workspace_line(line)
-                && let Some(canonical) = canonical_repo(&workspace.repo_url)
-            {
-                by_canonical_repo.insert(canonical, workspace);
-            }
-        }
-
-        Self { by_canonical_repo }
+        Self::load_with_status_timeout(WORKSPACE_LIST_TIMEOUT).0
     }
 
     /// Load the workspace overlay, also reporting whether the

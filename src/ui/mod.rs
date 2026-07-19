@@ -12,14 +12,13 @@ use crossterm::{
 };
 
 use crate::{
-    Result, agent,
+    Result,
     config::Config,
     model::{OverseerCategory, Selection},
     registry::Registry,
-    status,
 };
 
-use actions::dropr_tasks::DroprTaskRefresh;
+use actions::{background_refresh::BackgroundRefresh, dropr_tasks::DroprTaskRefresh};
 
 /// How often the launch directory and each repo's worktrees are re-scanned to
 /// pick up projects or worktrees created outside robco.
@@ -185,6 +184,7 @@ pub struct App {
     merge_outcome: Option<actions::merge::MergeOutcome>,
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
+    background_refresh: BackgroundRefresh,
     overseer_inbox: Vec<inbox::InboxItem>,
     overseer_inbox_selected: usize,
 }
@@ -225,6 +225,7 @@ impl App {
             merge_outcome: None,
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
+            background_refresh: BackgroundRefresh::new(),
             overseer_inbox: Vec::new(),
             overseer_inbox_selected: 0,
         };
@@ -249,35 +250,6 @@ impl App {
 
     fn show_message(&mut self, text: impl Into<String>) {
         self.message = Some((text.into(), Instant::now()));
-    }
-
-    fn tick(&mut self) {
-        self.refresh_overseer_visibility();
-        let prefix = self.config.tmux_session_prefix.clone();
-        let processes = self
-            .config
-            .process_indicator
-            .then(status::proc::ProcSnapshot::capture)
-            .and_then(Result::ok);
-        for repo in &mut self.registry.repos {
-            let main_session = agent::repo_claude_session_name(&prefix, repo);
-            status::refresh_repo_main(&main_session, repo, processes.as_ref());
-            for agent in &mut repo.agents {
-                status::refresh_agent(
-                    &repo.path,
-                    agent,
-                    self.config.auto_accept,
-                    processes.as_ref(),
-                );
-            }
-        }
-        let ledger = crate::overseer::ledger::Ledger::load().unwrap_or_default();
-        let decisions = crate::overseer::logging::tail(200).unwrap_or_default();
-        let reports = inbox::question_reports(&self.registry);
-        self.overseer_inbox = inbox::aggregate(&ledger, &decisions, &reports);
-        self.overseer_inbox_selected = self
-            .overseer_inbox_selected
-            .min(self.overseer_inbox.len().saturating_sub(1));
     }
 }
 
