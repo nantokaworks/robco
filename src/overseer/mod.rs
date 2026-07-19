@@ -43,6 +43,12 @@ pub fn ensure_control_session(config: &Config, cwd: &Path) -> Result<String> {
 /// supported ways to start the daemon.
 pub const DISPATCH_WITHOUT_DAEMON_HINT: &str = "dispatch is on but the Overseer daemon is not running — no tasks will be dispatched. Start it with `robco overseer run`, or install the always-on service with `robco overseer install-service`.";
 
+/// Shown when the failure circuit has latched dispatch off after repeated worker
+/// failures. The circuit disables dispatch and persists it, so the state
+/// survives restarts; name the one recovery command, which also clears the
+/// consecutive-failure counter.
+pub const CIRCUIT_OPEN_HINT: &str = "dispatch circuit is open after repeated worker failures — dispatch stays disabled until you reset it with `robco overseer set dispatch on` (re-enables dispatch and clears the failure counter).";
+
 pub fn overseer_home() -> Result<PathBuf> {
     migrate_overseer_home(&crate::config::robco_dir()?)
 }

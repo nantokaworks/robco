@@ -57,6 +57,9 @@ pub(super) fn append_health(
     if dispatch_without_daemon {
         lines.push(warning(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
     }
+    if circuit_open {
+        lines.push(warning(crate::overseer::CIRCUIT_OPEN_HINT));
+    }
     lines.push(Line::default());
 }
 

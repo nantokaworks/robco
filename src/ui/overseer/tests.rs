@@ -59,6 +59,42 @@ fn stale_heartbeat_is_not_fresh() {
 }
 
 #[test]
+fn open_circuit_shows_recovery_hint() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("heartbeat");
+    fs::write(&path, "tick").unwrap();
+    let config = OverseerConfig {
+        failure_circuit_threshold: 3,
+        ..OverseerConfig::default()
+    };
+
+    // Exactly at the threshold the circuit is open — pin the equality boundary
+    // so a `>=` -> `>` regression is caught here too.
+    let mut open = Ledger::default();
+    open.counters.consecutive_failures = 3;
+    let mut lines = Vec::new();
+    super::render::append_health(&mut lines, &config, &open, &path);
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+    assert!(rendered.contains("circuit: OPEN"));
+    assert!(rendered.contains("robco overseer set dispatch on"));
+
+    let mut closed = Ledger::default();
+    closed.counters.consecutive_failures = 2;
+    let mut lines = Vec::new();
+    super::render::append_health(&mut lines, &config, &closed, &path);
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+    assert!(!rendered.contains("robco overseer set dispatch on"));
+}
+
+#[test]
 fn stale_dispatch_counter_renders_zero() {
     let today = Utc::now().date_naive();
     let mut ledger = Ledger::default();
