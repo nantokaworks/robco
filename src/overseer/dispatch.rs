@@ -98,7 +98,19 @@ pub fn plan_dispatch(
         decisions: Vec::new(),
     };
     if !config.dispatch_enabled {
-        return global_skip(plan, "dispatch_disabled");
+        // Distinguish an operator-intended disable from the failure circuit
+        // latching dispatch off: once `open_circuit` persists
+        // `dispatch_enabled = false`, this gate short-circuits every later tick
+        // and would otherwise report the generic `dispatch_disabled`, hiding why
+        // dispatch never resumes. Surfacing `circuit_open` keeps the latched
+        // state legible in decisions.jsonl and the panel until the operator
+        // resets it with `robco overseer set dispatch on`.
+        let reason = if ledger.counters.consecutive_failures >= config.failure_circuit_threshold {
+            "circuit_open"
+        } else {
+            "dispatch_disabled"
+        };
+        return global_skip(plan, reason);
     }
     if today >= config.daily_dispatch_limit {
         return global_skip(plan, "daily_limit");

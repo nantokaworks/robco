@@ -53,6 +53,42 @@ fn circuit_opens_and_disables_dispatch() {
 }
 
 #[test]
+fn latched_circuit_reports_circuit_open_not_dispatch_disabled() {
+    // Once `open_circuit` has persisted `dispatch_enabled = false`, every later
+    // tick hits the disabled gate before the circuit branch. The reason must
+    // stay `circuit_open` so the operator can tell the latched circuit apart
+    // from an intentional manual disable.
+    let reason_for = |threshold: u32, failures: u32| {
+        let config = OverseerConfig {
+            dispatch_enabled: false,
+            failure_circuit_threshold: threshold,
+            ..OverseerConfig::default()
+        };
+        let mut ledger = Ledger::default();
+        ledger.counters.consecutive_failures = failures;
+        let plan = plan_dispatch(
+            &config,
+            &ledger,
+            &[candidate("/repo")],
+            now(),
+            &HashMap::new(),
+        );
+        assert!(!plan.decisions[0].dispatch);
+        plan.decisions[0].reason.clone()
+    };
+
+    // Above and exactly at the threshold latch the circuit. Pinning the equality
+    // boundary keeps a `>=` -> `>` regression from slipping through.
+    assert_eq!(reason_for(3, 4), "circuit_open");
+    assert_eq!(reason_for(3, 3), "circuit_open");
+    // Just below the threshold is an operator-intended disable, not the circuit.
+    assert_eq!(reason_for(3, 2), "dispatch_disabled");
+    assert_eq!(reason_for(3, 0), "dispatch_disabled");
+    // A zero threshold means the circuit is open the moment dispatch is disabled.
+    assert_eq!(reason_for(0, 0), "circuit_open");
+}
+
+#[test]
 fn daily_limit_and_date_reset() {
     let config = OverseerConfig {
         daily_dispatch_limit: 2,
