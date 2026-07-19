@@ -12,13 +12,18 @@ use ratatui::text::Text;
 use crate::overseer::config::OverseerConfig;
 use crate::{
     config::Config,
-    model::Status,
+    model::{OverseerCategory, Status},
     overseer::{heartbeat_path, ledger::Ledger},
 };
 
 use super::App;
 
+mod categories;
 mod render;
+
+#[cfg(test)]
+pub(in crate::ui) use categories::health_warnings_from;
+pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 
 use render::{append_decisions, append_health, append_inbox, append_ledger, detail, warning};
 
@@ -49,6 +54,13 @@ pub(super) fn summary(app: &App) -> (String, Text<'static>) {
         }
     }
     ("OVERSEER / local control".into(), lines.into())
+}
+
+pub(super) fn category_preview(app: &App, category: OverseerCategory) -> (String, Text<'static>) {
+    (
+        format!("OVERSEER / {}", category.label()),
+        category_detail(app, category).into(),
+    )
 }
 
 pub(super) fn status() -> Status {

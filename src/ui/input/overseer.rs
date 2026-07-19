@@ -28,7 +28,10 @@ pub(super) fn prompt_action(input: &mut String, key: KeyEvent) -> PromptAction {
 }
 
 pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
-    if !matches!(app.selected_item(), Some(Selection::Overseer)) {
+    if !matches!(
+        app.selected_item(),
+        Some(Selection::Overseer | Selection::OverseerCategory(_))
+    ) {
         return false;
     }
     if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
@@ -135,6 +138,7 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use super::*;
+    use crate::{config::Config, model::OverseerCategory, registry::Registry};
 
     #[test]
     fn enter_submits_trimmed_instruction() {
@@ -183,5 +187,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(calls.borrow().as_slice(), ["keys:target:y,Enter"]);
+    }
+
+    #[test]
+    fn inbox_navigation_is_handled_from_category_selection() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.selected = OverseerCategory::Inbox.index() + 1;
+        app.preview = PreviewPane::Info;
+
+        assert!(handle_normal(&mut app, KeyCode::Char('[')));
+        assert!(handle_normal(&mut app, KeyCode::Char(']')));
     }
 }

@@ -12,6 +12,7 @@ mod management;
 mod mouse;
 mod overseer;
 mod prompt_agent;
+mod tree_nav;
 
 impl App {
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
@@ -218,26 +219,8 @@ impl App {
                 }
                 KeyCode::PageDown => self.scroll_preview(false, 10),
                 KeyCode::PageUp => self.scroll_preview(true, 10),
-                KeyCode::Right | KeyCode::Char('l') => match self.selected_item() {
-                    Some(Selection::Repo(repo)) => {
-                        if let Some(expanded) = self.expanded.get_mut(repo) {
-                            *expanded = true;
-                        }
-                    }
-                    Some(Selection::OtherHeader) => self.set_other_collapsed(false),
-                    Some(Selection::OrphanHeader) => self.set_orphans_collapsed(false),
-                    _ => {}
-                },
-                KeyCode::Left | KeyCode::Char('h') => match self.selected_item() {
-                    Some(Selection::Repo(repo)) => {
-                        if let Some(expanded) = self.expanded.get_mut(repo) {
-                            *expanded = false;
-                        }
-                    }
-                    Some(Selection::OtherHeader) => self.set_other_collapsed(true),
-                    Some(Selection::OrphanHeader) => self.set_orphans_collapsed(true),
-                    _ => {}
-                },
+                KeyCode::Right | KeyCode::Char('l') => self.expand_selected_tree_item(),
+                KeyCode::Left | KeyCode::Char('h') => self.collapse_selected_tree_item(),
                 KeyCode::Char('n') => {
                     if let Some(repo) = self.selected_repo() {
                         self.mode = Mode::PromptAgent {
@@ -269,12 +252,7 @@ impl App {
                 KeyCode::BackTab => self.toggle_preview_back(),
                 KeyCode::Char('?') => self.mode = Mode::Help { scroll: 0 },
                 KeyCode::Enter => match self.selected_item() {
-                    Some(Selection::OtherHeader) => {
-                        self.set_other_collapsed(!self.other_collapsed);
-                    }
-                    Some(Selection::OrphanHeader) => {
-                        self.set_orphans_collapsed(!self.orphans_collapsed);
-                    }
+                    Some(selection) if self.toggle_selected_tree_header(selection) => {}
                     Some(Selection::Orphan(_)) => self.attach_orphan_selected(),
                     _ => match self.preview {
                         PreviewPane::Terminal => self.attach_shell_selected()?,

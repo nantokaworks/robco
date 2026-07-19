@@ -86,7 +86,7 @@ impl App {
 
     pub(in crate::ui) fn attach_claude_selected(&mut self) -> Result<()> {
         match self.selected_item() {
-            Some(Selection::Overseer) => {
+            Some(Selection::Overseer | Selection::OverseerCategory(_)) => {
                 let cwd = self
                     .ephemeral_root
                     .clone()

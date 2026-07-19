@@ -15,7 +15,9 @@ use super::{App, PreviewPane, preview::PREVIEW_PADDING};
 pub(in crate::ui) fn live_session(app: &App) -> Option<String> {
     let prefix = &app.config.tmux_session_prefix;
     match (app.preview, app.selected_item()?) {
-        (PreviewPane::Claude, Selection::Overseer) => Some(overseer::control_session_name(prefix)),
+        (PreviewPane::Claude, Selection::Overseer | Selection::OverseerCategory(_)) => {
+            Some(overseer::control_session_name(prefix))
+        }
         (PreviewPane::Claude, Selection::Repo(repo)) => Some(agent::repo_claude_session_name(
             prefix,
             &app.registry.repos[repo],
