@@ -120,3 +120,20 @@ fn merges_repo_task_results() {
         .collect::<Vec<_>>();
     assert_eq!(ids, ["#1", "#2"]);
 }
+
+#[test]
+fn dedupes_tasks_present_in_both_sources() {
+    let tasks = merge_repo_tasks(
+        Some(vec![task("#1", "in_progress"), task("#2", "in_progress")]),
+        Some(vec![task("#2", "ready"), task("#3", "ready")]),
+    )
+    .unwrap();
+    let ids = tasks
+        .iter()
+        .map(|task| task.display_id.as_str())
+        .collect::<Vec<_>>();
+    // #2 is present in both sources: it appears once, keeping the in-progress copy.
+    assert_eq!(ids, ["#1", "#2", "#3"]);
+    let overlapping = tasks.iter().find(|task| task.display_id == "#2").unwrap();
+    assert_eq!(overlapping.status, "in_progress");
+}
