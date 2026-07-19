@@ -29,6 +29,9 @@ fn overseer_expand_collapse_keys_update_tree() {
     let mut app = test_app();
     app.overseer_visible = true;
     app.selected = 0;
+    // Ignore any live robco tmux sessions the host discovers as orphans so the
+    // tree contents are deterministic across environments.
+    app.orphans = Vec::new();
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();

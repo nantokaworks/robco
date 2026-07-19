@@ -26,6 +26,9 @@ fn overseer_visibility_requires_both_daemon_artifacts() {
 fn overseer_categories_follow_root_collapse_state() {
     let mut app = test_app();
     app.set_overseer_visibility(true);
+    // Ignore any live robco tmux sessions the host discovers as orphans so the
+    // tree contents are deterministic across environments.
+    app.orphans = Vec::new();
     let expected = OverseerCategory::ALL.map(Selection::OverseerCategory);
     assert!(app.visible().windows(4).any(|rows| rows == expected));
 
