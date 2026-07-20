@@ -78,7 +78,8 @@ impl App {
     }
 
     pub(in crate::ui) fn schedule_status_refresh(&mut self, notify_tx: Sender<String>) {
-        expire(&mut self.background_refresh.status_in_flight);
+        // A hung worker intentionally holds its slot until it sends a result, preventing
+        // replacement workers and their child processes from accumulating.
         if self.background_refresh.status_in_flight.is_some() {
             return;
         }
@@ -93,12 +94,13 @@ impl App {
         let spawn = std::thread::Builder::new()
             .name("ui-status-refresh".into())
             .spawn(move || {
-                if let Ok(mut cursor) = cursor.lock() {
-                    notify_new_decisions(&mut cursor, &notify_tx, config.notify.enabled);
-                }
-                let result =
-                    panic::catch_unwind(AssertUnwindSafe(|| capture_status(registry, &config)))
-                        .ok();
+                let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                    if let Ok(mut cursor) = cursor.lock() {
+                        notify_new_decisions(&mut cursor, &notify_tx, config.notify.enabled);
+                    }
+                    capture_status(registry, &config)
+                }))
+                .ok();
                 let _ = sender.send((started, result));
             });
         if spawn.is_err() {
@@ -107,7 +109,8 @@ impl App {
     }
 
     pub(in crate::ui) fn schedule_discovery_refresh(&mut self) {
-        expire(&mut self.background_refresh.discovery_in_flight);
+        // A hung worker intentionally holds its slot until it sends a result, preventing
+        // replacement workers and their child processes from accumulating.
         if self.background_refresh.discovery_in_flight.is_some() {
             return;
         }
