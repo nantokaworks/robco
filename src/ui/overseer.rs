@@ -11,9 +11,8 @@ use ratatui::text::Text;
 #[cfg(test)]
 use crate::overseer::config::OverseerConfig;
 use crate::{
-    config::Config,
     model::{OverseerCategory, Status},
-    overseer::{heartbeat_path, ledger::Ledger},
+    overseer::{ledger::Ledger, logging::DecisionEntry},
 };
 
 use super::App;
@@ -25,34 +24,45 @@ mod render;
 pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 
-use render::{append_decisions, append_health, append_inbox, append_ledger, detail, warning};
+use render::{append_decisions, append_health, append_inbox, append_ledger};
 
-pub(super) fn summary(app: &App) -> (String, Text<'static>) {
-    let config = Config::load().map(|config| config.overseer);
-    let ledger = Ledger::load();
-    let heartbeat = heartbeat_path();
-    let mut lines = Vec::new();
+/// Point-in-time overseer state captured off the UI thread by the background
+/// status worker ([`crate::ui::actions::background_refresh`]). The overseer
+/// frame and previews render from this snapshot instead of reading
+/// config / ledger / pidfile / decision-log from disk on every frame — that
+/// per-frame disk I/O was the source of cursor-movement lag.
+#[derive(Default)]
+pub(in crate::ui) struct OverseerSnapshot {
+    pub(in crate::ui) ledger: Ledger,
+    pub(in crate::ui) decisions: Vec<DecisionEntry>,
+    pub(in crate::ui) daemon_alive: bool,
+    pub(in crate::ui) heartbeat_age: Option<Duration>,
+}
 
-    match (config, ledger, heartbeat) {
-        (Ok(config), Ok(ledger), Ok(heartbeat)) => {
-            append_health(&mut lines, &config, &ledger, &heartbeat);
-            append_ledger(&mut lines, &config, &ledger);
-            append_inbox(&mut lines, app);
-            append_decisions(&mut lines);
-        }
-        (config, ledger, heartbeat) => {
-            lines.push(warning("Overseer state could not be read."));
-            if let Err(error) = config {
-                lines.push(detail("config", error));
-            }
-            if let Err(error) = ledger {
-                lines.push(detail("ledger", error));
-            }
-            if let Err(error) = heartbeat {
-                lines.push(detail("heartbeat", error));
-            }
+impl OverseerSnapshot {
+    pub(in crate::ui) fn status(&self) -> Status {
+        if self.daemon_alive {
+            Status::Running
+        } else {
+            Status::Dead
         }
     }
+}
+
+pub(super) fn summary(app: &App) -> (String, Text<'static>) {
+    let snapshot = &app.overseer_snapshot;
+    let config = &app.config.overseer;
+    let mut lines = Vec::new();
+    append_health(
+        &mut lines,
+        config,
+        &snapshot.ledger,
+        snapshot.daemon_alive,
+        snapshot.heartbeat_age,
+    );
+    append_ledger(&mut lines, config, &snapshot.ledger);
+    append_inbox(&mut lines, app);
+    append_decisions(&mut lines, &snapshot.decisions);
     ("OVERSEER / local control".into(), lines.into())
 }
 
@@ -63,22 +73,7 @@ pub(super) fn category_preview(app: &App, category: OverseerCategory) -> (String
     )
 }
 
-pub(super) fn status() -> Status {
-    let config = Config::load()
-        .map(|config| config.overseer)
-        .unwrap_or_default();
-    if crate::overseer::daemon_pid_alive()
-        && heartbeat_path()
-            .ok()
-            .is_some_and(|path| heartbeat_is_fresh(&path, config.poll_interval_secs))
-    {
-        Status::Running
-    } else {
-        Status::Dead
-    }
-}
-
-pub(super) fn heartbeat_is_fresh(path: &Path, poll_secs: u64) -> bool {
+pub(in crate::ui) fn heartbeat_is_fresh(path: &Path, poll_secs: u64) -> bool {
     heartbeat_is_fresh_at(path, poll_secs, SystemTime::now())
 }
 

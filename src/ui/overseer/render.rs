@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::Path, time::SystemTime};
+use std::{collections::BTreeMap, time::Duration};
 
 use chrono::{NaiveDate, Utc};
 use ratatui::{
@@ -9,24 +9,19 @@ use ratatui::{
 use crate::overseer::{
     config::OverseerConfig,
     ledger::{Ledger, LedgerPhase},
-    logging::{self, DecisionKind},
+    logging::{DecisionEntry, DecisionKind},
 };
 
-use super::{App, heartbeat_is_fresh};
+use super::App;
 use crate::ui::{inbox::InboxKind, theme::DEFAULT as THEME};
 
 pub(super) fn append_health(
     lines: &mut Vec<Line<'static>>,
     config: &OverseerConfig,
     ledger: &Ledger,
-    path: &Path,
+    alive: bool,
+    heartbeat_age: Option<Duration>,
 ) {
-    let age = fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified| SystemTime::now().duration_since(modified).ok());
-    let alive =
-        crate::overseer::daemon_pid_alive() && heartbeat_is_fresh(path, config.poll_interval_secs);
     lines.push(flags_line(&[
         (
             "daemon",
@@ -35,7 +30,7 @@ pub(super) fn append_health(
         ),
         (
             "hb",
-            age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
+            heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
             !alive,
         ),
     ]));
@@ -156,30 +151,28 @@ fn dispatches_on(ledger: &Ledger, today: NaiveDate) -> u32 {
     }
 }
 
-pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>) {
+pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[DecisionEntry]) {
     lines.push(Line::from(Span::styled(
         "recent decisions",
         THEME.accent_bold_style(),
     )));
-    match logging::tail(3) {
-        Ok(entries) if entries.is_empty() => {
-            lines.push(Line::from(Span::styled("  none", THEME.muted_style())))
-        }
-        Ok(entries) => {
-            for entry in entries.into_iter().rev() {
-                let task = entry.task.as_deref().unwrap_or("-");
-                let label = match entry.kind {
-                    DecisionKind::Escalate | DecisionKind::CircuitOpen => "!",
-                    _ => "·",
-                };
-                lines.push(Line::from(format!(
-                    "  {label} {} {task} — {}",
-                    entry.at.format("%m-%d %H:%M"),
-                    entry.reason
-                )));
-            }
-        }
-        Err(error) => lines.push(detail("decision log", error)),
+    // `decisions` is oldest-first (see `logging::tail`); show the newest three first.
+    let recent = decisions.iter().rev().take(3).collect::<Vec<_>>();
+    if recent.is_empty() {
+        lines.push(Line::from(Span::styled("  none", THEME.muted_style())));
+        return;
+    }
+    for entry in recent {
+        let task = entry.task.as_deref().unwrap_or("-");
+        let label = match entry.kind {
+            DecisionKind::Escalate | DecisionKind::CircuitOpen => "!",
+            _ => "·",
+        };
+        lines.push(Line::from(format!(
+            "  {label} {} {task} — {}",
+            entry.at.format("%m-%d %H:%M"),
+            entry.reason
+        )));
     }
 }
 
@@ -217,9 +210,6 @@ pub(super) fn warning(text: &str) -> Line<'static> {
         text.to_string(),
         Style::default().fg(Color::Red),
     ))
-}
-pub(super) fn detail(label: &str, error: impl std::fmt::Display) -> Line<'static> {
-    warning(&format!("{label}: {error}"))
 }
 fn on_off(value: bool) -> &'static str {
     if value { "on" } else { "off" }

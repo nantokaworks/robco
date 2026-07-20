@@ -108,7 +108,7 @@ fn root_line(app: &App, selected: bool, warning_count: usize, width: Option<u16>
     }
 
     let status = select(IndicatorState::with_status(Some(
-        crate::ui::overseer::status(),
+        app.overseer_snapshot.status(),
     )));
     let indicator = indicator::primary_span(status, selected, app.started.elapsed(), 1);
     if let Some(width) = width {

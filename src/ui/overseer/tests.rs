@@ -66,9 +66,6 @@ fn stale_heartbeat_is_not_fresh() {
 
 #[test]
 fn open_circuit_shows_recovery_hint() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("heartbeat");
-    fs::write(&path, "tick").unwrap();
     let config = OverseerConfig {
         failure_circuit_threshold: 3,
         ..OverseerConfig::default()
@@ -79,7 +76,7 @@ fn open_circuit_shows_recovery_hint() {
     let mut open = Ledger::default();
     open.counters.consecutive_failures = 3;
     let mut lines = Vec::new();
-    super::render::append_health(&mut lines, &config, &open, &path);
+    super::render::append_health(&mut lines, &config, &open, false, None);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -101,7 +98,7 @@ fn open_circuit_shows_recovery_hint() {
     let mut closed = Ledger::default();
     closed.counters.consecutive_failures = 2;
     let mut lines = Vec::new();
-    super::render::append_health(&mut lines, &config, &closed, &path);
+    super::render::append_health(&mut lines, &config, &closed, false, None);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
