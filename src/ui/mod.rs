@@ -194,6 +194,10 @@ pub struct App {
     preview_capture: PreviewCapture,
     overseer_inbox: Vec<inbox::InboxItem>,
     overseer_inbox_selected: usize,
+    /// Overseer state (ledger, decisions, daemon liveness) captured off-thread by
+    /// the background status worker. The overseer frame and previews render from
+    /// this instead of reading disk on every draw.
+    overseer_snapshot: overseer::OverseerSnapshot,
 }
 
 impl App {
@@ -235,6 +239,7 @@ impl App {
             background_refresh: BackgroundRefresh::new(),
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),
+            overseer_snapshot: overseer::OverseerSnapshot::default(),
             overseer_inbox_selected: 0,
         };
         if app.prune_unmanaged_agents() {

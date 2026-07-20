@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fs,
     panic::{self, AssertUnwindSafe},
     path::PathBuf,
     sync::{
@@ -21,7 +22,10 @@ use crate::{
 };
 
 use super::{background_support::*, children, discovery, orphans, subagents};
-use crate::ui::{App, inbox, list};
+use crate::ui::{
+    App, inbox, list,
+    overseer::{OverseerSnapshot, heartbeat_is_fresh},
+};
 
 type StatusMessage = (Instant, Option<StatusResult>);
 type DiscoveryMessage = (Instant, Option<DiscoveryResult>);
@@ -41,6 +45,7 @@ struct StatusResult {
     repos: Vec<RepoNode>,
     overseer_visible: bool,
     inbox: Vec<inbox::InboxItem>,
+    snapshot: OverseerSnapshot,
 }
 
 struct DiscoveryResult {
@@ -156,6 +161,7 @@ impl App {
     fn apply_status(&mut self, result: StatusResult) {
         merge_status(&mut self.registry.repos, result.repos);
         self.set_overseer_visibility(result.overseer_visible);
+        self.overseer_snapshot = result.snapshot;
         self.overseer_inbox = result.inbox;
         self.overseer_inbox_selected = self
             .overseer_inbox_selected
@@ -220,10 +226,26 @@ fn capture_status(mut registry: Registry, config: &Config) -> StatusResult {
     let ledger = Ledger::load().unwrap_or_default();
     let decisions = logging::tail(200).unwrap_or_default();
     let reports = inbox::question_reports(&registry);
+    let inbox = inbox::aggregate(&ledger, &decisions, &reports);
+    let heartbeat = crate::overseer::heartbeat_path().ok();
+    let heartbeat_age = heartbeat
+        .as_ref()
+        .and_then(|path| fs::metadata(path).and_then(|meta| meta.modified()).ok())
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok());
+    let daemon_alive = crate::overseer::daemon_pid_alive()
+        && heartbeat
+            .as_ref()
+            .is_some_and(|path| heartbeat_is_fresh(path, config.overseer.poll_interval_secs));
     StatusResult {
         repos: registry.repos,
         overseer_visible: list::overseer_is_visible(),
-        inbox: inbox::aggregate(&ledger, &decisions, &reports),
+        inbox,
+        snapshot: OverseerSnapshot {
+            ledger,
+            decisions,
+            daemon_alive,
+            heartbeat_age,
+        },
     }
 }
 

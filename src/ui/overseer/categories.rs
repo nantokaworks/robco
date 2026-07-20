@@ -1,23 +1,30 @@
 use ratatui::text::Line;
 
 use crate::{
-    config::Config,
     model::OverseerCategory,
-    overseer::{heartbeat_path, ledger::Ledger},
+    overseer::ledger::{Ledger, LedgerPhase},
 };
 
 use super::{
-    App, heartbeat_is_fresh,
-    render::{append_decisions, append_health, append_inbox, append_ledger, detail, warning},
+    App,
+    render::{append_decisions, append_health, append_inbox, append_ledger},
 };
 
 pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> Vec<Line<'static>> {
+    let snapshot = &app.overseer_snapshot;
+    let config = &app.config.overseer;
     let mut lines = Vec::new();
     match category {
-        OverseerCategory::Health => health_detail(&mut lines),
-        OverseerCategory::Ledger => ledger_detail(&mut lines),
+        OverseerCategory::Health => append_health(
+            &mut lines,
+            config,
+            &snapshot.ledger,
+            snapshot.daemon_alive,
+            snapshot.heartbeat_age,
+        ),
+        OverseerCategory::Ledger => append_ledger(&mut lines, config, &snapshot.ledger),
         OverseerCategory::Inbox => append_inbox(&mut lines, app),
-        OverseerCategory::Decisions => append_decisions(&mut lines),
+        OverseerCategory::Decisions => append_decisions(&mut lines, &snapshot.decisions),
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {
         lines.pop();
@@ -26,9 +33,14 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
 }
 
 pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> (String, bool) {
+    let snapshot = &app.overseer_snapshot;
     match category {
-        OverseerCategory::Health => health_summary(),
-        OverseerCategory::Ledger => ledger_summary(),
+        OverseerCategory::Health => health_summary_from(
+            &app.config.overseer,
+            &snapshot.ledger,
+            snapshot.daemon_alive,
+        ),
+        OverseerCategory::Ledger => ledger_summary_from(&snapshot.ledger),
         OverseerCategory::Inbox => {
             let actionable = app
                 .overseer_inbox
@@ -40,45 +52,24 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
                 false,
             )
         }
-        OverseerCategory::Decisions => match crate::overseer::logging::tail(3) {
-            Ok(entries) => (format!("{} recent", entries.len()), false),
-            Err(_) => ("unavailable".into(), true),
-        },
-    }
-}
-
-fn health_detail(lines: &mut Vec<Line<'static>>) {
-    match load_health() {
-        Ok((config, ledger, heartbeat)) => append_health(lines, &config, &ledger, &heartbeat),
-        Err((label, error)) => {
-            lines.push(warning("Overseer health could not be read."));
-            lines.push(detail(label, error));
+        OverseerCategory::Decisions => {
+            (format!("{} recent", snapshot.decisions.len().min(3)), false)
         }
     }
 }
 
-fn ledger_detail(lines: &mut Vec<Line<'static>>) {
-    match (Config::load().map(|config| config.overseer), Ledger::load()) {
-        (Ok(config), Ok(ledger)) => append_ledger(lines, &config, &ledger),
-        (config, ledger) => {
-            lines.push(warning("Overseer ledger could not be read."));
-            if let Err(error) = config {
-                lines.push(detail("config", error));
-            }
-            if let Err(error) = ledger {
-                lines.push(detail("ledger", error));
-            }
-        }
-    }
-}
-
-fn health_summary() -> (String, bool) {
-    let Ok((config, ledger, heartbeat)) = load_health() else {
-        return ("[STALE/OFFLINE]".into(), true);
-    };
-    let alive = crate::overseer::daemon_pid_alive()
-        && heartbeat_is_fresh(&heartbeat, config.poll_interval_secs);
-    health_summary_from(&config, &ledger, alive)
+pub(super) fn ledger_summary_from(ledger: &Ledger) -> (String, bool) {
+    let active = ledger
+        .entries
+        .iter()
+        .filter(|entry| {
+            !matches!(
+                entry.phase,
+                LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
+            )
+        })
+        .count();
+    (format!("{active} active"), false)
 }
 
 pub(super) fn health_summary_from(
@@ -101,13 +92,13 @@ pub(super) fn health_summary_from(
     }
 }
 
-pub(in crate::ui) fn health_warnings(_app: &App) -> Vec<&'static str> {
-    let Ok((config, ledger, heartbeat)) = load_health() else {
-        return vec!["STALE/OFFLINE"];
-    };
-    let alive = crate::overseer::daemon_pid_alive()
-        && heartbeat_is_fresh(&heartbeat, config.poll_interval_secs);
-    health_warnings_from(&config, &ledger, alive)
+pub(in crate::ui) fn health_warnings(app: &App) -> Vec<&'static str> {
+    let snapshot = &app.overseer_snapshot;
+    health_warnings_from(
+        &app.config.overseer,
+        &snapshot.ledger,
+        snapshot.daemon_alive,
+    )
 }
 
 pub(in crate::ui) fn health_warnings_from(
@@ -126,41 +117,4 @@ pub(in crate::ui) fn health_warnings_from(
         warnings.push("dispatch/no daemon");
     }
     warnings
-}
-
-fn ledger_summary() -> (String, bool) {
-    match Ledger::load() {
-        Ok(ledger) => {
-            let active = ledger
-                .entries
-                .iter()
-                .filter(|entry| {
-                    !matches!(
-                        entry.phase,
-                        crate::overseer::ledger::LedgerPhase::Merged
-                            | crate::overseer::ledger::LedgerPhase::Failed
-                            | crate::overseer::ledger::LedgerPhase::Escalated
-                    )
-                })
-                .count();
-            (format!("{active} active"), false)
-        }
-        Err(_) => ("unavailable".into(), true),
-    }
-}
-
-fn load_health() -> Result<
-    (
-        crate::overseer::config::OverseerConfig,
-        Ledger,
-        std::path::PathBuf,
-    ),
-    (&'static str, String),
-> {
-    let config = Config::load()
-        .map(|config| config.overseer)
-        .map_err(|error| ("config", error.to_string()))?;
-    let ledger = Ledger::load().map_err(|error| ("ledger", error.to_string()))?;
-    let heartbeat = heartbeat_path().map_err(|error| ("heartbeat", error.to_string()))?;
-    Ok((config, ledger, heartbeat))
 }
