@@ -3,12 +3,9 @@ use std::{
     io::Write,
     sync::mpsc::{self, Sender},
     thread::JoinHandle,
-    time::{Duration, Instant},
 };
 
 use crate::{model::RepoNode, notify, overseer::logging, registry::Registry};
-
-const REFRESH_STALE_AFTER: Duration = Duration::from_secs(30);
 
 pub(super) fn clone_registry(registry: &Registry) -> Registry {
     Registry {
@@ -19,12 +16,6 @@ pub(super) fn clone_registry(registry: &Registry) -> Registry {
 
 pub(super) fn fingerprint(registry: &Registry) -> Vec<u8> {
     serde_json::to_vec(registry).unwrap_or_default()
-}
-
-pub(super) fn expire(in_flight: &mut Option<Instant>) {
-    if in_flight.is_some_and(|started| started.elapsed() >= REFRESH_STALE_AFTER) {
-        *in_flight = None;
-    }
 }
 
 pub(super) fn merge_status(current: &mut [RepoNode], refreshed: Vec<RepoNode>) {
