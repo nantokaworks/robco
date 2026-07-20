@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process::Command, time::Duration};
+use std::{collections::HashMap, collections::HashSet, process::Command, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -213,6 +213,8 @@ fn merge_repo_tasks(
         }
     }
     tasks.extend(ready.unwrap_or_default());
+    let mut seen = HashSet::new(); // keep first occurrence: in-progress copy wins over ready dup
+    tasks.retain(|task| seen.insert(task.display_id.clone()));
     Some(tasks)
 }
 
