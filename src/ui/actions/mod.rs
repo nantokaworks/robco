@@ -10,6 +10,7 @@ mod lifecycle;
 pub(super) mod merge;
 mod orphans;
 mod pr;
+pub(super) mod preview_capture;
 mod settings;
 mod slots;
 mod subagents;

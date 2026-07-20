@@ -1,19 +1,14 @@
-use ratatui::{
-    layout::Rect,
-    text::{Line, Span, Text},
-};
+use ratatui::text::{Line, Span, Text};
 
-use crate::{overseer, tmux, ui::theme::DEFAULT as THEME};
+use crate::{overseer, ui::theme::DEFAULT as THEME};
 
-use super::super::{App, scrollback};
+use super::super::App;
 
-pub(super) fn control_preview(app: &App, area: Rect, scroll: u16) -> (String, Text<'static>) {
+pub(super) fn control_preview(app: &App) -> (String, Text<'static>) {
     let session = overseer::control_session_name(&app.config.tmux_session_prefix);
-    let text = if tmux::has_session(&session).unwrap_or(false) {
-        scrollback::capture(&session, area, scroll).unwrap_or_else(not_started)
-    } else {
-        not_started()
-    };
+    // The background capture worker mirrors the control session; an empty/absent
+    // session yields no cached text, which reads as "not started".
+    let text = app.cached_tmux(&session).unwrap_or_else(not_started);
     ("OVERSEER / control".to_string(), text)
 }
 

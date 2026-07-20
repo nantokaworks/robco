@@ -173,6 +173,14 @@ impl App {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
                 _ => {}
             },
+            Mode::ConfirmOverseerPanic => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    self.mode = Mode::Normal;
+                    self.panic_overseer();
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
+                _ => {}
+            },
             Mode::ErrorDialog { force_kill, .. } => {
                 let target = force_kill.clone();
                 self.mode = Mode::Normal;
