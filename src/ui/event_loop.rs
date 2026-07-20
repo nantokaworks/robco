@@ -91,6 +91,10 @@ fn run_loop<B: ratatui::backend::Backend>(
 
     loop {
         app.ingest_background_refreshes();
+        app.ingest_preview_captures();
+        if let Ok(size) = terminal.size() {
+            app.schedule_preview_capture(Rect::new(0, 0, size.width, size.height));
+        }
         if last_tick.elapsed() >= tick_interval {
             app.schedule_status_refresh(notify_tx.clone());
             last_tick = Instant::now();

@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 36;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 37;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -19,6 +19,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  r              restart agent / reload dropr tasks (all workspaces)"),
         Line::from("  x              remove selected agent worktree or pinned repo"),
         Line::from("  g              toggle selected overseer worker Auto / Manual"),
+        Line::from("  S              stop overseer (dispatch off + kill workers)"),
         Line::from("Repo"),
         Line::from("  a              clone <git-url> [branch], or add local repo path"),
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),
@@ -120,7 +121,9 @@ mod tests {
 
     #[test]
     fn tall_terminal_keeps_original_help_title_and_content() {
-        let rendered = rendered_help(40, 0);
+        // CONTENT_LINE_COUNT rows plus FRAME_OVERHEAD_ROWS is the height at which
+        // the help fits without a scroll indicator.
+        let rendered = rendered_help(CONTENT_LINE_COUNT + FRAME_OVERHEAD_ROWS, 0);
         assert!(rendered.contains("press any key to close"));
         assert!(!rendered.contains("j/k scroll"));
     }

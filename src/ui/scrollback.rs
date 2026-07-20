@@ -39,11 +39,25 @@ pub(in crate::ui) fn live_session(app: &App) -> Option<String> {
     }
 }
 
-/// Resize the mirrored session to the preview's inner size, then capture one
-/// screenful `offset` lines back from the live edge.
-pub(in crate::ui) fn capture(session: &str, area: Rect, offset: u16) -> Option<Text<'static>> {
-    let width = area.width.saturating_sub(2 + 2 * PREVIEW_PADDING);
-    let height = area.height.saturating_sub(2 + 2 * PREVIEW_PADDING);
+/// Inner (content) width and height of a preview pane, after subtracting the
+/// border and [`PREVIEW_PADDING`] on each edge. This is the tmux window size a
+/// mirrored session is resized to before capture.
+pub(in crate::ui) fn inner_dims(area: Rect) -> (u16, u16) {
+    (
+        area.width.saturating_sub(2 + 2 * PREVIEW_PADDING),
+        area.height.saturating_sub(2 + 2 * PREVIEW_PADDING),
+    )
+}
+
+/// Resize the mirrored session to the given inner size, then capture one
+/// screenful `offset` lines back from the live edge. Spawns tmux subprocesses,
+/// so it must run off the UI thread (see the `preview_capture` action).
+pub(in crate::ui) fn capture_inner(
+    session: &str,
+    width: u16,
+    height: u16,
+    offset: u16,
+) -> Option<Text<'static>> {
     if width == 0 || height == 0 {
         return None;
     }

@@ -117,6 +117,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             "kill session?",
             confirm_lines(session.clone(), "y kill   n/esc cancel"),
         ),
+        Mode::ConfirmOverseerPanic => (
+            "stop overseer?",
+            vec![
+                Line::from("disable dispatch and kill overseer workers"),
+                hint_line("y stop   n/esc cancel"),
+            ],
+        ),
         Mode::ErrorDialog {
             title,
             lines,

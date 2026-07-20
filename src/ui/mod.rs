@@ -18,7 +18,10 @@ use crate::{
     registry::Registry,
 };
 
-use actions::{background_refresh::BackgroundRefresh, dropr_tasks::DroprTaskRefresh};
+use actions::{
+    background_refresh::BackgroundRefresh, dropr_tasks::DroprTaskRefresh,
+    preview_capture::PreviewCapture,
+};
 
 /// How often the launch directory and each repo's worktrees are re-scanned to
 /// pick up projects or worktrees created outside robco.
@@ -106,6 +109,9 @@ enum Mode {
     ConfirmKillOrphan {
         session: String,
     },
+    // Panic-stop the overseer: disable dispatch and kill every overseer-managed
+    // worker. Reachable only while an OVERSEER row is selected.
+    ConfirmOverseerPanic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,6 +191,7 @@ pub struct App {
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
     background_refresh: BackgroundRefresh,
+    preview_capture: PreviewCapture,
     overseer_inbox: Vec<inbox::InboxItem>,
     overseer_inbox_selected: usize,
 }
@@ -226,6 +233,7 @@ impl App {
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
             background_refresh: BackgroundRefresh::new(),
+            preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),
             overseer_inbox_selected: 0,
         };

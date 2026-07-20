@@ -34,6 +34,11 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
     ) {
         return false;
     }
+    // Stop works from any preview tab so the operator can always reach it.
+    if code == KeyCode::Char('S') {
+        app.mode = Mode::ConfirmOverseerPanic;
+        return true;
+    }
     if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
         app.mode = Mode::PromptOverseer {
             input: String::new(),
@@ -129,6 +134,14 @@ impl App {
             Err(error) => self.show_message(error.to_string()),
         }
     }
+
+    /// Panic-stop the overseer: disable dispatch and terminate every
+    /// overseer-managed worker. Runs synchronously since it is an explicit,
+    /// operator-initiated action.
+    pub(in crate::ui) fn panic_overseer(&mut self) {
+        let result = crate::overseer::command::panic_stop_attributed("ui", None);
+        self.response_message(result, "overseer stopped: dispatch off, workers killed");
+    }
 }
 
 #[cfg(test)]
@@ -199,5 +212,28 @@ mod tests {
 
         assert!(handle_normal(&mut app, KeyCode::Char('[')));
         assert!(handle_normal(&mut app, KeyCode::Char(']')));
+    }
+
+    #[test]
+    fn stop_key_opens_panic_confirm_from_any_overseer_tab() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.selected = 0; // OVERSEER root row.
+        // Works regardless of the active preview tab.
+        app.preview = PreviewPane::Claude;
+
+        assert!(handle_normal(&mut app, KeyCode::Char('S')));
+        assert!(matches!(app.mode, Mode::ConfirmOverseerPanic));
+    }
+
+    #[test]
+    fn stop_key_is_ignored_without_an_overseer_selection() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = false;
+
+        assert!(!handle_normal(&mut app, KeyCode::Char('S')));
+        assert!(matches!(app.mode, Mode::Normal));
     }
 }

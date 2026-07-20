@@ -1,13 +1,12 @@
-use ansi_to_tui::IntoText;
 use ratatui::{
     Frame,
     layout::Rect,
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
 };
 
 use crate::{
-    agent, git,
+    agent,
     model::{Selection, Status},
     ui::{
         App, PreviewPane, layout, merge_dialog, scrollback,
@@ -25,7 +24,7 @@ mod tabs;
 use labels::ai_label;
 use tabs::preview_tabs_line;
 /// Inner padding between the preview border and its content, applied to every
-/// tab. `scrollback::capture` subtracts it when sizing mirrored tmux sessions.
+/// tab. `scrollback::inner_dims` subtracts it when sizing mirrored tmux sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
@@ -46,13 +45,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             super::overseer::category_preview(app, category)
         }
         (PreviewPane::Claude, Some(Selection::Overseer | Selection::OverseerCategory(_))) => {
-            overseer::control_preview(app, panes.preview, scroll)
+            overseer::control_preview(app)
         }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
             let session = agent::repo_shell_session_name(tmux_prefix, repo);
-            let text = scrollback::capture(&session, panes.preview, scroll).unwrap_or_else(|| {
+            let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
                     "No shell session. Press enter to open one.",
                     THEME.muted_style(),
@@ -65,7 +64,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);
             let session = agent::repo_claude_session_name(tmux_prefix, repo);
-            let text = scrollback::capture(&session, panes.preview, scroll).unwrap_or_else(|| {
+            let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
                     "No AI session. Press enter to open one.",
                     THEME.muted_style(),
@@ -126,14 +125,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     &ai_label,
                 );
             }
-            let text = scrollback::capture(&agent.tmux_session, panes.preview, scroll)
-                .unwrap_or_else(|| {
-                    vec![
-                        Line::from(Span::styled("No preview available.", THEME.muted_style())),
-                        Line::from(Span::styled(&agent.tmux_session, THEME.muted_style())),
-                    ]
-                    .into()
-                });
+            let text = app.cached_tmux(&agent.tmux_session).unwrap_or_else(|| {
+                vec![
+                    Line::from(Span::styled("No preview available.", THEME.muted_style())),
+                    Line::from(Span::styled(&agent.tmux_session, THEME.muted_style())),
+                ]
+                .into()
+            });
             (title, text)
         }
         (PreviewPane::Terminal, Some(Selection::Agent { repo, agent })) => {
@@ -152,7 +150,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 );
             }
             let session = agent::shell_session_name(agent);
-            let text = scrollback::capture(&session, panes.preview, scroll).unwrap_or_else(|| {
+            let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
                     "No shell session. Press enter to open one.",
                     THEME.muted_style(),
@@ -176,10 +174,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     &ai_label,
                 );
             }
-            let text = git::diff(&agent.worktree_path)
-                .unwrap_or_else(|err| err.to_string())
-                .into_text()
-                .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
+            let text = app
+                .cached_diff(&agent.worktree_path)
+                .unwrap_or_else(loading_diff);
             (title, text)
         }
         (PreviewPane::Info, Some(Selection::ChildWorktree { repo, agent, child })) => {
@@ -201,24 +198,20 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     .and_then(|name| name.to_str())
                     .unwrap_or("worktree")
             });
-            let text = git::diff(&child.path)
-                .unwrap_or_else(|err| err.to_string())
-                .into_text()
-                .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into());
+            let text = app.cached_diff(&child.path).unwrap_or_else(loading_diff);
             (format!("{} / {} / {label}", repo.name, agent.title), text)
         }
         (_, Some(Selection::Orphan(orphan_idx))) => {
             let Some(orphan) = orphans.get(orphan_idx) else {
                 return;
             };
-            let text =
-                scrollback::capture(&orphan.name, panes.preview, scroll).unwrap_or_else(|| {
-                    vec![Line::from(Span::styled(
-                        "Session is gone.",
-                        THEME.muted_style(),
-                    ))]
-                    .into()
-                });
+            let text = app.cached_tmux(&orphan.name).unwrap_or_else(|| {
+                vec![Line::from(Span::styled(
+                    "Session is gone.",
+                    THEME.muted_style(),
+                ))]
+                .into()
+            });
             (orphan.name.clone(), text)
         }
         // `None` (no repositories) or a pane invalid for the selection.
@@ -249,6 +242,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         .scroll((para_scroll, 0));
     frame.render_widget(preview, panes.preview);
     render_merge_notice(frame, app, selection, panes.preview);
+}
+
+/// Placeholder shown while a worktree diff is still being captured off-thread.
+fn loading_diff() -> Text<'static> {
+    vec![Line::from(Span::styled(
+        "Loading diff…",
+        THEME.muted_style(),
+    ))]
+    .into()
 }
 
 pub(in crate::ui) fn render_merge_notice(
