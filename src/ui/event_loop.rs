@@ -1,5 +1,4 @@
 use std::{
-    fs::OpenOptions,
     io::{self, Write},
     path::PathBuf,
     sync::{
@@ -38,7 +37,7 @@ pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) 
     let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
     // Establish live status before the watcher records its first baseline.
     // Otherwise deserialized `worktree_missing = false` can race the first tick.
-    app.tick();
+    app.initial_tick();
 
     let (notify_tx, notify_rx) = mpsc::channel::<String>();
     let notify_targets = Arc::new(Mutex::new(watch_targets(&app.registry)));
@@ -52,15 +51,16 @@ pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) 
         Duration::from_millis(app.config.poll_interval_ms),
     );
 
-    let mut decision_cursor = logging::DigestCursor::at_end()?;
+    let decision_cursor = logging::DigestCursor::at_end()?;
+    app.set_decision_cursor(decision_cursor);
     let result = run_loop(
         &mut terminal,
         &mut app,
         &notify_rx,
         &notify_tx,
         &notify_targets,
-        &mut decision_cursor,
     );
+    app.shutdown_saves();
 
     notify_running.store(false, Ordering::Relaxed);
     let _ = notify_handle.join();
@@ -82,7 +82,6 @@ fn run_loop<B: ratatui::backend::Backend>(
     notify_rx: &mpsc::Receiver<String>,
     notify_tx: &mpsc::Sender<String>,
     notify_targets: &Arc<Mutex<Vec<WatchTarget>>>,
-    decision_cursor: &mut logging::DigestCursor,
 ) -> Result<()> {
     const MESSAGE_DURATION: Duration = Duration::from_secs(4);
 
@@ -91,13 +90,13 @@ fn run_loop<B: ratatui::backend::Backend>(
     let mut last_discovery = Instant::now();
 
     loop {
+        app.ingest_background_refreshes();
         if last_tick.elapsed() >= tick_interval {
-            app.tick();
-            notify_new_decisions(decision_cursor, notify_tx, app.config.notify.enabled);
+            app.schedule_status_refresh(notify_tx.clone());
             last_tick = Instant::now();
         }
         if last_discovery.elapsed() >= DISCOVERY_INTERVAL {
-            app.refresh_discovery();
+            app.schedule_discovery_refresh();
             last_discovery = Instant::now();
         }
         if let Ok(mut targets) = notify_targets.lock() {
@@ -174,33 +173,5 @@ fn drain_stdout_notifications(notify_rx: &mpsc::Receiver<String>, app: &mut App)
         let _ = out.write_all(payload.as_bytes());
         let _ = out.flush();
         app.force_redraw = true;
-    }
-}
-
-fn notify_new_decisions(
-    cursor: &mut logging::DigestCursor,
-    notify_tx: &mpsc::Sender<String>,
-    enabled: bool,
-) {
-    let Ok(digest) = cursor.read_digest() else {
-        return;
-    };
-    if enabled && let Some(body) = digest {
-        route_notification(notify_tx, "robco", &body);
-    }
-}
-
-fn route_notification(stdout_tx: &mpsc::Sender<String>, title: &str, body: &str) {
-    let payload = notify::osc777(title, body);
-    let ttys = notify::attached_client_ttys();
-    if ttys.is_empty() {
-        let _ = stdout_tx.send(payload);
-        return;
-    }
-    for tty in ttys {
-        if let Ok(mut file) = OpenOptions::new().write(true).open(tty) {
-            let _ = file.write_all(payload.as_bytes());
-            let _ = file.flush();
-        }
     }
 }

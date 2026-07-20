@@ -247,11 +247,7 @@ impl App {
         self.clamp_selection();
     }
 
-    pub(in crate::ui) fn refresh_overseer_visibility(&mut self) {
-        self.set_overseer_visibility(overseer_is_visible());
-    }
-
-    fn set_overseer_visibility(&mut self, visible: bool) {
+    pub(in crate::ui) fn set_overseer_visibility(&mut self, visible: bool) {
         if self.overseer_visible == visible {
             return;
         }

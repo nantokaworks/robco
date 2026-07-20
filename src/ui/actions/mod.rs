@@ -1,4 +1,6 @@
 mod attach;
+pub(super) mod background_refresh;
+mod background_support;
 mod children;
 pub(super) mod clone;
 pub(super) mod discovery;

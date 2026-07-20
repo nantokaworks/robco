@@ -2,24 +2,15 @@ use std::time::SystemTime;
 
 use crate::{
     model::RepoNode,
-    subagents::{SubagentReader, SubagentStatus, claude::ClaudeSubagentReader, read_allowed},
+    subagents::{SubagentReader, SubagentStatus, read_allowed},
 };
 
-use super::super::App;
-
-impl App {
-    pub(in crate::ui) fn refresh_subagents(&mut self) {
-        let reader = ClaudeSubagentReader::default();
-        ingest(
-            &mut self.registry.repos,
-            self.config.subagent_indicator,
-            &reader,
-            SystemTime::now(),
-        );
-    }
-}
-
-fn ingest(repos: &mut [RepoNode], enabled: bool, reader: &dyn SubagentReader, now: SystemTime) {
+pub(super) fn ingest(
+    repos: &mut [RepoNode],
+    enabled: bool,
+    reader: &dyn SubagentReader,
+    now: SystemTime,
+) {
     if !enabled {
         for repo in repos {
             repo.main_subagents_active = 0;
@@ -64,6 +55,8 @@ mod tests {
         config::Config,
         model::{AgentNode, Status},
         registry::Registry,
+        subagents::claude::ClaudeSubagentReader,
+        ui::App,
     };
 
     #[derive(Default)]
@@ -237,7 +230,12 @@ mod tests {
         app.registry.repos[0].agents[0].subagents =
             FakeReader::default().read(Path::new("/fixture"), SystemTime::now());
 
-        app.refresh_discovery();
+        ingest(
+            &mut app.registry.repos,
+            false,
+            &ClaudeSubagentReader::default(),
+            SystemTime::now(),
+        );
 
         assert_eq!(app.registry.repos[0].main_subagents_active, 0);
         assert!(app.registry.repos[0].agents[0].subagents.is_empty());

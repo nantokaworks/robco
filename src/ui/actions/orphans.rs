@@ -12,37 +12,13 @@ impl App {
     /// wipe or a deleted worktree. Runs on the discovery tick; a tmux failure
     /// keeps the previous list rather than flickering the section away.
     pub(in crate::ui) fn refresh_orphans(&mut self) {
-        let prefix = self.config.tmux_session_prefix.clone();
-        let Ok(sessions) = tmux::list_sessions_with_cwd() else {
+        let Some(orphans) = discover_orphans(
+            &self.registry.repos,
+            &self.config.tmux_session_prefix,
+            &self.config.worktree_root,
+        ) else {
             return;
         };
-
-        let mut known: HashSet<String> = HashSet::new();
-        known.insert(overseer::control_session_name(&prefix));
-        for repo in &self.registry.repos {
-            known.insert(agent::repo_claude_session_name(&prefix, repo));
-            known.insert(agent::repo_shell_session_name(&prefix, repo));
-            for tracked in &repo.agents {
-                known.insert(tracked.tmux_session.clone());
-                known.insert(agent::shell_session_name(tracked));
-                for child in &tracked.children {
-                    if let Some(session) = &child.tmux_session {
-                        known.insert(session.clone());
-                    }
-                }
-            }
-        }
-
-        let mut orphans: Vec<OrphanSession> = sessions
-            .into_iter()
-            .filter(|(name, cwd)| {
-                name.starts_with(&prefix)
-                    && !known.contains(name)
-                    && super::discovery::is_managed_worktree(cwd, &self.config.worktree_root)
-            })
-            .map(|(name, cwd)| OrphanSession { name, cwd })
-            .collect();
-        orphans.sort_by(|a, b| a.name.cmp(&b.name));
 
         if orphans.len() != self.orphans.len()
             || orphans
@@ -68,4 +44,39 @@ impl App {
             Err(err) => self.show_message(err.to_string()),
         }
     }
+}
+
+pub(super) fn discover_orphans(
+    repos: &[crate::model::RepoNode],
+    prefix: &str,
+    worktree_root: &std::path::Path,
+) -> Option<Vec<OrphanSession>> {
+    let sessions = tmux::list_sessions_with_cwd().ok()?;
+    let mut known: HashSet<String> = HashSet::new();
+    known.insert(overseer::control_session_name(prefix));
+    for repo in repos {
+        known.insert(agent::repo_claude_session_name(prefix, repo));
+        known.insert(agent::repo_shell_session_name(prefix, repo));
+        for tracked in &repo.agents {
+            known.insert(tracked.tmux_session.clone());
+            known.insert(agent::shell_session_name(tracked));
+            known.extend(
+                tracked
+                    .children
+                    .iter()
+                    .filter_map(|child| child.tmux_session.clone()),
+            );
+        }
+    }
+    let mut orphans = sessions
+        .into_iter()
+        .filter(|(name, cwd)| {
+            name.starts_with(prefix)
+                && !known.contains(name)
+                && super::discovery::is_managed_worktree(cwd, worktree_root)
+        })
+        .map(|(name, cwd)| OrphanSession { name, cwd })
+        .collect::<Vec<_>>();
+    orphans.sort_by(|a, b| a.name.cmp(&b.name));
+    Some(orphans)
 }
