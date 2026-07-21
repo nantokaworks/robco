@@ -9,7 +9,7 @@ use chrono::Utc;
 use ratatui::text::Text;
 
 use crate::{
-    model::{OverseerCategory, Status},
+    model::{ManagementMode, OverseerCategory, Status},
     overseer::{config::OverseerConfig, ledger::Ledger, logging::DecisionEntry},
 };
 
@@ -23,6 +23,8 @@ pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 
 use render::{append_decisions, append_health, append_inbox, append_ledger};
+
+pub(super) type WorkerManagement = (String, ManagementMode);
 
 /// Point-in-time overseer state captured off the UI thread by the background
 /// status worker ([`crate::ui::actions::background_refresh`]). The overseer
@@ -67,6 +69,7 @@ impl OverseerSnapshot {
 pub(super) fn summary(app: &App) -> (String, Text<'static>) {
     let snapshot = &app.overseer_snapshot;
     let config = &snapshot.overseer;
+    let management = active_worker_management(app);
     let mut lines = Vec::new();
     append_health(
         &mut lines,
@@ -75,10 +78,43 @@ pub(super) fn summary(app: &App) -> (String, Text<'static>) {
         snapshot.daemon_alive,
         snapshot.heartbeat_age,
     );
-    append_ledger(&mut lines, config, &snapshot.ledger);
+    append_ledger(&mut lines, config, &snapshot.ledger, &management);
     append_inbox(&mut lines, app);
     append_decisions(&mut lines, &snapshot.decisions);
     ("OVERSEER / local control".into(), lines.into())
+}
+
+pub(super) fn active_worker_management(app: &App) -> Vec<WorkerManagement> {
+    let mut seen_agent_ids = std::collections::HashSet::new();
+    let workers = app
+        .registry
+        .repos
+        .iter()
+        .flat_map(|repo| &repo.agents)
+        .filter(|agent| crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref()))
+        .map(|agent| (agent.id.as_str(), agent.title.as_str(), agent.management))
+        .collect::<Vec<_>>();
+
+    app.overseer_snapshot
+        .ledger
+        .entries
+        .iter()
+        .filter(|entry| !render::terminal(entry.phase))
+        .filter(|entry| seen_agent_ids.insert(entry.agent_id.as_str()))
+        .filter_map(|entry| {
+            workers
+                .iter()
+                .find(|(id, _, _)| *id == entry.agent_id)
+                .map(|(_, title, management)| {
+                    let label = if entry.display_id.is_empty() {
+                        (*title).to_string()
+                    } else {
+                        entry.display_id.clone()
+                    };
+                    (label, *management)
+                })
+        })
+        .collect()
 }
 
 pub(super) fn category_preview(app: &App, category: OverseerCategory) -> (String, Text<'static>) {
