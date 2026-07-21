@@ -10,6 +10,7 @@ const KEY_HINTS: &[(&str, &str)] = &[
     ("n/N", "new"),
     ("r", "restart"),
     ("g", "auto/manual"),
+    ("S", "stop"),
     ("m", "merge"),
     ("x", "kill"),
     ("?", "help"),
