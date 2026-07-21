@@ -42,6 +42,28 @@ fn flags_line_joins_and_reds_warnings() {
 }
 
 #[test]
+fn status_stops_animating_when_dispatch_off_but_daemon_alive() {
+    // Regression for #172: after the `S` panic-stop the daemon stays alive
+    // while dispatch flips off. The OVERSEER row must render a static glyph
+    // instead of the `Running` spinner that keeps animating forever.
+    let mut snapshot = OverseerSnapshot::default();
+
+    // Daemon dead -> Dead regardless of dispatch.
+    snapshot.daemon_alive = false;
+    snapshot.overseer.dispatch_enabled = true;
+    assert_eq!(snapshot.status(), Status::Dead);
+
+    // Daemon alive + dispatch on -> Running (animated spinner).
+    snapshot.daemon_alive = true;
+    snapshot.overseer.dispatch_enabled = true;
+    assert_eq!(snapshot.status(), Status::Running);
+
+    // Daemon alive + dispatch off -> Idle (static, non-animated).
+    snapshot.overseer.dispatch_enabled = false;
+    assert_eq!(snapshot.status(), Status::Idle);
+}
+
+#[test]
 fn stale_heartbeat_is_not_fresh() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("heartbeat");

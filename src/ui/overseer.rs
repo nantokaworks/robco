@@ -46,11 +46,20 @@ pub(in crate::ui) struct OverseerSnapshot {
 }
 
 impl OverseerSnapshot {
+    /// Status glyph for the OVERSEER root row.
+    ///
+    /// A dead daemon is `Dead`. A live daemon only counts as `Running` — the
+    /// animated spinner — while dispatch is enabled. Once dispatch is turned
+    /// off (the `S` panic-stop kills workers and flips dispatch off but leaves
+    /// the daemon process alive) the row must stop animating, so a live daemon
+    /// with dispatch off renders as the static `Idle` glyph.
     pub(in crate::ui) fn status(&self) -> Status {
-        if self.daemon_alive {
+        if !self.daemon_alive {
+            Status::Dead
+        } else if self.overseer.dispatch_enabled {
             Status::Running
         } else {
-            Status::Dead
+            Status::Idle
         }
     }
 }
