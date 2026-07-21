@@ -232,15 +232,28 @@ fn capture_status(mut registry: Registry, config: &Config) -> StatusResult {
         .as_ref()
         .and_then(|path| fs::metadata(path).and_then(|meta| meta.modified()).ok())
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
+    // Reload the overseer config from disk so the Info pane reflects flips made
+    // outside the `,` settings editor (the `S` panic-stop, the daemon, Discord,
+    // external edits). `app.config` only refreshes via the editor, so reading it
+    // here would keep showing stale `dispatch` / `auto-merge` state. Fall back to
+    // the in-memory copy when the reload fails.
+    //
+    // Load it before the liveness check so the whole snapshot — including the
+    // heartbeat-freshness window that decides `daemon_alive` — is derived from
+    // one consistent view of the config rather than mixing fresh and stale.
+    let overseer = Config::load()
+        .map(|reloaded| reloaded.overseer)
+        .unwrap_or_else(|_| config.overseer.clone());
     let daemon_alive = crate::overseer::daemon_pid_alive()
         && heartbeat
             .as_ref()
-            .is_some_and(|path| heartbeat_is_fresh(path, config.overseer.poll_interval_secs));
+            .is_some_and(|path| heartbeat_is_fresh(path, overseer.poll_interval_secs));
     StatusResult {
         repos: registry.repos,
         overseer_visible: list::overseer_is_visible(),
         inbox,
         snapshot: OverseerSnapshot {
+            overseer,
             ledger,
             decisions,
             daemon_alive,

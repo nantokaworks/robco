@@ -8,11 +8,9 @@ use std::{
 use chrono::Utc;
 use ratatui::text::Text;
 
-#[cfg(test)]
-use crate::overseer::config::OverseerConfig;
 use crate::{
     model::{OverseerCategory, Status},
-    overseer::{ledger::Ledger, logging::DecisionEntry},
+    overseer::{config::OverseerConfig, ledger::Ledger, logging::DecisionEntry},
 };
 
 use super::App;
@@ -31,8 +29,16 @@ use render::{append_decisions, append_health, append_inbox, append_ledger};
 /// frame and previews render from this snapshot instead of reading
 /// config / ledger / pidfile / decision-log from disk on every frame — that
 /// per-frame disk I/O was the source of cursor-movement lag.
+///
+/// `overseer` is reloaded from disk by the background worker rather than read
+/// from `app.config`. The in-memory `app.config` only refreshes via the `,`
+/// settings editor, so it goes stale whenever dispatch is flipped elsewhere —
+/// the `S` panic-stop, the daemon itself, a Discord action, or an external
+/// edit. Rendering the Info pane from this disk-backed copy keeps the display
+/// in sync with what the daemon will actually do.
 #[derive(Default)]
 pub(in crate::ui) struct OverseerSnapshot {
+    pub(in crate::ui) overseer: OverseerConfig,
     pub(in crate::ui) ledger: Ledger,
     pub(in crate::ui) decisions: Vec<DecisionEntry>,
     pub(in crate::ui) daemon_alive: bool,
@@ -51,7 +57,7 @@ impl OverseerSnapshot {
 
 pub(super) fn summary(app: &App) -> (String, Text<'static>) {
     let snapshot = &app.overseer_snapshot;
-    let config = &app.config.overseer;
+    let config = &snapshot.overseer;
     let mut lines = Vec::new();
     append_health(
         &mut lines,

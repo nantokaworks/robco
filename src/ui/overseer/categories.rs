@@ -12,7 +12,7 @@ use super::{
 
 pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> Vec<Line<'static>> {
     let snapshot = &app.overseer_snapshot;
-    let config = &app.config.overseer;
+    let config = &snapshot.overseer;
     let mut lines = Vec::new();
     match category {
         OverseerCategory::Health => append_health(
@@ -36,7 +36,7 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
     let snapshot = &app.overseer_snapshot;
     match category {
         OverseerCategory::Health => health_summary_from(
-            &app.config.overseer,
+            &snapshot.overseer,
             &snapshot.ledger,
             snapshot.daemon_alive,
         ),
@@ -95,7 +95,7 @@ pub(super) fn health_summary_from(
 pub(in crate::ui) fn health_warnings(app: &App) -> Vec<&'static str> {
     let snapshot = &app.overseer_snapshot;
     health_warnings_from(
-        &app.config.overseer,
+        &snapshot.overseer,
         &snapshot.ledger,
         snapshot.daemon_alive,
     )
