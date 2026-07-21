@@ -65,7 +65,10 @@ impl DroprOverlay {
     /// `dropr workspace list` invocation succeeded, so callers can tell
     /// "no workspaces" apart from "dropr CLI unavailable or failing".
     pub fn load_with_status_timeout(timeout: Duration) -> (Self, bool) {
-        let mut command = Command::new("dropr");
+        let Some(program) = crate::config::resolve_program("dropr") else {
+            return (Self::default(), false);
+        };
+        let mut command = Command::new(program);
         command.args(["workspace", "list"]);
         match crate::overseer::exec::run_timeout(command, timeout) {
             Ok(output) if output.status.success() => {
@@ -103,7 +106,8 @@ pub fn fetch_ready_dispatch_tasks_timeout(
     timeout: Duration,
 ) -> std::result::Result<Vec<DroprDispatchCandidate>, ReadyDispatchError> {
     let limit = limit.to_string();
-    let mut command = Command::new("dropr");
+    let program = crate::config::resolve_program("dropr").ok_or(ReadyDispatchError::Command)?;
+    let mut command = Command::new(program);
     command.args([
         "task",
         "ready",
@@ -153,7 +157,7 @@ pub(crate) fn scribble_create_timeout(
     content: &str,
     timeout: Duration,
 ) -> crate::Result<()> {
-    let mut command = Command::new("dropr");
+    let mut command = dropr_command("dropr scribble create")?;
     command.args([
         "scribble",
         "create",
@@ -170,9 +174,18 @@ pub(crate) fn task_status_update_timeout(
     status: &str,
     timeout: Duration,
 ) -> crate::Result<()> {
-    let mut command = Command::new("dropr");
+    let mut command = dropr_command("dropr task status update")?;
     command.args(["task", "status", "update", task_id, status]);
     checked_timeout(command, timeout, "dropr task status update")
+}
+
+fn dropr_command(context: &'static str) -> crate::Result<Command> {
+    crate::config::resolve_program("dropr")
+        .map(Command::new)
+        .ok_or_else(|| crate::Error::Command {
+            context,
+            stderr: "dropr binary not found on PATH or common install dirs; install dropr or add it to the overseer daemon's PATH".into(),
+        })
 }
 
 fn checked_timeout(
@@ -192,7 +205,8 @@ fn checked_timeout(
 }
 
 fn fetch_as<T: for<'de> Deserialize<'de>>(args: &[&str]) -> Option<Vec<T>> {
-    let output = Command::new("dropr").args(args).output().ok()?;
+    let program = crate::config::resolve_program("dropr")?;
+    let output = Command::new(program).args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }

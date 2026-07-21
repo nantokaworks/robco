@@ -3,6 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub(crate) fn resolve_program(name: &str) -> Option<PathBuf> {
+    crate::overseer::session::resolve_program_impl(name)
+}
+
 use serde::{Deserialize, Serialize};
 
 /// Registry agent identity inherited by processes in an agent tmux session.

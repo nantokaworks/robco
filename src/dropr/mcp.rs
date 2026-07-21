@@ -13,7 +13,8 @@ use super::{DroprTaskCandidate, parse_tasks};
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
-    let mut child = Command::new("dropr")
+    let program = crate::config::resolve_program("dropr")?;
+    let mut child = Command::new(program)
         .args(["mcp-stdio"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
