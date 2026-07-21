@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fs,
     process::Command,
     thread,
@@ -20,8 +20,10 @@ use crate::{
     registry::Registry,
 };
 
+mod escalation;
 mod service;
 
+use escalation::escalate_workers;
 use service::install_service;
 pub(crate) use service::write_service_plist;
 
@@ -182,6 +184,7 @@ pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Resu
     config.overseer.dispatch_enabled = false;
     config.save()?;
     let registry = Registry::load()?;
+    let mut killed_ids = HashSet::new();
     for agent in registry
         .repos
         .iter()
@@ -190,8 +193,13 @@ pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Resu
     {
         let mut command = Command::new("tmux");
         command.args(["kill-session", "-t", &format!("={}", agent.tmux_session)]);
-        let _ = run_timeout(command, Duration::from_secs(5));
+        if run_timeout(command, Duration::from_secs(5)).is_ok() {
+            killed_ids.insert(agent.id.clone());
+        }
     }
+    let mut ledger = Ledger::load()?;
+    escalate_workers(&mut ledger, &killed_ids);
+    ledger.save()?;
     let mut entry = DecisionEntry::new(
         DecisionKind::Escalate,
         "panic stop: dispatch disabled and workers terminated",
