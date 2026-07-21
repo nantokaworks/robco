@@ -71,7 +71,9 @@ impl ExceptionQueue {
         let mut changed = false;
         for action in actions {
             let (task_id, kind, reason) = match action {
-                Action::MarkFailed { task_id, reason } => (task_id, "worker_failed", reason),
+                Action::MarkFailed {
+                    task_id, reason, ..
+                } => (task_id, "worker_failed", reason),
                 Action::Escalate { task_id, reason } => (task_id, "worker_escalated", reason),
                 _ => continue,
             };

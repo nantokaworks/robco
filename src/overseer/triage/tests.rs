@@ -2,7 +2,7 @@ use super::*;
 use crate::Result;
 use crate::overseer::{
     ledger::{Ledger, LedgerPhase},
-    monitor::Action,
+    monitor::{Action, FailureOrigin},
     session::executable_script,
     triage::{
         queue::test_queue,
@@ -172,6 +172,7 @@ fn pending_queue_is_reconstructed_after_restart() {
             &[Action::MarkFailed {
                 task_id: "task-1".into(),
                 reason: "dead".into(),
+                origin: FailureOrigin::Worker,
             }],
             &ledger(),
             &Observations::default(),
@@ -207,6 +208,7 @@ fn queue_tick_starts_session_without_blocking_daemon() {
             &[Action::MarkFailed {
                 task_id: "task-1".into(),
                 reason: "dead".into(),
+                origin: FailureOrigin::Worker,
             }],
             &ledger(),
             &Observations::default(),

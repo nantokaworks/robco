@@ -64,7 +64,9 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
                 }
             }
             Action::Notify { message } => eprintln!("overseer: {message}"),
-            Action::MarkFailed { task_id, reason } => log_message(Some(task_id), reason)?,
+            Action::MarkFailed {
+                task_id, reason, ..
+            } => log_message(Some(task_id), reason)?,
             Action::Escalate { task_id, reason } => {
                 let mut entry = DecisionEntry::new(DecisionKind::Escalate, reason);
                 entry.task = Some(task_id.clone());

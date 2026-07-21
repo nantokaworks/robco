@@ -4,6 +4,11 @@ use super::{
 };
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FailureOrigin {
+    Worker,
+    Infra,
+}
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Observations {
@@ -69,7 +74,7 @@ pub struct PrObservation {
 pub enum Action {
     KillSession { agent_id: String },
     RemoveWorktree { agent_id: String, keep_branch: bool },
-    MarkFailed { task_id: String, reason: String },
+    MarkFailed { task_id: String, reason: String, origin: FailureOrigin },
     Escalate { task_id: String, reason: String },
     Notify { message: String },
     LogDecision { task_id: Option<String>, message: String },
@@ -221,7 +226,7 @@ fn apply_session(entry: &mut LedgerEntry, observations: &Observations, now: Date
         return;
     };
     if matches!(session.status.as_str(), "dead" | "branch_only") {
-        fail(entry, "worker session is dead", actions);
+        fail(entry, "worker session is dead", FailureOrigin::Worker, actions);
         return;
     }
     if !matches!(
@@ -240,22 +245,15 @@ fn apply_session(entry: &mut LedgerEntry, observations: &Observations, now: Date
     if last.is_some_and(|last| {
         now.signed_duration_since(last) > Duration::minutes(stuck_after_mins as i64)
     }) {
-        fail(entry, "worker exceeded stuck timeout", actions);
+        fail(entry, "worker exceeded stuck timeout", FailureOrigin::Worker, actions);
     }
 }
-fn fail(entry: &mut LedgerEntry, reason: &str, actions: &mut Vec<Action>) {
+#[rustfmt::skip]
+fn fail(entry: &mut LedgerEntry, reason: &str, origin: FailureOrigin, actions: &mut Vec<Action>) {
     entry.phase = LedgerPhase::Failed;
-    actions.push(Action::MarkFailed {
-        task_id: entry.task_id.clone(),
-        reason: reason.into(),
-    });
-    actions.push(Action::Notify {
-        message: format!("{}: {reason}", entry.display_id),
-    });
-    actions.push(Action::LogDecision {
-        task_id: Some(entry.task_id.clone()),
-        message: reason.into(),
-    });
+    actions.push(Action::MarkFailed { task_id: entry.task_id.clone(), reason: reason.into(), origin });
+    actions.push(Action::Notify { message: format!("{}: {reason}", entry.display_id) });
+    actions.push(Action::LogDecision { task_id: Some(entry.task_id.clone()), message: reason.into() });
 }
 fn escalate(entry: &mut LedgerEntry, reason: &str, actions: &mut Vec<Action>) {
     entry.phase = LedgerPhase::Escalated;
