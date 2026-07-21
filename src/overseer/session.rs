@@ -15,6 +15,10 @@ use std::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 
+#[path = "session/resolver.rs"]
+mod resolver;
+pub(crate) use resolver::resolve_program_impl;
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SessionResult {
     Result(Vec<u8>),
@@ -93,7 +97,13 @@ impl EphemeralSession<'_> {
         if control.cancelled.load(Ordering::Acquire) {
             return SessionResult::LaunchFailed("session cancelled".into());
         }
-        let mut command = Command::new(&self.profile.program);
+        let Some(program) = resolve_program_impl(&self.profile.program) else {
+            return SessionResult::LaunchFailed(format!(
+                "triage program not found on PATH: {} (configure profile.program with an absolute path)",
+                self.profile.program
+            ));
+        };
+        let mut command = Command::new(program);
         command.args(&self.profile.autonomous_args);
         if let Some(model) = &self.profile.model {
             command.args(["--model", model]);
