@@ -28,16 +28,23 @@ pub(super) fn prompt_action(input: &mut String, key: KeyEvent) -> PromptAction {
 }
 
 pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
+    // Stop is an overseer-wide action, so it is reachable from any row while
+    // the overseer panel is active — including worker rows (Selection::Agent),
+    // not just the OVERSEER header / category rows. This keeps the always-on
+    // [S] STOP footer hint honest. The ConfirmOverseerPanic dialog still gates
+    // the destructive step, and it works from any preview tab.
+    if code == KeyCode::Char('S') {
+        if app.overseer_visible {
+            app.mode = Mode::ConfirmOverseerPanic;
+            return true;
+        }
+        return false;
+    }
     if !matches!(
         app.selected_item(),
         Some(Selection::Overseer | Selection::OverseerCategory(_))
     ) {
         return false;
-    }
-    // Stop works from any preview tab so the operator can always reach it.
-    if code == KeyCode::Char('S') {
-        app.mode = Mode::ConfirmOverseerPanic;
-        return true;
     }
     if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
         app.mode = Mode::PromptOverseer {
@@ -228,12 +235,37 @@ mod tests {
     }
 
     #[test]
-    fn stop_key_is_ignored_without_an_overseer_selection() {
+    fn stop_key_is_ignored_when_overseer_inactive() {
         let temp = tempfile::tempdir().unwrap();
         let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
         app.overseer_visible = false;
 
         assert!(!handle_normal(&mut app, KeyCode::Char('S')));
         assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
+    fn stop_key_opens_panic_confirm_off_the_overseer_header() {
+        // Regression for the worker-row case (#175): S is an overseer-wide stop
+        // and no longer requires the selection to be the OVERSEER header /
+        // category. Any row while the panel is active reaches the confirm — the
+        // S branch keys off `overseer_visible` alone and never inspects the
+        // selection, so a worker row (Selection::Agent) takes this same path.
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        // Point the cursor past the OVERSEER header / category rows so the
+        // selection is not one of them.
+        app.selected = 999;
+        assert!(
+            !matches!(
+                app.selected_item(),
+                Some(Selection::Overseer | Selection::OverseerCategory(_))
+            ),
+            "precondition: selection must not be an overseer header row"
+        );
+
+        assert!(handle_normal(&mut app, KeyCode::Char('S')));
+        assert!(matches!(app.mode, Mode::ConfirmOverseerPanic));
     }
 }
