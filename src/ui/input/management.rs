@@ -4,6 +4,7 @@ use super::App;
 
 pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
     let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
+        app.show_message("g: select an overseer worker to toggle auto/manual");
         return Ok(());
     };
     let repo_path = app.registry.repos[repo].path.clone();
@@ -27,6 +28,8 @@ pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
             "overseer management: {}",
             format!("{mode:?}").to_ascii_lowercase()
         ));
+    } else {
+        app.show_message("g: only overseer-managed workers toggle auto/manual");
     }
     Ok(())
 }
@@ -42,7 +45,25 @@ fn toggle_mode(parent: Option<&str>, mode: &mut crate::model::ManagementMode) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ManagementMode;
+    use crate::{config::Config, model::ManagementMode, registry::Registry};
+
+    #[test]
+    fn toggle_on_non_worker_selection_explains_scope() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.selected = 0; // OVERSEER header row — not a worker (Selection::Agent).
+
+        toggle_selected(&mut app).unwrap();
+
+        assert!(
+            app.message
+                .as_ref()
+                .is_some_and(|(text, _)| text.contains("overseer worker")),
+            "expected a scope hint message, got {:?}",
+            app.message
+        );
+    }
 
     #[test]
     fn only_overseer_workers_toggle() {
