@@ -125,6 +125,28 @@ fn health_summary_keeps_all_critical_badges() {
 }
 
 #[test]
+fn info_pane_reads_dispatch_from_snapshot_not_stale_config() {
+    // Regression for #171: the Info pane must render overseer flags from the
+    // disk-backed snapshot, not the in-memory `app.config` that only the `,`
+    // settings editor refreshes. Simulate an `S` panic-stop landing on disk
+    // (snapshot reloaded → dispatch off) while `app.config` is still stale "on".
+    let mut app = test_app();
+    app.config.overseer.dispatch_enabled = true;
+    app.overseer_snapshot.overseer.dispatch_enabled = false;
+
+    let (_title, text) = super::summary(&app);
+    let rendered = text
+        .lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(rendered.contains("dispatch: off"));
+    assert!(!rendered.contains("dispatch: on"));
+}
+
+#[test]
 fn every_category_has_summary_detail_and_preview() {
     let app = test_app();
     for category in OverseerCategory::ALL {
