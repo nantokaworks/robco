@@ -6,13 +6,14 @@ use ratatui::{
     text::{Line, Span},
 };
 
+use crate::model::ManagementMode;
 use crate::overseer::{
     config::OverseerConfig,
     ledger::{Ledger, LedgerPhase},
     logging::{DecisionEntry, DecisionKind},
 };
 
-use super::App;
+use super::{App, WorkerManagement};
 use crate::ui::{inbox::InboxKind, theme::DEFAULT as THEME};
 
 pub(super) fn append_health(
@@ -62,6 +63,7 @@ pub(super) fn append_ledger(
     lines: &mut Vec<Line<'static>>,
     config: &OverseerConfig,
     ledger: &Ledger,
+    management: &[WorkerManagement],
 ) {
     let active = ledger
         .entries
@@ -103,10 +105,38 @@ pub(super) fn append_ledger(
     if !phases.is_empty() {
         lines.push(pair("active phases", &map_text(&phases), false));
     }
+    if !management.is_empty() {
+        let auto = management
+            .iter()
+            .filter(|(_, mode)| *mode == ManagementMode::Auto)
+            .count();
+        let manual = management
+            .iter()
+            .filter(|(_, mode)| *mode == ManagementMode::Manual)
+            .count();
+        lines.push(pair(
+            "management",
+            &format!("auto={auto}, manual={manual}"),
+            false,
+        ));
+    }
     if !ledger.skip_list.is_empty() {
         lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
     }
     lines.push(Line::default());
+}
+
+pub(super) fn append_worker_management(
+    lines: &mut Vec<Line<'static>>,
+    management: &[WorkerManagement],
+) {
+    for (label, mode) in management {
+        lines.push(pair(
+            &format!("worker {label}"),
+            management_name(*mode),
+            false,
+        ));
+    }
 }
 
 pub(super) fn append_inbox(lines: &mut Vec<Line<'static>>, app: &App) {
@@ -231,11 +261,18 @@ fn map_text<K: std::fmt::Display>(map: &BTreeMap<K, usize>) -> String {
             .join(", ")
     }
 }
-fn terminal(phase: LedgerPhase) -> bool {
+pub(super) fn terminal(phase: LedgerPhase) -> bool {
     matches!(
         phase,
         LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
     )
+}
+
+fn management_name(mode: ManagementMode) -> &'static str {
+    match mode {
+        ManagementMode::Auto => "Auto",
+        ManagementMode::Manual => "Manual",
+    }
 }
 fn phase_name(phase: LedgerPhase) -> &'static str {
     match phase {

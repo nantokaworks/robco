@@ -6,8 +6,10 @@ use crate::{
 };
 
 use super::{
-    App,
-    render::{append_decisions, append_health, append_inbox, append_ledger},
+    App, active_worker_management,
+    render::{
+        append_decisions, append_health, append_inbox, append_ledger, append_worker_management,
+    },
 };
 
 pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> Vec<Line<'static>> {
@@ -22,7 +24,14 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             snapshot.daemon_alive,
             snapshot.heartbeat_age,
         ),
-        OverseerCategory::Ledger => append_ledger(&mut lines, config, &snapshot.ledger),
+        OverseerCategory::Ledger => {
+            let management = active_worker_management(app);
+            append_ledger(&mut lines, config, &snapshot.ledger, &management);
+            while lines.last().is_some_and(|line| line.spans.is_empty()) {
+                lines.pop();
+            }
+            append_worker_management(&mut lines, &management);
+        }
         OverseerCategory::Inbox => append_inbox(&mut lines, app),
         OverseerCategory::Decisions => append_decisions(&mut lines, &snapshot.decisions),
     }
@@ -35,11 +44,9 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
 pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> (String, bool) {
     let snapshot = &app.overseer_snapshot;
     match category {
-        OverseerCategory::Health => health_summary_from(
-            &snapshot.overseer,
-            &snapshot.ledger,
-            snapshot.daemon_alive,
-        ),
+        OverseerCategory::Health => {
+            health_summary_from(&snapshot.overseer, &snapshot.ledger, snapshot.daemon_alive)
+        }
         OverseerCategory::Ledger => ledger_summary_from(&snapshot.ledger),
         OverseerCategory::Inbox => {
             let actionable = app
@@ -94,11 +101,7 @@ pub(super) fn health_summary_from(
 
 pub(in crate::ui) fn health_warnings(app: &App) -> Vec<&'static str> {
     let snapshot = &app.overseer_snapshot;
-    health_warnings_from(
-        &snapshot.overseer,
-        &snapshot.ledger,
-        snapshot.daemon_alive,
-    )
+    health_warnings_from(&snapshot.overseer, &snapshot.ledger, snapshot.daemon_alive)
 }
 
 pub(in crate::ui) fn health_warnings_from(
