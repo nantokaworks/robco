@@ -14,6 +14,9 @@ use crate::{
 use chrono::{DateTime, Utc};
 use std::{collections::HashSet, process::Command};
 
+#[path = "liveness.rs"]
+mod liveness;
+
 pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
     let mut observations = Observations::default();
     match inbox.read_new() {
@@ -43,29 +46,43 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
         .entries
         .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
     for entry in &auto_ledger.entries {
-        let agent = registry
+        let mut agent = registry
             .repos
             .iter()
             .flat_map(|repo| &repo.agents)
-            .find(|agent| agent.id == entry.agent_id);
+            .find(|agent| agent.id == entry.agent_id)
+            .cloned();
+        if agent.is_none() && !terminal(entry.phase) {
+            match Registry::load() {
+                Ok(refreshed) => {
+                    agent = refreshed
+                        .repos
+                        .iter()
+                        .flat_map(|repo| &repo.agents)
+                        .find(|agent| agent.id == entry.agent_id)
+                        .cloned();
+                }
+                Err(error) => {
+                    observations
+                        .errors
+                        .push(format!("registry recheck failed: {error}"));
+                    continue;
+                }
+            }
+        }
         if let Some(agent) = agent {
+            if agent.management == crate::model::ManagementMode::Manual {
+                observations.manual_agents.push(entry.agent_id.clone());
+                continue;
+            }
             if entry.phase == LedgerPhase::Merged {
                 observations.registered_agents.push(entry.agent_id.clone());
             }
-            let mut command = Command::new("tmux");
-            command.args(["has-session", "-t", &format!("={}", agent.tmux_session)]);
-            match run_timeout(command, COMMAND_TIMEOUT) {
-                Ok(output) => observations.sessions.push(SessionObservation {
+            match liveness::probe_session_status(&agent.tmux_session) {
+                Ok(dead) => observations.sessions.push(SessionObservation {
                     agent_id: entry.agent_id.clone(),
-                    status: if output.status.success() {
-                        "running"
-                    } else {
-                        "dead"
-                    }
-                    .into(),
-                    last_activity_at: output
-                        .status
-                        .success()
+                    status: if dead { "dead" } else { "running" }.into(),
+                    last_activity_at: (!dead)
                         .then(|| tmux_activity(&agent.tmux_session))
                         .flatten(),
                 }),
