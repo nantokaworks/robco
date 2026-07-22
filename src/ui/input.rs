@@ -113,10 +113,15 @@ impl App {
                 input,
                 ..
             } => {
+                let checking = self.pr_precheck_job.is_some();
                 let action = confirm_pr_action(&mut self.config, input, key, Config::save);
                 match action {
                     ConfirmPrAction::Stay => {}
-                    ConfirmPrAction::Cancel => self.mode = Mode::Normal,
+                    ConfirmPrAction::Cancel => {
+                        self.pr_precheck_job = None;
+                        self.mode = Mode::Normal;
+                    }
+                    ConfirmPrAction::Submit(_) if checking => {}
                     ConfirmPrAction::Submit(prompt) => {
                         let repo_path = repo_path.clone();
                         let agent_id = agent_id.clone();

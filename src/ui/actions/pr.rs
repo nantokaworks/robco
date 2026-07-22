@@ -1,14 +1,14 @@
 use std::path::Path;
 
 use crate::{
-    Result, git,
+    Result,
     model::{RepoNode, Selection},
 };
 
-use super::{
-    super::{App, Mode},
-    lifecycle::resolve_agent,
-};
+use super::{super::App, lifecycle::resolve_agent};
+
+#[cfg(test)]
+use super::super::Mode;
 
 #[derive(Debug, PartialEq, Eq)]
 struct PrTarget {
@@ -41,10 +41,12 @@ fn pr_target_for_selection(
     }
 }
 
+#[cfg(test)]
 fn require_running_pr_session(running: bool) -> std::result::Result<(), &'static str> {
     running.then_some(()).ok_or("agent session is not running")
 }
 
+#[cfg(test)]
 fn require_no_open_pr(exists: bool) -> std::result::Result<(), &'static str> {
     (!exists).then_some(()).ok_or("PR is already open")
 }
@@ -66,33 +68,9 @@ impl App {
         };
         let repo_node = &self.registry.repos[repo];
         let selected = &repo_node.agents[agent_idx];
-        match crate::tmux::has_session(&selected.tmux_session) {
-            Ok(running) => {
-                if let Err(message) = require_running_pr_session(running) {
-                    self.show_message(message);
-                    return;
-                }
-            }
-            Err(err) => {
-                self.show_message(err.to_string());
-                return;
-            }
-        }
-        match git::pr_exists(&repo_node.path, &selected.branch) {
-            Ok(exists) => {
-                if require_no_open_pr(exists).is_err() {
-                    self.show_message(format!("PR already open for {}", selected.branch));
-                    return;
-                }
-                self.mode = Mode::ConfirmPr {
-                    repo_path: target.repo_path,
-                    agent_id: target.agent_id,
-                    branch: target.branch,
-                    input: self.config.pr_prompt.clone(),
-                };
-            }
-            Err(err) => self.show_message(err.to_string()),
-        }
+        let repo_path = repo_node.path.clone();
+        let tmux_session = selected.tmux_session.clone();
+        self.open_pr_dialog_with_precheck(repo_path, target.agent_id, target.branch, tmux_session);
     }
 
     pub(crate) fn request_pr(
