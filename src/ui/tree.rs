@@ -146,10 +146,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     )));
                 }
             }
-            Selection::Agent { repo, agent } => {
-                let repo = &app.registry.repos[repo];
-                let depth = crate::model::agent_depth(&repo.agents, agent);
-                let agent = &repo.agents[agent];
+            Selection::Agent {
+                repo: repo_idx,
+                agent: agent_idx,
+            } => {
+                let repo = &app.registry.repos[repo_idx];
+                let depth = crate::model::agent_depth(&repo.agents, agent_idx);
+                let agent = &repo.agents[agent_idx];
                 let agent_style = if selected {
                     style
                 } else if agent.status == Status::BranchOnly {
@@ -178,9 +181,26 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     selected,
                     " ",
                 );
+                let has_children = agent
+                    .children
+                    .iter()
+                    .any(|child| super::actions::children::child_is_visible(agent, child));
+                let child_marker = has_children.then(|| {
+                    if app.agent_children_expanded(repo_idx, agent_idx) {
+                        "▾ "
+                    } else {
+                        "▸ "
+                    }
+                });
+                let prefix = match child_marker {
+                    Some(child_marker) => {
+                        format!("{marker}   {}{child_marker}", "  ".repeat(depth))
+                    }
+                    None => format!("{marker}   {}", "  ".repeat(depth)),
+                };
                 lines.push(label::labeled_row(
                     projects_width,
-                    format!("{marker}   {}", "  ".repeat(depth)),
+                    prefix,
                     primary,
                     &agent.title,
                     style,

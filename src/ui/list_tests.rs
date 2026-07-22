@@ -1,7 +1,7 @@
 use std::fs;
 
 use super::*;
-use crate::{config::Config, registry::Registry};
+use crate::{agent, config::Config, model::ChildWorktree, registry::Registry};
 
 fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();
@@ -88,4 +88,91 @@ fn selection_identity_survives_overseer_row_toggle() {
     app.set_overseer_visibility(false);
     assert_eq!(app.selected, 0);
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
+}
+
+#[test]
+fn agent_children_default_collapsed_expand_and_hide_when_merged() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_path = temp.path().join("repos/repo");
+    let owner_path = temp.path().join("worktrees/nex_task-384");
+    let slot_path = temp.path().join("worktrees/nex_task-384_slot_snap");
+    fs::create_dir_all(&repo_path).unwrap();
+    fs::create_dir_all(&owner_path).unwrap();
+    fs::create_dir_all(&slot_path).unwrap();
+    let mut repo = serde_json::from_value(serde_json::json!({
+        "path": repo_path,
+        "name": "repo",
+        "remote_url": null,
+        "agents": []
+    }))
+    .unwrap();
+    let mut owner = agent::adopt_worktree(
+        &repo,
+        &Config::default(),
+        owner_path,
+        Some("nex/task-384".into()),
+        None,
+        None,
+        None,
+    );
+    owner.children.push(ChildWorktree {
+        path: slot_path,
+        branch: Some("slot/task-386-snap".into()),
+        head: None,
+        clean: Some(true),
+        ahead_behind: Some((0, 1)),
+        tmux_session: None,
+        modified_at: None,
+    });
+    repo.agents.push(owner);
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo],
+    };
+    let config = Config {
+        worktree_root: temp.path().join("worktrees"),
+        ..Config::default()
+    };
+    let mut app = App::new(registry, config, temp.path().join("repos"));
+    app.set_overseer_visibility(false);
+
+    assert_eq!(app.visible().len(), 2);
+    app.set_agent_children_expanded(0, 0, true);
+    assert!(matches!(
+        app.visible().last(),
+        Some(Selection::ChildWorktree { .. })
+    ));
+
+    let other_path = temp.path().join("worktrees/nex_task-300");
+    fs::create_dir_all(&other_path).unwrap();
+    let other = agent::adopt_worktree(
+        &app.registry.repos[0],
+        &Config::default(),
+        other_path,
+        Some("nex/task-300".into()),
+        None,
+        None,
+        None,
+    );
+    app.registry.repos[0].agents.insert(0, other);
+    assert!(app.agent_children_expanded(0, 1));
+
+    app.registry.repos[0].agents[1].children[0].ahead_behind = Some((0, 0));
+    assert!(
+        app.visible()
+            .iter()
+            .any(|row| matches!(row, Selection::ChildWorktree { .. }))
+    );
+
+    app.registry.repos[0].agents[1].children[0].ahead_behind = Some((1, 0));
+    assert!(
+        !app.visible()
+            .iter()
+            .any(|row| matches!(row, Selection::ChildWorktree { .. }))
+    );
+
+    let recreated = app.registry.repos[0].agents.remove(1);
+    app.restore_selection(None);
+    app.registry.repos[0].agents.push(recreated);
+    assert!(!app.agent_children_expanded(0, 1));
 }

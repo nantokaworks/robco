@@ -1,7 +1,7 @@
 mod attach;
 pub(super) mod background_refresh;
 mod background_support;
-mod children;
+pub(super) mod children;
 pub(super) mod clone;
 pub(super) mod discovery;
 pub(super) mod dropr_tasks;
@@ -13,5 +13,5 @@ mod pr;
 pub(super) mod pr_precheck;
 pub(super) mod preview_capture;
 mod settings;
-mod slots;
+pub(super) mod slots;
 mod subagents;

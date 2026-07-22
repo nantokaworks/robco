@@ -9,6 +9,7 @@ impl App {
 
     /// Re-point selection at the same item, falling back to a clamp.
     pub(in crate::ui) fn restore_selection(&mut self, identity: Option<String>) {
+        self.prune_expanded_children();
         if let Some(identity) = identity
             && let Some(index) = self
                 .visible()
@@ -28,7 +29,9 @@ pub(super) fn prune_unmanaged(repos: &mut [crate::model::RepoNode], worktree_roo
         let previous_len = repo.agents.len();
         repo.agents
             .retain(|tracked| is_managed_worktree(&tracked.worktree_path, worktree_root));
-        super::slots::prune_slot_agents(repo);
+        // Only top-level adoptions are pruned. Reconciled slots live in
+        // `AgentNode::children`, so this cannot remove legitimate nested slots.
+        super::slots::prune_top_level_slot_agents(repo);
         prune_nested_agents(repo);
         removed |= repo.agents.len() != previous_len;
     }

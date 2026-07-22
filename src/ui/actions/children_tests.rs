@@ -118,7 +118,7 @@ fn new_sibling_under_worktree_root_waits_for_identity_session() {
 }
 
 #[test]
-fn sibling_slot_worktree_is_not_adopted() {
+fn legacy_sibling_slot_nests_under_owner_instead_of_being_adopted() {
     let mut fixture = Fixture::new();
     let slot = fixture.config.worktree_root.join("dropr_task-749_slot750");
     add_worktree(&fixture.repo.path, &slot, "dropr/task-749-slot-750");
@@ -137,8 +137,77 @@ fn sibling_slot_worktree_is_not_adopted() {
         reconcile(&mut fixture.repo, &fixture.config, vec![candidate.clone()]);
 
     assert!(!agent_added);
-    assert!(!children_changed);
+    assert!(children_changed);
     assert_eq!(fixture.repo.agents.len(), 1);
+    assert_eq!(fixture.repo.agents[0].children.len(), 1);
+    assert_eq!(
+        path_key(&fixture.repo.agents[0].children[0].path),
+        path_key(&slot)
+    );
+}
+
+#[test]
+fn producer_slot_nests_and_removed_worktree_disappears() {
+    let mut fixture = Fixture::new();
+    let slot = fixture
+        .config
+        .worktree_root
+        .join("dropr_task-749_gOQmxo_slot_snap");
+    add_worktree(&fixture.repo.path, &slot, "slot/task-386-snap");
+    std::fs::write(slot.join("slot-change"), "work\n").unwrap();
+    run_git(&slot, &["add", "slot-change"]);
+    run_git(&slot, &["commit", "-m", "slot work"]);
+
+    let (agent_added, children_changed) = fixture.reconcile();
+
+    assert!(!agent_added);
+    assert!(children_changed);
+    assert_eq!(fixture.repo.agents.len(), 1);
+    assert_eq!(fixture.repo.agents[0].children.len(), 1);
+    assert_eq!(
+        fixture.repo.agents[0].children[0].ahead_behind,
+        Some((0, 1))
+    );
+
+    run_git(
+        &fixture.repo.path,
+        &["worktree", "remove", slot.to_str().unwrap()],
+    );
+    let (_, children_changed) = fixture.reconcile();
+    assert!(children_changed);
+    assert!(fixture.repo.agents[0].children.is_empty());
+}
+
+#[test]
+fn merged_producer_slot_reports_zero_commits_ahead() {
+    let mut fixture = Fixture::new();
+    let slot = fixture
+        .config
+        .worktree_root
+        .join("dropr_task-749_gOQmxo_slot_pricing");
+    add_worktree(&fixture.repo.path, &slot, "slot/task-387-pricing");
+    std::fs::write(slot.join("pricing"), "done\n").unwrap();
+    run_git(&slot, &["add", "pricing"]);
+    run_git(&slot, &["commit", "-m", "pricing work"]);
+    fixture.reconcile();
+    assert_eq!(
+        fixture.repo.agents[0].children[0].ahead_behind,
+        Some((0, 1))
+    );
+
+    run_git(
+        &fixture.agent_path,
+        &["merge", "--ff-only", "slot/task-387-pricing"],
+    );
+    std::fs::write(fixture.agent_path.join("owner-change"), "next\n").unwrap();
+    run_git(&fixture.agent_path, &["add", "owner-change"]);
+    run_git(&fixture.agent_path, &["commit", "-m", "owner moves on"]);
+    fixture.reconcile();
+
+    assert_eq!(
+        fixture.repo.agents[0].children[0].ahead_behind,
+        Some((1, 0))
+    );
 }
 
 #[test]
