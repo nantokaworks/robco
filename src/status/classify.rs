@@ -67,9 +67,14 @@ pub(super) fn classify_capture(
         .map(|changed_at| now - changed_at < Duration::seconds(3))
         .unwrap_or(false);
 
+    let spinner = spinner_frame(capture);
+    let spinner_moved =
+        matches!((&state.last_spinner, &spinner), (Some(prev), Some(cur)) if prev != cur);
+    state.last_spinner = spinner;
+
     let status = if confirmation || weak {
         Status::Waiting
-    } else if working || recently_changed {
+    } else if working || recently_changed || spinner_moved {
         Status::Running
     } else if at_prompt {
         Status::Done
@@ -221,6 +226,11 @@ fn has_token_counter(line: &str) -> bool {
 
 fn is_spinner_char(ch: char) -> bool {
     ('\u{2800}'..='\u{28ff}').contains(&ch) || SPINNER_PIPS.contains(&ch)
+}
+
+fn spinner_frame(capture: &str) -> Option<String> {
+    let spinner: String = capture.chars().filter(|ch| is_spinner_char(*ch)).collect();
+    (!spinner.is_empty()).then_some(spinner)
 }
 
 #[cfg(test)]

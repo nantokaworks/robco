@@ -71,6 +71,7 @@ pub(crate) fn repo_node(path: std::path::PathBuf, pinned: bool) -> RepoNode {
         dropr_tasks: Vec::new(),
         main_status: None,
         main_last_capture: None,
+        main_last_spinner: None,
         main_last_change_at: None,
         main_shell_working: false,
         main_pane_pid: None,

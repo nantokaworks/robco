@@ -172,6 +172,7 @@ mod tests {
             worktree_missing: false,
             merge_error: None,
             last_capture: None,
+            last_spinner: None,
             last_change_at: None,
             last_auto_accept_at: None,
             shell_working: false,

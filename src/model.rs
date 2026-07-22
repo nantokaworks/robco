@@ -29,6 +29,9 @@ pub struct RepoNode {
     pub main_status: Option<Status>,
     #[serde(skip)]
     pub main_last_capture: Option<String>,
+    /// Last observed spinner frame for main-session motion detection.
+    #[serde(skip)]
+    pub main_last_spinner: Option<String>,
     #[serde(skip)]
     pub main_last_change_at: Option<DateTime<Local>>,
     /// Whether the repo main-worktree companion shell (TERM) session is running
@@ -71,6 +74,9 @@ pub struct AgentNode {
     pub merge_error: Option<String>,
     #[serde(skip)]
     pub last_capture: Option<String>,
+    /// Last observed spinner frame for motion detection.
+    #[serde(skip)]
+    pub last_spinner: Option<String>,
     #[serde(skip)]
     pub last_change_at: Option<DateTime<Local>>,
     #[serde(skip)]
@@ -254,6 +260,7 @@ mod tests {
                 worktree_missing: false,
                 merge_error: None,
                 last_capture: None,
+                last_spinner: None,
                 last_change_at: None,
                 last_auto_accept_at: None,
                 shell_working: false,
@@ -297,6 +304,7 @@ mod tests {
             worktree_missing: false,
             merge_error: Some("merge failed".into()),
             last_capture: None,
+            last_spinner: None,
             last_change_at: None,
             last_auto_accept_at: None,
             shell_working: false,
