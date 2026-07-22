@@ -1,14 +1,14 @@
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
-    Frame,
 };
 
 use crate::model::Selection;
 
-use super::{error_dialog, help, input_wrap, layout, spinner, theme::DEFAULT as THEME, App, Mode};
+use super::{App, Mode, error_dialog, help, input_wrap, layout, spinner, theme::DEFAULT as THEME};
 
 mod caret;
 #[cfg(test)]
