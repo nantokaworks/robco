@@ -207,7 +207,16 @@ impl App {
                     repo: repo_idx,
                     agent: agent_idx,
                 });
+                if !self.agent_children_expanded(repo_idx, agent_idx) {
+                    continue;
+                }
                 for child in 0..repo.agents[agent_idx].children.len() {
+                    if !super::actions::children::child_is_visible(
+                        &repo.agents[agent_idx],
+                        &repo.agents[agent_idx].children[child],
+                    ) {
+                        continue;
+                    }
                     visible.push(Selection::ChildWorktree {
                         repo: repo_idx,
                         agent: agent_idx,

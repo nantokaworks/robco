@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io,
     path::PathBuf,
     time::{Duration, Instant},
@@ -174,6 +174,9 @@ pub struct App {
     pub(crate) ephemeral_root: Option<PathBuf>,
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
+    /// Stable worktree-path keys for agents whose child rows are expanded.
+    /// Absence means collapsed, including for newly discovered owners.
+    expanded_children: HashSet<String>,
     overseer_visible: bool,
     overseer_collapsed: bool,
     overseer_expanded: [bool; 4],
@@ -229,6 +232,7 @@ impl App {
             ephemeral_root,
             selected: 0,
             expanded,
+            expanded_children: HashSet::new(),
             overseer_visible,
             overseer_collapsed: false,
             overseer_expanded: [false; 4],

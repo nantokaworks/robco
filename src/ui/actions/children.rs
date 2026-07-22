@@ -10,7 +10,7 @@ use crate::{
     agent,
     config::{Config, ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
     git::{self, Worktree},
-    model::{ChildWorktree, RepoNode},
+    model::{AgentNode, ChildWorktree, RepoNode},
 };
 
 use super::discovery::{is_managed_worktree, path_is_strictly_inside, path_key};
@@ -47,6 +47,16 @@ pub(super) fn reconcile(
             repo.agents[parent].children.push(child);
             continue;
         }
+        // Approach (a): sibling slots reuse the existing ChildWorktree path.
+        if let Some(owner) =
+            super::slots::slot_owner(&worktree.path, worktree.branch.as_deref(), &repo.agents)
+        {
+            let child = probe(repo, owner, worktree, config);
+            repo.agents[owner].children.push(child);
+            continue;
+        }
+        // A producer slot branch without a resolvable owner must never become
+        // a top-level agent; normal producer paths resolve through the directory.
         if super::slots::is_slot_worktree(&worktree.path, worktree.branch.as_deref(), &repo.agents)
         {
             continue;
@@ -130,6 +140,22 @@ fn probe(repo: &RepoNode, parent: usize, worktree: Worktree, config: &Config) ->
         ahead_behind,
         modified_at,
     }
+}
+
+pub(in crate::ui) fn child_is_visible(owner: &AgentNode, child: &ChildWorktree) -> bool {
+    let is_slot = super::slots::slot_owner(
+        &child.path,
+        child.branch.as_deref(),
+        std::slice::from_ref(owner),
+    )
+    .is_some();
+    // Worktree removal is authoritative. An owner that advanced past a
+    // zero-ahead slot is only a best-effort merged hide; (0, 0) stays visible
+    // because it can be an active slot created at the owner's current HEAD.
+    !(is_slot
+        && child
+            .ahead_behind
+            .is_some_and(|(owner_only, slot_only)| owner_only > 0 && slot_only == 0))
 }
 
 #[cfg(test)]
