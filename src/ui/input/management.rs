@@ -1,6 +1,81 @@
-use crate::{Result, model::Selection, overseer::is_overseer_child, registry::Registry};
+use std::path::Path;
 
-use super::App;
+use crate::{
+    Result,
+    model::{AgentNode, ManagementMode, Selection},
+    overseer::is_overseer_child,
+    registry::Registry,
+};
+
+use super::{App, Mode};
+
+pub(super) fn enroll_selected(app: &mut App) -> Result<()> {
+    let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
+        app.show_message("e: select a worktree to enroll into overseer management");
+        return Ok(());
+    };
+    let repo_path = app.registry.repos[repo].path.clone();
+    let agent_id = app.registry.repos[repo].agents[agent].id.clone();
+    let mut outcome = EnrollOutcome::NotFound;
+    app.registry = Registry::locked_update(|registry| {
+        if let Some(worker) = registry
+            .repos
+            .iter_mut()
+            .find(|repo| repo.path == repo_path)
+            .and_then(|repo| repo.agents.iter_mut().find(|agent| agent.id == agent_id))
+        {
+            outcome = enroll(worker);
+        }
+    })?;
+    app.show_message(match outcome {
+        EnrollOutcome::Enrolled => "enrolled into overseer management (auto)",
+        EnrollOutcome::AlreadyManaged => "e: already overseer-managed",
+        EnrollOutcome::NotFound => "e: selected worktree was not found",
+    });
+    Ok(())
+}
+
+pub(super) fn confirm_exclude_selected(app: &mut App) {
+    let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
+        app.show_message("E: select an overseer worktree to exclude");
+        return;
+    };
+    if !is_overseer_child(
+        app.registry.repos[repo].agents[agent]
+            .parent_agent_id
+            .as_deref(),
+    ) {
+        app.show_message("E: only overseer-managed worktrees can be excluded");
+        return;
+    }
+    let repo = &app.registry.repos[repo];
+    let agent = &repo.agents[agent];
+    app.mode = Mode::ConfirmOverseerExclude {
+        repo_path: repo.path.clone(),
+        agent_id: agent.id.clone(),
+        title: agent.title.clone(),
+    };
+}
+
+pub(super) fn exclude_selected(app: &mut App, repo_path: &Path, agent_id: &str) -> Result<()> {
+    let mut outcome = ExcludeOutcome::NotFound;
+    app.registry = Registry::locked_update(|registry| {
+        if let Some(worker) = registry
+            .repos
+            .iter_mut()
+            .find(|repo| repo.path == repo_path)
+            .and_then(|repo| repo.agents.iter_mut().find(|agent| agent.id == agent_id))
+        {
+            outcome = exclude(worker);
+        }
+    })?;
+    app.show_message(match outcome {
+        ExcludeOutcome::Excluded => "excluded from overseer management (worker left running)",
+        ExcludeOutcome::NotOverseerChild => "E: only overseer-managed worktrees can be excluded",
+        ExcludeOutcome::NotFound => "E: selected worktree was not found",
+    });
+    Ok(())
+}
 
 pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
     let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
@@ -34,7 +109,38 @@ pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
     Ok(())
 }
 
-fn toggle_mode(parent: Option<&str>, mode: &mut crate::model::ManagementMode) -> bool {
+#[derive(Debug, PartialEq, Eq)]
+enum EnrollOutcome {
+    Enrolled,
+    AlreadyManaged,
+    NotFound,
+}
+
+fn enroll(worker: &mut AgentNode) -> EnrollOutcome {
+    if is_overseer_child(worker.parent_agent_id.as_deref()) {
+        return EnrollOutcome::AlreadyManaged;
+    }
+    worker.parent_agent_id = Some(crate::overseer::OVERSEER_AGENT_ID.to_string());
+    worker.management = ManagementMode::Auto;
+    EnrollOutcome::Enrolled
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ExcludeOutcome {
+    Excluded,
+    NotOverseerChild,
+    NotFound,
+}
+
+fn exclude(worker: &mut AgentNode) -> ExcludeOutcome {
+    if !is_overseer_child(worker.parent_agent_id.as_deref()) {
+        return ExcludeOutcome::NotOverseerChild;
+    }
+    worker.parent_agent_id = None;
+    ExcludeOutcome::Excluded
+}
+
+fn toggle_mode(parent: Option<&str>, mode: &mut ManagementMode) -> bool {
     if !is_overseer_child(parent) {
         return false;
     }
@@ -45,7 +151,36 @@ fn toggle_mode(parent: Option<&str>, mode: &mut crate::model::ManagementMode) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::Config, model::ManagementMode, registry::Registry};
+    use crate::{config::Config, model::Status, registry::Registry};
+    use chrono::Local;
+
+    fn worker(parent: Option<&str>, management: ManagementMode) -> AgentNode {
+        AgentNode {
+            id: "worker-1".into(),
+            parent_agent_id: parent.map(str::to_string),
+            management,
+            title: "worker".into(),
+            worktree_path: "/tmp/worker-1".into(),
+            branch: "worker-1".into(),
+            base_commit: "abc123".into(),
+            program: "claude".into(),
+            profile: None,
+            tmux_session: "worker-1".into(),
+            created_at: Local::now(),
+            updated_at: Local::now(),
+            status: Status::Idle,
+            worktree_missing: false,
+            merge_error: None,
+            last_capture: None,
+            last_change_at: None,
+            last_auto_accept_at: None,
+            shell_working: false,
+            pane_pid: None,
+            tracked_command: None,
+            subagents: vec![],
+            children: vec![],
+        }
+    }
 
     #[test]
     fn toggle_on_non_worker_selection_explains_scope() {
@@ -74,5 +209,44 @@ mod tests {
         assert_eq!(mode, ManagementMode::Auto);
         assert!(!toggle_mode(None, &mut mode));
         assert_eq!(mode, ManagementMode::Auto);
+    }
+
+    #[test]
+    fn enroll_sets_overseer_parent_and_auto_management() {
+        let mut worker = worker(None, ManagementMode::Manual);
+
+        assert_eq!(enroll(&mut worker), EnrollOutcome::Enrolled);
+
+        assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
+        assert_eq!(worker.management, ManagementMode::Auto);
+    }
+
+    #[test]
+    fn enroll_preserves_management_when_already_managed() {
+        let mut worker = worker(Some("overseer"), ManagementMode::Manual);
+
+        assert_eq!(enroll(&mut worker), EnrollOutcome::AlreadyManaged);
+
+        assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
+        assert_eq!(worker.management, ManagementMode::Manual);
+    }
+
+    #[test]
+    fn exclude_clears_overseer_parent() {
+        let mut worker = worker(Some("overseer"), ManagementMode::Manual);
+
+        assert_eq!(exclude(&mut worker), ExcludeOutcome::Excluded);
+
+        assert_eq!(worker.parent_agent_id, None);
+        assert_eq!(worker.management, ManagementMode::Manual);
+    }
+
+    #[test]
+    fn exclude_preserves_non_overseer_parent() {
+        let mut worker = worker(Some("other-parent"), ManagementMode::Manual);
+
+        assert_eq!(exclude(&mut worker), ExcludeOutcome::NotOverseerChild);
+
+        assert_eq!(worker.parent_agent_id.as_deref(), Some("other-parent"));
     }
 }

@@ -1,0 +1,107 @@
+use std::path::PathBuf;
+
+use crossterm::event::{KeyCode, KeyEvent};
+
+use crate::Result;
+
+use super::{App, Mode, management};
+
+pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>> {
+    let confirmed = matches!(
+        key.code,
+        KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter
+    );
+    let cancelled = matches!(
+        key.code,
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc
+    );
+    if !confirmed && !cancelled {
+        return match app.mode {
+            Mode::ConfirmKill { .. }
+            | Mode::ConfirmRemoveRepo { .. }
+            | Mode::ConfirmMerge { .. }
+            | Mode::ConfirmDeleteBranch { .. }
+            | Mode::ConfirmKillOrphan { .. }
+            | Mode::ConfirmOverseerPanic
+            | Mode::ConfirmOverseerReset
+            | Mode::ConfirmOverseerExclude { .. } => Some(Ok(())),
+            _ => None,
+        };
+    }
+
+    match &app.mode {
+        Mode::ConfirmKill { repo, agent } => {
+            let (repo, agent) = (*repo, *agent);
+            app.mode = Mode::Normal;
+            Some(if confirmed {
+                app.kill_agent(repo, agent)
+            } else {
+                Ok(())
+            })
+        }
+        Mode::ConfirmRemoveRepo { path } => {
+            let path = path.clone();
+            app.mode = Mode::Normal;
+            Some(if confirmed {
+                app.remove_pinned_repo(&path)
+            } else {
+                Ok(())
+            })
+        }
+        Mode::ConfirmMerge { repo, agent } => {
+            let (repo, agent) = (*repo, *agent);
+            if confirmed {
+                app.start_merge(repo, agent);
+            } else {
+                app.mode = Mode::Normal;
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmDeleteBranch { repo, agent } => {
+            let (repo, agent) = (*repo, *agent);
+            app.mode = Mode::Normal;
+            if confirmed {
+                Some(app.delete_agent_branch(repo, agent))
+            } else {
+                app.show_message("kept branch");
+                Some(Ok(()))
+            }
+        }
+        Mode::ConfirmKillOrphan { session } => {
+            let session = session.clone();
+            app.mode = Mode::Normal;
+            if confirmed {
+                app.kill_orphan(&session);
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmOverseerPanic => {
+            app.mode = Mode::Normal;
+            if confirmed {
+                app.panic_overseer();
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmOverseerReset => {
+            app.mode = Mode::Normal;
+            if confirmed {
+                app.reset_overseer();
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmOverseerExclude {
+            repo_path,
+            agent_id,
+            ..
+        } => {
+            let (repo_path, agent_id): (PathBuf, String) = (repo_path.clone(), agent_id.clone());
+            app.mode = Mode::Normal;
+            Some(if confirmed {
+                management::exclude_selected(app, &repo_path, &agent_id)
+            } else {
+                Ok(())
+            })
+        }
+        _ => None,
+    }
+}

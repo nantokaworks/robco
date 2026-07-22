@@ -8,6 +8,7 @@ use super::{
     help,
 };
 
+mod confirm;
 mod management;
 mod mouse;
 mod overseer;
@@ -29,6 +30,11 @@ impl App {
         self.message = None;
         if matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL) {
             return Ok(true);
+        }
+        if let Some(result) = confirm::handle_confirm(self, key) {
+            result?;
+            self.clamp_selection();
+            return Ok(false);
         }
 
         match &mut self.mode {
@@ -101,34 +107,6 @@ impl App {
                     self.answer_inbox(&session, &answer);
                 }
             },
-            Mode::ConfirmKill { repo, agent } => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    let repo = *repo;
-                    let agent = *agent;
-                    self.mode = Mode::Normal;
-                    self.kill_agent(repo, agent)?;
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
-            Mode::ConfirmRemoveRepo { path } => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    let path = path.clone();
-                    self.mode = Mode::Normal;
-                    self.remove_pinned_repo(&path)?;
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
-            Mode::ConfirmMerge { repo, agent } => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    let repo = *repo;
-                    let agent = *agent;
-                    self.start_merge(repo, agent);
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
             Mode::ConfirmPr {
                 repo_path,
                 agent_id,
@@ -151,44 +129,6 @@ impl App {
                     },
                 }
             }
-            Mode::ConfirmDeleteBranch { repo, agent } => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    let repo = *repo;
-                    let agent = *agent;
-                    self.mode = Mode::Normal;
-                    self.delete_agent_branch(repo, agent)?;
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                    self.mode = Mode::Normal;
-                    self.show_message("kept branch");
-                }
-                _ => {}
-            },
-            Mode::ConfirmKillOrphan { session } => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    let session = session.clone();
-                    self.mode = Mode::Normal;
-                    self.kill_orphan(&session);
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
-            Mode::ConfirmOverseerPanic => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    self.mode = Mode::Normal;
-                    self.panic_overseer();
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
-            Mode::ConfirmOverseerReset => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                    self.mode = Mode::Normal;
-                    self.reset_overseer();
-                }
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => self.mode = Mode::Normal,
-                _ => {}
-            },
             Mode::ErrorDialog { force_kill, .. } => {
                 let target = force_kill.clone();
                 self.mode = Mode::Normal;
@@ -278,12 +218,22 @@ impl App {
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('g') => management::toggle_selected(self)?,
+                KeyCode::Char('e') => management::enroll_selected(self)?,
+                KeyCode::Char('E') => management::confirm_exclude_selected(self),
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char(',') => self.open_settings_editor(),
                 _ => {}
             },
+            Mode::ConfirmKill { .. }
+            | Mode::ConfirmRemoveRepo { .. }
+            | Mode::ConfirmMerge { .. }
+            | Mode::ConfirmDeleteBranch { .. }
+            | Mode::ConfirmKillOrphan { .. }
+            | Mode::ConfirmOverseerPanic
+            | Mode::ConfirmOverseerReset
+            | Mode::ConfirmOverseerExclude { .. } => unreachable!("handled above"),
         }
 
         self.clamp_selection();

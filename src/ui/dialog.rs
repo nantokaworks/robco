@@ -82,6 +82,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 "y delete   n/esc cancel",
             ),
         ),
+        Mode::ConfirmOverseerExclude { title, .. } => (
+            "exclude from overseer?",
+            vec![
+                Line::from(title.clone()),
+                Line::from("detaches ownership; worker keeps running"),
+                hint_line("y exclude   n/esc cancel"),
+            ],
+        ),
         Mode::ConfirmRemoveRepo { path } => (
             "remove repo?",
             confirm_lines(path.display().to_string(), "y remove   n/esc cancel"),
@@ -120,7 +128,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         Mode::ConfirmOverseerPanic => (
             "stop overseer?",
             vec![
-                Line::from("disable dispatch and kill overseer workers"),
+                Line::from("disable dispatch + kill all overseer workers"),
+                Line::from("daemon stays alive; re-enable with `robco overseer set dispatch on`"),
                 hint_line("y stop   n/esc cancel"),
             ],
         ),

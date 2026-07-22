@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 37;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 39;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -19,6 +19,8 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  r              restart agent / reload dropr tasks (all workspaces)"),
         Line::from("  x              remove selected agent worktree or pinned repo"),
         Line::from("  g              toggle selected overseer worker Auto / Manual"),
+        Line::from("  e              enroll selected worktree into overseer management"),
+        Line::from("  E              exclude selected worktree from overseer management"),
         Line::from("  S              stop overseer (dispatch off + kill workers)"),
         Line::from("Repo"),
         Line::from("  a              clone <git-url> [branch], or add local repo path"),

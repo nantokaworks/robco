@@ -53,6 +53,9 @@ pub(super) fn append_health(
     if dispatch_without_daemon {
         lines.push(warning(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
     }
+    if !config.dispatch_enabled && alive && !circuit_open {
+        lines.push(warning(crate::overseer::DISPATCH_STOPPED_HINT));
+    }
     if circuit_open {
         lines.push(warning(crate::overseer::CIRCUIT_OPEN_HINT));
     }
