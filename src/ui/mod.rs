@@ -80,6 +80,11 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    ConfirmOverseerExclude {
+        repo_path: PathBuf,
+        agent_id: String,
+        title: String,
+    },
     ConfirmRemoveRepo {
         path: PathBuf,
     },

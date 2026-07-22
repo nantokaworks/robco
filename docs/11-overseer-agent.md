@@ -327,6 +327,14 @@ Overseer info pane, and Discord notifications. The daemon writes observation sna
 separately so a failed probe becomes a logged skipped observation instead of invented
 state.
 
+### Worktree management in the TUI
+
+Press `e` on a worktree to enroll it under Overseer ownership in Auto mode. Enrolled
+worktrees can be switched between Auto and Manual with `g`; Manual workers remain owned
+by Overseer but are skipped for automatic dispatch. Press `E` and confirm to exclude an
+enrolled worktree. Exclusion only detaches Overseer ownership and leaves the worker and
+its tmux session running; use the separate kill action when the worker should also stop.
+
 The triage queue is atomically persisted. At startup pending cases are loaded; an
 unreadable queue is moved aside as `queue.json.corrupt`, logged, and restarted empty.
 Each normalized triage completion is first written to `outcome.json`. If Overseer crashes
