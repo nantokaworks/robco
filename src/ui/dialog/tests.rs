@@ -1,15 +1,15 @@
 use ratatui::{
+    Terminal,
     backend::TestBackend,
     layout::Rect,
     style::{Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph},
-    Terminal,
 };
 
 use crate::{config::Config, registry::Registry};
 
-use super::{draw, App, Mode};
+use super::{App, Mode, draw};
 
 fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();
