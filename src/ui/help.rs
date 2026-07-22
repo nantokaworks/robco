@@ -100,7 +100,9 @@ mod tests {
         app.mode = super::super::Mode::Help { scroll };
         let mut terminal = Terminal::new(TestBackend::new(100, height)).unwrap();
         terminal
-            .draw(|frame| super::super::dialog::draw(frame, &app, &[]))
+            .draw(|frame| {
+                super::super::dialog::draw(frame, &app, &[]);
+            })
             .unwrap();
         terminal
             .backend()

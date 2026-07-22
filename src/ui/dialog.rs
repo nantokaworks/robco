@@ -1,19 +1,22 @@
 use ratatui::{
-    Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
+    Frame,
 };
 
 use crate::model::Selection;
 
-use super::{App, Mode, error_dialog, help, input_wrap, layout, spinner, theme::DEFAULT as THEME};
+use super::{error_dialog, help, input_wrap, layout, spinner, theme::DEFAULT as THEME, App, Mode};
 
+mod caret;
 #[cfg(test)]
 mod tests;
 
-pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
+use caret::caret_position;
+
+pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(u16, u16)> {
     let body = layout::root(frame.area()).body;
     let content_width = body.width.saturating_sub(4) as usize;
     let (title, lines): (&str, Vec<Line<'static>>) = match &app.mode {
@@ -165,7 +168,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
             force_kill,
         } => (title, error_dialog::content(lines, force_kill.is_some())),
         Mode::Help { .. } => ("help", help::lines()),
-        Mode::Normal => return,
+        Mode::Normal => return None,
+    };
+
+    let cursor_row = match app.mode {
+        Mode::PromptAgent { .. } => Some(2),
+        Mode::PromptRepo { .. } => Some(0),
+        Mode::PromptOverseer { .. } | Mode::PromptInbox { .. } | Mode::ConfirmPr { .. } => {
+            Some(lines.len().saturating_sub(2))
+        }
+        _ => None,
     };
 
     let width = (lines
@@ -198,6 +210,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         }
         _ => (title.to_string(), 0),
     };
+    let cursor = cursor_row.and_then(|row| {
+        lines
+            .get(row)
+            .map(|line| caret_position(area, line, row, scroll))
+    });
     let block = Block::default()
         .title(title)
         .title_style(Style::default().add_modifier(Modifier::BOLD))
@@ -240,6 +257,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
         frame.render_widget(Block::default().style(THEME.backdrop_style()), side);
     }
     frame.render_widget(dialog, area);
+    cursor
 }
 
 fn confirm_lines(subject: String, hint: &str) -> Vec<Line<'static>> {

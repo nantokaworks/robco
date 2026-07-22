@@ -135,7 +135,11 @@ fn run_loop<B: ratatui::backend::Backend>(
                 app.selected_item()
                     .filter(|sel| !matches!(sel, Selection::OtherHeader | Selection::OrphanHeader)),
             );
-            dialog::draw(frame, app, &visible);
+            let cursor = dialog::draw(frame, app, &visible).unwrap_or_else(|| {
+                let area = frame.area();
+                (area.x, area.bottom().saturating_sub(1))
+            });
+            frame.set_cursor_position(cursor);
         })?;
 
         if event::poll(spinner::FRAME_INTERVAL)? {
