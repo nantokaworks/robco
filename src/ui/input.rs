@@ -229,6 +229,9 @@ impl App {
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char(',') => self.open_settings_editor(),
+                KeyCode::Char(ch) if !ch.is_ascii() => {
+                    self.show_message("IME is on; switch to ASCII input");
+                }
                 _ => {}
             },
             Mode::ConfirmKill { .. }

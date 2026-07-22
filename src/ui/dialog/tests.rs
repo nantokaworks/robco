@@ -1,11 +1,60 @@
 use ratatui::{
-    Terminal,
     backend::TestBackend,
     layout::Rect,
     style::{Modifier, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph},
+    Terminal,
 };
+
+use crate::{config::Config, registry::Registry};
+
+use super::{draw, App, Mode};
+
+fn test_app() -> App {
+    let temp = tempfile::tempdir().unwrap();
+    App::new(Registry::default(), Config::default(), temp.path().into())
+}
+
+fn assert_cursor_on_trailing_caret(mode: Mode) {
+    let mut app = test_app();
+    app.mode = mode;
+    let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+    let mut cursor = None;
+
+    terminal
+        .draw(|frame| cursor = draw(frame, &app, &[]))
+        .unwrap();
+
+    let cursor = cursor.expect("text input mode should return a cursor");
+    assert_eq!(
+        terminal.backend().buffer().cell(cursor).unwrap().symbol(),
+        "_"
+    );
+}
+
+#[test]
+fn prompt_agent_cursor_uses_input_row_two() {
+    assert_cursor_on_trailing_caret(Mode::PromptAgent {
+        repo: 0,
+        with_prompt: false,
+        input: "worker".to_string(),
+    });
+}
+
+#[test]
+fn prompt_repo_cursor_uses_input_row_zero() {
+    assert_cursor_on_trailing_caret(Mode::PromptRepo {
+        input: "/repo".to_string(),
+    });
+}
+
+#[test]
+fn wrapped_prompt_cursor_uses_last_input_line() {
+    assert_cursor_on_trailing_caret(Mode::PromptOverseer {
+        input: "send this instruction".to_string(),
+    });
+}
 
 #[test]
 fn popup_border_survives_wide_char_background() {

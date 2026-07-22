@@ -20,7 +20,9 @@ fn prompt_renders_wrapped_with_editing_end_visible() {
     let mut terminal = Terminal::new(TestBackend::new(50, 20)).unwrap();
 
     terminal
-        .draw(|frame| dialog::draw(frame, &app, &[]))
+        .draw(|frame| {
+            dialog::draw(frame, &app, &[]);
+        })
         .unwrap();
 
     let buffer = terminal.backend().buffer();
@@ -50,7 +52,9 @@ fn cursor_stays_visible_in_a_short_terminal() {
     let mut terminal = Terminal::new(TestBackend::new(50, 5)).unwrap();
 
     terminal
-        .draw(|frame| dialog::draw(frame, &app, &[]))
+        .draw(|frame| {
+            dialog::draw(frame, &app, &[]);
+        })
         .unwrap();
 
     assert!((0..terminal.backend().buffer().area.width).any(|x| {
