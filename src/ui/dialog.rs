@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, error_dialog, help, input_wrap, layout, theme::DEFAULT as THEME};
+use super::{App, Mode, error_dialog, help, input_wrap, layout, spinner, theme::DEFAULT as THEME};
 
 #[cfg(test)]
 mod tests;
@@ -102,16 +102,35 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y merge   n/esc cancel"),
             ],
         ),
-        Mode::ConfirmPr { branch, input, .. } => {
+        Mode::ConfirmPr {
+            repo_path,
+            agent_id,
+            branch,
+            input,
+        } => {
+            let checking = app.pr_precheck_active_for(repo_path, agent_id);
             let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
             let mut lines = vec![Line::from(format!("branch: {branch}"))];
+            if checking {
+                lines.push(Line::from(Span::styled(
+                    format!(
+                        "checking session/PR… {}",
+                        spinner::frame(app.started.elapsed())
+                    ),
+                    THEME.accent_style(),
+                )));
+            }
             lines.extend(input_wrap::input_lines(
                 "prompt",
                 input,
                 content_width,
                 max_input_height,
             ));
-            lines.push(hint_line("enter send   ctrl-s save only   esc cancel"));
+            lines.push(hint_line(if checking {
+                "esc cancel"
+            } else {
+                "enter send   ctrl-s save only   esc cancel"
+            }));
             ("request PR from agent?", lines)
         }
         Mode::ConfirmDeleteBranch { repo, agent } => (
