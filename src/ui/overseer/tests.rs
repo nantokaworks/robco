@@ -188,6 +188,7 @@ fn open_circuit_shows_recovery_hint() {
         .map(|span| span.content.as_ref())
         .collect::<String>();
     assert!(rendered.contains("circuit: OPEN"));
+    assert!(rendered.contains("[R]"));
     assert!(rendered.contains("robco overseer set dispatch on"));
     assert_eq!(
         lines

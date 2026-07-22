@@ -64,6 +64,10 @@ impl OverseerSnapshot {
             Status::Idle
         }
     }
+
+    pub(in crate::ui) fn circuit_open(&self) -> bool {
+        self.ledger.counters.consecutive_failures >= self.overseer.failure_circuit_threshold
+    }
 }
 
 pub(super) fn summary(app: &App) -> (String, Text<'static>) {
