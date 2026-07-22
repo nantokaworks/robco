@@ -124,6 +124,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) {
                 hint_line("y stop   n/esc cancel"),
             ],
         ),
+        Mode::ConfirmOverseerReset => (
+            "reset dispatch circuit?",
+            vec![
+                Line::from("re-enable dispatch and clear the failure counter"),
+                hint_line("y reset   n/esc cancel"),
+            ],
+        ),
         Mode::ErrorDialog {
             title,
             lines,

@@ -47,7 +47,7 @@ pub const DISPATCH_WITHOUT_DAEMON_HINT: &str = "dispatch is on but the Overseer 
 /// failures. The circuit disables dispatch and persists it, so the state
 /// survives restarts; name the one recovery command, which also clears the
 /// consecutive-failure counter.
-pub const CIRCUIT_OPEN_HINT: &str = "dispatch circuit is open after repeated worker failures — dispatch stays disabled until you reset it with `robco overseer set dispatch on` (re-enables dispatch and clears the failure counter).";
+pub const CIRCUIT_OPEN_HINT: &str = "dispatch circuit is open after repeated worker failures — dispatch stays disabled until you reset it: press [R] here, or run `robco overseer set dispatch on` (re-enables dispatch and clears the failure counter).";
 
 pub fn overseer_home() -> Result<PathBuf> {
     migrate_overseer_home(&crate::config::robco_dir()?)

@@ -112,6 +112,10 @@ enum Mode {
     // Panic-stop the overseer: disable dispatch and kill every overseer-managed
     // worker. Reachable only while an OVERSEER row is selected.
     ConfirmOverseerPanic,
+    /// Reset the overseer dispatch circuit: re-enable dispatch and clear the
+    /// failure counter. Reachable only while the overseer panel is visible and
+    /// the circuit is open.
+    ConfirmOverseerReset,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
