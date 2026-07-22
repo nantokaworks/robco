@@ -44,6 +44,39 @@ fn stopped_with_live_chrome_goes_done() {
 }
 
 #[test]
+fn moving_spinner_keeps_running() {
+    let mut state = WatchStatusState::default();
+    classify_capture("⠋ Working", &mut state, fixed_now());
+    assert_eq!(
+        classify_capture("⠙ Working", &mut state, fixed_now() + Duration::seconds(4)).status,
+        Status::Running
+    );
+}
+
+#[test]
+fn frozen_spinner_settles_to_idle() {
+    let mut state = WatchStatusState::default();
+    classify_capture("⠋ Working", &mut state, fixed_now());
+    assert_eq!(
+        classify_capture("⠋ Working", &mut state, fixed_now() + Duration::seconds(4)).status,
+        Status::Idle
+    );
+}
+
+#[test]
+fn cursor_blink_does_not_register_as_spinner_motion() {
+    let mut state = WatchStatusState::default();
+    assert_eq!(
+        classify_capture("Done\n❯ █", &mut state, fixed_now()).status,
+        Status::Done
+    );
+    assert_eq!(
+        classify_capture("Done\n❯ ▌", &mut state, fixed_now() + Duration::seconds(4)).status,
+        Status::Done
+    );
+}
+
+#[test]
 fn boxed_permission_prompt_waits_despite_footer() {
     let mut state = WatchStatusState::default();
     let capture =

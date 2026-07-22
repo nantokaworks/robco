@@ -15,6 +15,7 @@ use proc::ProcSnapshot;
 #[derive(Debug, Default)]
 pub struct WatchStatusState {
     pub last_capture: Option<String>,
+    pub last_spinner: Option<String>,
     pub last_change_at: Option<chrono::DateTime<Local>>,
 }
 
@@ -37,6 +38,7 @@ pub fn refresh_agent(
 ) {
     let mut state = WatchStatusState {
         last_capture: agent.last_capture.take(),
+        last_spinner: agent.last_spinner.take(),
         last_change_at: agent.last_change_at.take(),
     };
 
@@ -48,6 +50,7 @@ pub fn refresh_agent(
         &mut state,
     );
     agent.last_capture = state.last_capture;
+    agent.last_spinner = state.last_spinner;
     agent.last_change_at = state.last_change_at;
     agent.shell_working = shell_session_working(&agent.tmux_session);
     match report {
@@ -94,6 +97,7 @@ pub fn refresh_repo_main(
         Ok(false) => {
             repo.main_status = None;
             repo.main_last_capture = None;
+            repo.main_last_spinner = None;
             repo.main_last_change_at = None;
             repo.main_shell_working = false;
             repo.main_pane_pid = None;
@@ -112,11 +116,13 @@ pub fn refresh_repo_main(
     };
     let mut state = WatchStatusState {
         last_capture: repo.main_last_capture.take(),
+        last_spinner: repo.main_last_spinner.take(),
         last_change_at: repo.main_last_change_at.take(),
     };
     let report = classify_capture(&capture, &mut state, Local::now());
     repo.main_status = Some(downgrade_running_shell_pane(report, session).status);
     repo.main_last_capture = state.last_capture;
+    repo.main_last_spinner = state.last_spinner;
     repo.main_last_change_at = state.last_change_at;
     repo.main_shell_working = shell_session_working(session);
     refresh_process(
