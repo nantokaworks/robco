@@ -9,6 +9,7 @@ mod kill;
 mod lifecycle;
 pub(super) mod merge;
 mod orphans;
+pub(super) mod overseer_refresh;
 mod pr;
 pub(super) mod pr_precheck;
 pub(super) mod preview_capture;

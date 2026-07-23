@@ -11,6 +11,7 @@ const KEY_HINTS: &[(&str, &str)] = &[
     ("r", "restart"),
     ("g", "auto/manual"),
     ("S", "stop"),
+    ("R", "reset"),
     ("m", "merge"),
     ("x", "kill"),
     ("?", "help"),
@@ -25,15 +26,22 @@ pub(super) fn r_hint_label(selection: Option<Selection>) -> &'static str {
     }
 }
 
-pub(super) fn hints_line(message: Option<&str>, r_label: &'static str) -> Line<'static> {
+pub(super) fn hints_line(
+    message: Option<&str>,
+    r_label: &'static str,
+    circuit_open: bool,
+) -> Line<'static> {
     if let Some(text) = message {
         return Line::from(Span::styled(text.to_string(), THEME.hint_style()));
     }
 
     let mut spans = Vec::with_capacity(KEY_HINTS.len() * 5);
-    for (idx, (key, default_label)) in KEY_HINTS.iter().enumerate() {
+    for (key, default_label) in KEY_HINTS {
+        if *key == "R" && !circuit_open {
+            continue;
+        }
         let label = if *key == "r" { r_label } else { default_label };
-        if idx > 0 {
+        if !spans.is_empty() {
             spans.push(Span::raw(" "));
         }
         spans.push(Span::styled("[", THEME.accent_style()));
@@ -60,5 +68,19 @@ mod tests {
             "restart"
         );
         assert_eq!(r_hint_label(None), "restart");
+    }
+
+    #[test]
+    fn reset_hint_is_only_shown_when_circuit_is_open() {
+        assert!(
+            hints_line(None, "restart", true)
+                .to_string()
+                .contains("[R] RESET")
+        );
+        assert!(
+            !hints_line(None, "restart", false)
+                .to_string()
+                .contains("[R] RESET")
+        );
     }
 }

@@ -102,15 +102,19 @@ fn reset_key_opens_confirm_when_circuit_is_open() {
 }
 
 #[test]
-fn reset_key_is_ignored_when_circuit_is_closed() {
+fn reset_key_reports_when_circuit_is_closed() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
     app.overseer_snapshot.overseer.failure_circuit_threshold = 2;
     app.overseer_snapshot.ledger.counters.consecutive_failures = 1;
 
-    assert!(!handle_normal(&mut app, KeyCode::Char('R')));
+    assert!(handle_normal(&mut app, KeyCode::Char('R')));
     assert!(matches!(app.mode, Mode::Normal));
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("circuit is closed; nothing to reset")
+    );
 }
 
 #[test]

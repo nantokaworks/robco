@@ -41,11 +41,15 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         return false;
     }
     if code == KeyCode::Char('R') {
-        if app.overseer_visible && app.overseer_snapshot.circuit_open() {
+        if !app.overseer_visible {
+            return false;
+        }
+        if app.overseer_snapshot.circuit_open() {
             app.mode = Mode::ConfirmOverseerReset;
             return true;
         }
-        return false;
+        app.show_message("circuit is closed; nothing to reset");
+        return true;
     }
     if !matches!(
         app.selected_item(),
@@ -154,6 +158,7 @@ impl App {
     /// operator-initiated action.
     pub(in crate::ui) fn panic_overseer(&mut self) {
         let result = crate::overseer::command::panic_stop_attributed("ui", None);
+        self.refresh_overseer_snapshot();
         self.response_message(result, "overseer stopped: dispatch off, workers killed");
     }
 
@@ -162,6 +167,7 @@ impl App {
     pub(in crate::ui) fn reset_overseer(&mut self) {
         let result =
             crate::overseer::command::set_runtime(crate::cli::OverseerSetting::Dispatch, true);
+        self.refresh_overseer_snapshot();
         self.response_message(
             result,
             "dispatch circuit reset: dispatch on, failures cleared",
