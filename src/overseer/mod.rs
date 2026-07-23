@@ -14,6 +14,7 @@ pub mod judge;
 pub mod ledger;
 pub mod logging;
 pub mod monitor;
+pub mod runtime_request;
 pub(crate) mod session;
 pub mod templates;
 pub mod triage;
@@ -90,6 +91,10 @@ pub fn is_overseer_child(parent_agent_id: Option<&str>) -> bool {
 
 pub fn ledger_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("ledger.json"))
+}
+
+pub fn runtime_requests_dir() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("runtime_requests"))
 }
 
 pub fn inbox_path() -> Result<PathBuf> {

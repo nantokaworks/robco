@@ -12,6 +12,7 @@ use super::{
     ledger::{Ledger, LedgerPhase},
     logging::{self, DecisionEntry, DecisionKind},
     pidfile_path,
+    runtime_request::{self, RuntimeRequest},
 };
 use crate::{
     Result,
@@ -23,7 +24,7 @@ use crate::{
 mod escalation;
 mod service;
 
-use escalation::escalate_workers;
+pub(crate) use escalation::escalate_workers;
 use service::install_service;
 pub(crate) use service::write_service_plist;
 
@@ -164,9 +165,10 @@ pub(crate) fn set_runtime(setting: OverseerSetting, enabled: bool) -> Result<()>
     }
     config.save()?;
     if matches!(setting, OverseerSetting::Dispatch) && enabled {
-        let mut ledger = Ledger::load()?;
-        ledger.counters.consecutive_failures = 0;
-        ledger.save()?;
+        runtime_request::enqueue(RuntimeRequest::ResetCircuit {
+            source: "cli".into(),
+            at: chrono::Utc::now(),
+        })?;
     }
     Ok(())
 }
@@ -195,9 +197,11 @@ pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Resu
             killed_ids.insert(agent.id.clone());
         }
     }
-    let mut ledger = Ledger::load()?;
-    escalate_workers(&mut ledger, &killed_ids);
-    ledger.save()?;
+    runtime_request::enqueue(RuntimeRequest::PanicEscalate {
+        source: source.into(),
+        agent_ids: killed_ids.into_iter().collect(),
+        at: chrono::Utc::now(),
+    })?;
     let mut entry = DecisionEntry::new(
         DecisionKind::Escalate,
         "panic stop: dispatch disabled and workers terminated",
