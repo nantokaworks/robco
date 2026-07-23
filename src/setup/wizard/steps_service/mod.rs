@@ -1,3 +1,6 @@
+mod plan;
+mod probe;
+
 use std::io::{BufRead, Write};
 
 use crate::{Result, config::Config};
@@ -6,25 +9,16 @@ use crate::{Result, config::Config};
 use crate::Error;
 
 #[cfg(target_os = "macos")]
+use self::plan::{BootstrapPlan, SetenvPlan};
+#[cfg(target_os = "macos")]
+use self::probe::ServiceState;
+#[cfg(target_os = "macos")]
 use super::prompt;
 
 #[cfg(target_os = "macos")]
 pub(crate) struct ServicePlan {
     setenv: Option<SetenvPlan>,
     bootstrap: BootstrapPlan,
-}
-
-#[cfg(target_os = "macos")]
-struct SetenvPlan {
-    name: String,
-    value: Option<String>,
-}
-
-#[cfg(target_os = "macos")]
-struct BootstrapPlan {
-    domain: String,
-    path: std::path::PathBuf,
-    execute: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -53,60 +47,6 @@ impl ServicePlan {
 }
 
 #[cfg(target_os = "macos")]
-impl SetenvPlan {
-    fn apply<W: Write>(self, output: &mut W) -> Result<()> {
-        use std::{process::Command, time::Duration};
-
-        use crate::overseer::exec::run_timeout;
-
-        let Some(value) = self.value else {
-            writeln!(
-                output,
-                "  launchctl setenv {} \"${}\"",
-                self.name, self.name
-            )?;
-            return Ok(());
-        };
-        let mut command = Command::new("launchctl");
-        command.args(["setenv", &self.name, &value]);
-        let result = run_timeout(command, Duration::from_secs(5))?;
-        if !result.status.success() {
-            return Err(Error::Wizard("launchctl setenv failed".into()));
-        }
-        Ok(())
-    }
-}
-
-#[cfg(target_os = "macos")]
-impl BootstrapPlan {
-    fn apply<W: Write>(self, output: &mut W) -> Result<()> {
-        use std::{process::Command, time::Duration};
-
-        use crate::overseer::exec::run_timeout;
-
-        if !self.execute {
-            writeln!(
-                output,
-                "  launchctl bootstrap {} {}",
-                self.domain,
-                self.path.display()
-            )?;
-            return Ok(());
-        }
-        let mut command = Command::new("launchctl");
-        command.args(["bootstrap", &self.domain]).arg(&self.path);
-        let result = run_timeout(command, Duration::from_secs(5))?;
-        if !result.status.success() {
-            return Err(Error::Wizard(format!(
-                "launchctl bootstrap failed: {}",
-                String::from_utf8_lossy(&result.stderr).trim()
-            )));
-        }
-        Ok(())
-    }
-}
-
-#[cfg(target_os = "macos")]
 pub(crate) fn configure<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
@@ -114,13 +54,16 @@ pub(crate) fn configure<R: BufRead, W: Write>(
 ) -> Result<Option<ServicePlan>> {
     use crate::overseer::command::write_service_plist;
 
-    if !prompt::confirm(input, output, "Install Overseer launchd service?", false)? {
+    let service_probe = probe::run();
+    if !confirm_service(input, output, service_probe.state)? {
         writeln!(output, "▌ robco ▸ launchd ··········· skipped")?;
         return Ok(None);
     }
     let path = write_service_plist()?;
     writeln!(output, "▌ robco ▸ launchd ··········· plist written")?;
-    let uid = command_stdout("id", &["-u"])?;
+    let uid = service_probe
+        .uid
+        .map_or_else(|| command_stdout("id", &["-u"]), Ok)?;
     let domain = format!("gui/{uid}");
     let execute = prompt::confirm(input, output, "Load the service now?", false)?;
     let setenv = discord_env_plan(input, output, config)?;
@@ -132,6 +75,23 @@ pub(crate) fn configure<R: BufRead, W: Write>(
             execute,
         },
     }))
+}
+
+#[cfg(target_os = "macos")]
+fn confirm_service<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    state: ServiceState,
+) -> Result<bool> {
+    let (label, default) = match state {
+        ServiceState::NotInstalled => ("Install Overseer launchd service?", false),
+        ServiceState::Unloaded => ("Load the installed Overseer service?", true),
+        ServiceState::Loaded => (
+            "Reload the running Overseer service? (picks up the upgraded binary)",
+            true,
+        ),
+    };
+    prompt::confirm(input, output, label, default)
 }
 
 #[cfg(target_os = "macos")]
@@ -208,51 +168,40 @@ pub(crate) fn configure<R: BufRead, W: Write>(
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use std::path::PathBuf;
+    use std::io::Cursor;
 
-    use super::{BootstrapPlan, ServicePlan, SetenvPlan};
-
-    #[test]
-    fn copyable_setenv_command_precedes_bootstrap() {
-        let plan = ServicePlan {
-            setenv: Some(SetenvPlan {
-                name: "DISCORD_TOKEN".into(),
-                value: None,
-            }),
-            bootstrap: BootstrapPlan {
-                domain: "gui/501".into(),
-                path: PathBuf::from("/tmp/robco.plist"),
-                execute: false,
-            },
-        };
-        let mut output = Vec::new();
-        plan.apply(&mut output).unwrap();
-        let output = String::from_utf8(output).unwrap();
-        assert!(
-            output.find("launchctl setenv").unwrap() < output.find("launchctl bootstrap").unwrap()
-        );
-    }
+    use super::{ServiceState, confirm_service};
 
     #[test]
-    fn manual_setenv_defers_accepted_bootstrap() {
-        let plan = ServicePlan {
-            setenv: Some(SetenvPlan {
-                name: "DISCORD_TOKEN".into(),
-                value: None,
-            }),
-            bootstrap: BootstrapPlan {
-                domain: "gui/501".into(),
-                path: PathBuf::from("/tmp/robco.plist"),
-                execute: true,
-            },
-        };
-        let mut output = Vec::new();
-        plan.apply(&mut output).unwrap();
-        let output = String::from_utf8(output).unwrap();
+    fn service_prompt_matches_current_state() {
+        let cases = [
+            (
+                ServiceState::NotInstalled,
+                "Install Overseer launchd service? [y/N]: ",
+                false,
+            ),
+            (
+                ServiceState::Unloaded,
+                "Load the installed Overseer service? [Y/n]: ",
+                true,
+            ),
+            (
+                ServiceState::Loaded,
+                "Reload the running Overseer service? \
+                 (picks up the upgraded binary) [Y/n]: ",
+                true,
+            ),
+        ];
 
-        assert!(output.contains("Automatic service loading deferred"));
-        assert!(
-            output.find("launchctl setenv").unwrap() < output.find("launchctl bootstrap").unwrap()
-        );
+        for (state, expected_prompt, expected_default) in cases {
+            let mut input = Cursor::new(b"\n");
+            let mut output = Vec::new();
+
+            let accepted = confirm_service(&mut input, &mut output, state).unwrap();
+            let output = String::from_utf8(output).unwrap();
+
+            assert_eq!(output, format!("▌ robco ▸ {expected_prompt}"));
+            assert_eq!(accepted, expected_default);
+        }
     }
 }
