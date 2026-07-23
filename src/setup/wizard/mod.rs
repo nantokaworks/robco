@@ -1,7 +1,7 @@
 mod probe;
 mod prompt;
 mod steps;
-mod steps_service;
+pub(crate) mod steps_service;
 
 use std::io::{self, IsTerminal, Write};
 

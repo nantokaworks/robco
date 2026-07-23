@@ -1,7 +1,13 @@
 mod plan;
 mod probe;
+mod workflow;
+#[cfg(all(test, target_os = "macos"))]
+mod workflow_tests;
 
 use std::io::{BufRead, Write};
+
+#[cfg(target_os = "macos")]
+use std::io;
 
 use crate::{Result, config::Config};
 
@@ -9,9 +15,9 @@ use crate::{Result, config::Config};
 use crate::Error;
 
 #[cfg(target_os = "macos")]
-use self::plan::{BootstrapMode, BootstrapPlan, SetenvPlan};
+use self::plan::{BootstrapPlan, SetenvPlan};
 #[cfg(target_os = "macos")]
-use self::probe::ServiceState;
+use self::workflow::{Caller, WorkflowPlan};
 #[cfg(target_os = "macos")]
 use super::prompt;
 
@@ -51,56 +57,46 @@ pub(crate) fn configure<R: BufRead, W: Write>(
     output: &mut W,
     config: &Config,
 ) -> Result<Option<ServicePlan>> {
-    use crate::overseer::command::write_service_plist;
-
-    let service_probe = probe::run();
-    if !confirm_service(input, output, service_probe.state)? {
-        writeln!(output, "▌ robco ▸ launchd ··········· skipped")?;
+    let workflow = workflow::prepare(input, output, Caller::Wizard)?;
+    let Some(bootstrap) = materialize(workflow, output)? else {
         return Ok(None);
-    }
-    let path = write_service_plist()?;
-    writeln!(output, "▌ robco ▸ launchd ··········· plist written")?;
-    let uid = service_probe
-        .uid
-        .map_or_else(|| command_stdout("id", &["-u"]), Ok)?;
-    let domain = format!("gui/{uid}");
-    let mode = match service_probe.state {
-        ServiceState::Loaded => BootstrapMode::Reload,
-        ServiceState::NotInstalled | ServiceState::Unloaded => BootstrapMode::Load,
     };
-    let action = match mode {
-        BootstrapMode::Load => "Load the service now?",
-        BootstrapMode::Reload => "Reload the service now?",
-    };
-    let execute = prompt::confirm(input, output, action, false)?;
     let setenv = discord_env_plan(input, output, config)?;
-    Ok(Some(ServicePlan {
-        setenv,
-        bootstrap: BootstrapPlan {
-            domain,
-            path,
-            executable: std::env::current_exe()?,
-            execute,
-            mode,
-        },
-    }))
+    Ok(Some(ServicePlan { setenv, bootstrap }))
 }
 
 #[cfg(target_os = "macos")]
-fn confirm_service<R: BufRead, W: Write>(
-    input: &mut R,
+fn materialize<W: Write>(workflow: WorkflowPlan, output: &mut W) -> Result<Option<BootstrapPlan>> {
+    materialize_with(
+        workflow,
+        output,
+        crate::overseer::command::write_service_plist,
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn materialize_with<W, F>(
+    workflow: WorkflowPlan,
     output: &mut W,
-    state: ServiceState,
-) -> Result<bool> {
-    let (label, default) = match state {
-        ServiceState::NotInstalled => ("Install Overseer launchd service?", false),
-        ServiceState::Unloaded => ("Load the installed Overseer service?", true),
-        ServiceState::Loaded => (
-            "Reload the running Overseer service? (picks up the upgraded binary)",
-            true,
-        ),
-    };
-    prompt::confirm(input, output, label, default)
+    write_plist: F,
+) -> Result<Option<BootstrapPlan>>
+where
+    W: Write,
+    F: FnOnce() -> Result<std::path::PathBuf>,
+{
+    if !workflow.write_plist {
+        return Ok(None);
+    }
+    let path = write_plist()?;
+    writeln!(output, "▌ robco ▸ launchd ··········· plist written")?;
+    let uid = command_stdout("id", &["-u"])?;
+    Ok(Some(BootstrapPlan {
+        domain: format!("gui/{uid}"),
+        path,
+        executable: std::env::current_exe()?,
+        execute: workflow.execute,
+        mode: workflow.mode,
+    }))
 }
 
 #[cfg(target_os = "macos")]
@@ -152,6 +148,19 @@ fn command_stdout(program: &str, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn install_service() -> Result<()> {
+    let stdin = io::stdin();
+    let mut input = stdin.lock();
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    let workflow = workflow::prepare(&mut input, &mut output, Caller::InstallCommand)?;
+    if let Some(plan) = materialize(workflow, &mut output)? {
+        plan.apply(&mut output)?;
+    }
+    Ok(())
+}
+
 #[cfg(not(target_os = "macos"))]
 pub(crate) struct ServicePlan;
 
@@ -175,42 +184,9 @@ pub(crate) fn configure<R: BufRead, W: Write>(
     Ok(None)
 }
 
-#[cfg(all(test, target_os = "macos"))]
-mod tests {
-    use std::io::Cursor;
-
-    use super::{ServiceState, confirm_service};
-
-    #[test]
-    fn service_prompt_matches_current_state() {
-        let cases = [
-            (
-                ServiceState::NotInstalled,
-                "Install Overseer launchd service? [y/N]: ",
-                false,
-            ),
-            (
-                ServiceState::Unloaded,
-                "Load the installed Overseer service? [Y/n]: ",
-                true,
-            ),
-            (
-                ServiceState::Loaded,
-                "Reload the running Overseer service? \
-                 (picks up the upgraded binary) [Y/n]: ",
-                true,
-            ),
-        ];
-
-        for (state, expected_prompt, expected_default) in cases {
-            let mut input = Cursor::new(b"\n");
-            let mut output = Vec::new();
-
-            let accepted = confirm_service(&mut input, &mut output, state).unwrap();
-            let output = String::from_utf8(output).unwrap();
-
-            assert_eq!(output, format!("▌ robco ▸ {expected_prompt}"));
-            assert_eq!(accepted, expected_default);
-        }
-    }
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn install_service() -> Result<()> {
+    Err(crate::Error::Wizard(
+        "launchd service installation is unavailable on this OS".into(),
+    ))
 }

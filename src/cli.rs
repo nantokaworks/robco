@@ -87,7 +87,7 @@ pub enum OverseerCommand {
     Set(OverseerSetArgs),
     /// Disable dispatch and terminate all Overseer workers.
     Panic,
-    /// Write a launchd service plist without loading it.
+    /// Write a launchd service plist and load or reload it after confirmation.
     InstallService,
 }
 

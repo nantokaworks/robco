@@ -3,14 +3,8 @@ use std::{fs, process::Command, time::Duration};
 use super::super::{exec::run_timeout, overseer_home};
 use crate::Result;
 
-pub(crate) fn install_service() -> Result<std::path::PathBuf> {
-    let path = write_service_plist()?;
-    println!("wrote {}", path.display());
-    println!(
-        "load with: launchctl bootstrap gui/$(id -u) {}",
-        path.display()
-    );
-    Ok(path)
+pub(crate) fn install_service() -> Result<()> {
+    crate::setup::wizard::steps_service::install_service()
 }
 
 fn remove_legacy_service() -> Result<()> {
