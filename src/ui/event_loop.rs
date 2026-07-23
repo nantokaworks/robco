@@ -135,11 +135,14 @@ fn run_loop<B: ratatui::backend::Backend>(
                 app.selected_item()
                     .filter(|sel| !matches!(sel, Selection::OtherHeader | Selection::OrphanHeader)),
             );
-            let cursor = dialog::draw(frame, app, &visible).unwrap_or_else(|| {
-                let area = frame.area();
-                (area.x, area.bottom().saturating_sub(1))
-            });
-            frame.set_cursor_position(cursor);
+            // Only dialogs with a text field want a visible caret. Parking the
+            // cursor in the bottom-left corner otherwise put the terminal's
+            // hardware cursor right before the `ROBCO` footer brand; ratatui
+            // hides the cursor for any frame that never sets a position, so
+            // leaving it unset is what keeps the footer clean.
+            if let Some(cursor) = dialog::draw(frame, app, &visible) {
+                frame.set_cursor_position(cursor);
+            }
         })?;
 
         if event::poll(spinner::FRAME_INTERVAL)? {
