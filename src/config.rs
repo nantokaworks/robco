@@ -7,6 +7,7 @@ pub(crate) fn resolve_program(name: &str) -> Option<PathBuf> {
     crate::overseer::session::resolve_program_impl(name)
 }
 
+use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
 /// Registry agent identity inherited by processes in an agent tmux session.
@@ -227,12 +228,20 @@ impl Config {
         Ok(config)
     }
 
-    /// Persist the config to `~/.robco/config.json`, mirroring
-    /// [`Registry::save`](crate::registry::Registry::save).
+    /// Atomically persist the config via a temp file and rename, so a crash
+    /// mid-write leaves the previous config intact. Writes remain last-writer-wins:
+    /// rare, human-driven config edits do not warrant a durable owner queue yet,
+    /// so concurrent daemon and operator edits can still lose an update.
     pub fn save(&self) -> Result<()> {
         ensure_robco_dir()?;
         let raw = serde_json::to_string_pretty(self)?;
-        fs::write(config_path()?, raw)?;
+        let path = config_path()?;
+        let temp_path = path.with_extension(format!("json.{}.tmp", nanoid!()));
+        let written = fs::write(&temp_path, raw).and_then(|()| fs::rename(&temp_path, &path));
+        if let Err(error) = written {
+            let _ = fs::remove_file(temp_path);
+            return Err(error.into());
+        }
         Ok(())
     }
 
