@@ -3,7 +3,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::model::{OverseerCategory, Selection};
@@ -29,19 +29,17 @@ pub(in crate::ui) fn content_lines(app: &App) -> FrameContent {
 }
 
 pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect) {
-    let content = build_content(app, Some(area.width.saturating_sub(2)));
-    let offset = content.scroll_offset(area.height.saturating_sub(2));
-    let block = Block::default()
-        .title("OVERSEER")
-        .borders(Borders::ALL)
-        .border_style(THEME.accent_style())
-        .title_style(Style::default().add_modifier(Modifier::BOLD));
+    let content_area = Rect {
+        width: area.width.saturating_sub(1),
+        height: area.height.saturating_sub(1),
+        ..area
+    };
+    let content = build_content(app, Some(content_area.width));
+    let offset = content.scroll_offset(content_area.height);
 
     frame.render_widget(
-        Paragraph::new(content.lines)
-            .block(block)
-            .scroll((offset, 0)),
-        area,
+        Paragraph::new(content.lines).scroll((offset, 0)),
+        content_area,
     );
 }
 
@@ -94,7 +92,11 @@ fn build_content_with_warnings(
 }
 
 fn root_line(app: &App, selected: bool, warning_count: usize, width: Option<u16>) -> Line<'static> {
-    let style = row_style(selected);
+    let style = if selected {
+        THEME.selection_style().add_modifier(Modifier::BOLD)
+    } else {
+        THEME.accent_bold_style()
+    };
     let arrow = if app.overseer_collapsed { "▸" } else { "▾" };
     let mut spans = vec![Span::styled(
         format!("{} {arrow} OVERSEER", marker(selected)),
@@ -143,7 +145,7 @@ fn category_line(
     };
     Line::from(vec![
         Span::styled(
-            format!("  {} {arrow} {}  ", marker(selected), category.label()),
+            format!("{}   {arrow} {}  ", marker(selected), category.label()),
             row_style(selected),
         ),
         Span::styled(
@@ -221,7 +223,7 @@ mod tests {
         for collapsed in [true, false] {
             app.overseer_collapsed = collapsed;
             for tree_width in [24, 48] {
-                let content = build_content_with_warnings(&app, Some(tree_width - 2), &warnings);
+                let content = build_content_with_warnings(&app, Some(tree_width - 1), &warnings);
                 for warning in &warnings {
                     let expected = format!("⚠ {warning}");
                     let rows = content
@@ -230,7 +232,7 @@ mod tests {
                         .filter(|line| line.to_string() == expected)
                         .collect::<Vec<_>>();
                     assert_eq!(rows.len(), 1);
-                    assert!(rows[0].width() <= 22);
+                    assert!(rows[0].width() <= 23);
                 }
             }
         }
@@ -243,7 +245,7 @@ mod tests {
         app.overseer_collapsed = false;
         app.selected = OverseerCategory::Decisions.index() + 1;
 
-        let content = build_content_with_warnings(&app, Some(22), &warnings);
+        let content = build_content_with_warnings(&app, Some(23), &warnings);
 
         assert_eq!(content.selected_row, 7);
         assert_eq!(content.scroll_offset(6), 2);
