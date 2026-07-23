@@ -9,7 +9,7 @@ use crate::{Result, config::Config};
 use crate::Error;
 
 #[cfg(target_os = "macos")]
-use self::plan::{BootstrapPlan, SetenvPlan};
+use self::plan::{BootstrapMode, BootstrapPlan, SetenvPlan};
 #[cfg(target_os = "macos")]
 use self::probe::ServiceState;
 #[cfg(target_os = "macos")]
@@ -29,20 +29,19 @@ impl ServicePlan {
                 .setenv
                 .as_ref()
                 .is_some_and(|setenv| setenv.value.is_none());
-        let bootstrap = BootstrapPlan {
-            execute: self.bootstrap.execute && !defer_bootstrap,
-            ..self.bootstrap
-        };
         if defer_bootstrap {
             writeln!(
                 output,
-                "Automatic service loading deferred: set the Discord token first."
+                "Automatic service loading or reloading deferred: set the Discord token first."
             )?;
         }
         if let Some(setenv) = self.setenv {
             setenv.apply(output)?;
         }
-        bootstrap.apply(output)
+        if defer_bootstrap {
+            return Ok(());
+        }
+        self.bootstrap.apply(output)
     }
 }
 
@@ -65,14 +64,24 @@ pub(crate) fn configure<R: BufRead, W: Write>(
         .uid
         .map_or_else(|| command_stdout("id", &["-u"]), Ok)?;
     let domain = format!("gui/{uid}");
-    let execute = prompt::confirm(input, output, "Load the service now?", false)?;
+    let mode = match service_probe.state {
+        ServiceState::Loaded => BootstrapMode::Reload,
+        ServiceState::NotInstalled | ServiceState::Unloaded => BootstrapMode::Load,
+    };
+    let action = match mode {
+        BootstrapMode::Load => "Load the service now?",
+        BootstrapMode::Reload => "Reload the service now?",
+    };
+    let execute = prompt::confirm(input, output, action, false)?;
     let setenv = discord_env_plan(input, output, config)?;
     Ok(Some(ServicePlan {
         setenv,
         bootstrap: BootstrapPlan {
             domain,
             path,
+            executable: std::env::current_exe()?,
             execute,
+            mode,
         },
     }))
 }
