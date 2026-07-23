@@ -36,6 +36,39 @@ pub(crate) struct FooterZones {
     pub(crate) hints: Rect,
 }
 
+pub(crate) struct FooterLayout {
+    pub(crate) version: String,
+    pub(crate) zones: FooterZones,
+    pub(crate) caret: (u16, u16),
+}
+
+pub(crate) fn footer(footer: Rect) -> FooterLayout {
+    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let brand_width = ("ROBCO ".len() + version.chars().count()) as u16;
+    let zones = footer_zones(footer, brand_width.saturating_add(2));
+    let caret_bounds = if zones.ident.width > 0 {
+        zones.ident
+    } else {
+        footer
+    };
+    let caret_min = caret_bounds.x;
+    let caret_max = caret_bounds
+        .x
+        .saturating_add(caret_bounds.width.saturating_sub(1));
+    let caret_x = zones
+        .ident
+        .x
+        .saturating_add(brand_width)
+        .saturating_add(1)
+        .clamp(caret_min, caret_max);
+
+    FooterLayout {
+        version,
+        caret: (caret_x, caret_bounds.y),
+        zones,
+    }
+}
+
 pub(crate) fn footer_zones(footer: Rect, ident_width: u16) -> FooterZones {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -219,61 +252,5 @@ fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn root_insets_top_and_sides_and_keeps_footer_on_last_row() {
-        let layout = root(Rect::new(0, 0, 80, 24));
-
-        assert_eq!(layout.body, Rect::new(1, 1, 78, 22));
-        // Footer sits on the last terminal row, inset one column on each side.
-        assert_eq!(layout.footer, Rect::new(1, 23, 78, 1));
-    }
-
-    #[test]
-    fn root_inset_is_relative_to_a_non_origin_area() {
-        let layout = root(Rect::new(5, 3, 40, 10));
-
-        assert_eq!(layout.body, Rect::new(6, 4, 38, 8));
-        assert_eq!(layout.footer, Rect::new(6, 12, 38, 1));
-    }
-
-    #[test]
-    fn root_does_not_underflow_on_tiny_terminals() {
-        for (width, height) in [(0, 0), (1, 1), (2, 1), (1, 2), (2, 2), (3, 3)] {
-            let layout = root(Rect::new(0, 0, width, height));
-
-            let expected_width = width.saturating_sub(2);
-            assert_eq!(layout.body.width, expected_width);
-            assert_eq!(layout.footer.width, expected_width);
-            // The inset area never extends past the original bottom edge
-            // (the y+1 shift itself is the only row on a height-0 area).
-            assert!(layout.footer.bottom() <= height.max(1));
-        }
-    }
-
-    #[test]
-    fn tree_stack_reserves_overseer_frame_above_projects() {
-        let layout = tree_stack(Rect::new(2, 4, 32, 20), 8);
-
-        assert_eq!(layout.overseer, Rect::new(2, 4, 32, 8));
-        assert_eq!(layout.projects, Rect::new(2, 12, 32, 12));
-    }
-
-    #[test]
-    fn tree_stack_gives_projects_full_height_without_overseer() {
-        let tree = Rect::new(2, 4, 32, 20);
-        let layout = tree_stack(tree, 0);
-
-        assert_eq!(layout.overseer, Rect::default());
-        assert_eq!(layout.projects, tree);
-    }
-
-    #[test]
-    fn overseer_frame_height_clamps_content_plus_spacer() {
-        assert_eq!(overseer_frame_height(0), OVERSEER_FRAME_MIN_HEIGHT);
-        assert_eq!(overseer_frame_height(5), 6);
-        assert_eq!(overseer_frame_height(usize::MAX), OVERSEER_FRAME_MAX_HEIGHT);
-    }
-}
+#[path = "layout_tests.rs"]
+mod tests;
