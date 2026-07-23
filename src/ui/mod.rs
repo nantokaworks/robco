@@ -46,6 +46,8 @@ mod overseer;
 mod preview;
 mod repo_description;
 mod scrollback;
+#[cfg(test)]
+mod sidebar_frame_tests;
 pub(crate) mod spinner;
 mod summary;
 #[cfg(test)]

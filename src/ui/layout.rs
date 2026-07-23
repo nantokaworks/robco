@@ -10,8 +10,8 @@ use super::App;
 const TREE_WIDTH_RATIO: f32 = 0.30;
 const TREE_MIN_WIDTH: u16 = 24;
 const TREE_MAX_WIDTH: u16 = 48;
-pub(in crate::ui) const OVERSEER_FRAME_MIN_HEIGHT: u16 = 3;
-pub(in crate::ui) const OVERSEER_FRAME_MAX_HEIGHT: u16 = 16;
+pub(in crate::ui) const OVERSEER_FRAME_MIN_HEIGHT: u16 = 2;
+pub(in crate::ui) const OVERSEER_FRAME_MAX_HEIGHT: u16 = 15;
 
 pub(crate) struct RootLayout {
     pub(crate) body: Rect,
@@ -112,9 +112,10 @@ pub(crate) fn tree_stack(tree: Rect, overseer_frame_height: u16) -> TreeStackLay
 }
 
 pub(in crate::ui) fn overseer_frame_height(content_rows: usize) -> u16 {
+    // The extra row is the trailing spacer between OVERSEER and PROJECTS.
     u16::try_from(content_rows)
         .unwrap_or(u16::MAX)
-        .saturating_add(2)
+        .saturating_add(1)
         .clamp(OVERSEER_FRAME_MIN_HEIGHT, OVERSEER_FRAME_MAX_HEIGHT)
 }
 
@@ -159,18 +160,19 @@ pub(in crate::ui) fn popup_area(
     let width = width.min(container.width);
     let height = height.min(container.height);
 
-    // Each bordered frame reserves its top row for its title/border.
+    // OVERSEER starts with its content header; PROJECTS has a separate header row.
     let anchor_row = if matches!(
         app.selected_item(),
         Some(Selection::Overseer | Selection::OverseerCategory(_))
     ) {
         let content = super::tree::overseer_frame::content_lines(app);
-        let inner_height = panes.overseer.height.saturating_sub(2);
+        let inner_height = panes.overseer.height.saturating_sub(1);
         let row = content
             .selected_row
             .saturating_sub(content.scroll_offset(inner_height));
-        panes.overseer.y.saturating_add(1).saturating_add(row)
+        panes.overseer.y.saturating_add(row)
     } else {
+        // The +1 skips the bold PROJECTS header row.
         panes.tree.y + 1 + selected_row_offset(app, visible)
     };
 
@@ -269,9 +271,9 @@ mod tests {
     }
 
     #[test]
-    fn overseer_frame_height_clamps_content_plus_border() {
+    fn overseer_frame_height_clamps_content_plus_spacer() {
         assert_eq!(overseer_frame_height(0), OVERSEER_FRAME_MIN_HEIGHT);
-        assert_eq!(overseer_frame_height(5), 7);
+        assert_eq!(overseer_frame_height(5), 6);
         assert_eq!(overseer_frame_height(usize::MAX), OVERSEER_FRAME_MAX_HEIGHT);
     }
 }

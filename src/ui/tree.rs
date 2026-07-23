@@ -1,8 +1,8 @@
 use ratatui::{
     Frame,
-    style::{Modifier, Style},
+    layout::Rect,
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
 use crate::model::{Selection, Status};
@@ -23,9 +23,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     if app.overseer_visible {
         overseer_frame::draw(frame, app, panes.overseer);
     }
-    let projects_width = panes.tree.width.saturating_sub(2);
+    let projects_width = panes.tree.width.saturating_sub(1);
 
-    let mut lines = Vec::new();
+    let mut lines = vec![Line::from(Span::styled(
+        "PROJECTS",
+        THEME.accent_bold_style(),
+    ))];
     for (idx, item) in visible.iter().enumerate() {
         let selected = idx == app.selected;
         let marker = if selected { ">" } else { " " };
@@ -270,15 +273,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         }
     }
 
-    let tree = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .title("PROJECTS")
-                .borders(Borders::ALL)
-                .title_style(Style::default().add_modifier(Modifier::BOLD)),
-        )
-        .style(THEME.accent_style());
-    frame.render_widget(tree, panes.tree);
+    let tree = Paragraph::new(lines).style(THEME.accent_style());
+    let projects_area = Rect {
+        width: projects_width,
+        ..panes.tree
+    };
+    frame.render_widget(tree, projects_area);
 
     footer::draw(frame, app, root.footer, message);
 }
