@@ -25,7 +25,7 @@ use crate::{
     registry::Registry,
 };
 
-use super::{App, DISCOVERY_INTERVAL, dialog, preview, spinner, tree};
+use super::{App, DISCOVERY_INTERVAL, dialog, layout, preview, spinner, tree};
 
 pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
     enable_raw_mode()?;
@@ -127,6 +127,7 @@ fn run_loop<B: ratatui::backend::Backend>(
         terminal.draw(|frame| {
             let visible = app.visible();
             let message = app.message.as_ref().map(|(message, _)| message.as_str());
+            let footer_caret = layout::footer(layout::root(frame.area()).footer).caret;
             tree::draw(frame, app, &visible, message);
             preview::draw(
                 frame,
@@ -135,14 +136,10 @@ fn run_loop<B: ratatui::backend::Backend>(
                 app.selected_item()
                     .filter(|sel| !matches!(sel, Selection::OtherHeader | Selection::OrphanHeader)),
             );
-            // Only dialogs with a text field want a visible caret. Parking the
-            // cursor in the bottom-left corner otherwise put the terminal's
-            // hardware cursor right before the `ROBCO` footer brand; ratatui
-            // hides the cursor for any frame that never sets a position, so
-            // leaving it unset is what keeps the footer clean.
-            if let Some(cursor) = dialog::draw(frame, app, &visible) {
-                frame.set_cursor_position(cursor);
-            }
+            // Pinning the Normal-mode cursor gives IME preedit a stable home
+            // per #189; #201 moves it right of the ROBCO ident to keep the brand clean.
+            let cursor = dialog::draw(frame, app, &visible).unwrap_or(footer_caret);
+            frame.set_cursor_position(cursor);
         })?;
 
         if event::poll(spinner::FRAME_INTERVAL)? {
