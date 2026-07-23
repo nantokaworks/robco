@@ -98,7 +98,6 @@ pub fn project_slug(path: &Path) -> String {
 struct ClaudeMeta {
     agent_type: String,
     description: String,
-    #[allow(dead_code)]
     tool_use_id: String,
     spawn_depth: u32,
 }

@@ -227,7 +227,8 @@ impl Config {
         Ok(config)
     }
 
-    /// Persist the config to `~/.robco/config.json`, mirroring [`Registry::save`].
+    /// Persist the config to `~/.robco/config.json`, mirroring
+    /// [`Registry::save`](crate::registry::Registry::save).
     pub fn save(&self) -> Result<()> {
         ensure_robco_dir()?;
         let raw = serde_json::to_string_pretty(self)?;
