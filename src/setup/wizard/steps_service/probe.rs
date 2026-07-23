@@ -18,13 +18,12 @@ pub(super) enum ServiceState {
 #[cfg(target_os = "macos")]
 pub(super) struct ServiceProbe {
     pub(super) state: ServiceState,
-    pub(super) uid: Option<String>,
 }
 
 #[cfg(target_os = "macos")]
 pub(super) fn run() -> ServiceProbe {
     let Some(home) = dirs::home_dir() else {
-        return unloaded(None);
+        return unloaded();
     };
     let plist = home
         .join("Library")
@@ -34,20 +33,16 @@ pub(super) fn run() -> ServiceProbe {
         Ok(false) => {
             return ServiceProbe {
                 state: ServiceState::NotInstalled,
-                uid: None,
             };
         }
-        Err(_) => return unloaded(None),
+        Err(_) => return unloaded(),
         Ok(true) => {}
     }
     let Ok(uid) = super::command_stdout("id", &["-u"]) else {
-        return unloaded(None);
+        return unloaded();
     };
     let state = state_with(&uid, launchctl_print);
-    ServiceProbe {
-        state,
-        uid: Some(uid),
-    }
+    ServiceProbe { state }
 }
 
 #[cfg(target_os = "macos")]
@@ -71,10 +66,9 @@ fn launchctl_print(uid: &str) -> std::io::Result<bool> {
 }
 
 #[cfg(target_os = "macos")]
-fn unloaded(uid: Option<String>) -> ServiceProbe {
+fn unloaded() -> ServiceProbe {
     ServiceProbe {
         state: ServiceState::Unloaded,
-        uid,
     }
 }
 

@@ -27,6 +27,12 @@ use escalation::escalate_workers;
 use service::install_service;
 pub(crate) use service::write_service_plist;
 
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct ActiveWorkers {
+    pub(crate) count: usize,
+    pub(crate) repos: BTreeMap<String, usize>,
+}
+
 pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
     match args.command {
         OverseerCommand::Run => unreachable!("async overseer run handled by main"),
@@ -34,7 +40,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Stop => stop(),
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         OverseerCommand::Panic => panic_stop(),
-        OverseerCommand::InstallService => install_service().map(|_| ()),
+        OverseerCommand::InstallService => install_service(),
     }
 }
 
@@ -46,15 +52,7 @@ fn status(config: &Config) -> Result<()> {
         .and_then(|metadata| metadata.modified().ok())
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
     let healthy = daemon_healthy(config.overseer.poll_interval_secs);
-    let active: Vec<_> = ledger
-        .entries
-        .iter()
-        .filter(|entry| !terminal(entry.phase))
-        .collect();
-    let mut repos = BTreeMap::new();
-    for entry in &active {
-        *repos.entry(entry.repo.as_str()).or_insert(0usize) += 1;
-    }
+    let active = active_workers(&ledger);
     let mut phases = BTreeMap::new();
     for entry in &ledger.entries {
         *phases.entry(phase_name(entry.phase)).or_insert(0usize) += 1;
@@ -80,11 +78,11 @@ fn status(config: &Config) -> Result<()> {
         "today: {}/{}  workers: {}/{}  per-repo cap: {}",
         ledger.counters.dispatched_today,
         config.overseer.daily_dispatch_limit,
-        active.len(),
+        active.count,
         config.overseer.max_workers,
         config.overseer.per_repo_limit
     );
-    println!("workers by repo: {repos:?}");
+    println!("workers by repo: {:?}", active.repos);
     println!("phases: {phases:?}");
     println!("skip list: {:?}", ledger.skip_list);
     println!("recent decisions:");
@@ -220,7 +218,29 @@ fn read_pid() -> Option<u32> {
 fn on_off(value: bool) -> &'static str {
     if value { "on" } else { "off" }
 }
-fn terminal(phase: LedgerPhase) -> bool {
+pub(crate) fn active_workers(ledger: &Ledger) -> ActiveWorkers {
+    let active: Vec<_> = ledger
+        .entries
+        .iter()
+        .filter(|entry| !terminal(entry.phase))
+        .collect();
+    let mut repos = BTreeMap::new();
+    for entry in &active {
+        *repos.entry(entry.repo.clone()).or_insert(0usize) += 1;
+    }
+    ActiveWorkers {
+        count: active.len(),
+        repos,
+    }
+}
+
+pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
+    let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
+    let ledger = serde_json::from_str(&raw)?;
+    Ok(active_workers(&ledger))
+}
+
+pub(crate) fn terminal(phase: LedgerPhase) -> bool {
     matches!(
         phase,
         LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
