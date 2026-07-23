@@ -11,10 +11,9 @@ pub use capture::{
 };
 pub use env::session_env;
 pub use resize::resize_session;
-#[allow(unused_imports)]
 pub use session::{
     find_session_by_cwd, has_session, kill_session, list_sessions_with_cwd, new_session,
-    new_session_command, sanitize_target_part, session_name,
+    sanitize_target_part, session_name,
 };
 
 use crate::{Error, Result};
