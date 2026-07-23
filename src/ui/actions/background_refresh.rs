@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     panic::{self, AssertUnwindSafe},
     path::PathBuf,
     sync::{
@@ -15,17 +14,19 @@ use crate::{
     config::Config,
     discover, dropr, git,
     model::{OrphanSession, RepoNode},
-    overseer::{ledger::Ledger, logging},
+    overseer::logging,
     registry::Registry,
     status,
     subagents::claude::ClaudeSubagentReader,
 };
 
-use super::{background_support::*, children, discovery, orphans, subagents};
-use crate::ui::{
-    App, inbox, list,
-    overseer::{OverseerSnapshot, heartbeat_is_fresh},
+use super::{
+    background_support::*,
+    children, discovery, orphans,
+    overseer_refresh::{OverseerResult, capture_overseer},
+    subagents,
 };
+use crate::ui::{App, list};
 
 type StatusMessage = (Instant, Option<StatusResult>);
 type DiscoveryMessage = (Instant, Option<DiscoveryResult>);
@@ -37,15 +38,15 @@ pub(in crate::ui) struct BackgroundRefresh {
     discovery_rx: Receiver<DiscoveryMessage>,
     status_in_flight: Option<Instant>,
     discovery_in_flight: Option<Instant>,
+    pub(super) overseer_synced_at: Option<Instant>,
     decision_cursor: Option<Arc<Mutex<logging::DigestCursor>>>,
     registry_saver: RegistrySaver,
 }
 
-struct StatusResult {
-    repos: Vec<RepoNode>,
-    overseer_visible: bool,
-    inbox: Vec<inbox::InboxItem>,
-    snapshot: OverseerSnapshot,
+pub(super) struct StatusResult {
+    pub(super) repos: Vec<RepoNode>,
+    pub(super) overseer_visible: bool,
+    pub(super) overseer: OverseerResult,
 }
 
 struct DiscoveryResult {
@@ -66,6 +67,7 @@ impl BackgroundRefresh {
             discovery_rx,
             status_in_flight: None,
             discovery_in_flight: None,
+            overseer_synced_at: None,
             decision_cursor: None,
             registry_saver: RegistrySaver::new(),
         }
@@ -78,8 +80,9 @@ impl App {
     }
 
     pub(in crate::ui) fn initial_tick(&mut self) {
+        let started = Instant::now();
         let result = capture_status(clone_registry(&self.registry), &self.config);
-        self.apply_status(result);
+        self.apply_status(result, started);
     }
 
     pub(in crate::ui) fn schedule_status_refresh(&mut self, notify_tx: Sender<String>) {
@@ -144,7 +147,7 @@ impl App {
             if self.background_refresh.status_in_flight == Some(started) {
                 self.background_refresh.status_in_flight = None;
                 if let Some(result) = result {
-                    self.apply_status(result);
+                    self.apply_status(result, started);
                 }
             }
         }
@@ -156,16 +159,6 @@ impl App {
                 }
             }
         }
-    }
-
-    fn apply_status(&mut self, result: StatusResult) {
-        merge_status(&mut self.registry.repos, result.repos);
-        self.set_overseer_visibility(result.overseer_visible);
-        self.overseer_snapshot = result.snapshot;
-        self.overseer_inbox = result.inbox;
-        self.overseer_inbox_selected = self
-            .overseer_inbox_selected
-            .min(self.overseer_inbox.len().saturating_sub(1));
     }
 
     fn apply_discovery(&mut self, mut result: DiscoveryResult) {
@@ -223,42 +216,10 @@ fn capture_status(mut registry: Registry, config: &Config) -> StatusResult {
             status::refresh_agent(&repo.path, tracked, config.auto_accept, processes.as_ref());
         }
     }
-    let ledger = Ledger::load().unwrap_or_default();
-    let decisions = logging::tail(200).unwrap_or_default();
-    let reports = inbox::question_reports(&registry);
-    let inbox = inbox::aggregate(&ledger, &decisions, &reports);
-    let heartbeat = crate::overseer::heartbeat_path().ok();
-    let heartbeat_age = heartbeat
-        .as_ref()
-        .and_then(|path| fs::metadata(path).and_then(|meta| meta.modified()).ok())
-        .and_then(|modified| SystemTime::now().duration_since(modified).ok());
-    // Reload the overseer config from disk so the Info pane reflects flips made
-    // outside the `,` settings editor (the `S` panic-stop, the daemon, Discord,
-    // external edits). `app.config` only refreshes via the editor, so reading it
-    // here would keep showing stale `dispatch` / `auto-merge` state. Fall back to
-    // the in-memory copy when the reload fails.
-    //
-    // Load it before the liveness check so the whole snapshot — including the
-    // heartbeat-freshness window that decides `daemon_alive` — is derived from
-    // one consistent view of the config rather than mixing fresh and stale.
-    let overseer = Config::load()
-        .map(|reloaded| reloaded.overseer)
-        .unwrap_or_else(|_| config.overseer.clone());
-    let daemon_alive = crate::overseer::daemon_pid_alive()
-        && heartbeat
-            .as_ref()
-            .is_some_and(|path| heartbeat_is_fresh(path, overseer.poll_interval_secs));
     StatusResult {
+        overseer: capture_overseer(&registry, config),
         repos: registry.repos,
         overseer_visible: list::overseer_is_visible(),
-        inbox,
-        snapshot: OverseerSnapshot {
-            overseer,
-            ledger,
-            decisions,
-            daemon_alive,
-            heartbeat_age,
-        },
     }
 }
 
