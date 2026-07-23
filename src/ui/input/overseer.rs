@@ -162,16 +162,24 @@ impl App {
         self.response_message(result, "overseer stopped: dispatch off, workers killed");
     }
 
-    /// Reset the overseer dispatch circuit: re-enable dispatch and clear the
-    /// failure counter. Runs synchronously as an explicit operator action.
+    /// Request an overseer dispatch circuit reset: re-enable dispatch now and
+    /// clear the daemon-owned failure counter on its next tick.
     pub(in crate::ui) fn reset_overseer(&mut self) {
         let result =
             crate::overseer::command::set_runtime(crate::cli::OverseerSetting::Dispatch, true);
         self.refresh_overseer_snapshot();
-        self.response_message(
-            result,
-            "dispatch circuit reset: dispatch on, failures cleared",
-        );
+        match result {
+            Ok(()) if self.overseer_snapshot.daemon_alive => {
+                self.show_message(
+                    "dispatch circuit reset requested: dispatch on, failures clearing on next tick",
+                );
+            }
+            Ok(()) => self.show_message(format!(
+                "dispatch circuit reset requested: dispatch on, failures pending; warning: {}",
+                crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT
+            )),
+            Err(error) => self.show_message(error.to_string()),
+        }
     }
 }
 

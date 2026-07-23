@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use super::terminal;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
 
-pub(super) fn escalate_workers(ledger: &mut Ledger, killed_ids: &HashSet<String>) {
+pub(crate) fn escalate_workers(ledger: &mut Ledger, killed_ids: &HashSet<String>) {
     for entry in &mut ledger.entries {
         if killed_ids.contains(&entry.agent_id) && !terminal(entry.phase) {
             entry.phase = LedgerPhase::Escalated;

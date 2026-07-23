@@ -11,7 +11,7 @@ use super::{
     ledger::{Ledger, LedgerPhase},
     logging,
     monitor::{Action, FailureOrigin, ObservationSnapshot, reconcile},
-    pidfile_path, snapshots_path,
+    pidfile_path, runtime_request, snapshots_path,
     triage::ExceptionQueue,
 };
 use crate::{Result, config::Config};
@@ -46,6 +46,17 @@ pub async fn run_daemon() -> Result<()> {
         }
         sync_discord(&mut discord, &config.overseer.discord, &ledger_request_tx);
         apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
+        match runtime_request::drain(&mut ledger, &mut config) {
+            Ok(config_changed) => {
+                if config_changed {
+                    config.save()?;
+                }
+            }
+            Err(error) => logging::log_message(
+                None,
+                &format!("runtime request drain failed; retaining state: {error}"),
+            )?,
+        }
         let now = Utc::now();
         let mut observed = observations::gather(&ledger, &mut inbox);
         if let Err(error) = append_jsonl(
