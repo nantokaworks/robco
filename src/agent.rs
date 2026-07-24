@@ -189,7 +189,15 @@ pub fn adopt_worktree(
         .unwrap_or_else(|| (nanoid!(8), None));
     AgentNode {
         id,
-        management: ManagementMode::Manual,
+        // Adoption recovers `parent_agent_id` from the live session, so derive
+        // the mode from it exactly as `create_agent` does: an Overseer worker
+        // that gets re-adopted must come back under automatic dispatch instead
+        // of returning as a worker the daemon skips as manual.
+        management: if is_overseer_child(parent_agent_id.as_deref()) {
+            ManagementMode::Auto
+        } else {
+            ManagementMode::Manual
+        },
         parent_agent_id,
         title: label,
         worktree_path,

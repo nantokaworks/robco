@@ -5,7 +5,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{Selection, Status};
+use crate::model::{ManagementMode, Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
@@ -176,9 +176,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.mcp_active = agent.mcp_active;
                 indicator_state.subagents_active = active;
-                if crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref()) {
-                    indicator_state.management = Some(agent.management);
-                }
                 let primary = select(indicator_state);
                 let right = indicator::supplementary_spans(
                     primary,
@@ -197,12 +194,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         "▸ "
                     }
                 });
-                let prefix = match child_marker {
-                    Some(child_marker) => {
-                        format!("{marker}   {}{child_marker}", "  ".repeat(depth))
-                    }
-                    None => format!("{marker}   {}", "  ".repeat(depth)),
-                };
+                let overseer_auto =
+                    crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref())
+                        && agent.management == ManagementMode::Auto;
+                let prefix = label::agent_row_prefix(marker, overseer_auto, depth, child_marker);
                 lines.push(label::labeled_row(
                     projects_width,
                     prefix,
@@ -291,3 +286,6 @@ fn short_path(path: &std::path::Path) -> String {
         None => path.display().to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests;

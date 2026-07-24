@@ -12,6 +12,36 @@ const START_PAUSE: Duration = Duration::from_millis(1_000);
 const STEP: Duration = Duration::from_millis(300);
 const END_PAUSE: Duration = Duration::from_millis(1_000);
 
+/// Marks an agent row as an Overseer worker under automatic dispatch. It sits at
+/// the row head so a column of agents can be scanned at a glance; Manual workers
+/// and unmanaged worktrees render blank there (the OVERSEER pane still reports
+/// the difference).
+const OVERSEER_AUTO_MARKER: &str = "◆";
+
+/// The prefix of an agent row: cursor, Overseer marker cell, identity-tree
+/// indent, then the expand arrow for a row that has child worktrees.
+///
+/// The marker spends one of the three cells that already separated the cursor
+/// from the indent, so the title column sits at the same offset whether or not
+/// a row carries it.
+pub(super) fn agent_row_prefix(
+    cursor: &str,
+    overseer_auto: bool,
+    depth: usize,
+    child_marker: Option<&str>,
+) -> String {
+    let marker = if overseer_auto {
+        OVERSEER_AUTO_MARKER
+    } else {
+        " "
+    };
+    format!(
+        "{cursor} {marker} {}{}",
+        "  ".repeat(depth),
+        child_marker.unwrap_or("")
+    )
+}
+
 pub(super) fn display(title: &str, available: usize, selected: bool, elapsed: Duration) -> String {
     if UnicodeWidthStr::width(title) <= available {
         title.to_string()
