@@ -24,7 +24,7 @@ pub(super) fn ingest(
     for repo in repos {
         repo.main_subagents_active = repo.main_status.map_or(0, |_| {
             reader
-                .read(&repo.path, now)
+                .read(&repo.path, None, now)
                 .iter()
                 .filter(|subagent| subagent.status == SubagentStatus::Running)
                 .count()
@@ -33,7 +33,11 @@ pub(super) fn ingest(
             if !read_allowed(agent.status, &agent.worktree_path) {
                 agent.subagents.clear();
             } else {
-                agent.subagents = reader.read(&agent.worktree_path, now);
+                agent.subagents = reader.read(
+                    &agent.worktree_path,
+                    agent.claude_session_id.as_deref(),
+                    now,
+                );
             }
         }
     }
@@ -61,12 +65,19 @@ mod tests {
 
     #[derive(Default)]
     struct FakeReader {
-        reads: RefCell<Vec<PathBuf>>,
+        reads: RefCell<Vec<(PathBuf, Option<String>)>>,
     }
 
     impl SubagentReader for FakeReader {
-        fn read(&self, path: &Path, now: SystemTime) -> Vec<TaskSubagent> {
-            self.reads.borrow_mut().push(path.to_path_buf());
+        fn read(
+            &self,
+            path: &Path,
+            session_id: Option<&str>,
+            now: SystemTime,
+        ) -> Vec<TaskSubagent> {
+            self.reads
+                .borrow_mut()
+                .push((path.to_path_buf(), session_id.map(str::to_string)));
             let statuses = if path == Path::new("/repo") {
                 vec![SubagentStatus::Running, SubagentStatus::Done]
             } else {
@@ -104,6 +115,7 @@ mod tests {
                 branch: "task".into(),
                 base_commit: String::new(),
                 program: "claude".into(),
+                claude_session_id: Some("session-agent".into()),
                 profile: None,
                 tmux_session: "robco_repo_task".into(),
                 created_at: now,
@@ -148,7 +160,10 @@ mod tests {
 
         assert_eq!(
             reader.reads.borrow().as_slice(),
-            [repo_path.as_path(), worktree_path.as_path()]
+            [
+                (repo_path, None),
+                (worktree_path, Some("session-agent".into()))
+            ]
         );
         assert_eq!(repos[0].main_subagents_active, 1);
         assert_eq!(repos[0].agents[0].subagents.len(), 1);
@@ -166,7 +181,10 @@ mod tests {
 
         ingest(&mut repos, true, &reader, SystemTime::now());
 
-        assert_eq!(reader.reads.borrow().as_slice(), [worktree_path.as_path()]);
+        assert_eq!(
+            reader.reads.borrow().as_slice(),
+            [(worktree_path, Some("session-agent".into()))]
+        );
         assert_eq!(repos[0].main_subagents_active, 0);
     }
 
@@ -181,7 +199,7 @@ mod tests {
         let mut repo = repo(temp.path(), &dead_path);
         repo.main_status = None;
         repo.agents[0].status = Status::Dead;
-        repo.agents[0].subagents = reader.read(Path::new("/fixture"), now);
+        repo.agents[0].subagents = reader.read(Path::new("/fixture"), None, now);
         let mut missing_agent = repo.agents[0].clone();
         missing_agent.status = Status::Running;
         missing_agent.worktree_path = missing_path;
@@ -201,7 +219,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let mut repos = vec![repo(temp.path(), temp.path())];
         repos[0].main_subagents_active = 4;
-        repos[0].agents[0].subagents = reader.read(Path::new("/fixture"), now);
+        repos[0].agents[0].subagents = reader.read(Path::new("/fixture"), None, now);
         reader.reads.borrow_mut().clear();
 
         ingest(&mut repos, false, &reader, now);
@@ -230,7 +248,7 @@ mod tests {
         let mut app = App::new(registry, config, temp.path().join("missing"));
         app.registry.repos[0].main_subagents_active = 4;
         app.registry.repos[0].agents[0].subagents =
-            FakeReader::default().read(Path::new("/fixture"), SystemTime::now());
+            FakeReader::default().read(Path::new("/fixture"), None, SystemTime::now());
 
         ingest(
             &mut app.registry.repos,

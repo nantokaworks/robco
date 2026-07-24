@@ -164,6 +164,7 @@ mod tests {
             branch: "worker-1".into(),
             base_commit: "abc123".into(),
             program: "claude".into(),
+            claude_session_id: None,
             profile: None,
             tmux_session: "worker-1".into(),
             created_at: Local::now(),

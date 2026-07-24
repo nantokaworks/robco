@@ -202,6 +202,7 @@ mod tests {
             branch: "b".to_string(),
             base_commit: String::new(),
             program: "claude".to_string(),
+            claude_session_id: None,
             profile: None,
             tmux_session: "robco_r_t".to_string(),
             created_at: now,

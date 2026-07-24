@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, process::Command};
 
 use crate::config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID};
+use nanoid::nanoid;
 
 pub struct RecoveredIdentity {
     pub id: String,
@@ -13,6 +14,36 @@ pub fn agent_env(id: &str, parent_agent_id: Option<&str>) -> Vec<(&'static str, 
         env.push((ENV_PARENT_AGENT_ID, parent.to_string()));
     }
     env
+}
+
+pub(crate) fn claude_session_id(program: &str) -> Option<String> {
+    let executable = program.split_whitespace().next()?;
+    let basename = std::path::Path::new(executable).file_name()?.to_str()?;
+    (basename == "claude").then(new_uuid_v4)
+}
+
+pub(crate) fn session_id_args(claude_session_id: Option<&str>) -> Vec<String> {
+    claude_session_id
+        .map(|id| vec!["--session-id".to_string(), id.to_string()])
+        .unwrap_or_default()
+}
+
+fn new_uuid_v4() -> String {
+    const HEX: [char; 16] = [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
+    ];
+    const VARIANT: [char; 4] = ['8', '9', 'a', 'b'];
+    let random = nanoid!(32, &HEX);
+    let variant = nanoid!(1, &VARIANT);
+    format!(
+        "{}-{}-4{}-{}{}-{}",
+        &random[..8],
+        &random[8..12],
+        &random[13..16],
+        variant,
+        &random[17..20],
+        &random[20..]
+    )
 }
 
 pub(crate) fn launch_command(
@@ -145,6 +176,33 @@ mod tests {
             launch_command("codex", Some("do it"), &["--flag".into(), "a'b".into()]),
             "codex '--flag' 'a'\\''b' 'do it'"
         );
+    }
+
+    #[test]
+    fn creates_session_id_only_for_claude_programs() {
+        let id = claude_session_id("/usr/local/bin/claude").unwrap();
+        assert_eq!(id.len(), 36);
+        assert_eq!(&id[14..15], "4");
+        assert!(matches!(&id[19..20], "8" | "9" | "a" | "b"));
+        assert!(
+            id.chars()
+                .enumerate()
+                .filter(|(index, _)| ![8, 13, 18, 23].contains(index))
+                .all(|(_, character)| character.is_ascii_hexdigit())
+        );
+        assert!(claude_session_id("claude").is_some());
+        assert!(claude_session_id("claude --dangerously-skip-permissions").is_some());
+        assert!(claude_session_id("myclaude").is_none());
+        assert!(claude_session_id("codex").is_none());
+    }
+
+    #[test]
+    fn builds_session_id_args() {
+        assert_eq!(
+            session_id_args(Some("session-id")),
+            vec!["--session-id", "session-id"]
+        );
+        assert!(session_id_args(None).is_empty());
     }
 
     #[test]

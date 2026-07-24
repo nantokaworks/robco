@@ -24,6 +24,7 @@ fn overseer_worker(id: &str, title: &str, management: ManagementMode) -> AgentNo
         branch: id.into(),
         base_commit: String::new(),
         program: "codex".into(),
+        claude_session_id: None,
         profile: None,
         tmux_session: id.into(),
         created_at: now,

@@ -14,7 +14,7 @@ use crate::{
 
 pub mod env;
 pub use env::RecoveredIdentity;
-use env::{agent_env, launch_command};
+use env::{agent_env, claude_session_id, launch_command, session_id_args};
 
 pub fn create_agent(
     repo: &RepoNode,
@@ -62,7 +62,10 @@ pub(crate) fn create_agent_with_launch(
     git::add_worktree(&repo.path, &worktree_path, &branch, &base_commit)?;
     prepare_worktree(&worktree_path)?;
     let program = config.default_program_command();
-    let command = launch_command(&program, initial_prompt, extra_args);
+    let claude_session_id = claude_session_id(&program);
+    let mut launch_args = session_id_args(claude_session_id.as_deref());
+    launch_args.extend_from_slice(extra_args);
+    let command = launch_command(&program, initial_prompt, &launch_args);
     let mut owned_env = agent_env(&id, parent_agent_id)
         .into_iter()
         .map(|(key, value)| (key.to_string(), value))
@@ -88,6 +91,7 @@ pub(crate) fn create_agent_with_launch(
         branch,
         base_commit,
         program,
+        claude_session_id,
         profile: profile_name(config),
         tmux_session,
         created_at: now,
@@ -191,6 +195,7 @@ pub fn adopt_worktree(
         branch: branch.unwrap_or_else(|| "(detached)".to_string()),
         base_commit: head.unwrap_or_default(),
         program: config.default_program_command(),
+        claude_session_id: None,
         profile: profile_name(config),
         tmux_session,
         created_at: now,
@@ -239,10 +244,11 @@ pub fn normalize_adopted_titles(repos: &mut [RepoNode], config: &Config) -> bool
 
 pub fn restart_agent(agent: &AgentNode) -> Result<()> {
     let _ = tmux::kill_session(&agent.tmux_session);
+    let command = relaunch_command(agent);
     tmux::new_session(
         &agent.tmux_session,
         &agent.worktree_path,
-        &agent.program,
+        &command,
         &agent_env(&agent.id, agent.parent_agent_id.as_deref()),
     )
 }
@@ -252,11 +258,20 @@ pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
         return Ok(());
     }
 
+    let command = relaunch_command(agent);
     tmux::new_session(
         &agent.tmux_session,
         &agent.worktree_path,
-        &agent.program,
+        &command,
         &agent_env(&agent.id, agent.parent_agent_id.as_deref()),
+    )
+}
+
+fn relaunch_command(agent: &AgentNode) -> String {
+    launch_command(
+        &agent.program,
+        None,
+        &session_id_args(agent.claude_session_id.as_deref()),
     )
 }
 
