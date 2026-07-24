@@ -199,8 +199,13 @@ pub struct App {
     force_redraw: bool,
     mode: Mode,
     message: Option<(String, Instant)>,
-    merge_job: Option<actions::merge::MergeJob>,
-    merge_outcome: Option<actions::merge::MergeOutcome>,
+    /// In-flight merges, keyed by repository path. Merging is serialised within
+    /// a repository but not across repositories, so several entries at once is
+    /// the normal case when the operator manages more than one repository.
+    merge_jobs: HashMap<PathBuf, actions::merge::MergeJob>,
+    /// Last merge result per repository, held until the operator dismisses it.
+    /// Keyed the same way so one repository's result cannot overwrite another's.
+    merge_outcomes: HashMap<PathBuf, actions::merge::MergeOutcome>,
     pr_precheck_job: Option<actions::pr_precheck::PrPrecheckJob>,
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
@@ -247,8 +252,8 @@ impl App {
             force_redraw: false,
             mode: Mode::Normal,
             message: None,
-            merge_job: None,
-            merge_outcome: None,
+            merge_jobs: HashMap::new(),
+            merge_outcomes: HashMap::new(),
             pr_precheck_job: None,
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),

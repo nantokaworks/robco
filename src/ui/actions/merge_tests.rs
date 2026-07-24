@@ -1,7 +1,12 @@
+use std::sync::mpsc;
+
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::*;
+use super::{
+    super::merge_worker::{CLEANING_UP, PULLING_MAIN},
+    *,
+};
 use crate::{
     config::Config,
     model::{AgentNode, RepoNode, Selection, Status},
@@ -69,13 +74,34 @@ fn test_app() -> App {
 
 fn install_job(app: &mut App, repo_path: &str, agent_id: &str) {
     let (_sender, receiver) = mpsc::channel();
-    app.merge_job = Some(MergeJob {
-        repo_path: repo_path.into(),
-        agent_id: agent_id.into(),
-        branch: format!("feature/{agent_id}"),
-        step: MERGING_PR,
-        receiver,
-    });
+    app.merge_jobs.insert(
+        repo_path.into(),
+        MergeJob {
+            agent_id: agent_id.into(),
+            branch: format!("feature/{agent_id}"),
+            step: MERGING_PR,
+            receiver,
+        },
+    );
+}
+
+fn install_outcome(app: &mut App, repo_path: &str, outcome: MergeOutcome) {
+    app.merge_outcomes.insert(repo_path.into(), outcome);
+}
+
+fn outcome_of<'a>(app: &'a App, repo_path: &str) -> Option<&'a MergeOutcome> {
+    app.merge_outcome(&PathBuf::from(repo_path))
+}
+
+/// Select a tree row by matching its [`Selection`]. Row indices are not stable
+/// across repositories, agents, and the overseer frame, so tests search.
+fn select(app: &mut App, wanted: impl Fn(Selection) -> bool) {
+    let index = app
+        .visible()
+        .iter()
+        .position(|selection| wanted(*selection))
+        .unwrap();
+    app.selected = index;
 }
 
 #[test]
@@ -95,7 +121,7 @@ fn navigation_remains_available_during_merge() {
     app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE))
         .unwrap();
     assert_eq!(app.selected, 1);
-    assert!(app.merge_job.is_some());
+    assert!(!app.merge_jobs.is_empty());
 }
 
 #[test]
@@ -166,12 +192,16 @@ fn merge_progress_banner_is_scoped_to_matching_agent() {
 fn merge_outcome_notice_is_scoped_to_matching_agent() {
     let mut app = test_app();
     app.registry.repos = vec![repo("/repo", vec![agent("wanted"), agent("not-wanted")])];
-    app.merge_outcome = Some(MergeOutcome {
-        repo_path: "/repo".into(),
-        agent_id: "wanted".into(),
-        branch: "feature/wanted".into(),
-        result: Err("failed detail".into()),
-    });
+    install_outcome(
+        &mut app,
+        "/repo",
+        MergeOutcome {
+            repo_path: "/repo".into(),
+            agent_id: "wanted".into(),
+            branch: "feature/wanted".into(),
+            result: Err("failed detail".into()),
+        },
+    );
     let notice =
         crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 0 }));
     assert!(notice.iter().any(|line| line.to_string() == "MERGE FAILED"));
@@ -197,39 +227,51 @@ fn merge_outcome_notice_is_scoped_to_matching_agent() {
 #[test]
 fn merge_outcome_can_be_dismissed() {
     let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
     let outcome = MergeOutcome {
         repo_path: "/repo".into(),
         agent_id: "wanted".into(),
         branch: "feature/wanted".into(),
         result: Err("failed detail".into()),
     };
-    app.merge_outcome = Some(outcome.clone());
+    install_outcome(&mut app, "/repo", outcome.clone());
+    select(&mut app, |selection| {
+        matches!(selection, Selection::Repo(0))
+    });
 
     assert!(app.dismiss_merge_outcome());
-    assert!(app.merge_outcome().is_none());
+    assert!(outcome_of(&app, "/repo").is_none());
     assert!(!app.dismiss_merge_outcome());
 
-    app.merge_outcome = Some(outcome);
+    install_outcome(&mut app, "/repo", outcome);
     install_job(&mut app, "/repo", "wanted");
     assert!(!app.dismiss_merge_outcome());
-    assert!(app.merge_outcome().is_some());
+    assert!(outcome_of(&app, "/repo").is_some());
 }
 
 #[test]
 fn escape_dismisses_merge_outcome_before_quitting() {
     let mut app = test_app();
-    app.merge_outcome = Some(MergeOutcome {
-        repo_path: "/repo".into(),
-        agent_id: "wanted".into(),
-        branch: "feature/wanted".into(),
-        result: Ok(()),
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+    install_outcome(
+        &mut app,
+        "/repo",
+        MergeOutcome {
+            repo_path: "/repo".into(),
+            agent_id: "wanted".into(),
+            branch: "feature/wanted".into(),
+            result: Ok(()),
+        },
+    );
+    select(&mut app, |selection| {
+        matches!(selection, Selection::Repo(0))
     });
 
     assert!(
         !app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap()
     );
-    assert!(app.merge_outcome().is_none());
+    assert!(outcome_of(&app, "/repo").is_none());
     assert!(
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
             .unwrap()
@@ -244,12 +286,15 @@ fn second_merge_is_rejected_without_replacing_worker() {
 
     app.start_merge(0, 0);
 
-    assert!(app.merge_job.is_some());
-    assert_eq!(app.merge_job().unwrap().agent_id, "wanted");
+    assert_eq!(app.merge_jobs.len(), 1);
+    assert_eq!(
+        app.merge_job(&PathBuf::from("/repo")).unwrap().agent_id,
+        "wanted"
+    );
     assert!(
         app.message
             .as_ref()
-            .is_some_and(|(message, _)| message.contains("already in progress"))
+            .is_some_and(|(message, _)| message.contains("already in progress in /repo"))
     );
 }
 
@@ -257,8 +302,10 @@ fn second_merge_is_rejected_without_replacing_worker() {
 fn merge_command_is_rejected_while_worker_is_running() {
     let mut app = test_app();
     app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
-    app.selected = 1;
     install_job(&mut app, "/repo", "wanted");
+    select(&mut app, |selection| {
+        matches!(selection, Selection::Agent { .. })
+    });
 
     app.merge_selected();
 
@@ -266,7 +313,7 @@ fn merge_command_is_rejected_while_worker_is_running() {
     assert!(
         app.message
             .as_ref()
-            .is_some_and(|(message, _)| message.contains("already in progress"))
+            .is_some_and(|(message, _)| message.contains("already in progress in /repo"))
     );
 }
 
@@ -297,16 +344,14 @@ fn destructive_actions_are_rejected_for_merging_agent() {
 fn restart_is_rejected_for_merging_agent() {
     let mut app = test_app();
     app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
-    app.selected = app
-        .visible()
-        .iter()
-        .position(|selection| matches!(selection, Selection::Agent { .. }))
-        .unwrap();
     install_job(&mut app, "/repo", "wanted");
+    select(&mut app, |selection| {
+        matches!(selection, Selection::Agent { .. })
+    });
 
     app.restart_selected().unwrap();
 
-    assert!(app.merge_job.is_some());
+    assert!(!app.merge_jobs.is_empty());
     assert!(
         app.message.as_ref().is_some_and(|(message, _)| {
             message == "cannot restart an agent while it is merging"
@@ -349,11 +394,15 @@ fn failure_resolves_agent_identity_after_index_drift() {
     app.registry.repos.swap(0, 1);
     app.registry.repos[0].agents.swap(0, 1);
     install_job(&mut app, "/repo-b", "wanted");
-    app.merge_job.as_mut().unwrap().step = CLEANING_UP;
+    app.merge_jobs
+        .get_mut(&PathBuf::from("/repo-b"))
+        .unwrap()
+        .step = CLEANING_UP;
 
-    app.finish_merge(Err("merge failed".into())).unwrap();
+    app.finish_merge(&PathBuf::from("/repo-b"), Err("merge failed".into()))
+        .unwrap();
 
-    assert!(app.merge_job.is_none());
+    assert!(app.merge_jobs.is_empty());
     assert_eq!(app.registry.repos[0].agents[0].id, "wanted");
     assert_eq!(
         app.registry.repos[0].agents[0].merge_error.as_deref(),
@@ -374,7 +423,8 @@ fn success_resolves_identity_after_selection_and_index_drift() {
     app.registry.repos[0].agents.swap(0, 1);
     app.selected = 3;
 
-    app.finish_merge_with(Ok(()), |_| Ok(())).unwrap();
+    app.finish_merge_with(&PathBuf::from("/repo-b"), Ok(()), |_| Ok(()))
+        .unwrap();
 
     assert_eq!(
         app.registry.repos[0]
@@ -390,8 +440,8 @@ fn success_resolves_identity_after_selection_and_index_drift() {
             .iter()
             .any(|agent| agent.id == "other")
     );
-    assert!(app.merge_job.is_none());
-    assert_eq!(app.merge_outcome().unwrap().result, Ok(()));
+    assert!(app.merge_jobs.is_empty());
+    assert_eq!(outcome_of(&app, "/repo-b").unwrap().result, Ok(()));
     assert!(app.selected < app.visible().len());
 }
 
@@ -405,7 +455,8 @@ fn success_remaps_dialog_to_same_later_agent() {
     install_job(&mut app, "/repo", "merged");
     app.mode = Mode::ConfirmKill { repo: 0, agent: 2 };
 
-    app.finish_merge_with(Ok(()), |_| Ok(())).unwrap();
+    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_| Ok(()))
+        .unwrap();
 
     let Mode::ConfirmKill { repo, agent } = app.mode else {
         panic!("dialog was closed");
@@ -421,7 +472,8 @@ fn success_closes_dialog_for_removed_agent_defensively() {
     install_job(&mut app, "/repo", "merged");
     app.mode = Mode::ConfirmDeleteBranch { repo: 0, agent: 0 };
 
-    app.finish_merge_with(Ok(()), |_| Ok(())).unwrap();
+    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_| Ok(()))
+        .unwrap();
 
     assert!(matches!(app.mode, Mode::Normal));
     assert!(
@@ -436,19 +488,21 @@ fn disconnected_worker_uses_merge_error_path() {
     let mut app = test_app();
     app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
     let (sender, receiver) = mpsc::channel();
-    app.merge_job = Some(MergeJob {
-        repo_path: "/repo".into(),
-        agent_id: "wanted".into(),
-        branch: "feature/wanted".into(),
-        step: MERGING_PR,
-        receiver,
-    });
+    app.merge_jobs.insert(
+        "/repo".into(),
+        MergeJob {
+            agent_id: "wanted".into(),
+            branch: "feature/wanted".into(),
+            step: MERGING_PR,
+            receiver,
+        },
+    );
     drop(sender);
 
     app.drain_merge_events().unwrap();
 
     assert!(matches!(app.mode, Mode::Normal));
-    assert!(app.merge_job.is_none());
+    assert!(app.merge_jobs.is_empty());
     assert_eq!(
         app.registry.repos[0].agents[0].merge_error.as_deref(),
         Some(WORKER_TERMINATED)
@@ -458,7 +512,7 @@ fn disconnected_worker_uses_merge_error_path() {
         Some(WORKER_TERMINATED)
     );
     assert_eq!(
-        app.merge_outcome()
+        outcome_of(&app, "/repo")
             .unwrap()
             .result
             .as_ref()
@@ -466,3 +520,6 @@ fn disconnected_worker_uses_merge_error_path() {
         Err(WORKER_TERMINATED)
     );
 }
+
+#[path = "merge_scope_tests.rs"]
+mod scope;
