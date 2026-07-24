@@ -7,9 +7,8 @@ use crate::{
 
 use super::{
     App, active_worker_management,
-    render::{
-        append_decisions, append_health, append_inbox, append_ledger, append_worker_management,
-    },
+    decisions::append_decisions,
+    render::{append_health, append_inbox, append_ledger, append_worker_management},
 };
 
 pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> Vec<Line<'static>> {
@@ -26,7 +25,13 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         ),
         OverseerCategory::Ledger => {
             let management = active_worker_management(app);
-            append_ledger(&mut lines, config, &snapshot.ledger, &management);
+            append_ledger(
+                &mut lines,
+                config,
+                &snapshot.ledger,
+                &snapshot.decisions,
+                &management,
+            );
             while lines.last().is_some_and(|line| line.spans.is_empty()) {
                 lines.pop();
             }

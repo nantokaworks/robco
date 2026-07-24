@@ -354,7 +354,7 @@ fn stale_dispatch_counter_renders_zero() {
     ledger.counters.date = today.pred_opt();
     ledger.counters.dispatched_today = 7;
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &OverseerConfig::default(), &ledger, &[]);
+    append_ledger(&mut lines, &OverseerConfig::default(), &ledger, &[], &[]);
     let rendered = lines[0]
         .spans
         .iter()
@@ -370,6 +370,7 @@ fn empty_ledger_hides_empty_detail_lines() {
         &mut lines,
         &OverseerConfig::default(),
         &Ledger::default(),
+        &[],
         &[],
     );
     let rendered = lines
@@ -414,7 +415,7 @@ fn active_phases_excludes_terminal_entries() {
         ..Ledger::default()
     };
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &OverseerConfig::default(), &ledger, &[]);
+    append_ledger(&mut lines, &OverseerConfig::default(), &ledger, &[], &[]);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())

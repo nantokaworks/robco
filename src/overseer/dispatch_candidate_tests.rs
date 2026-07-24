@@ -92,6 +92,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             title: "manual".into(),
             repo: "/manual".into(),
             author: "allowed".into(),
+            workspace: "workspace-1".into(),
         },
         Candidate {
             task_id: "auto-task".into(),
@@ -99,6 +100,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             title: "auto".into(),
             repo: "/auto".into(),
             author: "allowed".into(),
+            workspace: "workspace-1".into(),
         },
     ];
 

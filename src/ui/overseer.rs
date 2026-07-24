@@ -16,13 +16,15 @@ use crate::{
 use super::App;
 
 mod categories;
+mod decisions;
 mod render;
 
 #[cfg(test)]
 pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 
-use render::{append_decisions, append_health, append_inbox, append_ledger};
+use decisions::append_decisions;
+use render::{append_health, append_inbox, append_ledger};
 
 pub(super) type WorkerManagement = (String, ManagementMode);
 
@@ -82,7 +84,13 @@ pub(super) fn summary(app: &App) -> (String, Text<'static>) {
         snapshot.daemon_alive,
         snapshot.heartbeat_age,
     );
-    append_ledger(&mut lines, config, &snapshot.ledger, &management);
+    append_ledger(
+        &mut lines,
+        config,
+        &snapshot.ledger,
+        &snapshot.decisions,
+        &management,
+    );
     append_inbox(&mut lines, app);
     append_decisions(&mut lines, &snapshot.decisions);
     ("OVERSEER / local control".into(), lines.into())

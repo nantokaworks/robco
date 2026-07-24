@@ -11,6 +11,7 @@ fn candidate(repo: &str) -> Candidate {
         title: "task".into(),
         repo: repo.into(),
         author: "allowed".into(),
+        workspace: "workspace-1".into(),
     }
 }
 
