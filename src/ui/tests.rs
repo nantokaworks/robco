@@ -9,18 +9,10 @@ fn test_app() -> App {
 }
 
 #[test]
-fn overseer_panes_show_info_then_claude() {
-    assert_eq!(
-        panes_for(Some(Selection::Overseer)),
-        &[PreviewPane::Info, PreviewPane::Claude]
-    );
-}
-
-#[test]
-fn overseer_category_panes_match_root() {
+fn overseer_category_panes_show_info_then_claude() {
     assert_eq!(
         panes_for(Some(Selection::OverseerCategory(OverseerCategory::Health))),
-        panes_for(Some(Selection::Overseer))
+        &[PreviewPane::Info, PreviewPane::Claude]
     );
 }
 
@@ -33,20 +25,23 @@ fn overseer_expand_collapse_keys_update_tree() {
     // tree contents are deterministic across environments.
     app.orphans = Vec::new();
 
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-        .unwrap();
-    assert_eq!(app.visible(), vec![Selection::Overseer]);
-    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
-        .unwrap();
-    assert_eq!(app.visible().len(), 5);
+    // The header is not a row of its own, so the first row is already a
+    // category and the four categories are always listed.
+    assert_eq!(app.visible().len(), 4);
+    assert_eq!(
+        app.selected_item(),
+        Some(Selection::OverseerCategory(OverseerCategory::Health))
+    );
 
-    app.selected = 1;
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
     assert!(app.overseer_category_expanded(OverseerCategory::Health));
     app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
         .unwrap();
     assert!(!app.overseer_category_expanded(OverseerCategory::Health));
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
+        .unwrap();
+    assert!(app.overseer_category_expanded(OverseerCategory::Health));
 }
 
 #[test]

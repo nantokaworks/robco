@@ -21,7 +21,6 @@ impl App {
     /// path and agents on their unique id.
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
-            Selection::Overseer => "overseer".to_string(),
             Selection::OverseerCategory(category) => {
                 format!("overseer:{}", category.label().to_lowercase())
             }
@@ -161,16 +160,14 @@ impl App {
     pub(in crate::ui) fn visible(&self) -> Vec<Selection> {
         let mut visible = Vec::new();
         if self.overseer_visible {
-            // This first focus entry maps to the dedicated OVERSEER frame;
-            // tree rendering excludes it from the PROJECTS frame.
-            visible.push(Selection::Overseer);
-            if !self.overseer_collapsed {
-                visible.extend(
-                    OverseerCategory::ALL
-                        .into_iter()
-                        .map(Selection::OverseerCategory),
-                );
-            }
+            // These focus entries map to the dedicated OVERSEER frame; tree
+            // rendering excludes them from the PROJECTS frame. The OVERSEER
+            // header itself is a plain label, so it never becomes a row here.
+            visible.extend(
+                OverseerCategory::ALL
+                    .into_iter()
+                    .map(Selection::OverseerCategory),
+            );
         }
         for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
             if self.repo_is_local(repo) {
@@ -229,11 +226,6 @@ impl App {
 
     pub(in crate::ui) fn set_other_collapsed(&mut self, collapsed: bool) {
         self.other_collapsed = collapsed;
-        self.clamp_selection();
-    }
-
-    pub(in crate::ui) fn set_overseer_collapsed(&mut self, collapsed: bool) {
-        self.overseer_collapsed = collapsed;
         self.clamp_selection();
     }
 

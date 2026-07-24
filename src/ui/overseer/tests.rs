@@ -1,3 +1,4 @@
+use super::render::append_ledger;
 use super::*;
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 use crate::{
@@ -237,6 +238,14 @@ fn health_summary_keeps_all_critical_badges() {
     assert!(summary.contains("dispatch/no daemon"));
 }
 
+fn category_text(app: &App, category: OverseerCategory) -> String {
+    category_detail(app, category)
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>()
+}
+
 #[test]
 fn info_pane_reads_dispatch_from_snapshot_not_stale_config() {
     // Regression for #171: the Info pane must render overseer flags from the
@@ -247,48 +256,28 @@ fn info_pane_reads_dispatch_from_snapshot_not_stale_config() {
     app.config.overseer.dispatch_enabled = true;
     app.overseer_snapshot.overseer.dispatch_enabled = false;
 
-    let (_title, text) = super::summary(&app);
-    let rendered = text
-        .lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
+    let rendered = category_text(&app, OverseerCategory::Health);
 
     assert!(rendered.contains("dispatch: off"));
     assert!(!rendered.contains("dispatch: on"));
 }
 
 #[test]
-fn info_summary_shows_active_worker_management_counts() {
+fn ledger_detail_shows_active_worker_management_counts() {
     let app = management_app();
-    let (_, text) = summary(&app);
-    let rendered = text
-        .lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
 
-    assert!(rendered.contains("management: auto=1, manual=1"));
+    assert!(category_text(&app, OverseerCategory::Ledger).contains("management: auto=1, manual=1"));
 }
 
 #[test]
-fn info_summary_shows_zero_manual_worker_count() {
+fn ledger_detail_shows_zero_manual_worker_count() {
     let mut app = management_app();
     app.overseer_snapshot
         .ledger
         .entries
         .retain(|entry| entry.agent_id == "auto-agent");
-    let (_, text) = summary(&app);
-    let rendered = text
-        .lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
 
-    assert!(rendered.contains("management: auto=1, manual=0"));
+    assert!(category_text(&app, OverseerCategory::Ledger).contains("management: auto=1, manual=0"));
 }
 
 #[test]
@@ -313,23 +302,10 @@ fn duplicate_active_agent_is_counted_and_listed_once() {
     duplicate.display_id = "#duplicate".into();
     app.overseer_snapshot.ledger.entries.push(duplicate);
 
-    let (_, text) = summary(&app);
-    let summary_rendered = text
-        .lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-    assert!(summary_rendered.contains("management: auto=1, manual=1"));
-
-    let lines = category_detail(&app, OverseerCategory::Ledger);
-    let detail_rendered = lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-    assert_eq!(detail_rendered.matches("worker #1: Auto").count(), 1);
-    assert!(!detail_rendered.contains("worker #duplicate"));
+    let rendered = category_text(&app, OverseerCategory::Ledger);
+    assert!(rendered.contains("management: auto=1, manual=1"));
+    assert_eq!(rendered.matches("worker #1: Auto").count(), 1);
+    assert!(!rendered.contains("worker #duplicate"));
 }
 
 #[test]

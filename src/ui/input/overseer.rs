@@ -51,10 +51,7 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         app.show_message("circuit is closed; nothing to reset");
         return true;
     }
-    if !matches!(
-        app.selected_item(),
-        Some(Selection::Overseer | Selection::OverseerCategory(_))
-    ) {
+    if !matches!(app.selected_item(), Some(Selection::OverseerCategory(_))) {
         return false;
     }
     if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {

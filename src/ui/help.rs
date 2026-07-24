@@ -7,8 +7,8 @@ pub(crate) const CONTENT_LINE_COUNT: u16 = 40;
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
         Line::from("Navigation"),
-        Line::from("  j/k or arrows  move selection; OVERSEER opens local control info"),
-        Line::from("  h/l            collapse or expand repo"),
+        Line::from("  j/k or arrows  move selection; OVERSEER rows open local control info"),
+        Line::from("  h/l            collapse or expand repo or OVERSEER category"),
         Line::from("  tab/shift-tab  cycle claude / diff / terminal view"),
         Line::from(""),
         Line::from("Sessions"),

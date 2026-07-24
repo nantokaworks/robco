@@ -23,31 +23,26 @@ fn overseer_visibility_requires_both_daemon_artifacts() {
 }
 
 #[test]
-fn overseer_categories_follow_root_collapse_state() {
+fn overseer_categories_are_always_listed_and_the_header_is_not_a_row() {
     let mut app = test_app();
     app.set_overseer_visibility(true);
     // Ignore any live robco tmux sessions the host discovers as orphans so the
     // tree contents are deterministic across environments.
     app.orphans = Vec::new();
     let expected = OverseerCategory::ALL.map(Selection::OverseerCategory);
-    assert!(app.visible().windows(4).any(|rows| rows == expected));
-
-    app.set_overseer_collapsed(true);
-    assert_eq!(app.visible(), vec![Selection::Overseer]);
+    assert_eq!(app.visible(), expected.to_vec());
 }
 
 #[test]
 fn app_overseer_frame_height_tracks_content_within_bounds() {
     let mut app = test_app();
     app.set_overseer_visibility(true);
-    app.set_overseer_collapsed(true);
-    let collapsed_content = crate::ui::tree::overseer_frame::content_lines(&app);
+    let content = crate::ui::tree::overseer_frame::content_lines(&app);
     assert_eq!(
         app.overseer_frame_height(),
-        crate::ui::layout::overseer_frame_height(collapsed_content.lines.len())
+        crate::ui::layout::overseer_frame_height(content.lines.len())
     );
 
-    app.set_overseer_collapsed(false);
     for category in OverseerCategory::ALL {
         app.set_overseer_category_expanded(category, true);
     }
@@ -75,15 +70,20 @@ fn selection_identity_survives_overseer_row_toggle() {
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
     app.set_overseer_visibility(true);
-    assert_eq!(app.selected, 5);
+    assert_eq!(app.selected, 4);
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
+    // Moving up off the first repo row lands on the last OVERSEER category —
+    // never on the header, which is no longer a row.
     app.move_selection_up();
     assert_eq!(
         app.selected_item(),
         Some(Selection::OverseerCategory(OverseerCategory::Decisions))
     );
     app.selected = 0;
-    assert_eq!(app.selected_item(), Some(Selection::Overseer));
+    assert_eq!(
+        app.selected_item(),
+        Some(Selection::OverseerCategory(OverseerCategory::Health))
+    );
 
     app.set_overseer_visibility(false);
     assert_eq!(app.selected, 0);

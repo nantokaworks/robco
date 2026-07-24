@@ -54,34 +54,33 @@ fn build_content_with_warnings(
     health_warnings: &[&'static str],
 ) -> FrameContent {
     let selected = app.selected_item();
-    let root_selected = selected == Some(Selection::Overseer);
     let summaries =
         OverseerCategory::ALL.map(|category| crate::ui::overseer::category_summary(app, category));
-    let mut lines = vec![root_line(app, root_selected, health_warnings.len(), width)];
+    // The header is a plain label, never a selection target, so the selected
+    // row only ever tracks a category row below it.
+    let mut lines = vec![header_line(app, health_warnings.len(), width)];
     lines.extend(warning_lines(health_warnings));
     let mut selected_row = 0;
 
-    if !app.overseer_collapsed {
-        for category in OverseerCategory::ALL {
-            let category_selected = selected == Some(Selection::OverseerCategory(category));
-            if category_selected {
-                selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-            }
-            let (summary, warn) = &summaries[category.index()];
-            lines.push(category_line(
-                app,
-                category,
-                category_selected,
-                summary,
-                *warn,
-            ));
-            if app.overseer_category_expanded(category) {
-                lines.extend(
-                    crate::ui::overseer::category_detail(app, category)
-                        .into_iter()
-                        .map(indent_detail),
-                );
-            }
+    for category in OverseerCategory::ALL {
+        let category_selected = selected == Some(Selection::OverseerCategory(category));
+        if category_selected {
+            selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+        }
+        let (summary, warn) = &summaries[category.index()];
+        lines.push(category_line(
+            app,
+            category,
+            category_selected,
+            summary,
+            *warn,
+        ));
+        if app.overseer_category_expanded(category) {
+            lines.extend(
+                crate::ui::overseer::category_detail(app, category)
+                    .into_iter()
+                    .map(indent_detail),
+            );
         }
     }
 
@@ -91,28 +90,22 @@ fn build_content_with_warnings(
     }
 }
 
-fn root_line(app: &App, selected: bool, warning_count: usize, width: Option<u16>) -> Line<'static> {
-    let style = if selected {
-        THEME.selection_style().add_modifier(Modifier::BOLD)
-    } else {
-        THEME.accent_bold_style()
-    };
-    let arrow = if app.overseer_collapsed { "▸" } else { "▾" };
-    let mut spans = vec![Span::styled(
-        format!("{} {arrow} OVERSEER", marker(selected)),
-        style,
-    )];
+/// Plain section header, styled like the `PROJECTS` label in the tree frame:
+/// no arrow and no selection marker, because it is not a focus target.
+fn header_line(app: &App, warning_count: usize, width: Option<u16>) -> Line<'static> {
+    let style = THEME.accent_bold_style();
+    let mut spans = vec![Span::styled("OVERSEER", style)];
     if warning_count > 0 {
         spans.push(Span::styled(
             format!("  ⚠×{warning_count}"),
-            warning_style(selected),
+            warning_style(false),
         ));
     }
 
     let status = select(IndicatorState::with_status(Some(
         app.overseer_snapshot.status(),
     )));
-    let indicator = indicator::primary_span(status, selected, app.started.elapsed(), 1);
+    let indicator = indicator::primary_span(status, false, app.started.elapsed(), 1);
     if let Some(width) = width {
         label::trim_spans_to_width(&mut spans, usize::from(width.saturating_sub(1)));
         let used = Line::from(spans.clone()).width().saturating_add(1);
@@ -213,37 +206,44 @@ mod tests {
     }
 
     #[test]
-    fn active_health_warnings_have_dedicated_narrow_rows_when_collapsed_or_expanded() {
-        let (warnings, mut app) = warning_state();
+    fn active_health_warnings_have_dedicated_narrow_rows() {
+        let (warnings, app) = warning_state();
         assert_eq!(
             warnings,
             ["STALE/OFFLINE", "circuit OPEN", "dispatch/no daemon"]
         );
 
-        for collapsed in [true, false] {
-            app.overseer_collapsed = collapsed;
-            for tree_width in [24, 48] {
-                let content = build_content_with_warnings(&app, Some(tree_width - 1), &warnings);
-                for warning in &warnings {
-                    let expected = format!("⚠ {warning}");
-                    let rows = content
-                        .lines
-                        .iter()
-                        .filter(|line| line.to_string() == expected)
-                        .collect::<Vec<_>>();
-                    assert_eq!(rows.len(), 1);
-                    assert!(rows[0].width() <= 23);
-                }
+        for tree_width in [24, 48] {
+            let content = build_content_with_warnings(&app, Some(tree_width - 1), &warnings);
+            for warning in &warnings {
+                let expected = format!("⚠ {warning}");
+                let rows = content
+                    .lines
+                    .iter()
+                    .filter(|line| line.to_string() == expected)
+                    .collect::<Vec<_>>();
+                assert_eq!(rows.len(), 1);
+                assert!(rows[0].width() <= 23);
             }
         }
+    }
+
+    #[test]
+    fn the_header_is_a_plain_label_with_no_arrow_or_marker() {
+        let (warnings, app) = warning_state();
+        let content = build_content_with_warnings(&app, Some(23), &warnings);
+        let header = content.lines[0].to_string();
+
+        assert!(header.starts_with("OVERSEER"), "header row: {header:?}");
+        assert!(!header.contains('▾') && !header.contains('▸'));
+        assert!(header.contains("⚠×3"));
     }
 
     #[test]
     fn warning_rows_are_included_in_selected_category_scroll_position() {
         let (warnings, mut app) = warning_state();
         app.overseer_visible = true;
-        app.overseer_collapsed = false;
-        app.selected = OverseerCategory::Decisions.index() + 1;
+        app.selected = OverseerCategory::Decisions.index();
 
         let content = build_content_with_warnings(&app, Some(23), &warnings);
 
