@@ -17,6 +17,12 @@ pub struct LedgerEntry {
     pub dispatched_at: DateTime<Utc>,
     pub retries: u32,
     pub pr_url: Option<String>,
+    /// Times the auto-merge pass has updated this pull request's branch onto its base
+    /// because it had fallen behind. Bounded by `overseer.max_branch_updates`, so a
+    /// branch that keeps losing the race against other merges escalates instead of
+    /// looping. Defaulted so ledgers written before the field existed still load.
+    #[serde(default)]
+    pub branch_updates: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -113,6 +119,7 @@ mod tests {
                 dispatched_at: Utc::now(),
                 retries: 1,
                 pr_url: Some("https://example.test/pr/1".into()),
+                branch_updates: 0,
             }],
             skip_list: vec!["task-2".into()],
             counters: LedgerCounters {

@@ -37,9 +37,12 @@ worktree. Every decision is appended to `~/.robco/overseer/decisions.jsonl`.
 
 The auto-merge gate only considers ledger entries in `pr_opened`. It reads the pull
 request, verifies protection on the branch that pull request targets, requires an open PR
-with a non-empty check rollup in which every check is `SUCCESS`, and invokes `gh pr merge`
-with the configured strategy. Workers are never instructed to merge their own pull
-requests.
+with a non-empty check rollup in which every check is `SUCCESS`, requires GitHub to report
+the pull request as mergeable, and invokes `gh pr merge` with the configured strategy.
+Merges are serialised per repository: once one pull request of a repository merges, the
+rest of that repository is held with `repo_merged_this_pass` until the next pass, because
+the merge advanced their base. Repositories remain independent of each other. Workers are
+never instructed to merge their own pull requests.
 
 ### Execution plane
 
@@ -93,6 +96,7 @@ these defaults:
     "auto_merge": false,
     "protection_mode": "required",
     "merge_strategy": "squash",
+    "max_branch_updates": 3,
     "worker_profile": null,
     "max_workers": 3,
     "per_repo_limit": 1,
@@ -132,6 +136,7 @@ these defaults:
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
 | `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
 | `merge_strategy` | string | `"squash"` | `"merge"` maps to `--merge`, `"rebase"` to `--rebase`, and every other value to `--squash`. |
+| `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. |
@@ -219,6 +224,41 @@ loosened stays distinguishable from one that cleared full protection. A refusal 
 failing condition — `unprotected:no_pull_request_rule`,
 `unprotected:no_required_status_checks`, `unprotected:probe_unavailable`, or
 `unprotected:unknown_remote`.
+
+### Behind branches and other merge states
+
+Protection and green checks are Overseer's own conditions; whether GitHub will accept the
+merge is a separate question it answers with `mergeStateStatus`. The gate reads that field
+from the same `gh pr view` and acts on it before merging.
+
+`BEHIND` is the state that matters most. Merging one pull request advances the base
+branch, which leaves every other open pull request of that repository missing the new base
+commit. A base branch whose ruleset sets `strict_required_status_checks_policy` refuses to
+merge such a branch, so without intervention only the first pull request of each
+repository ever lands. The gate therefore runs `gh pr update-branch` and returns the entry
+to the queue under
+`behind_branch_updated`. It does not merge in the same pass: the update creates a new head
+whose required checks have not run yet, and the check rollup always describes the current
+head, so the next pass holds with `checks_not_green` until they pass. Falling behind is an
+expected, recoverable state and never counts toward `consecutive_failures`.
+
+The update is a merge commit from the base by default. Only when `merge_strategy` is
+`rebase` does the gate pass `--rebase`, which rewrites the pull request's own branch; no
+other branch is ever rewritten.
+
+Each update is charged to the entry's `branch_updates` before it runs, and
+`max_branch_updates` bounds it. A branch that keeps losing the race against other merges —
+or one whose update keeps failing — escalates with `behind_update_cap_reached` instead of
+looping, and `decisions.jsonl` also carries the failing update itself as
+`behind_update_exit:<status>` or `behind_update_error:<error>`.
+
+Every other non-mergeable state is held under its own name, so the log says why a pull
+request is parked: `merge_state:dirty` needs a human to resolve conflicts,
+`merge_state:blocked` is missing an approval or a required check, `merge_state:draft` is
+not ready, and `merge_state:unknown` is GitHub still computing mergeability. A state
+GitHub adds later is held under its own lowercased name. `CLEAN` and `HAS_HOOKS` proceed;
+a pull request that reports no merge state at all proceeds too, since the rest of the gate
+has already cleared it.
 
 ### Discord rails
 

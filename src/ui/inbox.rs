@@ -191,6 +191,7 @@ mod tests {
                 dispatched_at: at(1),
                 retries: 0,
                 pr_url: None,
+                branch_updates: 0,
             }],
             ..Ledger::default()
         }
