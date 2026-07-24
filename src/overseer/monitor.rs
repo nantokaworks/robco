@@ -8,6 +8,7 @@ pub use types::*;
 pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64) -> (Ledger, Vec<Action>) {
     let mut next = ledger.clone();
     let mut actions = observation_errors(observations);
+    drop_detached(&mut next, observations, &mut actions);
     for entry in &mut next.entries {
         if observations.manual_agents.contains(&entry.agent_id) {
             reconcile_manual_entry(entry, observations, &mut actions);
@@ -35,6 +36,37 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
     if original != LedgerPhase::Merged && entry.phase == LedgerPhase::Merged {
         push_cleanup(entry, actions);
     }
+}
+/// Forget every entry whose worker is no longer an Overseer child.
+///
+/// Detaching a worker (`g` past Manual clears `parent_agent_id`) ends Overseer
+/// ownership, but the registry row survives carrying `Manual`, so the entry used
+/// to sit in the ledger frozen forever: never advanced, never cleaned up, and
+/// still occupying a dispatch slot for a worker Overseer may no longer touch.
+/// Dropping the row is what keeps the ledger and ownership from disagreeing —
+/// a detached worktree is now exactly a hand-made one, which Overseer never
+/// tracked in the first place.
+///
+/// The drop is unconditional on phase. Marking the entry terminal instead would
+/// have to pick one of the existing terminal phases, and each one lies: `Failed`
+/// reports a failure to dropr that never happened, and `Merged` runs the cleanup
+/// that kills the session and removes the worktree — the exact opposite of a
+/// detach, which leaves the worker running. The operator owns the worktree from
+/// here; `robco` still kills it on request.
+fn drop_detached(next: &mut Ledger, observations: &Observations, actions: &mut Vec<Action>) {
+    next.entries.retain(|entry| {
+        if !observations.detached_agents.contains(&entry.agent_id) {
+            return true;
+        }
+        actions.push(Action::LogDecision {
+            task_id: Some(entry.task_id.clone()),
+            message: format!(
+                "{}: dropped ledger entry; worker detached from overseer management",
+                entry.display_id
+            ),
+        });
+        false
+    });
 }
 /// A Manual agent is driven by a human, so Overseer must never intervene in its
 /// run: the inbox escalation, the dropr-lock escalation, and the dead/stuck

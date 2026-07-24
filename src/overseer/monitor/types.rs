@@ -16,6 +16,10 @@ pub struct Observations {
     pub prs: Vec<PrObservation>,
     pub errors: Vec<String>,
     pub manual_agents: Vec<String>,
+    /// Agents that still hold a ledger entry but are no longer Overseer
+    /// children. Their entries are dropped rather than reconciled — see
+    /// [`crate::overseer::monitor`].
+    pub detached_agents: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObservationSnapshot {

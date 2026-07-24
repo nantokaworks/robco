@@ -60,8 +60,11 @@ fn advance(worker: &mut AgentNode) -> Option<CycleStep> {
         }
         CycleStep::Manual => {
             // Detaching only drops ownership; the worker and its tmux session
-            // keep running. `management` stays Manual so the daemon continues
-            // to treat any ledger entry it already created as frozen.
+            // keep running. `management` stays Manual, but the daemon reads
+            // ownership rather than mode: seeing the worker is no longer its
+            // child, it drops any ledger entry it had for it instead of
+            // freezing one for a worker it may no longer touch. See
+            // `overseer::monitor::drop_detached`.
             worker.parent_agent_id = None;
             CycleStep::Unmanaged
         }
