@@ -66,12 +66,15 @@ fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
-    app.merge_outcome = Some(MergeOutcome {
-        repo_path: "/repo".into(),
-        agent_id: "wanted".into(),
-        branch: "feature/wanted".into(),
-        result: Err("boom".into()),
-    });
+    app.merge_outcomes.insert(
+        "/repo".into(),
+        MergeOutcome {
+            repo_path: "/repo".into(),
+            agent_id: "wanted".into(),
+            branch: "feature/wanted".into(),
+            result: Err("boom".into()),
+        },
+    );
     app
 }
 

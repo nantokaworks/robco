@@ -19,8 +19,7 @@ pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Ve
         return Vec::new();
     };
 
-    if let Some(job) = app.merge_job()
-        && job.repo_path.as_path() == repo_path
+    if let Some(job) = app.merge_job(repo_path)
         && job.agent_id == agent_id
     {
         return vec![Line::from(vec![
@@ -34,8 +33,8 @@ pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Ve
     }
 
     let Some(outcome) = app
-        .merge_outcome()
-        .filter(|outcome| outcome.repo_path.as_path() == repo_path && outcome.agent_id == agent_id)
+        .merge_outcome(repo_path)
+        .filter(|outcome| outcome.agent_id == agent_id)
     else {
         return Vec::new();
     };
@@ -73,8 +72,7 @@ pub(in crate::ui) fn preview_title(
     selection: Option<Selection>,
 ) -> Option<Line<'static>> {
     let (repo_path, agent_id) = selected_agent(app, selection)?;
-    if let Some(job) = app.merge_job()
-        && job.repo_path.as_path() == repo_path
+    if let Some(job) = app.merge_job(repo_path)
         && job.agent_id == agent_id
     {
         return Some(
@@ -86,8 +84,8 @@ pub(in crate::ui) fn preview_title(
         );
     }
 
-    app.merge_outcome()
-        .filter(|outcome| outcome.repo_path.as_path() == repo_path && outcome.agent_id == agent_id)
+    app.merge_outcome(repo_path)
+        .filter(|outcome| outcome.agent_id == agent_id)
         .map(|outcome| {
             let status = if outcome.result.is_ok() {
                 "MERGE COMPLETE"

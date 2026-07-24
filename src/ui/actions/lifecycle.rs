@@ -50,10 +50,6 @@ impl App {
     }
 
     pub(in crate::ui) fn merge_selected(&mut self) {
-        if let Some(job) = self.merge_job() {
-            self.show_message(format!("merge already in progress: {}", job.branch));
-            return;
-        }
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
             self.show_message("merge is not available for child worktrees");
             return;
@@ -65,6 +61,17 @@ impl App {
         else {
             return;
         };
+
+        // Only this repository's in-flight merge blocks another one; merges in
+        // other repositories touch none of the state `run_merge` races on.
+        let repo_path = self.registry.repos[repo].path.clone();
+        let repo_name = self.registry.repos[repo].name.clone();
+        if let Some(running) = self.merge_job(&repo_path).map(|job| job.branch.clone()) {
+            self.show_message(format!(
+                "merge already in progress in {repo_name}: {running}"
+            ));
+            return;
+        }
 
         self.registry.repos[repo].agents[agent_idx].merge_error = None;
         let repo_node = self.registry.repos[repo].clone();

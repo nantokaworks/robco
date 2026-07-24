@@ -158,9 +158,11 @@ impl App {
             Mode::Normal => match key.code {
                 code if overseer::handle_normal(self, code) => {}
                 KeyCode::Char('q') | KeyCode::Esc => {
-                    if let Some(branch) = self.merge_job().map(|job| job.branch.clone()) {
+                    let merging = self.merging_branches();
+                    if !merging.is_empty() {
                         self.show_message(format!(
-                            "merge in progress: {branch} — wait or ctrl-c to force quit"
+                            "merge in progress: {} — wait or ctrl-c to force quit",
+                            merging.join(", ")
                         ));
                     } else if matches!(key.code, KeyCode::Esc) && self.dismiss_merge_outcome() {
                         self.show_message("dismissed merge notice");

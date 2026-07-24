@@ -10,6 +10,7 @@ pub(super) mod dropr_tasks;
 mod kill;
 mod lifecycle;
 pub(super) mod merge;
+mod merge_worker;
 mod orphans;
 pub(super) mod overseer_refresh;
 mod pr;
