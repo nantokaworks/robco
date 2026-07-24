@@ -37,7 +37,6 @@ fn assert_cursor_on_trailing_caret(mode: Mode) {
 fn prompt_agent_cursor_uses_input_row_two() {
     assert_cursor_on_trailing_caret(Mode::PromptAgent {
         repo: 0,
-        with_prompt: false,
         input: "worker".to_string(),
     });
 }

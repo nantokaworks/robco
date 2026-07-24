@@ -64,7 +64,6 @@ enum Mode {
     },
     PromptAgent {
         repo: usize,
-        with_prompt: bool,
         input: String,
     },
     PromptRepo {

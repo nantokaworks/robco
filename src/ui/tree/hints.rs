@@ -7,7 +7,7 @@ const KEY_HINTS: &[(&str, &str)] = &[
     ("⇞⇟", "scroll"),
     ("⇥", "pane"),
     ("↵", "attach"),
-    ("n/N", "new"),
+    ("n", "new"),
     ("r", "restart"),
     ("g", "auto/manual"),
     ("S", "stop"),

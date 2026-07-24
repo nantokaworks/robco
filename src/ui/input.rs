@@ -38,14 +38,10 @@ impl App {
         }
 
         match &mut self.mode {
-            Mode::PromptAgent {
-                repo,
-                with_prompt,
-                input,
-            } => match key.code {
+            Mode::PromptAgent { repo, input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Enter => {
-                    let (title, prompt) = prompt_agent::parse(input, *with_prompt);
+                    let (title, prompt) = prompt_agent::parse(input);
                     let repo_idx = *repo;
                     self.mode = Mode::Normal;
                     if !title.is_empty() {
@@ -186,20 +182,10 @@ impl App {
                     if let Some(repo) = self.selected_repo() {
                         self.mode = Mode::PromptAgent {
                             repo,
-                            with_prompt: false,
                             input: String::new(),
                         };
                     } else {
                         self.mode = Mode::PromptRepo {
-                            input: String::new(),
-                        };
-                    }
-                }
-                KeyCode::Char('N') => {
-                    if let Some(repo) = self.selected_repo() {
-                        self.mode = Mode::PromptAgent {
-                            repo,
-                            with_prompt: true,
                             input: String::new(),
                         };
                     }
