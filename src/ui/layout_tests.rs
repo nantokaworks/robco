@@ -38,7 +38,7 @@ fn footer_caret_stays_right_of_brand_at_normal_and_narrow_widths() {
     let last_brand_x = normal.zones.ident.x + brand_width - 1;
 
     assert!(normal.caret.0 > last_brand_x);
-    assert!(normal.caret.0 <= normal.zones.ident.right() - 1);
+    assert!(normal.caret.0 < normal.zones.ident.right());
 
     // Only one blank column fits after the brand, so the preferred
     // one-column gap is clamped to the final cell in the ident zone.
@@ -47,7 +47,7 @@ fn footer_caret_stays_right_of_brand_at_normal_and_narrow_widths() {
     let narrow_last_brand_x = narrow.zones.ident.x + brand_width - 1;
 
     assert!(narrow.caret.0 > narrow_last_brand_x);
-    assert!(narrow.caret.0 <= narrow.zones.ident.right() - 1);
+    assert!(narrow.caret.0 < narrow.zones.ident.right());
     assert_eq!(narrow.caret.0, narrow.zones.ident.right() - 1);
     assert!(narrow_area.contains(narrow.caret.into()));
 
@@ -56,7 +56,7 @@ fn footer_caret_stays_right_of_brand_at_normal_and_narrow_widths() {
 
     assert!(no_spare_area.contains(no_spare.caret.into()));
     assert!(no_spare.caret.0 >= no_spare.zones.ident.x);
-    assert!(no_spare.caret.0 <= no_spare.zones.ident.right() - 1);
+    assert!(no_spare.caret.0 < no_spare.zones.ident.right());
 
     let shorter_area = Rect::new(3, 7, brand_width.saturating_sub(2), 1);
     let shorter = footer(shorter_area);
