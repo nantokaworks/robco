@@ -24,10 +24,23 @@ pub(crate) enum RuntimeRequest {
         agent_ids: Vec<String>,
         at: DateTime<Utc>,
     },
+    /// A merge performed outside the daemon — currently the TUI. Applying it is
+    /// deliberately a no-op: what the request buys is the wake, and the pass it
+    /// wakes observes GitHub for itself rather than moving the ledger on the
+    /// requester's word.
+    MergeCompleted {
+        source: String,
+        repo: String,
+        at: DateTime<Utc>,
+    },
 }
 
 pub(crate) fn enqueue(request: RuntimeRequest) -> Result<()> {
-    enqueue_in(&runtime_requests_dir()?, request)
+    enqueue_in(&runtime_requests_dir()?, request)?;
+    // The queue is drained at the top of every pass, so a request nobody
+    // announces waits out the rest of the poll interval.
+    super::wake::notify_daemon();
+    Ok(())
 }
 
 pub(crate) fn enqueue_in(dir: &Path, request: RuntimeRequest) -> Result<()> {
@@ -66,8 +79,8 @@ pub(crate) fn drain_in(dir: &Path, ledger: &mut Ledger, config: &mut Config) -> 
     // Requests apply in filename (nanoid) order, which is NOT chronological.
     // Every RuntimeRequest variant must therefore be commutative and idempotent
     // (ResetCircuit zeroes the streak + reaffirms dispatch; PanicEscalate escalates
-    // named workers) so drain order never changes the outcome. Preserve that
-    // invariant when adding new variants.
+    // named workers; MergeCompleted applies nothing at all) so drain order never
+    // changes the outcome. Preserve that invariant when adding new variants.
     paths.sort();
 
     let mut config_changed = false;
@@ -118,6 +131,9 @@ pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRe
             escalate_workers(ledger, &agent_ids.into_iter().collect::<HashSet<_>>());
             false
         }
+        // Nothing to apply: the pass that drains this request goes on to
+        // observe the merge for itself, which is the whole point of waking it.
+        RuntimeRequest::MergeCompleted { .. } => false,
     }
 }
 
@@ -148,129 +164,5 @@ fn corrupt_path(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
-
-    #[test]
-    fn enqueue_then_drain_applies_and_acks() {
-        let temp = tempfile::tempdir().unwrap();
-        let dir = temp.path().join("requests");
-        let mut ledger = Ledger::default();
-        ledger.counters.consecutive_failures = 99;
-        let mut config = Config::default();
-        config.overseer.dispatch_enabled = false;
-        enqueue_in(
-            &dir,
-            RuntimeRequest::ResetCircuit {
-                source: "test".into(),
-                at: Utc::now(),
-            },
-        )
-        .unwrap();
-
-        assert!(drain_in(&dir, &mut ledger, &mut config).unwrap());
-        assert_eq!(ledger.counters.consecutive_failures, 0);
-        assert!(config.overseer.dispatch_enabled);
-        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
-        assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
-        assert_eq!(ledger.counters.consecutive_failures, 0);
-    }
-
-    #[test]
-    fn panic_escalate_marks_workers_including_pr_opened() {
-        let temp = tempfile::tempdir().unwrap();
-        let dir = temp.path().join("requests");
-        let mut ledger = Ledger {
-            entries: vec![ledger_entry("worker-1", LedgerPhase::PrOpened)],
-            ..Ledger::default()
-        };
-        let mut config = Config::default();
-        enqueue_in(
-            &dir,
-            RuntimeRequest::PanicEscalate {
-                source: "test".into(),
-                agent_ids: vec!["worker-1".into()],
-                at: Utc::now(),
-            },
-        )
-        .unwrap();
-
-        assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
-        assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
-    }
-
-    #[test]
-    fn drain_missing_dir_is_noop() {
-        let temp = tempfile::tempdir().unwrap();
-        let mut ledger = Ledger::default();
-        let mut config = Config::default();
-
-        assert!(!drain_in(&temp.path().join("missing"), &mut ledger, &mut config).unwrap());
-    }
-
-    #[test]
-    fn corrupt_file_is_skipped() {
-        let temp = tempfile::tempdir().unwrap();
-        let dir = temp.path().join("requests");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join("bad.json"), "not json").unwrap();
-        let mut ledger = Ledger::default();
-        let mut config = Config::default();
-
-        assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
-        assert!(!dir.join("bad.json").exists());
-        assert!(dir.join("bad.json.corrupt").exists());
-    }
-
-    #[test]
-    fn drain_applies_and_acks_all_pending_requests() {
-        let temp = tempfile::tempdir().unwrap();
-        let dir = temp.path().join("requests");
-        let mut ledger = Ledger {
-            entries: vec![ledger_entry("worker-1", LedgerPhase::PrOpened)],
-            ..Ledger::default()
-        };
-        ledger.counters.consecutive_failures = 7;
-        let mut config = Config::default();
-        config.overseer.dispatch_enabled = false;
-        enqueue_in(
-            &dir,
-            RuntimeRequest::PanicEscalate {
-                source: "test".into(),
-                agent_ids: vec!["worker-1".into()],
-                at: Utc::now(),
-            },
-        )
-        .unwrap();
-        enqueue_in(
-            &dir,
-            RuntimeRequest::ResetCircuit {
-                source: "test".into(),
-                at: Utc::now(),
-            },
-        )
-        .unwrap();
-
-        assert!(drain_in(&dir, &mut ledger, &mut config).unwrap());
-        assert_eq!(ledger.counters.consecutive_failures, 0);
-        assert!(config.overseer.dispatch_enabled);
-        assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
-        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
-    }
-
-    fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
-        LedgerEntry {
-            task_id: format!("task-{agent_id}"),
-            display_id: "#202".into(),
-            repo: "nantokaworks/robco".into(),
-            agent_id: agent_id.into(),
-            branch: "task-202".into(),
-            phase,
-            dispatched_at: Utc::now(),
-            retries: 0,
-            pr_url: Some("https://example.test/pr/202".into()),
-            branch_updates: 0,
-        }
-    }
-}
+#[path = "runtime_request_tests.rs"]
+mod tests;

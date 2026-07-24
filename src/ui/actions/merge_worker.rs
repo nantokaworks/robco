@@ -7,7 +7,7 @@
 //! repositories run concurrently.
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
@@ -18,6 +18,7 @@ use crate::{
         self,
         post_merge::{Cleanup, CleanupStep, OnFailure},
     },
+    overseer::runtime_request::{self, RuntimeRequest},
 };
 
 pub(super) const MERGING_PR: &str = "merging PR";
@@ -62,7 +63,25 @@ fn run_merge(target: &MergeTarget, sender: &Sender<MergeEvent>) -> Result<()> {
     .run(|step| send_step(sender, step_label(step)))?;
     let _ = crate::tmux::kill_session(&target.tmux_session);
     let _ = crate::tmux::kill_session(&target.shell_session);
+    announce_merge(&target.repo_path);
     Ok(())
+}
+
+/// Tell the Overseer daemon this repository just merged, so it reconciles the
+/// merge on a pass that starts now instead of rediscovering it up to a poll
+/// interval later. Announced after cleanup rather than straight after the
+/// merge: the daemon cleans merged workers up too, and waking it mid-cleanup
+/// would have both processes removing the same worktree and killing the same
+/// sessions. Best effort — failing to announce only costs the delay this
+/// removes, and there is no way to surface an error from a worker thread that
+/// would not corrupt the TUI. A cleanup that fails aborts before this point, so
+/// that merge is left for the daemon to find by polling, exactly as before.
+fn announce_merge(repo_path: &Path) {
+    let _ = runtime_request::enqueue(RuntimeRequest::MergeCompleted {
+        source: "ui".into(),
+        repo: repo_path.display().to_string(),
+        at: chrono::Utc::now(),
+    });
 }
 
 fn step_label(step: CleanupStep) -> &'static str {
