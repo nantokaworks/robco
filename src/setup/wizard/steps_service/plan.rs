@@ -111,137 +111,34 @@ impl BootstrapPlan {
                 String::from_utf8_lossy(&result.stderr).trim()
             )));
         }
-        if matches!(self.mode, BootstrapMode::Reload) {
-            if probe() != super::probe::ServiceState::Loaded {
-                return Err(Error::Wizard(
-                    "launchd service did not come back after reload".into(),
-                ));
-            }
-            writeln!(
-                output,
-                "▌ robco ▸ launchd ··········· reloaded ({})",
-                self.executable.display()
-            )?;
+        // `launchctl bootstrap` can exit 0 and still leave nothing running, so
+        // the end state is re-probed for a plain load as well as for a reload:
+        // a silent no-op here is exactly how a dead daemon survives a wizard run.
+        if probe() != super::probe::ServiceState::Loaded {
+            return Err(Error::Wizard(
+                match self.mode {
+                    BootstrapMode::Load => "launchd service did not come up after bootstrap",
+                    BootstrapMode::Reload => "launchd service did not come back after reload",
+                }
+                .into(),
+            ));
         }
+        let verb = match self.mode {
+            BootstrapMode::Load => "loaded",
+            BootstrapMode::Reload => "reloaded",
+        };
+        writeln!(
+            output,
+            "▌ robco ▸ launchd ··········· {verb} ({})",
+            self.executable.display()
+        )?;
         Ok(())
     }
 }
 
 #[cfg(all(test, target_os = "macos"))]
-mod tests {
-    use std::{
-        ffi::OsString,
-        os::unix::process::ExitStatusExt,
-        path::PathBuf,
-        process::{ExitStatus, Output},
-    };
-
-    use super::{BootstrapMode, BootstrapPlan, SetenvPlan, service_is_absent};
-    use crate::setup::wizard::steps_service::{ServicePlan, probe::ServiceState};
-
-    fn bootstrap_plan(execute: bool, mode: BootstrapMode) -> BootstrapPlan {
-        BootstrapPlan {
-            domain: "gui/501".into(),
-            path: PathBuf::from("/tmp/robco.plist"),
-            executable: PathBuf::from("/opt/homebrew/bin/robco"),
-            execute,
-            mode,
-        }
-    }
-
-    #[test]
-    fn copyable_setenv_command_precedes_bootstrap() {
-        let plan = ServicePlan {
-            setenv: Some(SetenvPlan {
-                name: "DISCORD_TOKEN".into(),
-                value: None,
-            }),
-            bootstrap: bootstrap_plan(false, BootstrapMode::Load),
-        };
-        let mut output = Vec::new();
-        plan.apply(&mut output).unwrap();
-        let output = String::from_utf8(output).unwrap();
-        assert!(
-            output.find("launchctl setenv").unwrap() < output.find("launchctl bootstrap").unwrap()
-        );
-    }
-
-    #[test]
-    fn manual_setenv_defers_accepted_reload() {
-        let plan = ServicePlan {
-            setenv: Some(SetenvPlan {
-                name: "DISCORD_TOKEN".into(),
-                value: None,
-            }),
-            bootstrap: bootstrap_plan(true, BootstrapMode::Reload),
-        };
-        let mut output = Vec::new();
-        plan.apply(&mut output).unwrap();
-        let output = String::from_utf8(output).unwrap();
-
-        assert!(output.contains("Automatic service loading or reloading deferred"));
-        assert!(output.contains("launchctl setenv"));
-        assert!(!output.contains("launchctl bootout"));
-        assert!(!output.contains("launchctl bootstrap"));
-    }
-
-    #[test]
-    fn reload_renders_bootout_before_bootstrap() {
-        let mut output = Vec::new();
-        bootstrap_plan(false, BootstrapMode::Reload)
-            .apply(&mut output)
-            .unwrap();
-        let output = String::from_utf8(output).unwrap();
-
-        assert!(
-            output.find("launchctl bootout").unwrap() < output.find("launchctl bootstrap").unwrap()
-        );
-    }
-
-    #[test]
-    fn reload_executes_bootout_before_bootstrap() {
-        let mut invocations = Vec::new();
-        bootstrap_plan(true, BootstrapMode::Reload)
-            .apply_with(
-                &mut Vec::new(),
-                |args| {
-                    invocations.push(args.to_vec());
-                    Ok(Output {
-                        status: ExitStatus::from_raw(0),
-                        stdout: Vec::new(),
-                        stderr: Vec::new(),
-                    })
-                },
-                || ServiceState::Loaded,
-            )
-            .unwrap();
-
-        assert_eq!(
-            invocations,
-            vec![
-                vec![
-                    OsString::from("bootout"),
-                    OsString::from("gui/501/com.robco.overseer")
-                ],
-                vec![
-                    OsString::from("bootstrap"),
-                    OsString::from("gui/501"),
-                    OsString::from("/tmp/robco.plist")
-                ],
-            ]
-        );
-    }
-
-    #[test]
-    fn only_absent_service_bootout_error_is_tolerated() {
-        assert!(service_is_absent(
-            Some(3),
-            b"Boot-out failed: 3: No such process"
-        ));
-        assert!(!service_is_absent(Some(3), b"Permission denied"));
-        assert!(!service_is_absent(Some(5), b"Input/output error"));
-    }
-}
+#[path = "plan_tests.rs"]
+mod tests;
 
 #[cfg(target_os = "macos")]
 fn service_is_absent(status: Option<i32>, stderr: &[u8]) -> bool {

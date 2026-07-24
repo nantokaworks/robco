@@ -50,6 +50,7 @@ fn run_interactive<R: io::BufRead, W: Write>(input: &mut R, output: &mut W) -> R
     if let Some(service) = service {
         service.apply(output)?;
     }
+    steps_service::warn_if_service_down(output, &config)?;
     Ok(())
 }
 

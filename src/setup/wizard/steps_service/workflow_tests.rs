@@ -4,6 +4,7 @@ use super::{
     materialize_with,
     plan::BootstrapMode,
     probe::ServiceState,
+    warn_if_service_down_with,
     workflow::{Caller, WorkerState, prepare_with, warning_message},
 };
 use crate::overseer::command::ActiveWorkers;
@@ -40,8 +41,7 @@ fn shared_entry_covers_every_state_for_both_callers() {
             ServiceState::Loaded,
         ] {
             let answers: &[u8] = match (caller, state) {
-                (Caller::Wizard, ServiceState::NotInstalled) => b"y\nn\n",
-                (Caller::Wizard, _) => b"\n",
+                (Caller::Wizard, _) => b"\n\n",
                 (Caller::InstallCommand, ServiceState::Loaded) => b"y\n",
                 (Caller::InstallCommand, _) => b"",
             };
@@ -61,8 +61,79 @@ fn shared_entry_covers_every_state_for_both_callers() {
                 matches!(plan.mode, BootstrapMode::Reload),
                 state == ServiceState::Loaded
             );
+            // The wizard hands every plist it writes to launchd; the explicit
+            // install command only executes the reload it was asked to confirm,
+            // and otherwise prints the bootstrap line for the operator to copy.
+            assert_eq!(
+                plan.execute,
+                caller == Caller::Wizard || state == ServiceState::Loaded
+            );
             assert!(String::from_utf8(output).unwrap().contains("launchd"));
         }
+    }
+}
+
+#[test]
+fn bare_enter_recovers_an_uninstalled_service() {
+    for state in [ServiceState::NotInstalled, ServiceState::Unloaded] {
+        let mut input = Cursor::new(b"\n\n");
+        let mut output = Vec::new();
+        let plan = prepare_with(
+            &mut input,
+            &mut output,
+            Caller::Wizard,
+            || state,
+            || Ok(workers(&[])),
+        )
+        .unwrap();
+
+        assert!(plan.write_plist, "{state:?} must write the plist");
+        assert!(plan.execute, "{state:?} must hand the plist to launchd");
+        assert!(matches!(plan.mode, BootstrapMode::Load));
+    }
+}
+
+#[test]
+fn declining_the_load_prompt_writes_the_plist_without_bootstrapping() {
+    let mut input = Cursor::new(b"y\nn\n");
+    let mut output = Vec::new();
+    let plan = prepare_with(
+        &mut input,
+        &mut output,
+        Caller::Wizard,
+        || ServiceState::NotInstalled,
+        || Ok(workers(&[])),
+    )
+    .unwrap();
+
+    assert!(plan.write_plist);
+    assert!(!plan.execute);
+    let output = String::from_utf8(output).unwrap();
+    assert!(output.contains("Install Overseer launchd service? [Y/n]"));
+    assert!(output.contains("Load the service now? [Y/n]"));
+}
+
+#[test]
+fn dispatch_without_a_loaded_service_warns_with_the_recovery_commands() {
+    let mut output = Vec::new();
+    warn_if_service_down_with(&mut output, true, || ServiceState::Unloaded).unwrap();
+    let warning = String::from_utf8(output).unwrap();
+
+    assert!(warning.contains("WARNING"));
+    assert!(warning.contains(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
+}
+
+#[test]
+fn loaded_service_or_disabled_dispatch_stays_quiet() {
+    for (dispatch_enabled, state) in [
+        (true, ServiceState::Loaded),
+        (false, ServiceState::Unloaded),
+        (false, ServiceState::NotInstalled),
+    ] {
+        let mut output = Vec::new();
+        warn_if_service_down_with(&mut output, dispatch_enabled, || state).unwrap();
+
+        assert!(output.is_empty(), "{dispatch_enabled} / {state:?} warned");
     }
 }
 

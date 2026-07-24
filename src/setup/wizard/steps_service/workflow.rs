@@ -82,7 +82,10 @@ where
             }
             match state {
                 ServiceState::NotInstalled => {
-                    let execute = prompt::confirm(input, output, "Load the service now?", false)?;
+                    // Default to loading: an operator running the wizard to
+                    // recover a dead daemon must not end up with a plist on
+                    // disk that launchd has never been handed.
+                    let execute = prompt::confirm(input, output, "Load the service now?", true)?;
                     Ok(WorkflowPlan {
                         write_plist: true,
                         execute,
@@ -153,7 +156,7 @@ fn skip() -> WorkflowPlan {
 #[cfg(target_os = "macos")]
 fn service_prompt(state: ServiceState) -> (&'static str, bool) {
     match state {
-        ServiceState::NotInstalled => ("Install Overseer launchd service?", false),
+        ServiceState::NotInstalled => ("Install Overseer launchd service?", true),
         ServiceState::Unloaded => ("Load the installed Overseer service?", true),
         ServiceState::Loaded => (
             "Reload the running Overseer service? (picks up the upgraded binary)",
