@@ -80,7 +80,6 @@ fn push_cleanup(entry: &LedgerEntry, actions: &mut Vec<Action>) {
     });
     actions.push(Action::RemoveWorktree {
         agent_id: entry.agent_id.clone(),
-        keep_branch: true,
     });
 }
 fn apply_inbox(entry: &mut LedgerEntry, observations: &Observations, actions: &mut Vec<Action>) {

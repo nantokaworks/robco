@@ -100,6 +100,31 @@ Workers report to the append-only inbox at `~/.robco/overseer/inbox.jsonl`; the 
 reads complete JSONL records, commits an offset only after the poll is persisted, and
 rotates consumed data after the file reaches 1 MiB.
 
+### Post-merge cleanup
+
+An entry that reaches `merged` is cleaned up while its registry row still exists. The
+daemon kills the worker's tmux session first and only then touches the worktree, so a
+session that refuses to die defers the rest of the cleanup to the next pass instead of
+pulling a worktree out from under a live shell. The cleanup itself is the same sequence
+the TUI merge action runs, and lives in one place so the two cannot drift: fast-forward
+the primary worktree, remove the task worktree, delete the local branch, delete the
+remote branch.
+
+The two paths differ only in what a failing step means. The TUI merge is watched, so it
+stops at the first failure and shows it. The daemon is not, so it logs the failure to
+`~/.robco/overseer/decisions.jsonl` and runs the remaining steps — a `main` that cannot
+fast-forward must not strand a worktree and a branch forever. The registry row is dropped
+only once the worktree is actually gone, which is what makes a failed removal retry on
+the next pass.
+
+The local branch is deleted only when its changes are provably in the base. Ancestry is
+not the test: under the default squash strategy the branch tip is not an ancestor of the
+base, so the check compares patch ids as well, covering merge, rebase, and squash
+landings alike. A branch that fails the check — including one whose base branch is stale
+because the fast-forward failed — is left in place with the reason logged, never
+force-deleted. Remote branch deletion stays best-effort: GitHub's own
+auto-delete-branch setting usually gets there first, and its absence is not a failure.
+
 ### Judgment plane
 
 Overseer uses short-lived LLM processes for exception triage and conversational Discord

@@ -12,7 +12,13 @@ use std::{
     thread,
 };
 
-use crate::{Result, git};
+use crate::{
+    Result,
+    git::{
+        self,
+        post_merge::{Cleanup, CleanupStep, OnFailure},
+    },
+};
 
 pub(super) const MERGING_PR: &str = "merging PR";
 pub(super) const PULLING_MAIN: &str = "pulling main";
@@ -45,19 +51,25 @@ pub(super) fn spawn(target: MergeTarget) -> Receiver<MergeEvent> {
 
 fn run_merge(target: &MergeTarget, sender: &Sender<MergeEvent>) -> Result<()> {
     git::merge_pr(&target.repo_path, &target.branch, target.strategy)?;
-    send_step(sender, PULLING_MAIN);
-    git::pull_ff_only(&target.repo_path)?;
-    send_step(sender, CLEANING_UP);
-    if target.worktree_path.exists() {
-        git::remove_worktree(&target.repo_path, &target.worktree_path, false)?;
+    // A watched merge stops at the first failure so the user sees it on the
+    // banner; the Overseer daemon runs the same steps under `Continue`.
+    Cleanup {
+        repo: &target.repo_path,
+        worktree: &target.worktree_path,
+        branch: &target.branch,
+        on_failure: OnFailure::Abort,
     }
-    if git::branch_exists(&target.repo_path, &target.branch)? {
-        git::delete_branch(&target.repo_path, &target.branch)?;
-    }
-    let _ = git::delete_remote_branch(&target.repo_path, &target.branch);
+    .run(|step| send_step(sender, step_label(step)))?;
     let _ = crate::tmux::kill_session(&target.tmux_session);
     let _ = crate::tmux::kill_session(&target.shell_session);
     Ok(())
+}
+
+fn step_label(step: CleanupStep) -> &'static str {
+    match step {
+        CleanupStep::PullingMain => PULLING_MAIN,
+        CleanupStep::CleaningUp => CLEANING_UP,
+    }
 }
 
 fn send_step(sender: &Sender<MergeEvent>, step: &'static str) {
