@@ -242,6 +242,7 @@ mod tests {
             status,
             awaiting_confirmation,
             worktree_missing: false,
+            mcp_active: false,
         };
         let busy = report(Status::Waiting, true);
         assert!(

@@ -99,6 +99,7 @@ fn copy_repo_status(source: &RepoNode, target: &mut RepoNode) {
         .clone_from(&source.main_last_capture);
     target.main_last_change_at = source.main_last_change_at;
     target.main_shell_working = source.main_shell_working;
+    target.main_mcp_active = source.main_mcp_active;
     target.main_pane_pid = source.main_pane_pid;
     target
         .main_tracked_command
@@ -112,6 +113,7 @@ fn copy_agent_status(source: &crate::model::AgentNode, target: &mut crate::model
     target.last_change_at = source.last_change_at;
     target.last_auto_accept_at = source.last_auto_accept_at;
     target.shell_working = source.shell_working;
+    target.mcp_active = source.mcp_active;
     target.pane_pid = source.pane_pid;
     target.tracked_command.clone_from(&source.tracked_command);
 }

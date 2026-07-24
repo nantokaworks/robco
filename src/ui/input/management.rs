@@ -177,6 +177,7 @@ mod tests {
             last_change_at: None,
             last_auto_accept_at: None,
             shell_working: false,
+            mcp_active: false,
             pane_pid: None,
             tracked_command: None,
             subagents: vec![],

@@ -28,6 +28,7 @@ pub struct StatusReport {
     pub status: Status,
     pub awaiting_confirmation: bool,
     pub worktree_missing: bool,
+    pub mcp_active: bool,
 }
 
 pub fn refresh_agent(
@@ -57,6 +58,7 @@ pub fn refresh_agent(
         Some(report) => {
             agent.status = report.status;
             agent.worktree_missing = report.worktree_missing;
+            agent.mcp_active = report.mcp_active;
             // Only a real confirmation prompt drives auto-accept — never a
             // plain input prompt or a finished (`Done`) turn.
             if report.awaiting_confirmation {
@@ -75,6 +77,7 @@ pub fn refresh_agent(
             }
         }
         None => {
+            agent.mcp_active = false;
             agent.pane_pid = None;
             agent.tracked_command = None;
         }
@@ -100,6 +103,7 @@ pub fn refresh_repo_main(
             repo.main_last_spinner = None;
             repo.main_last_change_at = None;
             repo.main_shell_working = false;
+            repo.main_mcp_active = false;
             repo.main_pane_pid = None;
             repo.main_tracked_command = None;
             return;
@@ -120,6 +124,7 @@ pub fn refresh_repo_main(
         last_change_at: repo.main_last_change_at.take(),
     };
     let report = classify_capture(&capture, &mut state, Local::now());
+    repo.main_mcp_active = report.mcp_active;
     repo.main_status = Some(downgrade_running_shell_pane(report, session).status);
     repo.main_last_capture = state.last_capture;
     repo.main_last_spinner = state.last_spinner;
@@ -235,6 +240,7 @@ fn classify_agent_observation(
         },
         awaiting_confirmation: false,
         worktree_missing: false,
+        mcp_active: false,
     })
 }
 
@@ -345,6 +351,7 @@ mod tests {
             status,
             awaiting_confirmation: true,
             worktree_missing: true,
+            mcp_active: false,
         }
     }
 

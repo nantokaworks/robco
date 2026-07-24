@@ -207,6 +207,7 @@ fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
         status: Status::Dead,
         awaiting_confirmation: false,
         worktree_missing: false,
+        mcp_active: false,
     })
 }
 

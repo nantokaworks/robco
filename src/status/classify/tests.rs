@@ -6,6 +6,55 @@ fn fixed_now() -> chrono::DateTime<Local> {
 }
 
 #[test]
+fn detects_running_mcp_tool_call() {
+    let capture = "⏺ dropr - job_progress (MCP)\n  ⎿  Running…";
+    assert!(looks_mcp_tool_running(capture));
+}
+
+#[test]
+fn running_non_mcp_tool_call_is_also_active() {
+    let capture = "⏺ Read(src/main.rs)\n  ⎿  Running…";
+    assert!(looks_mcp_tool_running(capture));
+}
+
+#[test]
+fn completed_mcp_tool_call_is_not_active() {
+    let capture = "⏺ dropr - job_progress (MCP)\n  ⎿  Job completed successfully";
+    assert!(!looks_mcp_tool_running(capture));
+}
+
+#[test]
+fn completed_mcp_tool_result_ending_in_ellipsis_is_not_active() {
+    let capture = "⏺ dropr - job_progress (MCP)\n  ⎿  Fetched 42 rows…";
+    assert!(!looks_mcp_tool_running(capture));
+}
+
+#[test]
+fn prose_ending_in_ellipsis_is_not_active() {
+    assert!(!looks_mcp_tool_running("Thinking about the problem…"));
+}
+
+#[test]
+fn empty_pending_gutter_is_not_active() {
+    assert!(!looks_mcp_tool_running("  ⎿  "));
+}
+
+#[test]
+fn empty_capture_is_not_mcp_active() {
+    assert!(!looks_mcp_tool_running(""));
+}
+
+#[test]
+fn spinner_with_exact_ellipsis_is_active() {
+    assert!(looks_mcp_tool_running("✳ …"));
+}
+
+#[test]
+fn idle_prompt_is_not_mcp_active() {
+    assert!(!looks_mcp_tool_running("Ready\n❯ "));
+}
+
+#[test]
 fn detects_common_confirmation_prompts() {
     assert!(looks_waiting("Allow edit src/main.rs? (y/n)"));
     assert!(looks_waiting("Do you want to continue?"));

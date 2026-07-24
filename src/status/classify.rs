@@ -36,6 +36,7 @@ pub(super) fn classify_capture(
     state: &mut WatchStatusState,
     now: chrono::DateTime<Local>,
 ) -> StatusReport {
+    let mcp_active = looks_mcp_tool_running(capture);
     let working = looks_working(capture);
     // A real confirmation prompt (y/n / option list). This is the only signal
     // that may drive auto-accept.
@@ -86,7 +87,32 @@ pub(super) fn classify_capture(
         status,
         awaiting_confirmation: confirmation,
         worktree_missing: false,
+        mcp_active,
     }
+}
+
+/// Pane-only heuristic for an in-flight tool call. It fires on the generic
+/// pending-result markers Claude Code shows while a tool is executing — a
+/// `Running…` sub-line, or a pending gutter/spinner line whose stripped content
+/// is exactly an ellipsis. Pane captures cannot reliably separate MCP calls from
+/// ordinary Read/Bash/Edit calls, so this is intentionally tool-agnostic (biased
+/// toward MCP in intent only), the same class of heuristic as the existing
+/// `esc to interrupt` / spinner-motion signals. Completed results (arbitrary text,
+/// even when it ends in `…`) do not match.
+pub(super) fn looks_mcp_tool_running(capture: &str) -> bool {
+    capture.lines().any(|line| {
+        let trimmed = trim_line_chrome(line);
+        let has_pending_gutter = trimmed.contains(['⎿', '⎺']);
+        let has_spinner = trimmed.chars().next().is_some_and(is_spinner_char);
+        let pending = trimmed
+            .trim_start_matches(['⎿', '⎺'])
+            .trim_start_matches(is_spinner_char)
+            .trim_start();
+        let running =
+            trimmed.contains("Running…") || (has_pending_gutter && pending.starts_with("Running"));
+        let ellipsis = (has_pending_gutter || has_spinner) && pending == "…";
+        running || ellipsis
+    })
 }
 
 fn looks_strong_waiting(capture: &str) -> bool {
