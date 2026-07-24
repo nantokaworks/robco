@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     App, active_worker_management,
-    decisions::{DETAIL_LIMIT, DecisionList, append_decisions},
+    decisions::{DETAIL_LIMIT, append_decisions},
     render::{append_health, append_inbox, append_ledger, append_worker_management},
 };
 
@@ -39,7 +39,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         }
         OverseerCategory::Inbox => append_inbox(&mut lines, app),
         OverseerCategory::Decisions => {
-            append_decisions(&mut lines, &snapshot.decisions, DecisionList::Detail);
+            append_decisions(&mut lines, &snapshot.decisions);
         }
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {

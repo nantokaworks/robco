@@ -59,7 +59,7 @@ fn inbox_navigation_is_handled_from_category_selection() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
-    app.selected = OverseerCategory::Inbox.index() + 1;
+    app.selected = OverseerCategory::Inbox.index();
     app.preview = PreviewPane::Info;
 
     assert!(handle_normal(&mut app, KeyCode::Char('[')));
@@ -71,7 +71,7 @@ fn stop_key_opens_panic_confirm_from_any_overseer_tab() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
-    app.selected = 0; // OVERSEER root row.
+    app.selected = 0; // First OVERSEER category row.
     // Works regardless of the active preview tab.
     app.preview = PreviewPane::Claude;
 
@@ -130,24 +130,21 @@ fn reset_key_is_ignored_when_overseer_inactive() {
 }
 
 #[test]
-fn stop_key_opens_panic_confirm_off_the_overseer_header() {
+fn stop_key_opens_panic_confirm_off_the_overseer_rows() {
     // Regression for the worker-row case (#175): S is an overseer-wide stop
-    // and no longer requires the selection to be the OVERSEER header /
-    // category. Any row while the panel is active reaches the confirm — the
-    // S branch keys off `overseer_visible` alone and never inspects the
-    // selection, so a worker row (Selection::Agent) takes this same path.
+    // and no longer requires the selection to be an OVERSEER category. Any row
+    // while the panel is active reaches the confirm — the S branch keys off
+    // `overseer_visible` alone and never inspects the selection, so a worker
+    // row (Selection::Agent) takes this same path.
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
-    // Point the cursor past the OVERSEER header / category rows so the
-    // selection is not one of them.
+    // Point the cursor past the OVERSEER category rows so the selection is
+    // not one of them.
     app.selected = 999;
     assert!(
-        !matches!(
-            app.selected_item(),
-            Some(Selection::Overseer | Selection::OverseerCategory(_))
-        ),
-        "precondition: selection must not be an overseer header row"
+        !matches!(app.selected_item(), Some(Selection::OverseerCategory(_))),
+        "precondition: selection must not be an overseer category row"
     );
 
     assert!(handle_normal(&mut app, KeyCode::Char('S')));

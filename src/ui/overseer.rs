@@ -23,9 +23,6 @@ mod render;
 pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 
-use decisions::{DecisionList, append_decisions};
-use render::{append_health, append_inbox, append_ledger};
-
 pub(super) type WorkerManagement = (String, ManagementMode);
 
 /// Decisions a snapshot reads out of the append-only log
@@ -58,7 +55,7 @@ pub(in crate::ui) struct OverseerSnapshot {
 }
 
 impl OverseerSnapshot {
-    /// Status glyph for the OVERSEER root row.
+    /// Status glyph for the OVERSEER header row.
     ///
     /// A dead daemon is `Dead`. A live daemon only counts as `Running` — the
     /// animated spinner — while dispatch is enabled. Once dispatch is turned
@@ -78,30 +75,6 @@ impl OverseerSnapshot {
     pub(in crate::ui) fn circuit_open(&self) -> bool {
         self.ledger.counters.consecutive_failures >= self.overseer.failure_circuit_threshold
     }
-}
-
-pub(super) fn summary(app: &App) -> (String, Text<'static>) {
-    let snapshot = &app.overseer_snapshot;
-    let config = &snapshot.overseer;
-    let management = active_worker_management(app);
-    let mut lines = Vec::new();
-    append_health(
-        &mut lines,
-        config,
-        &snapshot.ledger,
-        snapshot.daemon_alive,
-        snapshot.heartbeat_age,
-    );
-    append_ledger(
-        &mut lines,
-        config,
-        &snapshot.ledger,
-        &snapshot.decisions,
-        &management,
-    );
-    append_inbox(&mut lines, app);
-    append_decisions(&mut lines, &snapshot.decisions, DecisionList::Summary);
-    ("OVERSEER / local control".into(), lines.into())
 }
 
 pub(super) fn active_worker_management(app: &App) -> Vec<WorkerManagement> {

@@ -152,10 +152,13 @@ fn projects_popup_opens_immediately_below_rendered_selection() {
 fn overseer_popup_opens_immediately_below_rendered_selections() {
     let mut app = test_app(Registry::default());
     app.selected = 0;
-    assert_eq!(app.selected_item(), Some(Selection::Overseer));
+    assert_eq!(
+        app.selected_item(),
+        Some(Selection::OverseerCategory(OverseerCategory::Health))
+    );
     assert_overseer_popup_anchor(&app);
 
-    app.selected = OverseerCategory::Decisions.index() + 1;
+    app.selected = OverseerCategory::Decisions.index();
     assert_eq!(
         app.selected_item(),
         Some(Selection::OverseerCategory(OverseerCategory::Decisions))

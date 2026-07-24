@@ -367,7 +367,6 @@ impl OverseerCategory {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
-    Overseer,
     OverseerCategory(OverseerCategory),
     Repo(usize),
     Agent {

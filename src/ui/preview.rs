@@ -40,11 +40,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let panes = layout::panes(root.body, app.overseer_frame_height());
 
     let (title, text) = match (pane, selection) {
-        (PreviewPane::Info, Some(Selection::Overseer)) => super::overseer::summary(app),
         (PreviewPane::Info, Some(Selection::OverseerCategory(category))) => {
             super::overseer::category_preview(app, category)
         }
-        (PreviewPane::Claude, Some(Selection::Overseer | Selection::OverseerCategory(_))) => {
+        (PreviewPane::Claude, Some(Selection::OverseerCategory(_))) => {
             overseer::control_preview(app)
         }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {

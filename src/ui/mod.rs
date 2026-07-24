@@ -151,9 +151,7 @@ pub enum PreviewPane {
 /// first entry is the default tab used when nothing has been remembered yet.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        Some(Selection::Overseer | Selection::OverseerCategory(_)) => {
-            &[PreviewPane::Info, PreviewPane::Claude]
-        }
+        Some(Selection::OverseerCategory(_)) => &[PreviewPane::Info, PreviewPane::Claude],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -188,7 +186,6 @@ pub struct App {
     /// Absence means collapsed, including for newly discovered owners.
     expanded_children: HashSet<String>,
     overseer_visible: bool,
-    overseer_collapsed: bool,
     overseer_expanded: [bool; 4],
     /// Whether the "other locations" section (off-launch-dir repos that still
     /// have agents) is collapsed to its header row.
@@ -249,7 +246,6 @@ impl App {
             expanded,
             expanded_children: HashSet::new(),
             overseer_visible,
-            overseer_collapsed: false,
             overseer_expanded: [false; 4],
             other_collapsed: false,
             orphans: Vec::new(),
