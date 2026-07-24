@@ -4,7 +4,9 @@
 use std::collections::HashMap;
 
 use crate::model::ManagementMode;
-use crate::overseer::ledger::{Ledger, LedgerEntry, LedgerPhase};
+use crate::overseer::ledger::{Ledger, LedgerEntry};
+
+pub(super) use crate::overseer::ledger::terminal;
 
 /// Ledger entries recording an attempt at this task. Both identifiers are
 /// compared because a ready task without a nanoid is tracked under its display
@@ -33,11 +35,4 @@ pub(super) fn worker_mode(
         .get(&entry.agent_id)
         .copied()
         .unwrap_or(ManagementMode::Auto)
-}
-
-pub(super) fn terminal(phase: LedgerPhase) -> bool {
-    matches!(
-        phase,
-        LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
-    )
 }
