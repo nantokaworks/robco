@@ -1,30 +1,24 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     panic::{self, AssertUnwindSafe},
     path::PathBuf,
     sync::{
         Arc, Mutex,
         mpsc::{self, Receiver, Sender},
     },
-    time::{Instant, SystemTime},
+    time::Instant,
 };
 
 use crate::{
-    agent,
-    config::Config,
-    discover, dropr, git,
-    model::{OrphanSession, RepoNode},
-    overseer::logging,
-    registry::Registry,
-    status,
-    subagents::claude::ClaudeSubagentReader,
+    agent, config::Config, model::RepoNode, overseer::logging, registry::Registry, status,
 };
 
 use super::{
     background_support::*,
-    children, discovery, orphans,
+    discovery,
+    discovery_capture::{DiscoveryResult, capture_discovery},
+    dropr_overlay::{self, OverlayStatus},
     overseer_refresh::{OverseerResult, capture_overseer},
-    subagents,
 };
 use crate::ui::{App, list};
 
@@ -39,6 +33,8 @@ pub(in crate::ui) struct BackgroundRefresh {
     status_in_flight: Option<Instant>,
     discovery_in_flight: Option<Instant>,
     pub(super) overseer_synced_at: Option<Instant>,
+    dropr_overlay_load_started_at: Option<Instant>,
+    pub(super) dropr_overlay_status: OverlayStatus,
     decision_cursor: Option<Arc<Mutex<logging::DigestCursor>>>,
     registry_saver: RegistrySaver,
 }
@@ -47,13 +43,6 @@ pub(super) struct StatusResult {
     pub(super) repos: Vec<RepoNode>,
     pub(super) overseer_visible: bool,
     pub(super) overseer: OverseerResult,
-}
-
-struct DiscoveryResult {
-    registry: Registry,
-    fingerprint: Vec<u8>,
-    orphans: Option<Vec<OrphanSession>>,
-    save: bool,
 }
 
 impl BackgroundRefresh {
@@ -68,6 +57,8 @@ impl BackgroundRefresh {
             status_in_flight: None,
             discovery_in_flight: None,
             overseer_synced_at: None,
+            dropr_overlay_load_started_at: None,
+            dropr_overlay_status: OverlayStatus::default(),
             decision_cursor: None,
             registry_saver: RegistrySaver::new(),
         }
@@ -124,6 +115,16 @@ impl App {
         }
         let started = Instant::now();
         self.background_refresh.discovery_in_flight = Some(started);
+        let reload_overlay = self.config.dropr_overlay
+            && dropr_overlay::reload_is_due(
+                self.background_refresh.dropr_overlay_load_started_at,
+                started,
+            );
+        if reload_overlay {
+            // Charge the interval at dispatch: a load that fails, or whose
+            // result is discarded, must not re-run the subprocess next tick.
+            self.background_refresh.dropr_overlay_load_started_at = Some(started);
+        }
         let sender = self.background_refresh.discovery_tx.clone();
         let registry = clone_registry(&self.registry);
         let config = self.config.clone();
@@ -132,7 +133,7 @@ impl App {
             .name("ui-discovery-refresh".into())
             .spawn(move || {
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    capture_discovery(registry, config, roots)
+                    capture_discovery(registry, config, roots, reload_overlay)
                 }))
                 .ok();
                 let _ = sender.send((started, result));
@@ -184,7 +185,17 @@ impl App {
                     .unwrap_or(true)
             })
             .collect();
-        carry_runtime(&self.registry.repos, &mut result.registry.repos);
+        // A freshly loaded overlay is authoritative; carrying the previous link
+        // forward would resurrect a workspace that was unlinked outside robco.
+        let carry_dropr = result.overlay != Some(OverlayStatus::Loaded);
+        carry_runtime(
+            &self.registry.repos,
+            &mut result.registry.repos,
+            carry_dropr,
+        );
+        if let Some(status) = result.overlay {
+            self.background_refresh.dropr_overlay_status = status;
+        }
         self.registry = result.registry;
         self.expanded = expanded;
         if let Some(orphans) = result.orphans {
@@ -220,76 +231,5 @@ fn capture_status(mut registry: Registry, config: &Config) -> StatusResult {
         overseer: capture_overseer(&registry, config),
         repos: registry.repos,
         overseer_visible: list::overseer_is_visible(),
-    }
-}
-
-fn capture_discovery(
-    mut registry: Registry,
-    config: Config,
-    roots: Vec<PathBuf>,
-) -> DiscoveryResult {
-    let fingerprint = fingerprint(&registry);
-    if !config.subagent_indicator {
-        subagents::ingest(
-            &mut registry.repos,
-            false,
-            &ClaudeSubagentReader::default(),
-            SystemTime::now(),
-        );
-    }
-    let mut discovered = discover::discover_all(roots.iter().map(PathBuf::as_path));
-    let removed = discovery::prune_unmanaged(&mut registry.repos, &config.worktree_root);
-    let expected = discovered
-        .iter()
-        .map(|repo| discovery::path_key(&repo.path))
-        .chain(
-            registry
-                .repos
-                .iter()
-                .filter(|repo| !repo.agents.is_empty() || repo.pinned)
-                .map(|repo| discovery::path_key(&repo.path)),
-        )
-        .collect::<HashSet<_>>();
-    let current = registry
-        .repos
-        .iter()
-        .map(|repo| discovery::path_key(&repo.path))
-        .collect::<HashSet<_>>();
-    let repos_changed = expected != current;
-    if repos_changed {
-        if config.dropr_overlay {
-            let overlay = dropr::DroprOverlay::load_best_effort();
-            for repo in &mut discovered {
-                if let Some(remote) = &repo.remote_url {
-                    repo.dropr = overlay.find_by_repo_url(remote).cloned();
-                }
-            }
-        }
-        registry.merge_discovered(discovered);
-    }
-    let mut added = false;
-    for repo in &mut registry.repos {
-        if let Ok(worktrees) = git::list_worktrees(&repo.path) {
-            added |= children::reconcile(repo, &config, worktrees).0;
-        }
-    }
-    if config.subagent_indicator {
-        subagents::ingest(
-            &mut registry.repos,
-            true,
-            &ClaudeSubagentReader::default(),
-            SystemTime::now(),
-        );
-    }
-    let found_orphans = orphans::discover_orphans(
-        &registry.repos,
-        &config.tmux_session_prefix,
-        &config.worktree_root,
-    );
-    DiscoveryResult {
-        registry,
-        fingerprint,
-        orphans: found_orphans,
-        save: repos_changed || added || removed,
     }
 }

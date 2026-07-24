@@ -32,14 +32,18 @@ pub(super) fn merge_status(current: &mut [RepoNode], refreshed: Vec<RepoNode>) {
     }
 }
 
-pub(super) fn carry_runtime(current: &[RepoNode], refreshed: &mut [RepoNode]) {
+/// Move runtime-only state onto a freshly discovered repo set. `carry_dropr`
+/// preserves a previously resolved workspace link; pass `false` when the cycle
+/// reloaded the overlay, since its result already reflects remote state and an
+/// absent link there means the repo really was unlinked.
+pub(super) fn carry_runtime(current: &[RepoNode], refreshed: &mut [RepoNode], carry_dropr: bool) {
     for repo in refreshed {
         let Some(source) = current.iter().find(|source| source.path == repo.path) else {
             continue;
         };
         copy_repo_status(source, repo);
         repo.dropr_tasks.clone_from(&source.dropr_tasks);
-        if repo.dropr.is_none() {
+        if carry_dropr && repo.dropr.is_none() {
             repo.dropr.clone_from(&source.dropr);
         }
         for tracked in &mut repo.agents {
