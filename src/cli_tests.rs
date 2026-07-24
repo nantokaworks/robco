@@ -80,6 +80,26 @@ fn parses_overseer_daily_limit() {
 }
 
 #[test]
+fn parses_overseer_protection_modes() {
+    for (argument, expected) in [
+        ("required", ProtectionMode::Required),
+        ("relaxed", ProtectionMode::Relaxed),
+        ("off", ProtectionMode::Off),
+    ] {
+        let args = Args::try_parse_from(["robco", "overseer", "protection", argument]).unwrap();
+        let Some(Command::Overseer(args)) = args.command else {
+            panic!("expected overseer")
+        };
+        let OverseerCommand::Protection(args) = args.command else {
+            panic!("expected protection")
+        };
+        assert_eq!(args.mode, expected);
+    }
+    // The three-valued mode is a dedicated subcommand, not an on/off `set` setting.
+    assert!(Args::try_parse_from(["robco", "overseer", "set", "protection", "relaxed"]).is_err());
+}
+
+#[test]
 fn parses_new_subcommand() {
     let args = Args::try_parse_from(["robco", "new", "--title", "x", "--prompt", "y"]).unwrap();
     let Some(Command::New(args)) = args.command else {

@@ -16,17 +16,20 @@ use super::{
 };
 use crate::{
     Result,
-    cli::{OverseerArgs, OverseerCommand, OverseerSetting},
+    cli::{OverseerArgs, OverseerCommand},
     config::Config,
     registry::Registry,
 };
 
 mod escalation;
 mod service;
+mod settings;
 
 pub(crate) use escalation::escalate_workers;
 use service::install_service;
 pub(crate) use service::write_service_plist;
+pub(crate) use settings::set_runtime;
+use settings::{daily_limit, protection_mode, protection_warning, set};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) struct ActiveWorkers {
@@ -41,6 +44,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Stop => stop(),
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         OverseerCommand::DailyLimit(args) => daily_limit(args.value),
+        OverseerCommand::Protection(args) => protection_mode(args.mode),
         OverseerCommand::Panic => panic_stop(),
         OverseerCommand::InstallService => install_service(),
     }
@@ -66,10 +70,11 @@ fn status(config: &Config) -> Result<()> {
         heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs()))
     );
     println!(
-        "overseer: {}  dispatch: {}  auto-merge: {}  circuit: {}",
+        "overseer: {}  dispatch: {}  auto-merge: {} (protection: {})  circuit: {}",
         on_off(config.overseer.enabled),
         on_off(config.overseer.dispatch_enabled),
         on_off(config.overseer.auto_merge),
+        config.overseer.protection_mode.label(),
         if ledger.counters.consecutive_failures >= config.overseer.failure_circuit_threshold {
             "open"
         } else {
@@ -100,6 +105,11 @@ fn status(config: &Config) -> Result<()> {
     }
     if config.overseer.dispatch_enabled && !healthy {
         println!("warning: {}", crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT);
+    }
+    if config.overseer.auto_merge
+        && let Some(warning) = protection_warning(config.overseer.protection_mode)
+    {
+        println!("warning: {warning}");
     }
     Ok(())
 }
@@ -135,56 +145,6 @@ fn stop() -> Result<()> {
         thread::sleep(Duration::from_millis(100));
     }
     println!("SIGTERM sent; overseer is still shutting down");
-    Ok(())
-}
-
-fn set(config: &Config, setting: OverseerSetting, enabled: bool) -> Result<()> {
-    set_runtime(setting, enabled)?;
-    let label = match setting {
-        OverseerSetting::Dispatch => "dispatch",
-        OverseerSetting::AutoMerge => "auto-merge",
-    };
-    println!("{label}: {}", on_off(enabled));
-    if matches!(setting, OverseerSetting::Dispatch)
-        && enabled
-        && !daemon_healthy(config.overseer.poll_interval_secs)
-    {
-        println!("warning: {}", crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT);
-    }
-    Ok(())
-}
-
-fn daily_limit(value: u32) -> Result<()> {
-    // Reload rather than mutate the passed-in config: the daemon rewrites the
-    // file on its own ticks, so a load→mutate→save keeps this from clobbering a
-    // concurrent write with a stale snapshot (mirrors `set_runtime`).
-    let mut config = Config::load()?;
-    config.overseer.daily_dispatch_limit = value;
-    config.save()?;
-    println!(
-        "daily dispatch limit: {}",
-        super::dispatch::format_dispatch_limit(value)
-    );
-    Ok(())
-}
-
-pub(crate) fn set_runtime(setting: OverseerSetting, enabled: bool) -> Result<()> {
-    let mut config = Config::load()?;
-    match setting {
-        OverseerSetting::Dispatch => {
-            config.overseer.dispatch_enabled = enabled;
-        }
-        OverseerSetting::AutoMerge => {
-            config.overseer.auto_merge = enabled;
-        }
-    }
-    config.save()?;
-    if matches!(setting, OverseerSetting::Dispatch) && enabled {
-        runtime_request::enqueue(RuntimeRequest::ResetCircuit {
-            source: "cli".into(),
-            at: chrono::Utc::now(),
-        })?;
-    }
     Ok(())
 }
 

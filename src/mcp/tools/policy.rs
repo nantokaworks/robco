@@ -48,6 +48,7 @@ fn policy_with(
     Ok(json!({
         "dispatch_enabled": config.dispatch_enabled,
         "auto_merge": config.auto_merge,
+        "protection_mode": config.protection_mode.label(),
         "autonomy_level": config.autonomy_level,
         "daily_llm_budget": config.daily_llm_budget,
         // 0 = unlimited (see overseer::dispatch). Surfaced alongside

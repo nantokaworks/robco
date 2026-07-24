@@ -38,6 +38,9 @@ pub struct DecisionEntry {
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<String>,
+    /// Auto-merge branch-protection strictness in force when the decision was taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protection_mode: Option<String>,
 }
 
 impl DecisionEntry {
@@ -51,6 +54,7 @@ impl DecisionEntry {
             source: None,
             user_id: None,
             pr_url: None,
+            protection_mode: None,
         }
     }
 }
