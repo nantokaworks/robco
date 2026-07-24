@@ -45,7 +45,7 @@ fn replays_claimed_working_and_pr_opened_transitions() {
     );
 }
 #[test]
-fn merged_snapshot_emits_cleanup_once_and_keeps_branch() {
+fn merged_snapshot_emits_cleanup_once() {
     let line = r#"{"at":"2026-07-16T00:04:00Z","observations":{"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"MERGED","statusCheckRollup":[]}]}}"#;
     let (merged, actions) = replay(&[line]);
     assert_eq!(merged.entries[0].phase, LedgerPhase::Merged);
@@ -54,7 +54,6 @@ fn merged_snapshot_emits_cleanup_once_and_keeps_branch() {
     }));
     assert!(actions.contains(&Action::RemoveWorktree {
         agent_id: "worker-1".into(),
-        keep_branch: true,
     }));
     let (_, actions) = reconcile(
         &merged,
@@ -83,7 +82,6 @@ fn merged_entry_reemits_cleanup_while_agent_is_registered() {
     }));
     assert!(actions.contains(&Action::RemoveWorktree {
         agent_id: "worker-1".into(),
-        keep_branch: true,
     }));
     let (_, actions) = reconcile(
         &merged,
@@ -135,7 +133,6 @@ fn manual_worker_with_merged_pr_is_advanced_and_cleaned_up() {
     }));
     assert!(actions.contains(&Action::RemoveWorktree {
         agent_id: "worker-1".into(),
-        keep_branch: true,
     }));
     // Cleanup is re-emitted only while the registry row survives, so a merged
     // Manual entry does not re-kill an already-cleaned agent every poll.

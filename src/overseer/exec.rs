@@ -3,7 +3,11 @@ use super::{
     monitor::Action,
 };
 pub(crate) use crate::exec::run_timeout;
-use crate::{Result, registry::Registry};
+use crate::{
+    Result,
+    git::post_merge::{Cleanup, OnFailure},
+    registry::Registry,
+};
 use fd_lock::RwLock;
 use std::{
     collections::HashSet,
@@ -32,7 +36,7 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
                     cleanup_blocked.insert(agent_id.as_str());
                 }
             }
-            Action::RemoveWorktree { agent_id, .. } => {
+            Action::RemoveWorktree { agent_id } => {
                 if cleanup_blocked.contains(agent_id.as_str()) {
                     log_message(
                         None,
@@ -40,7 +44,7 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
                             "worktree cleanup deferred for {agent_id}: session cleanup failed"
                         ),
                     )?;
-                } else if let Err(error) = remove_agent_worktree(agent_id) {
+                } else if let Err(error) = clean_up_agent(agent_id) {
                     log_cleanup_failure(agent_id, "worktree", &error)?;
                 }
             }
@@ -91,28 +95,45 @@ fn kill_agent_session(agent_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn remove_agent_worktree(agent_id: &str) -> Result<()> {
+/// Runs the post-merge cleanup for one merged agent and drops its registry row.
+///
+/// The sequence itself lives in [`crate::git::post_merge`] so this path and the
+/// interactive merge cannot drift apart. It runs under [`OnFailure::Continue`]:
+/// nobody is watching the daemon, and a base branch that refuses to fast-forward
+/// must not leave the worktree and the branch behind forever.
+///
+/// The registry row survives a failed worktree removal on purpose. It is what
+/// makes the next reconcile pass re-emit the cleanup, so the retry keeps
+/// happening until the worktree is actually gone.
+fn clean_up_agent(agent_id: &str) -> Result<()> {
     let registry = Registry::load()?;
     let target = registry.repos.iter().find_map(|repo| {
         repo.agents
             .iter()
             .find(|agent| agent.id == agent_id)
-            .map(|agent| (repo.path.clone(), agent.worktree_path.clone()))
+            .map(|agent| {
+                (
+                    repo.path.clone(),
+                    agent.worktree_path.clone(),
+                    agent.branch.clone(),
+                )
+            })
     });
-    let Some((repo, worktree)) = target else {
+    let Some((repo, worktree, branch)) = target else {
         return Ok(());
     };
-    if worktree.exists() {
-        let mut command = Command::new("git");
-        command
-            .args(["-C"])
-            .arg(&repo)
-            .args(["worktree", "remove"])
-            .arg(&worktree);
-        let output = run_timeout(command, COMMAND_TIMEOUT)?;
-        if !output.status.success() {
-            return Err(command_error("git worktree remove", &output).into());
-        }
+    let outcome = Cleanup {
+        repo: &repo,
+        worktree: &worktree,
+        branch: &branch,
+        on_failure: OnFailure::Continue,
+    }
+    .run(|_| ())?;
+    for note in &outcome.notes {
+        log_message(None, &format!("cleanup for {agent_id}: {note}"))?;
+    }
+    if !outcome.worktree_removed {
+        return Ok(());
     }
     Registry::locked_update(|registry| {
         for repo in &mut registry.repos {

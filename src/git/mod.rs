@@ -1,6 +1,11 @@
+mod branch;
+pub mod post_merge;
 mod remote;
+#[cfg(test)]
+mod test_repo;
 mod worktree;
 
+pub use branch::*;
 pub use remote::*;
 pub use worktree::*;
 

@@ -70,7 +70,10 @@ pub struct PrObservation {
 #[rustfmt::skip]
 pub enum Action {
     KillSession { agent_id: String },
-    RemoveWorktree { agent_id: String, keep_branch: bool },
+    /// Runs the post-merge cleanup for one agent: the base fast-forward, the
+    /// worktree removal, and the branch deletion. It carries no policy — the
+    /// merge gate that produced it already decided the work landed.
+    RemoveWorktree { agent_id: String },
     MarkFailed { task_id: String, reason: String, origin: FailureOrigin },
     Escalate { task_id: String, reason: String },
     Notify { message: String },
