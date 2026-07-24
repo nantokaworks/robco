@@ -229,7 +229,8 @@ impl App {
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
-            | Mode::ConfirmOverseerExclude { .. } => unreachable!("handled above"),
+            | Mode::ConfirmOverseerExclude { .. }
+            | Mode::ConfirmOverseerBulkToggle { .. } => unreachable!("handled above"),
         }
 
         self.clamp_selection();
