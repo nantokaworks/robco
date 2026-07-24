@@ -12,11 +12,7 @@ use crate::overseer::{
     ledger::Ledger,
     logging::{self, DecisionEntry, DecisionKind},
 };
-use crate::{Result, config::Config, dropr, registry::Registry};
-
-/// `dropr task ready --limit` caps at 20; larger values make the CLI
-/// exit with an argument error and the fetch fails for every repo.
-const READY_FETCH_LIMIT: usize = 20;
+use crate::{Result, config::Config, dropr, dropr::READY_FETCH_LIMIT, registry::Registry};
 
 pub fn dispatch_pass(
     config: &mut Config,

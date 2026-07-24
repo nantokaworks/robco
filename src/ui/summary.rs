@@ -6,12 +6,14 @@ use ratatui::{
 use std::time::{Duration, SystemTime};
 
 use crate::{
-    dropr::DroprTaskCandidate,
     model::{AgentNode, ChildWorktree, RepoNode},
     subagents::SubagentStatus,
 };
 
 use super::{blockfont, repo_description, theme::DEFAULT as THEME};
+
+mod dropr_tasks;
+use dropr_tasks::dropr_task_lines;
 
 pub(in crate::ui) fn repo_summary(
     repo: &RepoNode,
@@ -81,35 +83,6 @@ pub(in crate::ui) fn repo_summary(
     }
 
     (repo.name.clone(), lines.into())
-}
-
-fn partition_tasks(
-    tasks: &[DroprTaskCandidate],
-) -> (Vec<&DroprTaskCandidate>, Vec<&DroprTaskCandidate>) {
-    tasks.iter().partition(|task| task.status == "in_progress")
-}
-
-fn dropr_task_lines(tasks: &[DroprTaskCandidate]) -> Vec<Line<'static>> {
-    let (in_progress, next) = partition_tasks(tasks);
-    let mut lines = Vec::new();
-    if !next.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("next tasks", THEME.accent_style())));
-        for task in next.into_iter().take(3) {
-            lines.push(Line::from(format!("{}  {}", task.display_id, task.title)));
-        }
-    }
-    if !in_progress.is_empty() {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "in progress",
-            THEME.subagent_style(),
-        )));
-        for task in in_progress.into_iter().take(3) {
-            lines.push(Line::from(format!("▸ {}  {}", task.display_id, task.title)));
-        }
-    }
-    lines
 }
 
 pub(in crate::ui) fn agent_summary(repo: &RepoNode, agent: &AgentNode) -> (String, Text<'static>) {
@@ -244,55 +217,4 @@ pub(in crate::ui) fn child_summary(
         format!("{} / {} / {label}", repo.name, agent.title),
         lines.into(),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
-        DroprTaskCandidate {
-            display_id: display_id.to_string(),
-            title: format!("Task {display_id}"),
-            priority: String::new(),
-            status: status.to_string(),
-        }
-    }
-
-    fn rendered_lines(tasks: &[DroprTaskCandidate]) -> Vec<String> {
-        let text: Text<'static> = dropr_task_lines(tasks).into();
-        text.lines
-            .iter()
-            .map(|line| {
-                line.spans
-                    .iter()
-                    .map(|span| span.content.as_ref())
-                    .collect()
-            })
-            .collect()
-    }
-
-    #[test]
-    fn partitions_in_progress_from_next_tasks() {
-        let tasks = [task("#1", "in_progress"), task("#2", "ready")];
-        let (in_progress, next) = partition_tasks(&tasks);
-        assert_eq!(in_progress[0].display_id, "#1");
-        assert_eq!(next[0].display_id, "#2");
-    }
-
-    #[test]
-    fn renders_in_progress_after_next_tasks() {
-        let lines = rendered_lines(&[task("#2", "ready"), task("#1", "in_progress")]);
-        let in_progress = lines.iter().position(|line| line == "in progress").unwrap();
-        let next = lines.iter().position(|line| line == "next tasks").unwrap();
-        assert!(next < in_progress);
-        assert!(lines.iter().any(|line| line == "▸ #1  Task #1"));
-    }
-
-    #[test]
-    fn omits_in_progress_heading_without_matching_tasks() {
-        let lines = rendered_lines(&[task("#2", "ready")]);
-        assert!(!lines.iter().any(|line| line == "in progress"));
-        assert!(lines.iter().any(|line| line == "next tasks"));
-    }
 }

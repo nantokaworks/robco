@@ -9,6 +9,15 @@ mod workspace;
 pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
 pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
 
+/// `dropr task ready --limit` caps at 20; larger values make the CLI
+/// exit with an argument error and the fetch fails for every repo.
+pub const READY_FETCH_LIMIT: usize = 20;
+
+/// How many in-progress tasks a summary fetch asks for. Held at the ready
+/// ceiling so both halves of the repository summary run out of rows at the
+/// same place and a reader can compare them.
+pub const IN_PROGRESS_FETCH_LIMIT: usize = 20;
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DroprTaskCandidate {
     #[serde(alias = "global_display_id")]
@@ -98,7 +107,7 @@ pub fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandid
 pub fn fetch_repo_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
     merge_repo_tasks(
         fetch_in_progress_tasks(workspace_id),
-        fetch_ready_tasks(workspace_id, 3),
+        fetch_ready_tasks(workspace_id, READY_FETCH_LIMIT),
     )
 }
 
