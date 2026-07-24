@@ -239,7 +239,7 @@ fn spawn_candidate(
         retries,
         pr_url: None,
     });
-    ledger.counters.dispatched_today += 1;
+    ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     log_candidate(DecisionKind::Dispatch, task, "worker spawned")
 }
 
