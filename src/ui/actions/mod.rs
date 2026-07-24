@@ -4,6 +4,8 @@ mod background_support;
 pub(super) mod children;
 pub(super) mod clone;
 pub(super) mod discovery;
+mod discovery_capture;
+mod dropr_overlay;
 pub(super) mod dropr_tasks;
 mod kill;
 mod lifecycle;

@@ -8,6 +8,7 @@ use std::{
 use crate::{dropr, dropr::DroprTaskCandidate};
 
 use super::super::App;
+use super::dropr_overlay::OverlayStatus;
 
 const REFRESH_STALE_AFTER: Duration = Duration::from_secs(30);
 
@@ -32,10 +33,32 @@ impl DroprTaskRefresh {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DroprTaskReload {
     Running,
     Failed,
+    /// The overlay loaded and matched no repository: nothing is linked.
     NoLinkedWorkspaces,
+    /// No overlay load has completed yet, so linkage is simply unknown.
+    OverlayPending,
+    /// The `dropr` CLI is missing or its workspace listing keeps failing.
+    OverlayUnavailable,
+    /// Overlay loading is switched off, so links are never resolved.
+    OverlayDisabled,
+}
+
+/// Why no workspace is available to refresh. The distinction matters: reporting
+/// an unloaded overlay as "no dropr-linked repos" sends the operator to check a
+/// linkage that was never broken.
+fn no_workspace_reason(overlay_enabled: bool, status: OverlayStatus) -> DroprTaskReload {
+    if !overlay_enabled {
+        return DroprTaskReload::OverlayDisabled;
+    }
+    match status {
+        OverlayStatus::Pending => DroprTaskReload::OverlayPending,
+        OverlayStatus::Loaded => DroprTaskReload::NoLinkedWorkspaces,
+        OverlayStatus::Unavailable => DroprTaskReload::OverlayUnavailable,
+    }
 }
 
 fn refresh_is_fresh(started: Instant, now: Instant) -> bool {
@@ -96,7 +119,10 @@ impl App {
             .filter_map(|repo| repo.dropr.as_ref().map(|workspace| workspace.id.clone()))
             .collect::<Vec<_>>();
         if workspace_ids.is_empty() {
-            return DroprTaskReload::NoLinkedWorkspaces;
+            return no_workspace_reason(
+                self.config.dropr_overlay,
+                self.background_refresh.dropr_overlay_status,
+            );
         }
         let mut any_running = false;
         for workspace_id in workspace_ids {
@@ -160,107 +186,5 @@ impl App {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn task(display_id: &str) -> DroprTaskCandidate {
-        DroprTaskCandidate {
-            display_id: display_id.to_owned(),
-            title: display_id.to_owned(),
-            priority: String::new(),
-            status: "ready".to_owned(),
-        }
-    }
-
-    #[test]
-    fn fetched_rows_overwrite_current_tasks() {
-        let mut current = vec![task("#1")];
-
-        apply_fetched_tasks(&mut current, Some(vec![task("#2")]));
-
-        assert_eq!(current, vec![task("#2")]);
-    }
-
-    #[test]
-    fn fetched_empty_rows_clear_current_tasks() {
-        let mut current = vec![task("#1")];
-
-        apply_fetched_tasks(&mut current, Some(Vec::new()));
-
-        assert!(current.is_empty());
-    }
-
-    #[test]
-    fn failed_fetch_retains_current_tasks() {
-        let mut current = vec![task("#1")];
-
-        apply_fetched_tasks(&mut current, None);
-
-        assert_eq!(current, vec![task("#1")]);
-    }
-
-    #[test]
-    fn background_refresh_is_hidden_from_ui() {
-        let mut refresh = DroprTaskRefresh::new();
-        assert!(!track_refresh(&mut refresh, "workspace", false));
-        refresh
-            .in_flight
-            .insert("workspace".to_owned(), Instant::now());
-
-        assert!(!refresh_visible(&refresh, "workspace"));
-    }
-
-    #[test]
-    fn manual_refresh_is_visible_to_ui() {
-        let mut refresh = DroprTaskRefresh::new();
-        assert!(!track_refresh(&mut refresh, "workspace", true));
-        refresh
-            .in_flight
-            .insert("workspace".to_owned(), Instant::now());
-
-        assert!(refresh_visible(&refresh, "workspace"));
-    }
-
-    #[test]
-    fn stale_refresh_expires_manual_flag() {
-        let mut refresh = DroprTaskRefresh::new();
-        refresh
-            .in_flight
-            .insert("workspace".to_owned(), Instant::now() - REFRESH_STALE_AFTER);
-        refresh.manual.insert("workspace".to_owned());
-
-        assert!(!track_refresh(&mut refresh, "workspace", false));
-        assert!(!refresh.in_flight.contains_key("workspace"));
-        assert!(!refresh.manual.contains("workspace"));
-    }
-
-    #[test]
-    fn sweep_expires_removed_workspace_refresh() {
-        let now = Instant::now();
-        let mut refresh = DroprTaskRefresh::new();
-        refresh
-            .in_flight
-            .insert("removed-workspace".to_owned(), now - REFRESH_STALE_AFTER);
-        refresh.in_flight.insert("linked-workspace".to_owned(), now);
-        refresh.manual.insert("removed-workspace".to_owned());
-        refresh.manual.insert("linked-workspace".to_owned());
-
-        expire_stale_refreshes(&mut refresh, now);
-
-        assert!(!refresh.in_flight.contains_key("removed-workspace"));
-        assert!(!refresh.manual.contains("removed-workspace"));
-        assert!(refresh.in_flight.contains_key("linked-workspace"));
-        assert!(refresh.manual.contains("linked-workspace"));
-    }
-
-    #[test]
-    fn manual_request_marks_in_flight_background_refresh() {
-        let mut refresh = DroprTaskRefresh::new();
-        refresh
-            .in_flight
-            .insert("workspace".to_owned(), Instant::now());
-
-        assert!(track_refresh(&mut refresh, "workspace", true));
-        assert!(refresh_visible(&refresh, "workspace"));
-    }
-}
+#[path = "dropr_tasks_tests.rs"]
+mod tests;

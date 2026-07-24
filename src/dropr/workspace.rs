@@ -21,7 +21,13 @@ pub struct DroprOverlay {
 
 impl DroprOverlay {
     pub fn load_best_effort() -> Self {
-        Self::load_with_status_timeout(WORKSPACE_LIST_TIMEOUT).0
+        Self::load_with_status().0
+    }
+
+    /// [`Self::load_best_effort`] with the success flag kept, for callers that
+    /// have to tell "no workspace for this repo" apart from "no listing".
+    pub fn load_with_status() -> (Self, bool) {
+        Self::load_with_status_timeout(WORKSPACE_LIST_TIMEOUT)
     }
 
     /// Load the workspace overlay, also reporting whether the
@@ -41,7 +47,7 @@ impl DroprOverlay {
         }
     }
 
-    fn from_workspace_list(raw: &[u8]) -> Self {
+    pub(crate) fn from_workspace_list(raw: &[u8]) -> Self {
         let stdout = String::from_utf8_lossy(raw);
         let mut by_canonical_repo = HashMap::new();
         for line in stdout.lines().skip(1) {

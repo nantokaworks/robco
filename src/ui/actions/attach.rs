@@ -156,6 +156,9 @@ impl App {
                 DroprTaskReload::Running => "reloading dropr tasks…",
                 DroprTaskReload::Failed => "failed to start dropr task reload",
                 DroprTaskReload::NoLinkedWorkspaces => "no dropr-linked repos",
+                DroprTaskReload::OverlayPending => "dropr workspaces not loaded yet",
+                DroprTaskReload::OverlayUnavailable => "dropr workspace listing unavailable",
+                DroprTaskReload::OverlayDisabled => "dropr overlay is disabled",
             };
             self.show_message(message);
             return Ok(());

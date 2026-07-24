@@ -47,7 +47,7 @@ default.
 | `repos_root` | string (path) | `"~/.robco/repos"` | Persistent managed repository directory shared by the TUI, CLI, and Overseer daemon. A leading `~` is expanded on load. |
 | `tmux_session_prefix` | string | `"robco_"` | Prefix applied to every tmux session name RobCo creates. |
 | `poll_interval_ms` | integer (ms) | `750` | How often RobCo re-polls tmux for each agent's preview and status. Lower = snappier and more CPU; higher = calmer. |
-| `dropr_overlay` | boolean | `true` | When `true`, best-effort reads `dropr workspace list` and shows matching workspace metadata in the repo preview. Read-only; disable with this flag or `--no-dropr`. |
+| `dropr_overlay` | boolean | `true` | When `true`, best-effort reads `dropr workspace list` and shows matching workspace metadata in the repo preview. Reloaded at most once a minute (and whenever the repository set changes), so a linkage changed outside RobCo appears without a restart. Read-only; disable with this flag or `--no-dropr`. |
 | `auto_accept` | boolean | `false` | When `true`, any agent detected as `Waiting` (awaiting a yes/no prompt) is auto-answered by sending `y` + Enter, throttled to at most once every 5 seconds per agent. |
 | `process_indicator` | boolean | `true` | Enables `⚙ <cmd>` child-process detection. When enabled, each UI poll takes one system-wide `ps` snapshot shared by all rows; `false` skips that call and hides the indicator. |
 | `subagent_indicator` | boolean | `true` | Enables passive Claude Code session reads, the `✻N` counts, and subagent details in the agent INFO pane. `false` skips the periodic `~/.claude/projects` filesystem reads and clears cached subagent activity. |
