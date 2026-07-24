@@ -8,7 +8,7 @@ use std::{
 
 use serde_json::{Value, json};
 
-use super::{DroprTaskCandidate, parse_tasks};
+use super::{DroprTaskCandidate, IN_PROGRESS_FETCH_LIMIT, parse_tasks};
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(15);
 /// JSON-RPC id of the `tools/call` request; the initialize handshake owns id 1.
@@ -118,7 +118,7 @@ pub(super) fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTas
         json!({
             "workspace_id": workspace_id,
             "status": "in_progress",
-            "limit": 3,
+            "limit": IN_PROGRESS_FETCH_LIMIT,
         }),
         RESPONSE_TIMEOUT,
     )? {
