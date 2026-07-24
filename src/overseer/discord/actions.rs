@@ -4,6 +4,7 @@ use crate::{
     config::Config,
     overseer::{
         command,
+        dispatch::format_dispatch_limit,
         exec::{COMMAND_TIMEOUT, run_timeout},
         is_overseer_child,
         ledger::{Ledger, LedgerPhase},
@@ -126,7 +127,7 @@ fn status() -> crate::Result<String> {
         active,
         config.overseer.max_workers,
         ledger.counters.dispatched_today,
-        config.overseer.daily_dispatch_limit
+        format_dispatch_limit(config.overseer.daily_dispatch_limit)
     ))
 }
 

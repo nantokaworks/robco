@@ -170,7 +170,8 @@ fn apply_candidate_gates(
             config,
             ledger,
             candidate,
-            plan.dispatched_today + selected_repos.len() as u32,
+            plan.dispatched_today
+                .saturating_add(selected_repos.len() as u32),
             global,
             &per_repo,
             &selected_repos,

@@ -240,3 +240,10 @@ fn legacy_chief_policy_name_is_dispatched_as_an_alias() {
     let error = call_tool("robco_chief_policy", Some(json!({ "unexpected": true }))).unwrap_err();
     assert!(!error.to_string().contains("unknown tool"));
 }
+
+#[test]
+fn overseer_policy_includes_daily_dispatch_counters() {
+    let policy = call_tool("robco_overseer_policy", Some(json!({}))).unwrap();
+    assert!(policy.get("daily_dispatch_limit").is_some());
+    assert!(policy.get("dispatched_today").is_some());
+}
