@@ -8,7 +8,7 @@ use crate::{
 
 use crate::ui::{
     App, inbox,
-    overseer::{OverseerSnapshot, heartbeat_is_fresh},
+    overseer::{DECISION_SNAPSHOT_LIMIT, OverseerSnapshot, heartbeat_is_fresh},
 };
 
 use super::{background_refresh::StatusResult, background_support::merge_status};
@@ -20,7 +20,7 @@ pub(super) struct OverseerResult {
 
 pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> OverseerResult {
     let ledger = Ledger::load().unwrap_or_default();
-    let decisions = logging::tail(200).unwrap_or_default();
+    let decisions = logging::tail(DECISION_SNAPSHOT_LIMIT).unwrap_or_default();
     let reports = inbox::question_reports(registry);
     let inbox = inbox::aggregate(&ledger, &decisions, &reports);
     let heartbeat = crate::overseer::heartbeat_path().ok();
