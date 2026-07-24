@@ -1,7 +1,9 @@
 mod discord_events;
 mod merge;
+mod merge_state;
 mod observations;
 mod protection;
+mod pull_request;
 
 use super::{
     dispatch::dispatch_pass,
@@ -260,6 +262,7 @@ mod tests {
             dispatched_at: Utc::now(),
             retries: 0,
             pr_url: None,
+            branch_updates: 0,
         };
         let mut previous = Ledger {
             entries: vec![entry(LedgerPhase::Working)],

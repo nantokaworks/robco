@@ -3,29 +3,6 @@ use crate::overseer::autonomy::ChangeFacts;
 use serde_json::json;
 
 #[test]
-fn base_branch_follows_the_pull_request_and_falls_back_to_main() {
-    assert_eq!(
-        base_branch(&json!({"baseRefName": "release/2026"})),
-        "release/2026"
-    );
-    assert_eq!(
-        base_branch(&json!({"baseRefName": ""})),
-        DEFAULT_BASE_BRANCH
-    );
-    assert_eq!(base_branch(&json!({})), DEFAULT_BASE_BRANCH);
-}
-
-#[test]
-fn any_non_success_check_holds() {
-    assert!(!checks_green(&json!({"state":"OPEN", "statusCheckRollup":[
-        {"conclusion":"SUCCESS"}, {"conclusion":"FAILURE"}
-    ]})));
-    assert!(checks_green(
-        &json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":"SUCCESS"}]})
-    ));
-}
-
-#[test]
 fn failing_rust_gate_never_invokes_merge_judge() {
     let mut config = Config::default();
     config.overseer.autonomy_level = crate::overseer::autonomy::AutonomyLevel::FullAuto;
@@ -88,6 +65,7 @@ fn merge_case_saturates_additions_independently() {
         dispatched_at: chrono::Utc::now(),
         retries: 0,
         pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
     };
     let value = json!({
         "headRefOid":"new-sha", "additions":u64::MAX, "deletions":u32::MAX,
@@ -113,6 +91,7 @@ fn a_loosened_gate_is_identifiable_from_the_decision_alone() {
         dispatched_at: chrono::Utc::now(),
         retries: 0,
         pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
     };
     let merged = serde_json::to_value(gated_decision(
         &entry,
@@ -141,6 +120,7 @@ fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
         dispatched_at: chrono::Utc::now(),
         retries: 0,
         pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
     };
     assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
     assert_eq!(entry.phase, LedgerPhase::Escalated);

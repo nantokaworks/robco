@@ -37,6 +37,7 @@ fn ledger() -> Ledger {
             dispatched_at: Utc::now(),
             retries: 0,
             pr_url: None,
+            branch_updates: 0,
         }],
         ..Ledger::default()
     }

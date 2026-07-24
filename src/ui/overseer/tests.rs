@@ -79,6 +79,7 @@ fn management_app() -> App {
             dispatched_at: Utc::now(),
             retries: 0,
             pr_url: None,
+            branch_updates: 0,
         },
         LedgerEntry {
             task_id: "manual-task".into(),
@@ -90,6 +91,7 @@ fn management_app() -> App {
             dispatched_at: Utc::now(),
             retries: 0,
             pr_url: None,
+            branch_updates: 0,
         },
     ];
     app
@@ -394,6 +396,7 @@ fn active_phases_excludes_terminal_entries() {
                 dispatched_at: Utc::now(),
                 retries: 0,
                 pr_url: None,
+                branch_updates: 0,
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -405,6 +408,7 @@ fn active_phases_excludes_terminal_entries() {
                 dispatched_at: Utc::now(),
                 retries: 0,
                 pr_url: None,
+                branch_updates: 0,
             },
         ],
         ..Ledger::default()

@@ -177,6 +177,7 @@ fn off_mode_skips_the_probe_entirely() {
         dispatched_at: chrono::Utc::now(),
         retries: 0,
         pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
     };
     let registry = Registry::default();
     let mut cache = ProtectionCache::default();

@@ -254,6 +254,7 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
                 dispatched_at: agent.created_at.with_timezone(&Utc),
                 retries: 0,
                 pr_url: None,
+                branch_updates: 0,
             });
         }
     }

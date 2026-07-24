@@ -61,6 +61,7 @@ pub(super) fn spawn_candidate(
         dispatched_at: now,
         retries: attempts,
         pr_url: None,
+        branch_updates: 0,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::runtime::log_candidate(DecisionKind::Dispatch, task, "worker spawned")?;
@@ -121,6 +122,7 @@ mod tests {
             dispatched_at: Utc::now(),
             retries,
             pr_url: None,
+            branch_updates: 0,
         }
     }
 

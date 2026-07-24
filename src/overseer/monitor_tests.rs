@@ -12,6 +12,7 @@ fn ledger() -> Ledger {
             dispatched_at: Utc.with_ymd_and_hms(2026, 7, 16, 0, 0, 0).unwrap(),
             retries: 0,
             pr_url: None,
+            branch_updates: 0,
         }],
         ..Ledger::default()
     }
