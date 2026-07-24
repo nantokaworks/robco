@@ -143,6 +143,49 @@ fn manual_worker_with_merged_pr_is_advanced_and_cleaned_up() {
             .unwrap();
     assert_eq!(reconcile(&merged, &registered, now, 30).1.len(), 2);
 }
+/// Detaching a Manual worker ends Overseer ownership, so its entry leaves the
+/// ledger instead of freezing there — the slot it held is released and the
+/// running worker is left alone.
+#[test]
+fn detached_worker_entry_is_dropped_without_touching_the_worker() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"manual_agents":["worker-1"],"detached_agents":["worker-1"],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (dropped, actions) = reconcile(&ledger(), &observations, now, 30);
+    assert!(dropped.entries.is_empty());
+    assert_eq!(dropped.active_workers().count, 0);
+    // The drop is the only thing the pass does: the dead session it was told
+    // about neither fails the entry nor kills anything.
+    assert_eq!(actions.len(), 1);
+    assert!(matches!(
+        &actions[0],
+        Action::LogDecision { task_id: Some(task_id), message }
+            if task_id == "task-131" && message.contains("detached")
+    ));
+}
+
+/// A merged entry is dropped too rather than cleaned up: the cleanup kills the
+/// session and removes the worktree, which a detach explicitly does not do.
+#[test]
+fn detached_merged_entry_is_dropped_without_cleanup() {
+    let mut merged = ledger();
+    merged.entries[0].phase = LedgerPhase::Merged;
+    let observations: Observations = serde_json::from_str(
+        r#"{"detached_agents":["worker-1"],"registered_agents":["worker-1"]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (dropped, actions) = reconcile(&merged, &observations, now, 30);
+    assert!(dropped.entries.is_empty());
+    assert!(!actions.contains(&Action::KillSession {
+        agent_id: "worker-1".into(),
+    }));
+    assert!(!actions.contains(&Action::RemoveWorktree {
+        agent_id: "worker-1".into(),
+    }));
+}
 #[test]
 fn manual_worker_with_open_pr_keeps_session_and_worktree() {
     let observations: Observations = serde_json::from_str(

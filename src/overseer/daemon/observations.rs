@@ -1,19 +1,21 @@
 use super::{COMMAND_TIMEOUT, terminal};
 use crate::{
     Result,
-    dropr::DroprOverlay,
     overseer::{
         exec::run_timeout,
         inbox::InboxReader,
         is_overseer_child,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
-        monitor::{Observations, PrObservation, SessionObservation, TaskObservation},
+        monitor::{Observations, SessionObservation},
     },
     registry::Registry,
 };
 use chrono::{DateTime, Utc};
-use std::{collections::HashSet, process::Command};
+use external_state::{gather_pr_states, gather_task_states};
+use std::process::Command;
 
+#[path = "external_state.rs"]
+mod external_state;
 #[path = "liveness.rs"]
 mod liveness;
 
@@ -41,7 +43,13 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
         .filter(|agent| agent.management == crate::model::ManagementMode::Manual)
         .map(|agent| agent.id.clone())
         .collect();
+    observations.detached_agents = detached_agents(ledger, &registry);
     for entry in &ledger.entries {
+        // A detached worker is not ours to probe: `monitor::reconcile` drops its
+        // entry this same pass, so no session, task, or PR state is collected.
+        if observations.detached_agents.contains(&entry.agent_id) {
+            continue;
+        }
         let mut agent = registry
             .repos
             .iter()
@@ -107,15 +115,41 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
             });
         }
     }
+    let mut owned_ledger = ledger.clone();
+    owned_ledger
+        .entries
+        .retain(|entry| !observations.detached_agents.contains(&entry.agent_id));
     // The dropr task state only feeds escalation, which never fires for a Manual
     // agent; PR state feeds phase advancement, which does.
-    let mut auto_ledger = ledger.clone();
+    let mut auto_ledger = owned_ledger.clone();
     auto_ledger
         .entries
         .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
     gather_task_states(&auto_ledger, &mut observations);
-    gather_pr_states(ledger, &mut observations);
+    gather_pr_states(&owned_ledger, &mut observations);
     observations
+}
+
+/// Ledger entries whose worker is still registered but no longer an Overseer
+/// child — the state `g` leaves behind when it detaches a Manual worker. An
+/// entry whose agent has left the registry entirely is not detached; that is the
+/// dead-session path, which [`gather`] still reports.
+fn detached_agents(ledger: &Ledger, registry: &Registry) -> Vec<String> {
+    ledger
+        .entries
+        .iter()
+        .filter(|entry| {
+            registry
+                .repos
+                .iter()
+                .flat_map(|repo| &repo.agents)
+                .any(|agent| {
+                    agent.id == entry.agent_id
+                        && !is_overseer_child(agent.parent_agent_id.as_deref())
+                })
+        })
+        .map(|entry| entry.agent_id.clone())
+        .collect()
 }
 
 fn tmux_activity(session: &str) -> Option<DateTime<Utc>> {
@@ -138,106 +172,6 @@ fn tmux_activity(session: &str) -> Option<DateTime<Utc>> {
         .parse()
         .ok()?;
     DateTime::from_timestamp(epoch, 0)
-}
-
-fn gather_task_states(ledger: &Ledger, observations: &mut Observations) {
-    let workspaces = DroprOverlay::load_best_effort();
-    let repos: HashSet<_> = ledger
-        .entries
-        .iter()
-        .filter(|entry| !terminal(entry.phase))
-        .map(|entry| entry.repo.as_str())
-        .collect();
-    for repo in repos {
-        gather_repo_task_states(repo, ledger, &workspaces, observations);
-    }
-}
-
-fn gather_repo_task_states(
-    repo: &str,
-    ledger: &Ledger,
-    workspaces: &DroprOverlay,
-    observations: &mut Observations,
-) {
-    let mut command = Command::new("git");
-    command.args(["-C", repo, "remote", "get-url", "origin"]);
-    let output = match run_timeout(command, COMMAND_TIMEOUT) {
-        Ok(output) if output.status.success() => output,
-        Ok(output) => {
-            observations.errors.push(format!(
-                "git origin probe exited {} for {repo}",
-                output.status
-            ));
-            return;
-        }
-        Err(error) => {
-            observations
-                .errors
-                .push(format!("git origin probe skipped for {repo}: {error}"));
-            return;
-        }
-    };
-    let origin = String::from_utf8_lossy(&output.stdout);
-    let Some(workspace) = workspaces.find_by_repo_url(origin.trim()) else {
-        observations
-            .errors
-            .push(format!("dropr workspace not found for {repo}"));
-        return;
-    };
-    let Some(tasks) = crate::dropr::fetch_repo_tasks(&workspace.id) else {
-        observations
-            .errors
-            .push(format!("dropr task probe skipped for {repo}"));
-        return;
-    };
-    for entry in ledger
-        .entries
-        .iter()
-        .filter(|entry| entry.repo == repo && !terminal(entry.phase))
-    {
-        for task in tasks
-            .iter()
-            .filter(|task| task.display_id == entry.display_id || task.display_id == entry.task_id)
-        {
-            observations.tasks.push(TaskObservation {
-                task_id: entry.task_id.clone(),
-                state: task.status.clone(),
-            });
-        }
-    }
-}
-
-fn gather_pr_states(ledger: &Ledger, observations: &mut Observations) {
-    for entry in ledger.entries.iter().filter(|entry| !terminal(entry.phase)) {
-        let mut command = Command::new("gh");
-        let selector = entry.pr_url.as_deref().unwrap_or(&entry.branch);
-        command.current_dir(&entry.repo).args([
-            "pr",
-            "view",
-            selector,
-            "--json",
-            "state,statusCheckRollup,url",
-        ]);
-        match run_timeout(command, COMMAND_TIMEOUT) {
-            Ok(output) if output.status.success() => {
-                match serde_json::from_slice::<PrObservation>(&output.stdout) {
-                    Ok(mut pr) => {
-                        pr.task_id = Some(entry.task_id.clone());
-                        observations.prs.push(pr);
-                    }
-                    Err(error) => observations
-                        .errors
-                        .push(format!("gh PR JSON skipped: {error}")),
-                }
-            }
-            Ok(output) => observations
-                .errors
-                .push(format!("gh PR probe exited {}", output.status)),
-            Err(error) => observations
-                .errors
-                .push(format!("gh PR probe skipped: {error}")),
-        }
-    }
 }
 
 pub(super) fn adopt_registry_children(ledger: &mut Ledger) -> Result<()> {

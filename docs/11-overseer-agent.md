@@ -20,9 +20,9 @@ poll then performs the same ordered pass:
 2. Gather new inbox reports, registry/tmux state, dropr task state, and GitHub pull
    request state. The observation is appended to
    `~/.robco/overseer/observations.jsonl`.
-3. Reconcile those facts with `~/.robco/overseer/ledger.json`. The monitor advances
-   phases, detects dead or stuck workers, escalates released task locks, and cleans up
-   merged workers.
+3. Reconcile those facts with `~/.robco/overseer/ledger.json`. The monitor drops entries
+   for workers that are no longer Overseer children, advances phases, detects dead or
+   stuck workers, escalates released task locks, and cleans up merged workers.
 4. Queue and poll exception triage, execute deterministic monitor actions, run the
    auto-merge gate, and dispatch eligible ready tasks.
 5. Atomically save the ledger, acknowledge completed triage and inbox work, write the
@@ -530,10 +530,22 @@ suppresses intervention, not occupancy: a live Manual worker still holds a workt
 branch, and a tmux session, so it counts toward `max_workers` and `per_repo_limit`
 exactly like an Auto worker, and `robco overseer status` reports the same count the
 dispatch gate enforces. Cycling a worker to Manual therefore never frees a dispatch slot.
-Detaching does not free one either: it only drops Overseer ownership and leaves the
-worker and its tmux session running; use the separate kill action when the worker should
-also stop. A detached worker keeps its `Manual` mode, so a ledger entry the daemon
-already created for it stays frozen rather than resuming.
+
+Detaching does free one, because it ends Overseer ownership entirely. The next daemon
+pass sees a worker that is no longer its child and **drops that worker's ledger entry**,
+logging the drop to the decision log. The entry is removed rather than marked terminal:
+`failed` would report a failure to dropr that never happened, and `merged` would run the
+post-merge cleanup that kills the session and removes the worktree — the opposite of a
+detach, which leaves the worker and its tmux session running. Use the separate kill
+action when the worker should also stop. From there the worktree is exactly a hand-made
+one: Overseer neither tracks nor counts it. Re-enrolling it with `g` restores ownership,
+and the entry comes back through the same startup adoption pass that picks up every other
+Auto child — that pass runs when the daemon starts, so a re-enrolled worker is re-entered
+on the ledger at the next daemon start.
+
+The drop is keyed on ownership, not on mode — a detached worker keeps its `Manual` mode,
+and an entry whose agent has left the registry altogether is dead, not detached, so it
+still travels the session-death path.
 
 On a repo row `g` acts on every worktree under the repo behind a confirmation, keeping
 the stand-down bias: any Auto worker present sets every Overseer-managed worker to
