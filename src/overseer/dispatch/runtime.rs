@@ -98,7 +98,7 @@ where
             Ok(SpawnOutcome::Spawned) => {}
             // A candidate the pre-spawn re-check held was never attempted, so it
             // leaves the failure budget for genuine spawn faults untouched.
-            Ok(SpawnOutcome::Held(reason)) => log(DecisionKind::Hold, &candidate, reason)?,
+            Ok(SpawnOutcome::Held(reason)) => log(DecisionKind::Hold, &candidate, &reason)?,
             Err(error) => {
                 *failures = failures.saturating_add(1);
                 log(
@@ -186,6 +186,7 @@ fn gather_candidates() -> Result<Vec<Candidate>> {
                 title: task.task.title,
                 repo: repo.path.to_string_lossy().into_owned(),
                 author: task.author,
+                workspace: workspace.id.clone(),
             });
         }
     }

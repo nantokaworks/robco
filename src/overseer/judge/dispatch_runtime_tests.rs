@@ -8,6 +8,7 @@ fn candidate(id: &str) -> Candidate {
         title: id.into(),
         repo: format!("/{id}"),
         author: "allowed".into(),
+        workspace: "workspace-1".into(),
     }
 }
 
@@ -56,7 +57,7 @@ fn a_held_candidate_spends_no_failure_budget() {
         decisions,
         1,
         &mut failures,
-        |_| Ok(SpawnOutcome::Held("active_worker")),
+        |_| Ok(SpawnOutcome::Held("active_worker".into())),
         |kind, candidate, reason| {
             logged.push((kind, candidate.task_id.clone(), reason.to_string()));
             Ok(())

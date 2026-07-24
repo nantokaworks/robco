@@ -14,6 +14,7 @@ fn candidate(id: &str) -> Candidate {
         title: format!("title {id}"),
         repo: format!("/repo/{id}"),
         author: "owner".into(),
+        workspace: "workspace-1".into(),
     }
 }
 

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use super::Candidate;
+use super::{Candidate, claim};
 use crate::overseer::{
     OVERSEER_AGENT_ID,
     ledger::{Ledger, LedgerEntry, LedgerPhase},
@@ -14,7 +14,7 @@ use crate::{Result, config::Config, spawn};
 /// spawn errors.
 pub(super) enum SpawnOutcome {
     Spawned,
-    Held(&'static str),
+    Held(String),
 }
 
 pub(super) fn spawn_candidate(
@@ -28,7 +28,14 @@ pub(super) fn spawn_candidate(
     // separate candidates cannot spawn a second worker onto the branch the first
     // one just claimed.
     if super::has_active_worker(ledger, &task.task_id, &task.display_id) {
-        return Ok(SpawnOutcome::Held("active_worker"));
+        return Ok(SpawnOutcome::Held("active_worker".into()));
+    }
+    // The ledger only knows about workers this overseer started. Re-read the
+    // task in dropr and take its claim here, so an agent that claimed it while
+    // the judge round was in flight is seen now rather than discovered when two
+    // workers are already sharing a branch.
+    if let claim::Acquired::Held(reason) = claim::acquire(task, OVERSEER_AGENT_ID, now)? {
+        return Ok(SpawnOutcome::Held(reason));
     }
     let attempts = record_attempt(ledger, &task.task_id, &task.display_id);
     let mut worker_config = config.clone();
@@ -42,7 +49,7 @@ pub(super) fn spawn_candidate(
         .map(|profile| profile.autonomous_args.clone())
         .unwrap_or_default();
     let prompt = worker_prompt(&task.display_id, &task.task_id, &task.title, &task.repo);
-    let outcome = spawn::spawn_in_repo(
+    let outcome = match spawn::spawn_in_repo(
         &task.repo,
         &task.title,
         name_slug(task).as_deref(),
@@ -50,7 +57,20 @@ pub(super) fn spawn_candidate(
         Some(OVERSEER_AGENT_ID),
         &extra_args,
         &worker_config,
-    )?;
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            // The claim was taken for a worker that never started. Holding it
+            // for the full TTL would lock the task away from the next pass and
+            // from any operator, so hand it straight back — and say so when the
+            // hand-back itself fails, since the task is then parked invisibly.
+            if !claim::release(task, OVERSEER_AGENT_ID) {
+                let _ =
+                    super::runtime::log_candidate(DecisionKind::Hold, task, "claim_release_failed");
+            }
+            return Err(error);
+        }
+    };
     ledger.entries.push(LedgerEntry {
         task_id: task.task_id.clone(),
         display_id: task.display_id.clone(),
@@ -145,6 +165,7 @@ mod tests {
                 title: "task".into(),
                 repo: "/repo".into(),
                 author: "allowed".into(),
+                workspace: "workspace-1".into(),
             }],
             Utc::now(),
             &HashMap::new(),

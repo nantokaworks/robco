@@ -7,6 +7,7 @@ use crate::model::ManagementMode;
 use super::{config::OverseerConfig, judge::DispatchAdvice, ledger::Ledger};
 use entries::{has_active_worker, task_entries, terminal, worker_mode};
 
+mod claim;
 mod entries;
 mod runtime;
 mod worker;
@@ -29,6 +30,10 @@ pub struct Candidate {
     pub title: String,
     pub repo: String,
     pub author: String,
+    /// dropr workspace the task lives in. Carried from candidate gathering so
+    /// the pre-spawn claim can address the task without re-resolving the
+    /// repository's workspace.
+    pub workspace: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

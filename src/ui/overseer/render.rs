@@ -10,7 +10,7 @@ use crate::model::ManagementMode;
 use crate::overseer::{
     config::{OverseerConfig, ProtectionMode},
     ledger::{Ledger, LedgerPhase},
-    logging::{DecisionEntry, DecisionKind},
+    logging::DecisionEntry,
 };
 
 use super::{App, WorkerManagement};
@@ -71,6 +71,7 @@ pub(super) fn append_ledger(
     lines: &mut Vec<Line<'static>>,
     config: &OverseerConfig,
     ledger: &Ledger,
+    decisions: &[DecisionEntry],
     management: &[WorkerManagement],
 ) {
     let active = ledger
@@ -131,6 +132,12 @@ pub(super) fn append_ledger(
     if !ledger.skip_list.is_empty() {
         lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
     }
+    let standoffs = super::decisions::standoffs(decisions);
+    if !standoffs.is_empty() {
+        // Without this the operator cannot tell an overseer standing off a task
+        // another agent holds from an overseer that simply has nothing to do.
+        lines.push(pair("standing off", &standoffs.join(", "), false));
+    }
     lines.push(Line::default());
 }
 
@@ -186,31 +193,6 @@ fn dispatches_on(ledger: &Ledger, today: NaiveDate) -> u32 {
         ledger.counters.dispatched_today
     } else {
         0
-    }
-}
-
-pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[DecisionEntry]) {
-    lines.push(Line::from(Span::styled(
-        "recent decisions",
-        THEME.accent_bold_style(),
-    )));
-    // `decisions` is oldest-first (see `logging::tail`); show the newest three first.
-    let recent = decisions.iter().rev().take(3).collect::<Vec<_>>();
-    if recent.is_empty() {
-        lines.push(Line::from(Span::styled("  none", THEME.muted_style())));
-        return;
-    }
-    for entry in recent {
-        let task = entry.task.as_deref().unwrap_or("-");
-        let label = match entry.kind {
-            DecisionKind::Escalate | DecisionKind::CircuitOpen => "!",
-            _ => "·",
-        };
-        lines.push(Line::from(format!(
-            "  {label} {} {task} — {}",
-            entry.at.format("%m-%d %H:%M"),
-            entry.reason
-        )));
     }
 }
 

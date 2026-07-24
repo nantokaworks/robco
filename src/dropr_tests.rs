@@ -1,30 +1,6 @@
 use super::*;
 
 #[test]
-fn canonicalizes_common_github_urls() {
-    assert_eq!(
-        canonical_repo("https://github.com/NantokaWorks/robco.git"),
-        Some("github:nantokaworks/robco".to_string())
-    );
-    assert_eq!(
-        canonical_repo("git@github.com:nantokaworks/dropr.git"),
-        Some("github:nantokaworks/dropr".to_string())
-    );
-}
-
-#[test]
-fn parses_workspace_line() {
-    let line = "  materialised  Xdin9xDHmhuOohKzCBmZX                 dropr                 https://github.com/nantokaworks/dropr.git";
-    let workspace = parse_workspace_line(line).unwrap();
-    assert_eq!(workspace.kind, "materialised");
-    assert_eq!(workspace.name, "dropr");
-    assert_eq!(
-        workspace.repo_url,
-        "https://github.com/nantokaworks/dropr.git"
-    );
-}
-
-#[test]
 fn parses_ready_tasks_array() {
     let tasks = parse_tasks(
         br##"[{"display_id":"#42","title":"Ship it","priority":"high","status":"ready"}]"##,

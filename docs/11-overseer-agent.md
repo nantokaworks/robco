@@ -35,6 +35,22 @@ still in a non-terminal phase is held with reason `active_worker` whatever manag
 mode owns that worker, because the live worker still holds the task's branch and
 worktree. Every decision is appended to `~/.robco/overseer/decisions.jsonl`.
 
+Those gates only see workers this Overseer started, and the ready list they run against
+is minutes old by the time a judgment comes back. So immediately before a worker is
+spawned, Overseer re-reads the task in dropr and takes its claim itself:
+
+- A task another agent holds is not dispatched; the pass records a hold with reason
+  `claimed_elsewhere:<agent>`, and the OVERSEER frame lists it under `standing off`.
+- A claim that has outlived `claim_ttl_minutes` is taken over, recorded as
+  `claim_expired:<agent>` so the takeover is never silent.
+- A claim dropr will not grant, or a state read that fails, holds the candidate
+  (`claim_refused:<reason>`, `claim_unavailable`, `claim_unreadable`) rather than
+  spawning on an unknown claim.
+
+The worker inherits that claim instead of competing for it: its prompt names `overseer`
+as the holder and forbids re-claiming. A spawn that fails hands the claim straight back
+rather than parking the task for its full TTL.
+
 The auto-merge gate only considers ledger entries in `pr_opened`. It reads the pull
 request, verifies protection on the branch that pull request targets, requires an open PR
 with a non-empty check rollup in which every check is `SUCCESS`, requires GitHub to report
@@ -48,8 +64,9 @@ never instructed to merge their own pull requests.
 
 Each dispatched task gets one RobCo worker: one git worktree, one branch, and one tmux
 session registered with parent id `overseer`. The worker receives an assignment prompt
-that requires it to claim only its assigned dropr task, report lifecycle changes,
-commit and push its branch, and open (but not merge) a pull request.
+that hands it the claim Overseer already holds on its assigned dropr task, and requires
+it to verify that claim rather than take one, report lifecycle changes, commit and push
+its branch, and open (but not merge) a pull request.
 
 Overseer selects `worker_profile` when configured, otherwise `default_program`, and passes
 that profile's `autonomous_args`. With the built-in profiles these are the client's
