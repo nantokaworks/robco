@@ -20,36 +20,19 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
     let body = layout::root(frame.area()).body;
     let content_width = body.width.saturating_sub(4) as usize;
     let (title, lines): (&str, Vec<Line<'static>>) = match &app.mode {
-        Mode::PromptAgent {
-            with_prompt, input, ..
-        } => {
-            let (title, description, label) = if *with_prompt {
-                (
-                    "new agent + prompt",
-                    "Create a new agent and send an initial prompt.",
-                    "agent",
-                )
-            } else {
-                (
-                    "new agent",
-                    "Create a new agent under the selected repo.",
-                    "agent title",
-                )
-            };
-
-            let mut lines = vec![
-                Line::from(Span::styled(description, THEME.accent_style())),
+        Mode::PromptAgent { input, .. } => {
+            let lines = vec![
+                Line::from(Span::styled(
+                    "Create a new agent with an optional | initial prompt.",
+                    THEME.accent_style(),
+                )),
                 Line::from(""),
-                input_line(label, input),
+                input_line("agent", input),
+                hint_line("format: title | initial prompt"),
+                Line::from(""),
+                hint_line("enter create   esc cancel"),
             ];
-
-            if *with_prompt {
-                lines.push(hint_line("format: title | initial prompt"));
-            }
-
-            lines.extend([Line::from(""), hint_line("enter create   esc cancel")]);
-
-            (title, lines)
+            ("new agent", lines)
         }
         Mode::PromptRepo { input } => (
             "add repo",

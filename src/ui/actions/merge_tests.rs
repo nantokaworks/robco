@@ -128,7 +128,6 @@ fn ctrl_c_force_quits_from_prompt_while_merging() {
     install_job(&mut app, "/repo", "wanted");
     app.mode = Mode::PromptAgent {
         repo: 0,
-        with_prompt: false,
         input: String::new(),
     };
 
