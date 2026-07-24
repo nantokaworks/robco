@@ -81,14 +81,10 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
-    ConfirmOverseerExclude {
-        repo_path: PathBuf,
-        agent_id: String,
-        title: String,
-    },
-    /// Move every overseer-managed worker under one repo to `target` at once.
-    /// `count` is how many of them differ from `target` when the dialog opens;
-    /// the applied count is recomputed under the registry lock.
+    /// Move every worker under one repo the overseer may touch to `target` at
+    /// once, enrolling unmanaged worktrees when `target` is Auto. `count` is
+    /// how many of them the dialog expects to change; the applied count is
+    /// recomputed under the registry lock.
     ConfirmOverseerBulkToggle {
         repo_path: PathBuf,
         repo_name: String,
