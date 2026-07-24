@@ -17,11 +17,16 @@ pub(super) enum SpawnOutcome {
     Held(String),
 }
 
+/// `route` names how this pass chose its dispatch set (see
+/// `super::route::Route`). It is written into the spawn's decision entry so the
+/// log distinguishes a dispatch an LLM judge approved from one the
+/// deterministic gate made on its own.
 pub(super) fn spawn_candidate(
     config: &Config,
     ledger: &mut Ledger,
     task: &Candidate,
     now: DateTime<Utc>,
+    route: &str,
 ) -> Result<SpawnOutcome> {
     // The plan was gated against the ledger as it stood before the pass began.
     // Re-check the live ledger so a task two registered repositories surfaced as
@@ -84,7 +89,11 @@ pub(super) fn spawn_candidate(
         branch_updates: 0,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
-    super::runtime::log_candidate(DecisionKind::Dispatch, task, "worker spawned")?;
+    super::runtime::log_candidate(
+        DecisionKind::Dispatch,
+        task,
+        &format!("worker spawned:{route}"),
+    )?;
     Ok(SpawnOutcome::Spawned)
 }
 
@@ -165,6 +174,7 @@ mod tests {
                 title: "task".into(),
                 repo: "/repo".into(),
                 author: "allowed".into(),
+                priority: "medium".into(),
                 workspace: "workspace-1".into(),
             }],
             Utc::now(),

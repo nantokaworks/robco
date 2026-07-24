@@ -1,3 +1,9 @@
+//! A per-UTC-date call counter persisted next to the surface that owns it.
+//!
+//! Every LLM surface gets its own file and its own budget. Sharing one counter
+//! would let a surface on a fixed cadence — the board reviewer runs whether or
+//! not there is work — starve an on-demand one like dispatch judgement.
+
 use crate::Result;
 use chrono::{NaiveDate, Utc};
 use nanoid::nanoid;
@@ -6,13 +12,13 @@ use std::{fs, io::ErrorKind, path::Path};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub(super) struct DailyCounter {
+pub(crate) struct DailyCounter {
     date: Option<NaiveDate>,
     count: u32,
 }
 
 impl DailyCounter {
-    pub(super) fn load(path: &Path) -> Result<Self> {
+    pub(crate) fn load(path: &Path) -> Result<Self> {
         match fs::read(path) {
             Ok(raw) => Ok(serde_json::from_slice(&raw).unwrap_or_default()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Self::default()),
@@ -20,7 +26,7 @@ impl DailyCounter {
         }
     }
 
-    pub(super) fn count_today(&self) -> u32 {
+    pub(crate) fn count_today(&self) -> u32 {
         if self.date == Some(Utc::now().date_naive()) {
             self.count
         } else {
@@ -28,7 +34,7 @@ impl DailyCounter {
         }
     }
 
-    pub(super) fn increment(&mut self, path: &Path) -> Result<()> {
+    pub(crate) fn increment(&mut self, path: &Path) -> Result<()> {
         let mut next = self.clone();
         let today = Utc::now().date_naive();
         if next.date != Some(today) {
@@ -42,7 +48,7 @@ impl DailyCounter {
     }
 
     #[cfg(test)]
-    pub(super) fn set_today(&mut self, count: u32) {
+    pub(crate) fn set_today(&mut self, count: u32) {
         self.date = Some(Utc::now().date_naive());
         self.count = count;
     }

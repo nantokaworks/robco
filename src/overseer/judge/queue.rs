@@ -1,6 +1,6 @@
 use super::{
     MergeCase, Request, completion,
-    daily::DailyCounter,
+    keys::{dispatch_key, merge_identity, merge_identity_parts, merge_key},
     result::{DispatchAdvice, MergeAdvice, Parsed},
     revisions::RevisionCache,
     spawn_session,
@@ -8,11 +8,13 @@ use super::{
 use crate::{
     Result,
     config::Config,
-    overseer::logging::{self, DecisionEntry, DecisionKind},
+    overseer::{
+        daily::DailyCounter,
+        logging::{self, DecisionEntry, DecisionKind},
+    },
 };
 use std::{
-    collections::{HashMap, VecDeque, hash_map::DefaultHasher},
-    hash::{Hash, Hasher},
+    collections::{HashMap, VecDeque},
     path::PathBuf,
     sync::mpsc::TryRecvError,
 };
@@ -115,6 +117,39 @@ impl JudgmentQueue {
         None
     }
 
+    /// Drops dispatch judgments keyed to a candidate set that no longer exists,
+    /// recording each discard.
+    ///
+    /// `dispatch_key` hashes the approved ids, so one task appearing or
+    /// disappearing between a round being enqueued and its verdict arriving
+    /// leaves that verdict stranded under a key nothing will ask for again.
+    /// Dropping it silently is what made a whole round read as "the Overseer did
+    /// nothing this pass". Every dispatch pass calls this, judged or not, so the
+    /// reset is recorded even when the pass that supersedes the round never
+    /// needed a judge.
+    pub fn discard_stale_dispatch(
+        &mut self,
+        approved: &[crate::overseer::dispatch::Candidate],
+    ) -> Result<()> {
+        let current = dispatch_key(approved);
+        let stale = self
+            .completed
+            .iter()
+            .filter(|(key, parsed)| **key != current && matches!(parsed, Parsed::Dispatch(_)))
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in stale {
+            self.completed.remove(&key);
+            self.log(
+                DecisionKind::Skip,
+                None,
+                None,
+                &format!("judgment_discarded:candidate_set_changed:{key}"),
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn merge_advice(&mut self, case: MergeCase) -> Result<Option<MergeAdvice>> {
         let identity = merge_identity(&case);
         if self.terminal_merges.matches(&identity, &case.head_sha) {
@@ -163,6 +198,21 @@ impl JudgmentQueue {
     pub(super) fn cache_merge(&mut self, case: &MergeCase, advice: MergeAdvice) {
         self.completed
             .insert(merge_key(case), Parsed::Merge(advice));
+    }
+
+    #[cfg(test)]
+    pub(super) fn cache_dispatch(
+        &mut self,
+        approved: &[crate::overseer::dispatch::Candidate],
+        advice: DispatchAdvice,
+    ) {
+        self.completed
+            .insert(dispatch_key(approved), Parsed::Dispatch(advice));
+    }
+
+    #[cfg(test)]
+    pub(super) fn completed_len(&self) -> usize {
+        self.completed.len()
     }
 
     #[cfg(test)]
@@ -224,41 +274,6 @@ impl JudgmentQueue {
         entry.source = Some("judge".into());
         logging::append_to(&self.log_path, &entry)
     }
-}
-
-fn dispatch_key(approved: &[crate::overseer::dispatch::Candidate]) -> String {
-    stable_key(
-        "dispatch",
-        approved.iter().map(|item| item.task_id.as_str()),
-    )
-}
-
-fn merge_key(case: &MergeCase) -> String {
-    stable_key(
-        "merge",
-        [
-            case.task_id.as_str(),
-            case.pr_url.as_str(),
-            case.head_sha.as_str(),
-        ],
-    )
-}
-
-fn merge_identity(case: &MergeCase) -> String {
-    merge_identity_parts(&case.task_id, &case.pr_url)
-}
-
-fn merge_identity_parts(task_id: &str, pr_url: &str) -> String {
-    stable_key("merge-identity", [task_id, pr_url])
-}
-
-fn stable_key<'a>(kind: &str, values: impl IntoIterator<Item = &'a str>) -> String {
-    let mut hasher = DefaultHasher::new();
-    kind.hash(&mut hasher);
-    for value in values {
-        value.hash(&mut hasher);
-    }
-    format!("{kind}-{:016x}", hasher.finish())
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ fn candidate(id: &str) -> Candidate {
         title: id.into(),
         repo: format!("/{id}"),
         author: "allowed".into(),
+        priority: "medium".into(),
         workspace: "workspace-1".into(),
     }
 }

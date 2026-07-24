@@ -7,13 +7,14 @@ use crate::{
 };
 use std::time::{Duration, Instant};
 
-fn candidate(id: &str) -> Candidate {
+pub(super) fn candidate(id: &str) -> Candidate {
     Candidate {
         task_id: id.into(),
         display_id: format!("#{id}"),
         title: format!("title {id}"),
         repo: format!("/repo/{id}"),
         author: "owner".into(),
+        priority: "medium".into(),
         workspace: "workspace-1".into(),
     }
 }
@@ -122,22 +123,6 @@ fn queue_tick_does_not_wait_for_running_session() {
     queue.tick(&config).unwrap();
     assert!(started.elapsed() < Duration::from_millis(100));
     assert!(queue.is_active());
-}
-
-#[test]
-fn dispatch_budget_keeps_deterministic_order_without_spawning() {
-    let temp = tempfile::tempdir().unwrap();
-    let mut config = Config::default();
-    config.overseer.daily_llm_budget = 1;
-    let mut queue = test_queue(temp.path());
-    queue.set_llm_calls_today(1);
-    let approved = [candidate("a"), candidate("b")];
-    assert!(queue.dispatch_advice(&approved).is_none());
-    queue.tick(&config).unwrap();
-    assert!(!queue.is_active());
-    let advice = queue.dispatch_advice(&approved).unwrap();
-    assert_eq!(advice.candidate_ids, ["a", "b"]);
-    assert!(advice.fail_safe);
 }
 
 #[test]

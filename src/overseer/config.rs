@@ -60,6 +60,16 @@ pub struct OverseerConfig {
     pub triage_profile: Option<String>,
     pub judge_profile: Option<String>,
     pub merge_judge_profile: Option<String>,
+    /// Profile the periodic board reviewer runs under. `None` disables the
+    /// review pass outright — it is the whole on/off switch, so a daemon that
+    /// has never heard of the reviewer behaves exactly as it did before it
+    /// existed.
+    pub review_profile: Option<String>,
+    pub review_interval_mins: u64,
+    /// Daily call budget for the board reviewer, deliberately separate from
+    /// `daily_llm_budget`. The reviewer runs on a clock rather than on demand,
+    /// so sharing one budget would let it starve dispatch and merge judgement.
+    pub daily_review_budget: u32,
     pub triage_timeout_mins: u64,
     pub worker_env_blocklist: Vec<String>,
     pub dispatch_task_authors: Vec<String>,
@@ -88,6 +98,11 @@ impl Default for OverseerConfig {
             triage_profile: None,
             judge_profile: None,
             merge_judge_profile: None,
+            review_profile: None,
+            review_interval_mins: 20,
+            // 96 covers a full day at the shortest sensible cadence (15 min),
+            // so shortening the interval does not silently truncate the day.
+            daily_review_budget: 96,
             triage_timeout_mins: 15,
             worker_env_blocklist: default_worker_blocklist(),
             dispatch_task_authors: Vec::new(),

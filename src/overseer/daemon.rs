@@ -14,7 +14,9 @@ use super::{
     ledger::{Ledger, LedgerPhase},
     logging,
     monitor::{Action, FailureOrigin, ObservationSnapshot, reconcile},
-    pidfile_path, runtime_request, snapshots_path,
+    pidfile_path,
+    review::ReviewPass,
+    runtime_request, snapshots_path,
     triage::ExceptionQueue,
 };
 use crate::{Result, config::Config};
@@ -40,6 +42,7 @@ pub async fn run_daemon() -> Result<()> {
     let mut protections = protection::ProtectionCache::default();
     let mut exceptions = ExceptionQueue::load()?;
     let mut judgments = JudgmentQueue::load()?;
+    let mut review = ReviewPass::load()?;
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -84,6 +87,10 @@ pub async fn run_daemon() -> Result<()> {
             exceptions.tick(&config, &mut next)?;
         }
         judgments.tick(&config)?;
+        // Read-only, and deliberately placed before the acting passes: it
+        // reviews the board the pass inherited rather than the one this pass is
+        // in the middle of changing.
+        review.tick(&config, &next, now)?;
         execute_actions(&actions)?;
         merge::auto_merge_pass(&config, &mut next, &mut protections, &mut judgments)?;
         dispatch_pass(&mut config, &mut next, now, &mut judgments)?;

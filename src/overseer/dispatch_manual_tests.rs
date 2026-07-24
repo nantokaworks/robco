@@ -26,6 +26,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             title: "manual".into(),
             repo: "/manual".into(),
             author: "allowed".into(),
+            priority: "medium".into(),
             workspace: "workspace-1".into(),
         },
         Candidate {
@@ -34,6 +35,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             title: "auto".into(),
             repo: "/auto".into(),
             author: "allowed".into(),
+            priority: "medium".into(),
             workspace: "workspace-1".into(),
         },
     ];
