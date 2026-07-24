@@ -519,6 +519,19 @@ persisted as `Manual`, and the first `g` overwrites that stale mode when it enro
 There is no confirmation prompt — every step is non-destructive and two more presses
 undo it.
 
+The tree reports this axis with an accent-coloured `◆` at the **row head**, in the cell
+between the selection cursor and the identity-tree indent, so a column of agents can be
+scanned at a glance. Only Auto workers are marked: a Manual worker and an unmanaged
+worktree both render blank there, and the difference between them is read from the OVERSEER
+info pane rather than from the tree.
+
+Adoption derives the mode from the parent it recovers, not from a fixed default. A worker
+whose live session still carries `ROBCO_PARENT_AGENT_ID=overseer` is re-adopted as an
+Overseer child *and* as `Auto`, so a worker that lost its registry row comes back under
+automatic dispatch instead of returning as one the dispatch gate skips as manual. A
+hand-made worktree has no such session to recover a parent from and is stored `Manual`
+until `g` enrolls it.
+
 A worktree that already belongs to *another agent* is off the cycle and `g` declines it.
 `parent_agent_id` records both Overseer ownership and the identity-tree parent, and
 nothing persists what the parent was before enrollment, so an Overseer-managed worker is

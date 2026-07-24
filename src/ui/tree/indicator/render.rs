@@ -31,7 +31,6 @@ pub(in crate::ui::tree) fn primary_span(
             crate::ui::spinner::frame(elapsed).to_string(),
             THEME.hint_style(),
         ),
-        Some(Indicator::Management(mode)) => (management_glyph(mode).into(), THEME.hint_style()),
         None => (String::new(), THEME.accent_style()),
     };
     // On a selected row every indicator glyph — including the empty `None`
@@ -54,13 +53,6 @@ pub(in crate::ui::tree) fn supplementary_spans(
     // When the row is selected, every supplementary span inverts with the row
     // (selection background) instead of leaving a hollow gap.
     let sel = THEME.selected_indicator_style();
-    if let Some(mode) = supplementary.management {
-        let style = if selected { sel } else { THEME.hint_style() };
-        spans.push(Span::styled(
-            format!("{gap}{}", supplementary_glyph(Indicator::Management(mode))),
-            style,
-        ));
-    }
     if let Some(Indicator::SubagentActivity(active)) = indicator {
         let style = if selected {
             sel
@@ -90,24 +82,9 @@ pub(in crate::ui::tree) fn supplementary_spans(
     spans
 }
 
-fn management_glyph(mode: crate::model::ManagementMode) -> &'static str {
-    match mode {
-        crate::model::ManagementMode::Auto => "Ⓐ",
-        crate::model::ManagementMode::Manual => "Ⓜ",
-    }
-}
-
-fn supplementary_glyph(indicator: Indicator) -> &'static str {
-    match indicator {
-        Indicator::Management(mode) => management_glyph(mode),
-        _ => "",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::ManagementMode;
 
     #[test]
     fn selected_empty_indicator_carries_selection_background() {
@@ -129,7 +106,6 @@ mod tests {
             SupplementaryIndicators {
                 worktree_missing: true,
                 merge_failed: true,
-                management: Some(ManagementMode::Auto),
             },
             true,
             " ",
@@ -137,23 +113,6 @@ mod tests {
         for span in &spans {
             assert_eq!(span.style.bg, Some(THEME.selection_bg));
             assert_eq!(span.style.fg, Some(THEME.selection_fg));
-        }
-    }
-
-    #[test]
-    fn management_glyphs_are_rendered() {
-        for (mode, glyph) in [(ManagementMode::Auto, "Ⓐ"), (ManagementMode::Manual, "Ⓜ")] {
-            let spans = supplementary_spans(
-                None,
-                SupplementaryIndicators {
-                    worktree_missing: false,
-                    merge_failed: false,
-                    management: Some(mode),
-                },
-                false,
-                " ",
-            );
-            assert_eq!(spans[0].content.as_ref(), format!(" {glyph}"));
         }
     }
 }

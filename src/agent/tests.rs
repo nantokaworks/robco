@@ -184,8 +184,10 @@ fn adopt_preserves_recovered_identity() {
     assert!(adopted.claude_session_id.is_none());
 }
 
+/// A re-adopted Overseer worker must return under automatic dispatch: a
+/// hardcoded `Manual` would leave it counted as manual and its task skipped.
 #[test]
-fn adopted_overseer_worker_defaults_to_manual() {
+fn adopted_overseer_worker_comes_back_as_auto() {
     let adopted = adopt_worktree(
         &repo_named("dropr"),
         &Config::default(),
@@ -198,6 +200,23 @@ fn adopted_overseer_worker_defaults_to_manual() {
             parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
         }),
     );
+    assert_eq!(adopted.management, crate::model::ManagementMode::Auto);
+}
+
+/// A hand-made worktree has no session to recover a parent from, so it is
+/// adopted unowned and stays `Manual` until `g` enrolls it.
+#[test]
+fn adopted_worktree_without_a_recovered_parent_stays_manual() {
+    let adopted = adopt_worktree(
+        &repo_named("dropr"),
+        &Config::default(),
+        "/tmp/wt".into(),
+        Some("dropr/hand-made".into()),
+        None,
+        None,
+        None,
+    );
+    assert_eq!(adopted.parent_agent_id, None);
     assert_eq!(adopted.management, crate::model::ManagementMode::Manual);
 }
 

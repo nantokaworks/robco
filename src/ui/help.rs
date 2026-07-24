@@ -35,7 +35,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  ▖… animated TERM activity   ✻N active subagents"),
         Line::from("  ⟳ manual dropr reload (r key)"),
         Line::from("  ✓ done   · idle   ⎇ branch only (static fallback)"),
-        Line::from("  Ⓐ overseer Auto worker   Ⓜ overseer Manual worker"),
+        Line::from("  ◆ at the row head: overseer Auto worker (blank otherwise)"),
         Line::from("  Collapsed repos: N ▶ is running; status glyphs/N ⌦ are child counts"),
         Line::from("  Child rows: * uncommitted changes   ⌁ tmux session"),
         Line::from("General"),
