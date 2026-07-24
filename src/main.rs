@@ -4,6 +4,7 @@ mod clone;
 mod config;
 mod discover;
 mod dropr;
+mod exec;
 mod git;
 mod loading;
 mod mcp;

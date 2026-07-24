@@ -2,6 +2,7 @@ use super::{
     logging::{self, DecisionEntry, DecisionKind, log_message},
     monitor::Action,
 };
+pub(crate) use crate::exec::run_timeout;
 use crate::{Result, registry::Registry};
 use fd_lock::RwLock;
 use std::{
@@ -9,31 +10,11 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
-    time::{Duration, Instant},
+    process::{Command, Output},
+    time::Duration,
 };
 
 pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
-
-pub(crate) fn run_timeout(mut command: Command, timeout: Duration) -> std::io::Result<Output> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command.spawn()?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        if child.try_wait()?.is_some() {
-            return child.wait_with_output();
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "command timed out",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-}
 
 pub(crate) fn process_alive(pid: u32) -> bool {
     let mut command = Command::new("kill");
@@ -199,20 +180,5 @@ impl PidGuard {
 impl Drop for PidGuard {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn times_out_hung_command_promptly() {
-        let started = Instant::now();
-        let mut command = Command::new("sleep");
-        command.arg("5");
-        let error = run_timeout(command, Duration::from_millis(100)).unwrap_err();
-        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
-        assert!(started.elapsed() < Duration::from_secs(1));
     }
 }
