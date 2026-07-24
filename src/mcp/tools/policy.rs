@@ -50,6 +50,11 @@ fn policy_with(
         "auto_merge": config.auto_merge,
         "autonomy_level": config.autonomy_level,
         "daily_llm_budget": config.daily_llm_budget,
+        // 0 = unlimited (see overseer::dispatch). Surfaced alongside
+        // dispatched_today so a zeroed-out limit is visible here rather than only
+        // via `robco overseer status`.
+        "daily_dispatch_limit": config.daily_dispatch_limit,
+        "dispatched_today": ledger.counters.dispatched_today,
         "max_workers": config.max_workers,
         "daemon_alive": daemon_alive,
         "dispatch_without_daemon": config.dispatch_enabled && !daemon_alive,

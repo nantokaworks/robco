@@ -13,6 +13,16 @@ use super::{
 mod runtime;
 pub use runtime::dispatch_pass;
 
+/// Renders a daily dispatch limit for display, mapping the `0 = unlimited`
+/// sentinel to `∞` so a zeroed-out cap never reads as a literal count.
+pub fn format_dispatch_limit(limit: u32) -> String {
+    if limit == 0 {
+        "∞".to_string()
+    } else {
+        limit.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Candidate {
     pub task_id: String,
@@ -112,7 +122,10 @@ pub fn plan_dispatch(
         };
         return global_skip(plan, reason);
     }
-    if today >= config.daily_dispatch_limit {
+    // A limit of 0 means unlimited: dispatch is capped only by max_workers and
+    // per_repo_limit. Guarding the comparison keeps `0` from reading as "already
+    // at limit" (`0 >= 0`), which would silently skip every tick.
+    if config.daily_dispatch_limit != 0 && today >= config.daily_dispatch_limit {
         return global_skip(plan, "daily_limit");
     }
     if ledger.counters.consecutive_failures >= config.failure_circuit_threshold {
@@ -188,7 +201,8 @@ fn candidate_skip<'a>(
     selected_repos: &HashSet<&str>,
     worker_modes: &HashMap<String, ManagementMode>,
 ) -> Option<&'a str> {
-    if dispatched_today >= config.daily_dispatch_limit {
+    // 0 = unlimited (see `plan_dispatch`); only enforce a positive cap.
+    if config.daily_dispatch_limit != 0 && dispatched_today >= config.daily_dispatch_limit {
         return Some("daily_limit");
     }
     let matching_workers: Vec<_> = ledger
