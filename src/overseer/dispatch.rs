@@ -1,6 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::model::ManagementMode;
 
@@ -157,17 +157,12 @@ fn apply_candidate_gates(
     worker_modes: &HashMap<String, ManagementMode>,
     plan: &mut DispatchPlan,
 ) {
-    let active: Vec<_> = ledger
-        .entries
-        .iter()
-        .filter(|entry| !terminal(entry.phase))
-        .filter(|entry| worker_mode(entry, worker_modes) == ManagementMode::Auto)
-        .collect();
-    let mut global = active.len();
-    let mut per_repo: HashMap<&str, usize> = HashMap::new();
-    for entry in &active {
-        *per_repo.entry(&entry.repo).or_default() += 1;
-    }
+    // Every live worker is counted, Auto or Manual: `Ledger::active_workers` is
+    // the one accounting both this gate and `robco overseer status` read, so the
+    // cap enforced here is the count the operator sees.
+    let active = ledger.active_workers();
+    let mut global = active.count;
+    let mut per_repo = active.repos;
     let mut selected_repos = HashSet::new();
     for candidate in candidates {
         let reason = candidate_skip(
@@ -184,7 +179,7 @@ fn apply_candidate_gates(
         let dispatch = reason.is_none();
         if dispatch {
             global += 1;
-            *per_repo.entry(&candidate.repo).or_default() += 1;
+            *per_repo.entry(candidate.repo.clone()).or_default() += 1;
             selected_repos.insert(candidate.repo.as_str());
         }
         plan.decisions.push(GateDecision {
@@ -202,7 +197,7 @@ fn candidate_skip<'a>(
     candidate: &Candidate,
     dispatched_today: u32,
     global: usize,
-    per_repo: &HashMap<&str, usize>,
+    per_repo: &BTreeMap<String, usize>,
     selected_repos: &HashSet<&str>,
     worker_modes: &HashMap<String, ManagementMode>,
 ) -> Option<&'a str> {

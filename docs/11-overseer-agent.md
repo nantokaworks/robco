@@ -155,8 +155,8 @@ these defaults:
 | `merge_strategy` | string | `"squash"` | `"merge"` maps to `--merge`, `"rebase"` to `--rebase`, and every other value to `--squash`. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
-| `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. |
-| `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. |
+| `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
+| `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
 | `poll_interval_secs` | non-negative integer | `60` | Target period between daemon passes; also defines heartbeat freshness as `max(2 × value, 5)` seconds. |
 | `stuck_after_mins` | non-negative integer | `30` | A dispatched, claimed, or working worker with older tmux activity is failed. |
 | `max_retries_per_task` | non-negative integer | `1` | Dispatch is skipped when the highest recorded retry count reaches this value. Every dispatch attempt for a task is recorded before its worker is spawned, so an attempt whose spawn fails counts too. The default permits one first attempt and one retry. |
@@ -431,7 +431,11 @@ state.
 
 Press `e` on a worktree to enroll it under Overseer ownership in Auto mode. Enrolled
 worktrees can be switched between Auto and Manual with `g`; Manual workers remain owned
-by Overseer but are skipped for automatic dispatch. Press `E` and confirm to exclude an
+by Overseer but are skipped for automatic dispatch. Manual suppresses intervention, not
+occupancy: a live Manual worker still holds a worktree, a branch, and a tmux session, so
+it counts toward `max_workers` and `per_repo_limit` exactly like an Auto worker, and
+`robco overseer status` reports the same count the dispatch gate enforces. Toggling a
+worker to Manual therefore never frees a dispatch slot. Press `E` and confirm to exclude an
 enrolled worktree. Exclusion only detaches Overseer ownership and leaves the worker and
 its tmux session running; use the separate kill action when the worker should also stop.
 

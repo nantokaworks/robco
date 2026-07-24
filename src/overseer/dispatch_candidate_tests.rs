@@ -70,54 +70,6 @@ fn candidate_filters_report_exact_reason() {
 }
 
 #[test]
-fn manual_worker_is_excluded_and_auto_worker_is_included() {
-    let mut ledger = Ledger::default();
-    let mut manual = entry(LedgerPhase::Failed);
-    manual.task_id = "manual-task".into();
-    manual.display_id = "#1".into();
-    manual.agent_id = "manual-agent".into();
-    let mut auto = entry(LedgerPhase::Failed);
-    auto.task_id = "auto-task".into();
-    auto.display_id = "#2".into();
-    auto.agent_id = "auto-agent".into();
-    ledger.entries.extend([manual, auto]);
-    let modes = HashMap::from([
-        ("manual-agent".into(), ManagementMode::Manual),
-        ("auto-agent".into(), ManagementMode::Auto),
-    ]);
-    let candidates = [
-        Candidate {
-            task_id: "manual-task".into(),
-            display_id: "#1".into(),
-            title: "manual".into(),
-            repo: "/manual".into(),
-            author: "allowed".into(),
-            workspace: "workspace-1".into(),
-        },
-        Candidate {
-            task_id: "auto-task".into(),
-            display_id: "#2".into(),
-            title: "auto".into(),
-            repo: "/auto".into(),
-            author: "allowed".into(),
-            workspace: "workspace-1".into(),
-        },
-    ];
-
-    let plan = plan_dispatch(
-        &OverseerConfig::default(),
-        &ledger,
-        &candidates,
-        now(),
-        &modes,
-    );
-    assert_eq!(plan.decisions[0].reason, "manual");
-    assert!(!plan.decisions[0].dispatch);
-    assert_eq!(plan.decisions[1].reason, "ready");
-    assert!(plan.decisions[1].dispatch);
-}
-
-#[test]
 fn a_live_auto_worker_suppresses_redispatch() {
     // The task that opened the failure circuit: an Auto worker sitting in a
     // non-terminal phase kept its branch checked out while dispatch re-sent the

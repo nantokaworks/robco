@@ -31,11 +31,7 @@ pub(crate) use service::write_service_plist;
 pub(crate) use settings::set_runtime;
 use settings::{daily_limit, protection_mode, protection_warning, set};
 
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct ActiveWorkers {
-    pub(crate) count: usize,
-    pub(crate) repos: BTreeMap<String, usize>,
-}
+pub(crate) use super::ledger::{ActiveWorkers, terminal};
 
 pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
     match args.command {
@@ -58,7 +54,7 @@ fn status(config: &Config) -> Result<()> {
         .and_then(|metadata| metadata.modified().ok())
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
     let healthy = daemon_healthy(config.overseer.poll_interval_secs);
-    let active = active_workers(&ledger);
+    let active = ledger.active_workers();
     let mut phases = BTreeMap::new();
     for entry in &ledger.entries {
         *phases.entry(phase_name(entry.phase)).or_insert(0usize) += 1;
@@ -197,33 +193,10 @@ fn read_pid() -> Option<u32> {
 fn on_off(value: bool) -> &'static str {
     if value { "on" } else { "off" }
 }
-pub(crate) fn active_workers(ledger: &Ledger) -> ActiveWorkers {
-    let active: Vec<_> = ledger
-        .entries
-        .iter()
-        .filter(|entry| !terminal(entry.phase))
-        .collect();
-    let mut repos = BTreeMap::new();
-    for entry in &active {
-        *repos.entry(entry.repo.clone()).or_insert(0usize) += 1;
-    }
-    ActiveWorkers {
-        count: active.len(),
-        repos,
-    }
-}
-
 pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
-    let ledger = serde_json::from_str(&raw)?;
-    Ok(active_workers(&ledger))
-}
-
-pub(crate) fn terminal(phase: LedgerPhase) -> bool {
-    matches!(
-        phase,
-        LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
-    )
+    let ledger: Ledger = serde_json::from_str(&raw)?;
+    Ok(ledger.active_workers())
 }
 fn phase_name(phase: LedgerPhase) -> &'static str {
     match phase {

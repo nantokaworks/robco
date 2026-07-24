@@ -1,4 +1,4 @@
-use std::{fs, io::ErrorKind, path::Path};
+use std::{collections::BTreeMap, fs, io::ErrorKind, path::Path};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use nanoid::nanoid;
@@ -53,7 +53,41 @@ pub struct Ledger {
     pub counters: LedgerCounters,
 }
 
+/// Live workers counted globally and per repository.
+#[derive(Debug, Default, Eq, PartialEq)]
+pub struct ActiveWorkers {
+    pub count: usize,
+    pub repos: BTreeMap<String, usize>,
+}
+
+/// A phase no worker can leave: the entry no longer holds anything.
+pub fn terminal(phase: LedgerPhase) -> bool {
+    matches!(
+        phase,
+        LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
+    )
+}
+
 impl Ledger {
+    /// The workers occupying capacity right now. The dispatch gate and
+    /// `robco overseer status` both read this one helper, so the count that
+    /// enforces `max_workers` / `per_repo_limit` is the count the operator sees.
+    ///
+    /// Management mode is deliberately not a filter. Manual suppresses Overseer
+    /// *intervention* — the worker belongs to a human, so it is never killed,
+    /// restarted, or re-dispatched — but it still holds a worktree, a branch, a
+    /// tmux session, and CPU in its repository. Exempting it from the caps would
+    /// let a mode toggle free a slot the resources never released.
+    pub fn active_workers(&self) -> ActiveWorkers {
+        let mut repos: BTreeMap<String, usize> = BTreeMap::new();
+        let mut count = 0;
+        for entry in self.entries.iter().filter(|entry| !terminal(entry.phase)) {
+            count += 1;
+            *repos.entry(entry.repo.clone()).or_default() += 1;
+        }
+        ActiveWorkers { count, repos }
+    }
+
     pub fn load() -> Result<Self> {
         let path = super::ledger_path()?;
         Self::load_from(&path)
@@ -153,6 +187,43 @@ mod tests {
                 format!("\"{expected}\"")
             );
         }
+    }
+
+    #[test]
+    fn active_workers_counts_every_non_terminal_entry() {
+        let entry = |repo: &str, phase| LedgerEntry {
+            task_id: "task-1".into(),
+            display_id: "#1".into(),
+            repo: repo.into(),
+            agent_id: "agent".into(),
+            branch: "branch".into(),
+            phase,
+            dispatched_at: Utc::now(),
+            retries: 0,
+            pr_url: None,
+            branch_updates: 0,
+        };
+        let ledger = Ledger {
+            entries: vec![
+                entry("/one", LedgerPhase::Working),
+                entry("/one", LedgerPhase::PrOpened),
+                entry("/two", LedgerPhase::Dispatched),
+                entry("/one", LedgerPhase::Merged),
+                entry("/two", LedgerPhase::Failed),
+                entry("/three", LedgerPhase::Escalated),
+            ],
+            ..Ledger::default()
+        };
+
+        let active = ledger.active_workers();
+        assert_eq!(active.count, 3);
+        assert_eq!(
+            active.repos,
+            BTreeMap::from([("/one".to_string(), 2), ("/two".to_string(), 1)])
+        );
+        // The repository total is the sum of the per-repository counts, so the
+        // global cap and the per-repository cap can never read different ledgers.
+        assert_eq!(active.count, active.repos.values().sum::<usize>());
     }
 
     #[test]

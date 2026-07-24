@@ -158,3 +158,5 @@ fn zero_daily_limit_means_unlimited() {
 
 #[path = "dispatch_candidate_tests.rs"]
 mod candidate_tests;
+#[path = "dispatch_manual_tests.rs"]
+mod manual_tests;
