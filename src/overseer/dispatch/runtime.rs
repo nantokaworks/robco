@@ -1,16 +1,17 @@
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
-use super::{Candidate, plan_dispatch};
+use super::{
+    Candidate, plan_dispatch,
+    worker::{SpawnOutcome, spawn_candidate},
+};
 use crate::overseer::{
-    OVERSEER_AGENT_ID,
     exec::COMMAND_TIMEOUT,
     judge::JudgmentQueue,
-    ledger::{Ledger, LedgerEntry, LedgerPhase},
+    ledger::Ledger,
     logging::{self, DecisionEntry, DecisionKind},
-    templates::worker_prompt,
 };
-use crate::{Result, config::Config, dropr, registry::Registry, spawn};
+use crate::{Result, config::Config, dropr, registry::Registry};
 
 /// `dropr task ready --limit` caps at 20; larger values make the CLI
 /// exit with an argument error and the fetch fails for every repo.
@@ -79,7 +80,7 @@ fn execute_plan<F, L>(
     mut log: L,
 ) -> Result<bool>
 where
-    F: FnMut(&Candidate) -> Result<()>,
+    F: FnMut(&Candidate) -> Result<SpawnOutcome>,
     L: FnMut(DecisionKind, &Candidate, &str) -> Result<()>,
 {
     for decision in decisions {
@@ -93,15 +94,21 @@ where
         if *failures >= threshold {
             return Ok(true);
         }
-        if let Err(error) = spawn(&candidate) {
-            *failures = failures.saturating_add(1);
-            log(
-                DecisionKind::Hold,
-                &candidate,
-                &format!("spawn_failed:{error}"),
-            )?;
-            if *failures >= threshold {
-                return Ok(true);
+        match spawn(&candidate) {
+            Ok(SpawnOutcome::Spawned) => {}
+            // A candidate the pre-spawn re-check held was never attempted, so it
+            // leaves the failure budget for genuine spawn faults untouched.
+            Ok(SpawnOutcome::Held(reason)) => log(DecisionKind::Hold, &candidate, reason)?,
+            Err(error) => {
+                *failures = failures.saturating_add(1);
+                log(
+                    DecisionKind::Hold,
+                    &candidate,
+                    &format!("spawn_failed:{error}"),
+                )?;
+                if *failures >= threshold {
+                    return Ok(true);
+                }
             }
         }
     }
@@ -185,65 +192,7 @@ fn gather_candidates() -> Result<Vec<Candidate>> {
     Ok(candidates)
 }
 
-fn spawn_candidate(
-    config: &Config,
-    ledger: &mut Ledger,
-    task: &Candidate,
-    now: DateTime<Utc>,
-) -> Result<()> {
-    let mut worker_config = config.clone();
-    if let Some(profile) = &config.overseer.worker_profile {
-        worker_config.default_program.clone_from(profile);
-    }
-    let extra_args = worker_config
-        .profiles
-        .iter()
-        .find(|profile| profile.name == worker_config.default_program)
-        .map(|profile| profile.autonomous_args.clone())
-        .unwrap_or_default();
-    let prompt = worker_prompt(&task.display_id, &task.task_id, &task.title, &task.repo);
-    let display_id = task
-        .display_id
-        .trim()
-        .trim_start_matches('#')
-        .strip_prefix("task-")
-        .unwrap_or_else(|| task.display_id.trim().trim_start_matches('#'));
-    let name_slug = (!display_id.is_empty()).then(|| {
-        format!(
-            "task-{display_id}-{}",
-            crate::tmux::sanitize_target_part(&task.title)
-        )
-    });
-    let outcome = spawn::spawn_in_repo(
-        &task.repo,
-        &task.title,
-        name_slug.as_deref(),
-        Some(&prompt),
-        Some(OVERSEER_AGENT_ID),
-        &extra_args,
-        &worker_config,
-    )?;
-    let retries = ledger
-        .entries
-        .iter()
-        .filter(|entry| entry.task_id == task.task_id)
-        .count() as u32;
-    ledger.entries.push(LedgerEntry {
-        task_id: task.task_id.clone(),
-        display_id: task.display_id.clone(),
-        repo: task.repo.clone(),
-        agent_id: outcome.id,
-        branch: outcome.branch,
-        phase: LedgerPhase::Dispatched,
-        dispatched_at: now,
-        retries,
-        pr_url: None,
-    });
-    ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
-    log_candidate(DecisionKind::Dispatch, task, "worker spawned")
-}
-
-fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) -> Result<()> {
+pub(super) fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) -> Result<()> {
     let mut entry = DecisionEntry::new(kind, reason);
     entry.task = Some(task.task_id.clone());
     entry.repo = Some(task.repo.clone());
