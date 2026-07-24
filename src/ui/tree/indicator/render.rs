@@ -18,6 +18,10 @@ pub(in crate::ui::tree) fn primary_span(
             THEME.status_style(Status::Running),
         ),
         Some(Indicator::Merging) => ("⇄".to_string(), THEME.hint_style()),
+        Some(Indicator::McpActivity) => (
+            crate::ui::spinner::mcp_frame(elapsed).to_string(),
+            THEME.mcp_style(),
+        ),
         Some(Indicator::ShellActivity) => (
             crate::ui::spinner::term_frame(elapsed).to_string(),
             THEME.term_style(),

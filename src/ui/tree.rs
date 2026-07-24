@@ -60,6 +60,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     .is_some_and(|workspace| app.dropr_refresh_in_flight(&workspace.id));
                 let mut indicator_state = IndicatorState::with_status(repo.main_status);
                 indicator_state.shell_active = repo.main_shell_working;
+                indicator_state.mcp_active = repo.main_mcp_active;
                 indicator_state.subagents_active = repo.main_subagents_active;
                 indicator_state.dropr_refresh = dropr_refresh;
                 let primary = select(indicator_state);
@@ -173,6 +174,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.worktree_missing = agent.worktree_missing;
                 indicator_state.merge_failed = agent.merge_error.is_some();
                 indicator_state.shell_active = agent.shell_working;
+                indicator_state.mcp_active = agent.mcp_active;
                 indicator_state.subagents_active = active;
                 if crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref()) {
                     indicator_state.management = Some(agent.management);

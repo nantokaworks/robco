@@ -188,6 +188,7 @@ mod tests {
             main_last_spinner: None,
             main_last_change_at: None,
             main_shell_working: false,
+            main_mcp_active: false,
             main_pane_pid: None,
             main_tracked_command: None,
             main_subagents_active: 0,

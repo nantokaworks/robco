@@ -8,6 +8,7 @@ pub(super) enum Indicator {
     Status(Status),
     Merging,
     Running,
+    McpActivity,
     ShellActivity,
     SubagentActivity(usize),
     DroprRefresh,
@@ -22,6 +23,7 @@ pub(super) struct IndicatorState {
     pub waiting: bool,
     pub worktree_missing: bool,
     pub merge_failed: bool,
+    pub mcp_active: bool,
     pub shell_active: bool,
     pub subagents_active: usize,
     pub dropr_refresh: bool,
@@ -38,6 +40,7 @@ impl IndicatorState {
             waiting: status == Some(Status::Waiting),
             worktree_missing: false,
             merge_failed: false,
+            mcp_active: false,
             shell_active: false,
             subagents_active: 0,
             dropr_refresh: false,
@@ -50,10 +53,10 @@ impl IndicatorState {
 }
 
 /// Selects the primary row indicator in this order, highest priority first:
-/// dead/error status, merge activity, running spinner, waiting status, shell activity, active
-/// subagent count, repo dropr refresh, then the static Done/Idle/BranchOnly
-/// status glyph. Worktree-missing state is supplementary and is selected
-/// separately by [`select_supplementary`].
+/// dead/error status, merge activity, running spinner, waiting status, MCP
+/// activity, shell activity, active subagent count, repo dropr refresh, then
+/// the static Done/Idle/BranchOnly status glyph. Worktree-missing state is
+/// supplementary and is selected separately by [`select_supplementary`].
 pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
     if state.dead {
         Some(Indicator::Status(Status::Dead))
@@ -63,6 +66,8 @@ pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
         Some(Indicator::Running)
     } else if state.waiting {
         Some(Indicator::Status(Status::Waiting))
+    } else if state.mcp_active {
+        Some(Indicator::McpActivity)
     } else if state.shell_active {
         Some(Indicator::ShellActivity)
     } else if state.subagents_active > 0 {
@@ -97,6 +102,18 @@ mod tests {
         IndicatorState::with_status(None)
     }
 
+    fn assert_missing_pair(state: IndicatorState, primary: Option<Indicator>) {
+        assert_eq!(select(state), primary);
+        assert_eq!(
+            select_supplementary(state),
+            SupplementaryIndicators {
+                worktree_missing: true,
+                merge_failed: false,
+                management: None,
+            }
+        );
+    }
+
     #[test]
     fn dead_beats_running() {
         let mut state = idle_state();
@@ -129,17 +146,21 @@ mod tests {
     fn waiting_pairs_with_missing_worktree() {
         let mut state = IndicatorState::with_status(Some(Status::Waiting));
         state.worktree_missing = true;
-        assert_eq!(
-            (select(state), select_supplementary(state)),
-            (
-                Some(Indicator::Status(Status::Waiting)),
-                SupplementaryIndicators {
-                    worktree_missing: true,
-                    merge_failed: false,
-                    management: None,
-                }
-            )
-        );
+        assert_missing_pair(state, Some(Indicator::Status(Status::Waiting)));
+    }
+
+    #[test]
+    fn running_beats_mcp_activity() {
+        let mut state = IndicatorState::with_status(Some(Status::Running));
+        state.mcp_active = true;
+        assert_eq!(select(state), Some(Indicator::Running));
+    }
+
+    #[test]
+    fn waiting_beats_mcp_activity() {
+        let mut state = IndicatorState::with_status(Some(Status::Waiting));
+        state.mcp_active = true;
+        assert_eq!(select(state), Some(Indicator::Status(Status::Waiting)));
     }
 
     #[test]
@@ -154,17 +175,23 @@ mod tests {
         let mut state = idle_state();
         state.worktree_missing = true;
         state.shell_active = true;
-        assert_eq!(
-            (select(state), select_supplementary(state)),
-            (
-                Some(Indicator::ShellActivity),
-                SupplementaryIndicators {
-                    worktree_missing: true,
-                    merge_failed: false,
-                    management: None,
-                }
-            )
-        );
+        assert_missing_pair(state, Some(Indicator::ShellActivity));
+    }
+
+    #[test]
+    fn mcp_activity_beats_shell_activity() {
+        let mut state = idle_state();
+        state.mcp_active = true;
+        state.shell_active = true;
+        assert_eq!(select(state), Some(Indicator::McpActivity));
+    }
+
+    #[test]
+    fn mcp_activity_pairs_with_missing_worktree() {
+        let mut state = idle_state();
+        state.worktree_missing = true;
+        state.mcp_active = true;
+        assert_missing_pair(state, Some(Indicator::McpActivity));
     }
 
     #[test]
@@ -172,17 +199,7 @@ mod tests {
         let mut state = idle_state();
         state.worktree_missing = true;
         state.subagents_active = 2;
-        assert_eq!(
-            (select(state), select_supplementary(state)),
-            (
-                Some(Indicator::SubagentActivity(2)),
-                SupplementaryIndicators {
-                    worktree_missing: true,
-                    merge_failed: false,
-                    management: None,
-                }
-            )
-        );
+        assert_missing_pair(state, Some(Indicator::SubagentActivity(2)));
     }
 
     #[test]

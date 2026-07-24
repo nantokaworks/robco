@@ -38,6 +38,10 @@ pub struct RepoNode {
     /// a foreground command. Runtime only; refreshed each tick, never persisted.
     #[serde(skip)]
     pub main_shell_working: bool,
+    /// Whether the main AI session has an in-flight tool call. Runtime only;
+    /// refreshed each tick and never persisted.
+    #[serde(skip)]
+    pub main_mcp_active: bool,
     #[serde(skip)]
     pub main_pane_pid: Option<u32>,
     #[serde(skip)]
@@ -87,6 +91,10 @@ pub struct AgentNode {
     /// foreground command. Runtime only; refreshed each tick, never persisted.
     #[serde(skip)]
     pub shell_working: bool,
+    /// Whether the AI session has an in-flight tool call. Runtime only;
+    /// refreshed each tick and never persisted.
+    #[serde(skip)]
+    pub mcp_active: bool,
     #[serde(skip)]
     pub pane_pid: Option<u32>,
     #[serde(skip)]
@@ -267,6 +275,7 @@ mod tests {
                 last_change_at: None,
                 last_auto_accept_at: None,
                 shell_working: false,
+                mcp_active: false,
                 pane_pid: None,
                 tracked_command: None,
                 subagents: Vec::new(),
@@ -312,6 +321,7 @@ mod tests {
             last_change_at: None,
             last_auto_accept_at: None,
             shell_working: false,
+            mcp_active: false,
             pane_pid: None,
             tracked_command: None,
             subagents: Vec::new(),
