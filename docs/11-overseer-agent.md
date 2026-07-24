@@ -35,6 +35,24 @@ still in a non-terminal phase is held with reason `active_worker` whatever manag
 mode owns that worker, because the live worker still holds the task's branch and
 worktree. Every decision is appended to `~/.robco/overseer/decisions.jsonl`.
 
+Candidates are ordered before those gates run, by dropr task priority (`high`, `medium`,
+`low`, then anything else) and then by ascending display id, which dropr assigns in
+creation order — so the oldest task of the highest priority wins the last free worker
+slot rather than whichever repository the registry happened to list first. The judge, when
+one runs, receives this same ordering as its input, so it reorders a defined baseline.
+
+A dispatch pass consults the LLM judge only when it is contended — when the approved
+candidates outnumber the worker slots still available (`max_workers` minus live Auto
+workers, bounded by one new worker per repository). Otherwise approving everything is the
+only verdict the judge's authority can produce, so the pass dispatches its own ordering
+immediately instead of spending a call and a whole extra poll cycle waiting for the
+verdict. With `judge_profile` unset no dispatch judgment is ever enqueued, at any
+candidate count. Each spawn records which path it took — `worker spawned:judge_approved`,
+`worker spawned:judge_bypassed_uncontended`, or `worker spawned:judge_unconfigured` — so
+the log says which dispatches an LLM had a hand in. A cached verdict whose candidate set
+changed underneath it is dropped with a `judgment_discarded:candidate_set_changed:<key>`
+entry rather than vanishing.
+
 Those gates only see workers this Overseer started, and the ready list they run against
 is minutes old by the time a judgment comes back. So immediately before a worker is
 spawned, Overseer re-reads the task in dropr and takes its claim itself:
@@ -94,6 +112,29 @@ Exception triage handles one queued failed or escalated worker at a time under
 timeout. The process is then terminated. Returned actions are parsed into a closed
 command enum; unknown or unsafe actions are rejected.
 
+The board review is the one surface that reads Overseer's own history rather than a single
+case. It runs on its own clock (`review_interval_mins`), never on every poll, and is
+disabled entirely unless `review_profile` is set. Each run builds a size-bounded digest —
+at most 200 recent decisions with each reason truncated, at most 50 live ledger entries
+with their age, and the dispatch counters — and applies deterministic rules to it: a
+reason repeating three times or more is reported as `repeating_failure` (a structural
+fault) or `repeating_hold` (nothing is moving), a live entry older than twice
+`stuck_after_mins` as `stalled`, and the failure counter as `circuit_at_risk` or
+`circuit_open` with the latest failure named. Those findings are escalation entries in
+`decisions.jsonl` under source `review`, so they surface in the OVERSEER frame like any
+other escalation; a finding that persists is escalated once, not once per interval. The
+review's own entries are excluded from the next digest so it cannot diagnose itself.
+
+The digest and those findings are then handed to a reviewer session under
+`~/.robco/overseer/review/`, which is charged to `daily_review_budget` rather than
+`daily_llm_budget` — at a 15-minute cadence a shared budget would starve dispatch and
+merge judgement. Its result schema carries a severity and a sentence and nothing else:
+`warn` and `critical` findings become escalations, `info` is recorded only, and there is
+no field through which the reviewer can dispatch, merge, unblock, or write the ledger. An
+exhausted budget stops the session but not the deterministic findings, and records
+`review_budget_exhausted` so a quiet reviewer does not read as a healthy board.
+`robco overseer status` reports the judge and review counts separately.
+
 Task text, exception reasons, tmux capture, Discord messages, and other external values
 are each placed in explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a
 value is escaped. The briefing tells the LLM to treat every such field as data, not as
@@ -123,6 +164,9 @@ these defaults:
     "failure_circuit_threshold": 3,
     "triage_enabled": true,
     "triage_profile": null,
+    "review_profile": null,
+    "review_interval_mins": 20,
+    "daily_review_budget": 96,
     "triage_timeout_mins": 15,
     "worker_env_blocklist": ["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"],
     "dispatch_task_authors": [],
@@ -163,7 +207,10 @@ these defaults:
 | `failure_circuit_threshold` | non-negative integer | `3` | Accumulated monitor or spawn failures that open the circuit and disable dispatch. The counter resets when a worker's PR merges or when an operator re-enables dispatch; a successful spawn alone does not reset it. |
 | `triage_enabled` | boolean | `true` | Enables exception queueing and ephemeral triage sessions. |
 | `triage_profile` | string or `null` | `null` | Profile used by triage and Discord ops; `null` uses `default_program`. |
-| `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage or Discord ops LLM process. |
+| `review_profile` | string or `null` | `null` | Profile used by the periodic board review, and the review's only on/off switch. `null` disables the pass entirely, including its deterministic findings. A named profile that does not exist fails the session rather than falling back. |
+| `review_interval_mins` | non-negative integer | `20` | Minimum minutes between board reviews. The last run time is persisted, so a daemon that restarts often still reviews on this cadence rather than on every start-up. |
+| `daily_review_budget` | non-negative integer | `96` | Board-review sessions per UTC date, counted separately from `daily_llm_budget`. Exhausting it stops the reviewer session, not the deterministic findings. |
+| `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage, judgment, or board-review LLM process. |
 | `worker_env_blocklist` | array of strings | `["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]` | Case-sensitive `*` globs for environment names neutralized in autonomous workers. |
 | `dispatch_task_authors` | array of strings | `[]` | Exact allowlist for ready-task authors. Empty permits every author. |
 | `discord` | object | see below | Discord gateway, command, and notification settings. |

@@ -10,9 +10,11 @@ use super::{
     config::OverseerConfig,
     exec::{process_alive, run_timeout},
     heartbeat_path, is_overseer_child,
-    ledger::{Ledger, LedgerPhase},
+    judge::JudgmentQueue,
+    ledger::Ledger,
     logging::{self, DecisionEntry, DecisionKind},
     pidfile_path,
+    review::ReviewPass,
     runtime_request::{self, RuntimeRequest},
 };
 use crate::{
@@ -58,7 +60,7 @@ fn status(config: &Config) -> Result<()> {
     let active = ledger.active_workers();
     let mut phases = BTreeMap::new();
     for entry in &ledger.entries {
-        *phases.entry(phase_name(entry.phase)).or_insert(0usize) += 1;
+        *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
     }
     println!(
         "daemon: {} pid={} heartbeat={}",
@@ -81,6 +83,7 @@ fn status(config: &Config) -> Result<()> {
         config.overseer.max_workers,
         config.overseer.per_repo_limit
     );
+    println!("{}", llm_line(config)?);
     println!("workers by repo: {:?}", active.repos);
     println!("phases: {phases:?}");
     println!("skip list: {:?}", ledger.skip_list);
@@ -104,6 +107,29 @@ fn status(config: &Config) -> Result<()> {
         println!("warning: {warning}");
     }
     Ok(())
+}
+
+/// Today's LLM spend, per surface.
+///
+/// The board reviewer runs on a clock and would consume most of a shared budget
+/// on its own, so it carries its own. Reporting the two counts separately is
+/// what lets an operator see which surface exhausted which budget instead of
+/// inferring it from a single number.
+fn llm_line(config: &Config) -> Result<String> {
+    let judge = JudgmentQueue::load()?.llm_calls_today();
+    let review = ReviewPass::load()?.calls_today();
+    Ok(format!(
+        "llm today: judge {judge}/{}  review {review}/{} ({})",
+        config.overseer.daily_llm_budget,
+        config.overseer.daily_review_budget,
+        config.overseer.review_profile.as_deref().map_or_else(
+            || "disabled".to_string(),
+            |profile| format!(
+                "every {}m via {profile}",
+                config.overseer.review_interval_mins
+            )
+        )
+    ))
 }
 
 fn daemon_healthy(poll_interval_secs: u64) -> bool {
@@ -207,17 +233,6 @@ pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
     let ledger: Ledger = serde_json::from_str(&raw)?;
     Ok(ledger.active_workers())
-}
-fn phase_name(phase: LedgerPhase) -> &'static str {
-    match phase {
-        LedgerPhase::Dispatched => "dispatched",
-        LedgerPhase::Claimed => "claimed",
-        LedgerPhase::Working => "working",
-        LedgerPhase::PrOpened => "pr_opened",
-        LedgerPhase::Merged => "merged",
-        LedgerPhase::Failed => "failed",
-        LedgerPhase::Escalated => "escalated",
-    }
 }
 
 #[cfg(test)]

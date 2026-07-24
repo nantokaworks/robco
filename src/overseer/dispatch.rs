@@ -6,9 +6,12 @@ use crate::model::ManagementMode;
 
 use super::{config::OverseerConfig, judge::DispatchAdvice, ledger::Ledger};
 use entries::{has_active_worker, task_entries, terminal, worker_mode};
+use order::order_candidates;
 
 mod claim;
 mod entries;
+mod order;
+mod route;
 mod runtime;
 mod worker;
 pub use runtime::dispatch_pass;
@@ -30,6 +33,11 @@ pub struct Candidate {
     pub title: String,
     pub repo: String,
     pub author: String,
+    /// dropr task priority (`high` / `medium` / `low`), verbatim. Empty when the
+    /// ready feed omitted it. Feeds the deterministic ordering in
+    /// [`order_candidates`], so a candidate whose priority is unknown sorts last
+    /// rather than silently ahead of a stated one.
+    pub priority: String,
     /// dropr workspace the task lives in. Carried from candidate gathering so
     /// the pre-spawn claim can address the task without re-resolving the
     /// repository's workspace.
@@ -137,7 +145,15 @@ pub fn plan_dispatch(
         plan.circuit_opened = true;
         return global_skip(plan, "circuit_open");
     }
-    apply_candidate_gates(config, ledger, candidates, worker_modes, &mut plan);
+    // Order before gating, not after: the gates spend capacity as they walk the
+    // list, so the order decides which candidates get the remaining slots.
+    apply_candidate_gates(
+        config,
+        ledger,
+        &order_candidates(candidates),
+        worker_modes,
+        &mut plan,
+    );
     plan
 }
 

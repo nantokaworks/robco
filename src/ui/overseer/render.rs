@@ -85,7 +85,7 @@ pub(super) fn append_ledger(
         *repos.entry(entry.repo.as_str()).or_insert(0usize) += 1;
     }
     for entry in &active {
-        *phases.entry(phase_name(entry.phase)).or_insert(0usize) += 1;
+        *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
     }
     lines.push(flags_line(&[
         (
@@ -262,16 +262,5 @@ fn management_name(mode: ManagementMode) -> &'static str {
     match mode {
         ManagementMode::Auto => "Auto",
         ManagementMode::Manual => "Manual",
-    }
-}
-fn phase_name(phase: LedgerPhase) -> &'static str {
-    match phase {
-        LedgerPhase::Dispatched => "dispatched",
-        LedgerPhase::Claimed => "claimed",
-        LedgerPhase::Working => "working",
-        LedgerPhase::PrOpened => "pr_opened",
-        LedgerPhase::Merged => "merged",
-        LedgerPhase::Failed => "failed",
-        LedgerPhase::Escalated => "escalated",
     }
 }

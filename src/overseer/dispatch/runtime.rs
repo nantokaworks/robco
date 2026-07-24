@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use super::{
     Candidate, plan_dispatch,
+    route::{Route, remaining_capacity, route},
     worker::{SpawnOutcome, spawn_candidate},
 };
 use crate::overseer::{
@@ -44,16 +45,31 @@ pub fn dispatch_pass(
         .filter(|decision| decision.dispatch)
         .filter_map(|decision| decision.candidate.clone())
         .collect::<Vec<_>>();
-    let Some(advice) = judgments.dispatch_advice(&approved) else {
-        return Ok(());
+    // Before routing, and on every pass: a round the candidate set outran is
+    // dead whether or not this pass wants a judge, and it must not vanish
+    // unrecorded.
+    judgments.discard_stale_dispatch(&approved)?;
+    let capacity = remaining_capacity(&config.overseer, ledger, &approved, &worker_modes);
+    let taken = route(
+        approved.len(),
+        capacity,
+        config.overseer.judge_profile.is_some(),
+    );
+    let decisions = match taken {
+        Route::Direct(_) => plan.decisions,
+        Route::Judged => {
+            let Some(advice) = judgments.dispatch_advice(&approved) else {
+                return Ok(());
+            };
+            super::apply_judgment(plan.decisions, &advice)
+        }
     };
-    let decisions = super::apply_judgment(plan.decisions, &advice);
     let mut failures = ledger.counters.consecutive_failures;
     let opened = execute_plan(
         decisions,
         config.overseer.failure_circuit_threshold,
         &mut failures,
-        |candidate| spawn_candidate(config, ledger, candidate, now),
+        |candidate| spawn_candidate(config, ledger, candidate, now, taken.label()),
         log_candidate,
     )?;
     ledger.counters.consecutive_failures = failures;
@@ -186,6 +202,7 @@ fn gather_candidates() -> Result<Vec<Candidate>> {
                 title: task.task.title,
                 repo: repo.path.to_string_lossy().into_owned(),
                 author: task.author,
+                priority: task.task.priority,
                 workspace: workspace.id.clone(),
             });
         }

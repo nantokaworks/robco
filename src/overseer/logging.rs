@@ -164,7 +164,7 @@ pub fn coalesce_digest(entries: &[DecisionEntry]) -> Option<String> {
     })
 }
 
-fn tail_from(path: &Path, limit: usize) -> Result<Vec<DecisionEntry>> {
+pub(crate) fn tail_from(path: &Path, limit: usize) -> Result<Vec<DecisionEntry>> {
     let mut file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

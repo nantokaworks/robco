@@ -6,6 +6,7 @@ pub mod autonomy;
 pub mod command;
 pub mod config;
 pub mod daemon;
+pub(crate) mod daily;
 pub mod discord;
 pub mod dispatch;
 pub mod exec;
@@ -14,6 +15,7 @@ pub mod judge;
 pub mod ledger;
 pub mod logging;
 pub mod monitor;
+pub mod review;
 pub mod runtime_request;
 pub(crate) mod session;
 pub mod templates;
@@ -138,6 +140,10 @@ pub fn triage_dir() -> Result<PathBuf> {
 
 pub fn judge_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("judge"))
+}
+
+pub fn review_dir() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("review"))
 }
 
 pub fn discord_ops_dir() -> Result<PathBuf> {

@@ -1,6 +1,6 @@
 mod briefing;
 mod completion;
-mod daily;
+mod keys;
 mod merge_gate;
 mod queue;
 mod result;
@@ -13,7 +13,8 @@ pub use result::{DispatchAdvice, MergeJudgment};
 use crate::config::{Config, Profile};
 use crate::overseer::dispatch::Candidate;
 use crate::overseer::session::{
-    EphemeralSession, SessionControl, SessionHandle, SessionResult, terminate_stale_session,
+    EphemeralSession, SessionControl, SessionHandle, SessionResult, session_profile,
+    terminate_stale_session,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, time::Duration};
@@ -99,43 +100,17 @@ fn run_session(
 }
 
 pub(crate) fn judge_profile(config: &Config) -> Option<Profile> {
-    resolve_profile(config, config.overseer.judge_profile.as_ref())
+    session_profile(config, config.overseer.judge_profile.as_ref())
 }
 
 pub(crate) fn merge_judge_profile(config: &Config) -> Option<Profile> {
-    resolve_profile(config, config.overseer.merge_judge_profile.as_ref())
-}
-
-fn resolve_profile(config: &Config, selected: Option<&String>) -> Option<Profile> {
-    let name = selected.unwrap_or(&config.default_program);
-    config
-        .profiles
-        .iter()
-        .find(|profile| &profile.name == name)
-        .cloned()
-        .or_else(|| {
-            selected.is_none().then(|| Profile {
-                name: name.clone(),
-                program: config.default_program_command(),
-                autonomous_args: Vec::new(),
-                model: None,
-                backend: None,
-            })
-        })
-        .map(|mut profile| {
-            if let Some(backend) = profile.backend.as_deref()
-                && let Some(program) = config
-                    .profiles
-                    .iter()
-                    .find(|candidate| candidate.name == backend)
-                    .map(|candidate| candidate.program.clone())
-            {
-                profile.program = program;
-            }
-            profile
-        })
+    session_profile(config, config.overseer.merge_judge_profile.as_ref())
 }
 
 #[cfg(test)]
 #[path = "judge/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "judge/queue_tests.rs"]
+mod queue_tests;
