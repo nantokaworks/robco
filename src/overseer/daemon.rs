@@ -18,6 +18,7 @@ use super::{
     review::ReviewPass,
     runtime_request, snapshots_path,
     triage::ExceptionQueue,
+    wake::{self, Signals},
 };
 use crate::{Result, config::Config};
 use chrono::Utc;
@@ -43,6 +44,9 @@ pub async fn run_daemon() -> Result<()> {
     let mut exceptions = ExceptionQueue::load()?;
     let mut judgments = JudgmentQueue::load()?;
     let mut review = ReviewPass::load()?;
+    // Installed before the first pass so a wake or a signal delivered while a
+    // pass is running is remembered rather than missed.
+    let mut signals = Signals::install()?;
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -102,9 +106,13 @@ pub async fn run_daemon() -> Result<()> {
         inbox.commit()?;
         ledger = next;
         fs::write(heartbeat_path()?, now.to_rfc3339())?;
-        let remaining = Duration::from_secs(config.overseer.poll_interval_secs)
-            .saturating_sub(started.elapsed());
-        if wait_for_shutdown(remaining).await? {
+        if wake::wait_for_next_pass(
+            &mut signals,
+            started,
+            Duration::from_secs(config.overseer.poll_interval_secs),
+        )
+        .await?
+        {
             return Ok(());
         }
     }
@@ -184,24 +192,6 @@ pub(crate) fn terminal(phase: LedgerPhase) -> bool {
         phase,
         LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
     )
-}
-
-async fn wait_for_shutdown(duration: Duration) -> Result<bool> {
-    #[cfg(unix)]
-    {
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-        tokio::select! {
-            _ = tokio::time::sleep(duration) => Ok(false),
-            result = tokio::signal::ctrl_c() => { result?; Ok(true) },
-            _ = terminate.recv() => Ok(true),
-        }
-    }
-    #[cfg(not(unix))]
-    tokio::select! {
-        _ = tokio::time::sleep(duration) => Ok(false),
-        result = tokio::signal::ctrl_c() => { result?; Ok(true) },
-    }
 }
 
 #[cfg(test)]

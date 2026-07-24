@@ -20,6 +20,7 @@ pub mod runtime_request;
 pub(crate) mod session;
 pub mod templates;
 pub mod triage;
+pub(crate) mod wake;
 
 pub const OVERSEER_AGENT_ID: &str = "overseer";
 pub const CONTROL_SESSION_NAME: &str = "@overseer-control";

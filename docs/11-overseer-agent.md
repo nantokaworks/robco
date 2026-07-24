@@ -14,8 +14,9 @@ LLMs are used only for bounded judgment calls.
 RobCo agents whose parent id is `overseer` but which are missing from the ledger. Every
 poll then performs the same ordered pass:
 
-1. Reload `~/.robco/config.json`, update the Discord bot, and apply queued Discord
-   ledger requests.
+1. Reload `~/.robco/config.json`, update the Discord bot, apply queued Discord
+   ledger requests, and drain the runtime requests other processes left in
+   `~/.robco/overseer/runtime_requests/`.
 2. Gather new inbox reports, registry/tmux state, dropr task state, and GitHub pull
    request state. The observation is appended to
    `~/.robco/overseer/observations.jsonl`.
@@ -26,6 +27,16 @@ poll then performs the same ordered pass:
    auto-merge gate, and dispatch eligible ready tasks.
 5. Atomically save the ledger, acknowledge completed triage and inbox work, write the
    heartbeat, and wait for the remainder of `poll_interval_secs`.
+
+That wait also ends early when another process enqueues a runtime request: enqueuing
+signals the pid in the daemon pidfile, so an operator toggle such as
+`robco overseer set dispatch on`, a panic stop, or a merge performed in the TUI starts a
+pass within a couple of seconds rather than at the next tick. Passes are still kept at
+least two seconds apart, so a burst of requests coalesces into one pass — every request
+in the queue is drained by it — and the hold is recorded in `decisions.jsonl`. A woken
+pass does exactly what a timed pass does; the request only decides *when*, never *what*.
+Merges performed outside RobCo (GitHub's web UI, `gh` on another machine) have nothing
+local to announce them and are still found by polling.
 
 The dispatch engine considers ready tasks from dropr workspaces associated with RobCo's
 registered repository remotes. It applies the dispatch toggle, daily limit, failure
