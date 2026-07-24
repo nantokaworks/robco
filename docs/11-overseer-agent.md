@@ -294,6 +294,16 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
 
 Replace `ROBCO_DISCORD_TOKEN` in that command if `token_env` uses another name.
 
+`robco install` takes the other side of that trade: its launchd step defaults to writing
+*and* loading the service, so an operator recovering a dead daemon reaches a running
+service by accepting every prompt. The load is verified — a `launchctl bootstrap` that
+exits 0 without producing a loaded service fails the run instead of reporting success —
+and a wizard that ends with dispatch enabled while the service is still down closes with
+an explicit warning naming the recovery commands. `install-service` stays non-executing
+because it is the scripted, copy-the-command path: it is invoked from runbooks and
+non-interactive setups where loading the service is a separate, deliberate step (and,
+with Discord enabled, must follow the `launchctl setenv` above).
+
 Inspect it at any time with:
 
 ```sh
