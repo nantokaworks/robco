@@ -4,13 +4,12 @@ use std::collections::{HashMap, HashSet};
 
 use crate::model::ManagementMode;
 
-use super::{
-    config::OverseerConfig,
-    judge::DispatchAdvice,
-    ledger::{Ledger, LedgerPhase},
-};
+use super::{config::OverseerConfig, judge::DispatchAdvice, ledger::Ledger};
+use entries::{has_active_worker, task_entries, terminal, worker_mode};
 
+mod entries;
 mod runtime;
+mod worker;
 pub use runtime::dispatch_pass;
 
 /// Renders a daily dispatch limit for display, mapping the `0 = unlimited`
@@ -206,18 +205,21 @@ fn candidate_skip<'a>(
     if config.daily_dispatch_limit != 0 && dispatched_today >= config.daily_dispatch_limit {
         return Some("daily_limit");
     }
-    let matching_workers: Vec<_> = ledger
-        .entries
-        .iter()
-        .filter(|entry| {
-            entry.task_id == candidate.task_id || entry.display_id == candidate.display_id
-        })
-        .collect();
-    if matching_workers
+    let recorded: Vec<_> =
+        task_entries(ledger, &candidate.task_id, &candidate.display_id).collect();
+    if recorded
         .iter()
         .any(|entry| worker_mode(entry, worker_modes) == ManagementMode::Manual)
     {
         return Some("manual");
+    }
+    // A worker in a non-terminal phase still owns this task's branch and worktree.
+    // Dispatching a second worker onto it fails in `git worktree add` on the
+    // existing branch, and those failures feed the circuit until dispatch latches
+    // off — so hold the candidate for as long as its worker is alive, whatever
+    // management mode owns it.
+    if recorded.iter().any(|entry| !terminal(entry.phase)) {
+        return Some("active_worker");
     }
     if ledger
         .skip_list
@@ -226,10 +228,11 @@ fn candidate_skip<'a>(
     {
         return Some("skip_list");
     }
-    let retries = ledger
-        .entries
+    // `retries` counts the attempts already made against this task; `worker::
+    // record_attempt` advances it on every attempt, including one whose spawn
+    // failed before it could record an entry of its own.
+    let retries = recorded
         .iter()
-        .filter(|entry| entry.task_id == candidate.task_id)
         .map(|entry| entry.retries)
         .max()
         .unwrap_or(0);
@@ -251,23 +254,6 @@ fn candidate_skip<'a>(
         return Some("one_per_repo");
     }
     None
-}
-
-fn worker_mode(
-    entry: &super::ledger::LedgerEntry,
-    worker_modes: &HashMap<String, ManagementMode>,
-) -> ManagementMode {
-    worker_modes
-        .get(&entry.agent_id)
-        .copied()
-        .unwrap_or(ManagementMode::Auto)
-}
-
-fn terminal(phase: LedgerPhase) -> bool {
-    matches!(
-        phase,
-        LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
-    )
 }
 
 #[cfg(test)]

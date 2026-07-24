@@ -2,7 +2,7 @@ use chrono::{TimeZone, Utc};
 
 use super::*;
 use crate::model::ManagementMode;
-use crate::overseer::ledger::LedgerEntry;
+use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 
 fn candidate(repo: &str) -> Candidate {
     Candidate {

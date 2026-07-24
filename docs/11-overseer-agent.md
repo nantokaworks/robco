@@ -30,8 +30,10 @@ poll then performs the same ordered pass:
 The dispatch engine considers ready tasks from dropr workspaces associated with RobCo's
 registered repository remotes. It applies the dispatch toggle, daily limit, failure
 circuit, skip list, retry limit, task-author filter, global worker limit, per-repository
-limit, and a one-new-worker-per-repository-per-pass rule. Every decision is appended to
-`~/.robco/overseer/decisions.jsonl`.
+limit, and a one-new-worker-per-repository-per-pass rule. A task whose ledger entry is
+still in a non-terminal phase is held with reason `active_worker` whatever management
+mode owns that worker, because the live worker still holds the task's branch and
+worktree. Every decision is appended to `~/.robco/overseer/decisions.jsonl`.
 
 The auto-merge gate only considers ledger entries in `pr_opened`. It verifies main
 branch protection, requires an open PR with a non-empty check rollup in which every
@@ -132,7 +134,7 @@ these defaults:
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. |
 | `poll_interval_secs` | non-negative integer | `60` | Target period between daemon passes; also defines heartbeat freshness as `max(2 × value, 5)` seconds. |
 | `stuck_after_mins` | non-negative integer | `30` | A dispatched, claimed, or working worker with older tmux activity is failed. |
-| `max_retries_per_task` | non-negative integer | `1` | Dispatch is skipped when the highest recorded retry count reaches this value. |
+| `max_retries_per_task` | non-negative integer | `1` | Dispatch is skipped when the highest recorded retry count reaches this value. Every dispatch attempt for a task is recorded before its worker is spawned, so an attempt whose spawn fails counts too. The default permits one first attempt and one retry. |
 | `daily_dispatch_limit` | non-negative integer | `20` | Maximum new workers recorded for the current UTC date. |
 | `failure_circuit_threshold` | non-negative integer | `3` | Accumulated monitor or spawn failures that open the circuit and disable dispatch. The counter resets when a worker's PR merges or when an operator re-enables dispatch; a successful spawn alone does not reset it. |
 | `triage_enabled` | boolean | `true` | Enables exception queueing and ephemeral triage sessions. |
