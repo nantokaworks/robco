@@ -85,6 +85,8 @@ pub enum OverseerCommand {
     Stop,
     /// Persist a runtime toggle in RobCo's JSON config.
     Set(OverseerSetArgs),
+    /// Set the daily dispatch limit (0 = unlimited).
+    DailyLimit(OverseerDailyLimitArgs),
     /// Disable dispatch and terminate all Overseer workers.
     Panic,
     /// Write a launchd service plist and load or reload it after confirmation.
@@ -97,6 +99,12 @@ pub struct OverseerSetArgs {
     pub setting: OverseerSetting,
     #[arg(value_enum)]
     pub value: OnOff,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OverseerDailyLimitArgs {
+    /// Maximum worker dispatches per day; 0 means unlimited.
+    pub value: u32,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

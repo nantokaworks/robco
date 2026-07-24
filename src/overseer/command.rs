@@ -40,6 +40,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Status => status(config),
         OverseerCommand::Stop => stop(),
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
+        OverseerCommand::DailyLimit(args) => daily_limit(args.value),
         OverseerCommand::Panic => panic_stop(),
         OverseerCommand::InstallService => install_service(),
     }
@@ -78,7 +79,7 @@ fn status(config: &Config) -> Result<()> {
     println!(
         "today: {}/{}  workers: {}/{}  per-repo cap: {}",
         ledger.counters.dispatched_today,
-        config.overseer.daily_dispatch_limit,
+        crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
         active.count,
         config.overseer.max_workers,
         config.overseer.per_repo_limit
@@ -150,6 +151,20 @@ fn set(config: &Config, setting: OverseerSetting, enabled: bool) -> Result<()> {
     {
         println!("warning: {}", crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT);
     }
+    Ok(())
+}
+
+fn daily_limit(value: u32) -> Result<()> {
+    // Reload rather than mutate the passed-in config: the daemon rewrites the
+    // file on its own ticks, so a load→mutate→save keeps this from clobbering a
+    // concurrent write with a stale snapshot (mirrors `set_runtime`).
+    let mut config = Config::load()?;
+    config.overseer.daily_dispatch_limit = value;
+    config.save()?;
+    println!(
+        "daily dispatch limit: {}",
+        super::dispatch::format_dispatch_limit(value)
+    );
     Ok(())
 }
 

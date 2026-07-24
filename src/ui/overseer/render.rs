@@ -87,7 +87,7 @@ pub(super) fn append_ledger(
             format!(
                 "{} / {}",
                 dispatches_on(ledger, Utc::now().date_naive()),
-                config.daily_dispatch_limit
+                crate::overseer::dispatch::format_dispatch_limit(config.daily_dispatch_limit)
             ),
             false,
         ),

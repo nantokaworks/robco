@@ -126,6 +126,35 @@ fn daily_limit_and_date_reset() {
 }
 
 #[test]
+fn zero_daily_limit_means_unlimited() {
+    // 0 is the "no cap" sentinel: even a large dispatched_today must not trip the
+    // daily_limit gate, at the global preflight or per-candidate stage.
+    let config = OverseerConfig {
+        daily_dispatch_limit: 0,
+        ..OverseerConfig::default()
+    };
+    let mut ledger = Ledger::default();
+    ledger.counters.date = Some(now().date_naive());
+    ledger.counters.dispatched_today = 999;
+
+    // Preflight (no candidates) must not short-circuit on daily_limit.
+    let preflight = plan_dispatch(&config, &ledger, &[], now(), &HashMap::new());
+    assert!(preflight.decisions.is_empty());
+
+    // A candidate still gets dispatched despite dispatched_today far above any
+    // positive limit.
+    let plan = plan_dispatch(
+        &config,
+        &ledger,
+        &[candidate("/repo")],
+        now(),
+        &HashMap::new(),
+    );
+    assert!(plan.decisions[0].dispatch);
+    assert_eq!(plan.decisions[0].reason, "ready");
+}
+
+#[test]
 fn candidate_filters_report_exact_reason() {
     struct Case {
         reason: &'static str,

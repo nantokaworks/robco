@@ -94,7 +94,7 @@ pub(crate) fn overseer<R: BufRead, W: Write>(
     overseer.daily_dispatch_limit = prompt::number(
         input,
         output,
-        "Daily dispatch limit",
+        "Daily dispatch limit (0 = unlimited)",
         overseer.daily_dispatch_limit as usize,
         0,
         u32::MAX as usize,
