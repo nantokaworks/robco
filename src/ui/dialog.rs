@@ -8,7 +8,10 @@ use ratatui::{
 
 use crate::model::Selection;
 
-use super::{App, Mode, error_dialog, help, input_wrap, layout, spinner, theme::DEFAULT as THEME};
+use super::{
+    App, Mode, error_dialog, help, input::management, input_wrap, layout, spinner,
+    theme::DEFAULT as THEME,
+};
 
 mod caret;
 #[cfg(test)]
@@ -68,33 +71,23 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
                 "y delete   n/esc cancel",
             ),
         ),
-        Mode::ConfirmOverseerExclude { title, .. } => (
-            "exclude from overseer?",
-            vec![
-                Line::from(title.clone()),
-                Line::from("detaches ownership; worker keeps running"),
-                hint_line("y exclude   n/esc cancel"),
-            ],
-        ),
         Mode::ConfirmOverseerBulkToggle {
             repo_name,
             target,
             count,
             ..
-        } => {
-            let mode = format!("{target:?}").to_ascii_lowercase();
-            (
-                "toggle whole repo?",
-                vec![
-                    Line::from(repo_name.clone()),
-                    Line::from(format!(
-                        "set {count} overseer worker{} to {mode}",
-                        if *count == 1 { "" } else { "s" }
-                    )),
-                    hint_line("y toggle   n/esc cancel"),
-                ],
-            )
-        }
+        } => (
+            "manage whole repo?",
+            vec![
+                Line::from(repo_name.clone()),
+                Line::from(format!(
+                    "{count} worker{} {}",
+                    if *count == 1 { "" } else { "s" },
+                    management::bulk_action(*target)
+                )),
+                hint_line("y apply   n/esc cancel"),
+            ],
+        ),
         Mode::ConfirmRemoveRepo { path } => (
             "remove repo?",
             confirm_lines(path.display().to_string(), "y remove   n/esc cancel"),

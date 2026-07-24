@@ -9,7 +9,9 @@ use super::{
 };
 
 mod confirm;
-mod management;
+// `dialog` phrases the bulk-toggle confirmation from the same helper the
+// resulting message uses, so the prompt and the outcome cannot drift apart.
+pub(in crate::ui) mod management;
 mod mouse;
 mod overseer;
 mod prompt_agent;
@@ -210,9 +212,7 @@ impl App {
                     },
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
-                KeyCode::Char('g') => management::toggle_selected(self)?,
-                KeyCode::Char('e') => management::enroll_selected(self)?,
-                KeyCode::Char('E') => management::confirm_exclude_selected(self),
+                KeyCode::Char('g') => management::cycle_selected(self)?,
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
@@ -229,7 +229,6 @@ impl App {
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
-            | Mode::ConfirmOverseerExclude { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => unreachable!("handled above"),
         }
 

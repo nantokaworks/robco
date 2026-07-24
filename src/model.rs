@@ -116,15 +116,6 @@ fn default_management_mode() -> ManagementMode {
     ManagementMode::Auto
 }
 
-impl ManagementMode {
-    pub fn toggled(self) -> Self {
-        match self {
-            Self::Auto => Self::Manual,
-            Self::Manual => Self::Auto,
-        }
-    }
-}
-
 /// Agent indices and identity-tree depths in display order.
 pub fn agent_order(agents: &[AgentNode]) -> Vec<(usize, usize)> {
     use std::collections::{HashMap, HashSet};

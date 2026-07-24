@@ -84,6 +84,7 @@ cargo test
 - `ctrl-q`: return from the attached tmux session to RobCo
 - `tab`: switch between terminal preview and git diff
 - `r`: restart the selected agent program
+- `g`: cycle the selected worktree through Overseer management (unmanaged → auto → manual)
 - `x`: kill the selected agent, remove its clean worktree, and optionally delete its branch
 - `?`: show help
 - `q`: quit the cockpit without stopping agents

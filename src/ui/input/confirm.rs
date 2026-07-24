@@ -24,7 +24,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
-            | Mode::ConfirmOverseerExclude { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => Some(Ok(())),
             _ => None,
         };
@@ -89,19 +88,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
                 app.reset_overseer();
             }
             Some(Ok(()))
-        }
-        Mode::ConfirmOverseerExclude {
-            repo_path,
-            agent_id,
-            ..
-        } => {
-            let (repo_path, agent_id): (PathBuf, String) = (repo_path.clone(), agent_id.clone());
-            app.mode = Mode::Normal;
-            Some(if confirmed {
-                management::exclude_selected(app, &repo_path, &agent_id)
-            } else {
-                Ok(())
-            })
         }
         Mode::ConfirmOverseerBulkToggle {
             repo_path, target, ..

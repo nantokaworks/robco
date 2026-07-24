@@ -9,92 +9,90 @@ use crate::{
 
 use super::{App, Mode};
 
-pub(super) fn enroll_selected(app: &mut App) -> Result<()> {
-    let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
-        app.show_message("e: select a worktree to enroll into overseer management");
-        return Ok(());
-    };
-    let repo_path = app.registry.repos[repo].path.clone();
-    let agent_id = app.registry.repos[repo].agents[agent].id.clone();
-    let mut outcome = EnrollOutcome::NotFound;
-    app.registry = Registry::locked_update(|registry| {
-        if let Some(worker) = registry
-            .repos
-            .iter_mut()
-            .find(|repo| repo.path == repo_path)
-            .and_then(|repo| repo.agents.iter_mut().find(|agent| agent.id == agent_id))
-        {
-            outcome = enroll(worker);
-        }
-    })?;
-    app.show_message(match outcome {
-        EnrollOutcome::Enrolled => "enrolled into overseer management (auto)",
-        EnrollOutcome::AlreadyManaged => "e: already overseer-managed",
-        EnrollOutcome::NotFound => "e: selected worktree was not found",
-    });
-    Ok(())
+/// Where a worktree sits on the `g` cycle.
+///
+/// The position is a function of `parent_agent_id` and `management` together,
+/// never of `management` alone: a worktree adopted from `worktree_root` is
+/// persisted as `Manual` while nobody owns it, so reading the stored mode by
+/// itself would place an unowned worktree mid-cycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CycleStep {
+    Unmanaged,
+    Auto,
+    Manual,
 }
 
-pub(super) fn confirm_exclude_selected(app: &mut App) {
-    let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
-        app.show_message("E: select an overseer worktree to exclude");
-        return;
-    };
-    if !is_overseer_child(
-        app.registry.repos[repo].agents[agent]
-            .parent_agent_id
-            .as_deref(),
-    ) {
-        app.show_message("E: only overseer-managed worktrees can be excluded");
-        return;
+/// The step `worker` currently occupies, or `None` when it is off the cycle.
+///
+/// `parent_agent_id` is overloaded: it records overseer ownership *and* the
+/// identity-tree parent `model::agent_order` draws from, which adoption can
+/// recover from a live session's `ROBCO_PARENT_AGENT_ID`. Nothing persists what
+/// the parent was before enrollment, so enrolling a worker that already belongs
+/// to another agent would sever that link with no way to restore it on the way
+/// back out. An overseer-managed worker is therefore defined as never also
+/// being another agent's child, and `g` declines such a worker instead of
+/// overwriting its parent.
+fn cycle_step(worker: &AgentNode) -> Option<CycleStep> {
+    match worker.parent_agent_id.as_deref() {
+        None => Some(CycleStep::Unmanaged),
+        Some(parent) if is_overseer_child(Some(parent)) => Some(match worker.management {
+            ManagementMode::Auto => CycleStep::Auto,
+            ManagementMode::Manual => CycleStep::Manual,
+        }),
+        Some(_) => None,
     }
-    let repo = &app.registry.repos[repo];
-    let agent = &repo.agents[agent];
-    app.mode = Mode::ConfirmOverseerExclude {
-        repo_path: repo.path.clone(),
-        agent_id: agent.id.clone(),
-        title: agent.title.clone(),
-    };
 }
 
-pub(super) fn exclude_selected(app: &mut App, repo_path: &Path, agent_id: &str) -> Result<()> {
-    let mut outcome = ExcludeOutcome::NotFound;
-    app.registry = Registry::locked_update(|registry| {
-        if let Some(worker) = registry
-            .repos
-            .iter_mut()
-            .find(|repo| repo.path == repo_path)
-            .and_then(|repo| repo.agents.iter_mut().find(|agent| agent.id == agent_id))
-        {
-            outcome = exclude(worker);
+/// Advance one step of `Unmanaged -> Auto -> Manual -> Unmanaged`, returning
+/// the step landed on. `None` leaves the worker untouched (see [`cycle_step`]).
+fn advance(worker: &mut AgentNode) -> Option<CycleStep> {
+    Some(match cycle_step(worker)? {
+        CycleStep::Unmanaged => {
+            worker.parent_agent_id = Some(crate::overseer::OVERSEER_AGENT_ID.to_string());
+            // An adopted worktree carries a stale `Manual`; overwrite rather
+            // than preserve it, or enrollment would land on the wrong step.
+            worker.management = ManagementMode::Auto;
+            CycleStep::Auto
         }
-    })?;
-    app.show_message(match outcome {
-        ExcludeOutcome::Excluded => "excluded from overseer management (worker left running)",
-        ExcludeOutcome::NotOverseerChild => "E: only overseer-managed worktrees can be excluded",
-        ExcludeOutcome::NotFound => "E: selected worktree was not found",
-    });
-    Ok(())
+        CycleStep::Auto => {
+            worker.management = ManagementMode::Manual;
+            CycleStep::Manual
+        }
+        CycleStep::Manual => {
+            // Detaching only drops ownership; the worker and its tmux session
+            // keep running. `management` stays Manual so the daemon continues
+            // to treat any ledger entry it already created as frozen.
+            worker.parent_agent_id = None;
+            CycleStep::Unmanaged
+        }
+    })
 }
 
-pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
+#[derive(Debug, PartialEq, Eq)]
+enum CycleOutcome {
+    Moved(CycleStep),
+    OtherParent,
+    NotFound,
+}
+
+pub(super) fn cycle_selected(app: &mut App) -> Result<()> {
     match app.selected_item() {
-        Some(Selection::Agent { repo, agent }) => toggle_worker(app, repo, agent),
+        Some(Selection::Agent { repo, agent }) => cycle_worker(app, repo, agent),
         Some(Selection::Repo(repo)) => {
             confirm_bulk_toggle(app, repo);
             Ok(())
         }
         _ => {
-            app.show_message("g: select a repo or an overseer worker to toggle auto/manual");
+            app.show_message("g: select a repo or a worktree to cycle overseer management");
             Ok(())
         }
     }
 }
 
-fn toggle_worker(app: &mut App, repo: usize, agent: usize) -> Result<()> {
+fn cycle_worker(app: &mut App, repo: usize, agent: usize) -> Result<()> {
     let repo_path = app.registry.repos[repo].path.clone();
     let agent_id = app.registry.repos[repo].agents[agent].id.clone();
-    let mut toggled = None;
+    let mut outcome = CycleOutcome::NotFound;
     app.registry = Registry::locked_update(|registry| {
         let Some(worker) = registry
             .repos
@@ -104,25 +102,27 @@ fn toggle_worker(app: &mut App, repo: usize, agent: usize) -> Result<()> {
         else {
             return;
         };
-        if toggle_mode(worker.parent_agent_id.as_deref(), &mut worker.management) {
-            toggled = Some(worker.management);
-        }
+        outcome = match advance(worker) {
+            Some(step) => CycleOutcome::Moved(step),
+            None => CycleOutcome::OtherParent,
+        };
     })?;
-    if let Some(mode) = toggled {
-        app.show_message(format!(
-            "overseer management: {}",
-            format!("{mode:?}").to_ascii_lowercase()
-        ));
-    } else {
-        app.show_message("g: only overseer-managed workers toggle auto/manual");
-    }
+    app.show_message(match outcome {
+        CycleOutcome::Moved(CycleStep::Auto) => "overseer management: auto",
+        CycleOutcome::Moved(CycleStep::Manual) => "overseer management: manual",
+        CycleOutcome::Moved(CycleStep::Unmanaged) => {
+            "detached from overseer management (worker left running)"
+        }
+        CycleOutcome::OtherParent => "g: this worktree belongs to another agent, not the overseer",
+        CycleOutcome::NotFound => "g: selected worktree was not found",
+    });
     Ok(())
 }
 
 fn confirm_bulk_toggle(app: &mut App, repo: usize) {
     let repo = &app.registry.repos[repo];
     let Some((target, count)) = bulk_target(&repo.agents) else {
-        app.show_message("g: no overseer-managed workers under this repo");
+        app.show_message("g: no worktrees under this repo for the overseer to manage");
         return;
     };
     app.mode = Mode::ConfirmOverseerBulkToggle {
@@ -133,25 +133,24 @@ fn confirm_bulk_toggle(app: &mut App, repo: usize) {
     };
 }
 
-/// The mode a repo-wide toggle moves every overseer-managed worker to, plus how
-/// many of them currently differ from it. Biased toward standing the repo down:
-/// a single Auto worker makes the whole repo Manual, and only a repo that is
-/// already fully Manual goes back to Auto. That way one press always means
-/// "hands off this repo" unless there is nothing left to stand down.
+/// The mode a repo-wide toggle moves every worker to, plus how many of them it
+/// would change. Biased toward standing the repo down: a single Auto worker
+/// makes the whole repo Manual, and only a repo with no Auto worker left goes
+/// to Auto — enrolling its unmanaged worktrees on the way there. The repo-level
+/// action deliberately never un-enrolls; detaching stays a per-worktree
+/// decision. That way one press always means "hands off this repo" unless there
+/// is nothing left to stand down.
 ///
-/// `None` when the repo holds no overseer-managed workers at all.
+/// `None` when the repo holds no worktree the overseer may touch.
 fn bulk_target(agents: &[AgentNode]) -> Option<(ManagementMode, usize)> {
-    let managed = agents
-        .iter()
-        .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()));
-    let (mut total, mut auto) = (0usize, 0usize);
-    for agent in managed {
-        total += 1;
-        auto += usize::from(agent.management == ManagementMode::Auto);
+    let (mut on_cycle, mut auto) = (0usize, 0usize);
+    for step in agents.iter().filter_map(cycle_step) {
+        on_cycle += 1;
+        auto += usize::from(step == CycleStep::Auto);
     }
-    match (total, auto) {
+    match (on_cycle, auto) {
         (0, _) => None,
-        (_, 0) => Some((ManagementMode::Auto, total)),
+        (total, 0) => Some((ManagementMode::Auto, total)),
         _ => Some((ManagementMode::Manual, auto)),
     }
 }
@@ -171,9 +170,24 @@ pub(super) fn bulk_toggle_repo(
             return;
         };
         for worker in &mut repo.agents {
-            if is_overseer_child(worker.parent_agent_id.as_deref()) && worker.management != target {
-                worker.management = target;
-                changed += 1;
+            let Some(step) = cycle_step(worker) else {
+                continue;
+            };
+            match target {
+                // Standing down leaves unmanaged worktrees alone.
+                ManagementMode::Manual if step == CycleStep::Auto => {
+                    worker.management = ManagementMode::Manual;
+                    changed += 1;
+                }
+                ManagementMode::Auto if step != CycleStep::Auto => {
+                    if step == CycleStep::Unmanaged {
+                        worker.parent_agent_id =
+                            Some(crate::overseer::OVERSEER_AGENT_ID.to_string());
+                    }
+                    worker.management = ManagementMode::Auto;
+                    changed += 1;
+                }
+                _ => {}
             }
         }
     })?;
@@ -182,51 +196,21 @@ pub(super) fn bulk_toggle_repo(
 }
 
 fn bulk_message(changed: usize, target: ManagementMode) -> String {
-    let mode = format!("{target:?}").to_ascii_lowercase();
+    let action = bulk_action(target);
     match changed {
-        0 => format!("g: no workers left to set to {mode}"),
-        1 => format!("1 worker set to {mode}"),
-        _ => format!("{changed} workers set to {mode}"),
+        0 => format!("g: no workers left to {action}"),
+        1 => format!("1 worker {action}"),
+        _ => format!("{changed} workers {action}"),
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum EnrollOutcome {
-    Enrolled,
-    AlreadyManaged,
-    NotFound,
-}
-
-fn enroll(worker: &mut AgentNode) -> EnrollOutcome {
-    if is_overseer_child(worker.parent_agent_id.as_deref()) {
-        return EnrollOutcome::AlreadyManaged;
+/// Past-tense phrase naming what a repo-wide toggle does, shared by the confirm
+/// dialog so the prompt and the result read the same way.
+pub(in crate::ui) fn bulk_action(target: ManagementMode) -> &'static str {
+    match target {
+        ManagementMode::Auto => "put under overseer management (auto)",
+        ManagementMode::Manual => "set to manual",
     }
-    worker.parent_agent_id = Some(crate::overseer::OVERSEER_AGENT_ID.to_string());
-    worker.management = ManagementMode::Auto;
-    EnrollOutcome::Enrolled
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum ExcludeOutcome {
-    Excluded,
-    NotOverseerChild,
-    NotFound,
-}
-
-fn exclude(worker: &mut AgentNode) -> ExcludeOutcome {
-    if !is_overseer_child(worker.parent_agent_id.as_deref()) {
-        return ExcludeOutcome::NotOverseerChild;
-    }
-    worker.parent_agent_id = None;
-    ExcludeOutcome::Excluded
-}
-
-fn toggle_mode(parent: Option<&str>, mode: &mut ManagementMode) -> bool {
-    if !is_overseer_child(parent) {
-        return false;
-    }
-    *mode = mode.toggled();
-    true
 }
 
 #[cfg(test)]

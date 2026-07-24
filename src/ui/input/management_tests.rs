@@ -81,32 +81,83 @@ fn app_on_repo_row(agents: Vec<AgentNode>) -> App {
 }
 
 #[test]
-fn toggle_on_non_worker_selection_explains_scope() {
+fn cycle_on_non_worker_selection_explains_scope() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
     app.selected = 0; // OVERSEER header row — not a worker (Selection::Agent).
 
-    toggle_selected(&mut app).unwrap();
+    cycle_selected(&mut app).unwrap();
 
     assert!(
         app.message
             .as_ref()
-            .is_some_and(|(text, _)| text.contains("overseer worker")),
+            .is_some_and(|(text, _)| text.contains("overseer management")),
         "expected a scope hint message, got {:?}",
         app.message
     );
 }
 
 #[test]
-fn only_overseer_workers_toggle() {
-    let mut mode = ManagementMode::Auto;
-    assert!(toggle_mode(Some("overseer"), &mut mode));
-    assert_eq!(mode, ManagementMode::Manual);
-    assert!(toggle_mode(Some("chief"), &mut mode));
-    assert_eq!(mode, ManagementMode::Auto);
-    assert!(!toggle_mode(None, &mut mode));
-    assert_eq!(mode, ManagementMode::Auto);
+fn four_presses_return_a_user_created_worker_to_unmanaged() {
+    let mut worker = worker(None, ManagementMode::Auto);
+
+    assert_eq!(advance(&mut worker), Some(CycleStep::Auto));
+    assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
+    assert_eq!(worker.management, ManagementMode::Auto);
+
+    assert_eq!(advance(&mut worker), Some(CycleStep::Manual));
+    assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
+    assert_eq!(worker.management, ManagementMode::Manual);
+
+    assert_eq!(advance(&mut worker), Some(CycleStep::Unmanaged));
+    assert_eq!(worker.parent_agent_id, None);
+
+    assert_eq!(advance(&mut worker), Some(CycleStep::Auto));
+    assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
+    assert_eq!(worker.management, ManagementMode::Auto);
+}
+
+/// A worktree adopted from `worktree_root` is stored as `Manual` while nobody
+/// owns it, so the mode alone would place it one step further along.
+#[test]
+fn an_adopted_worktree_enrolls_despite_its_stale_manual_mode() {
+    let mut adopted = worker(None, ManagementMode::Manual);
+
+    assert_eq!(cycle_step(&adopted), Some(CycleStep::Unmanaged));
+    assert_eq!(advance(&mut adopted), Some(CycleStep::Auto));
+
+    assert_eq!(adopted.parent_agent_id.as_deref(), Some("overseer"));
+    assert_eq!(adopted.management, ManagementMode::Auto);
+}
+
+#[test]
+fn detaching_leaves_the_mode_manual_so_a_ledger_entry_stays_frozen() {
+    let mut worker = worker(Some("overseer"), ManagementMode::Manual);
+
+    assert_eq!(advance(&mut worker), Some(CycleStep::Unmanaged));
+
+    assert_eq!(worker.parent_agent_id, None);
+    assert_eq!(worker.management, ManagementMode::Manual);
+}
+
+#[test]
+fn a_worker_owned_by_another_agent_is_off_the_cycle() {
+    let mut worker = worker(Some("other-parent"), ManagementMode::Manual);
+
+    assert_eq!(cycle_step(&worker), None);
+    assert_eq!(advance(&mut worker), None);
+
+    assert_eq!(worker.parent_agent_id.as_deref(), Some("other-parent"));
+    assert_eq!(worker.management, ManagementMode::Manual);
+}
+
+#[test]
+fn the_legacy_overseer_parent_is_still_on_the_cycle() {
+    // `chief` is the pre-rename overseer id `is_overseer_child` still accepts.
+    let worker = worker(Some("chief"), ManagementMode::Auto);
+
+    assert_eq!(cycle_step(&worker), Some(CycleStep::Auto));
 }
 
 #[test]
@@ -131,15 +182,34 @@ fn a_fully_manual_repo_goes_back_to_auto() {
 }
 
 #[test]
-fn bulk_target_ignores_workers_the_overseer_does_not_own() {
+fn a_repo_with_no_auto_worker_enrolls_its_unmanaged_worktrees_too() {
     let agents = vec![
-        worker(None, ManagementMode::Auto),
+        worker(None, ManagementMode::Manual),
+        managed("b", ManagementMode::Manual),
+    ];
+
+    assert_eq!(bulk_target(&agents), Some((ManagementMode::Auto, 2)));
+}
+
+#[test]
+fn standing_a_repo_down_leaves_its_unmanaged_worktrees_alone() {
+    let agents = vec![
+        worker(None, ManagementMode::Manual),
+        managed("b", ManagementMode::Auto),
+    ];
+
+    assert_eq!(bulk_target(&agents), Some((ManagementMode::Manual, 1)));
+}
+
+#[test]
+fn bulk_target_ignores_workers_owned_by_another_agent() {
+    let agents = vec![
         worker(Some("other-parent"), ManagementMode::Auto),
-        managed("c", ManagementMode::Manual),
+        managed("b", ManagementMode::Manual),
     ];
 
     assert_eq!(bulk_target(&agents), Some((ManagementMode::Auto, 1)));
-    assert_eq!(bulk_target(&agents[..2]), None);
+    assert_eq!(bulk_target(&agents[..1]), None);
 }
 
 #[test]
@@ -150,20 +220,20 @@ fn bulk_message_reports_a_count_not_a_bare_mode() {
     );
     assert_eq!(
         bulk_message(1, ManagementMode::Auto),
-        "1 worker set to auto"
+        "1 worker put under overseer management (auto)"
     );
     assert!(bulk_message(0, ManagementMode::Manual).starts_with("g:"));
 }
 
 #[test]
-fn toggle_on_repo_row_confirms_before_switching_every_worker() {
+fn cycle_on_repo_row_confirms_before_switching_every_worker() {
     let mut app = app_on_repo_row(vec![
         managed("a", ManagementMode::Auto),
         managed("b", ManagementMode::Auto),
         managed("c", ManagementMode::Manual),
     ]);
 
-    toggle_selected(&mut app).unwrap();
+    cycle_selected(&mut app).unwrap();
 
     match &app.mode {
         Mode::ConfirmOverseerBulkToggle {
@@ -180,57 +250,38 @@ fn toggle_on_repo_row_confirms_before_switching_every_worker() {
     }
 }
 
+/// The repo row now has something to offer an unmanaged worktree, so the
+/// "nothing to do" message is reserved for workers the overseer may not touch.
 #[test]
-fn toggle_on_repo_row_without_managed_workers_explains_scope() {
-    let mut app = app_on_repo_row(vec![worker(None, ManagementMode::Auto)]);
+fn cycle_on_repo_row_of_foreign_workers_explains_scope() {
+    let mut app = app_on_repo_row(vec![worker(Some("other-parent"), ManagementMode::Auto)]);
 
-    toggle_selected(&mut app).unwrap();
+    cycle_selected(&mut app).unwrap();
 
     assert!(matches!(app.mode, Mode::Normal));
     assert!(
         app.message
             .as_ref()
-            .is_some_and(|(text, _)| text.contains("no overseer-managed workers")),
+            .is_some_and(|(text, _)| text.contains("no worktrees under this repo")),
         "expected a scope hint message, got {:?}",
         app.message
     );
 }
 
 #[test]
-fn enroll_sets_overseer_parent_and_auto_management() {
-    let mut worker = worker(None, ManagementMode::Manual);
+fn cycle_on_repo_row_of_unmanaged_worktrees_offers_to_enroll_them() {
+    let mut app = app_on_repo_row(vec![
+        worker(None, ManagementMode::Manual),
+        managed("b", ManagementMode::Manual),
+    ]);
 
-    assert_eq!(enroll(&mut worker), EnrollOutcome::Enrolled);
+    cycle_selected(&mut app).unwrap();
 
-    assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
-    assert_eq!(worker.management, ManagementMode::Auto);
-}
-
-#[test]
-fn enroll_preserves_management_when_already_managed() {
-    let mut worker = worker(Some("overseer"), ManagementMode::Manual);
-
-    assert_eq!(enroll(&mut worker), EnrollOutcome::AlreadyManaged);
-
-    assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
-    assert_eq!(worker.management, ManagementMode::Manual);
-}
-
-#[test]
-fn exclude_clears_overseer_parent() {
-    let mut worker = worker(Some("overseer"), ManagementMode::Manual);
-
-    assert_eq!(exclude(&mut worker), ExcludeOutcome::Excluded);
-
-    assert_eq!(worker.parent_agent_id, None);
-    assert_eq!(worker.management, ManagementMode::Manual);
-}
-
-#[test]
-fn exclude_preserves_non_overseer_parent() {
-    let mut worker = worker(Some("other-parent"), ManagementMode::Manual);
-
-    assert_eq!(exclude(&mut worker), ExcludeOutcome::NotOverseerChild);
-
-    assert_eq!(worker.parent_agent_id.as_deref(), Some("other-parent"));
+    match &app.mode {
+        Mode::ConfirmOverseerBulkToggle { target, count, .. } => {
+            assert_eq!(*target, ManagementMode::Auto);
+            assert_eq!(*count, 2);
+        }
+        _ => panic!("expected a bulk-toggle confirmation, got {:?}", app.message),
+    }
 }

@@ -511,15 +511,38 @@ state.
 
 ### Worktree management in the TUI
 
-Press `e` on a worktree to enroll it under Overseer ownership in Auto mode. Enrolled
-worktrees can be switched between Auto and Manual with `g`; Manual workers remain owned
-by Overseer but are skipped for automatic dispatch. Manual suppresses intervention, not
-occupancy: a live Manual worker still holds a worktree, a branch, and a tmux session, so
-it counts toward `max_workers` and `per_repo_limit` exactly like an Auto worker, and
-`robco overseer status` reports the same count the dispatch gate enforces. Toggling a
-worker to Manual therefore never frees a dispatch slot. Press `E` and confirm to exclude an
-enrolled worktree. Exclusion only detaches Overseer ownership and leaves the worker and
-its tmux session running; use the separate kill action when the worker should also stop.
+`g` is the only key for this axis. On a worktree row it cycles
+unmanaged → Overseer Auto → Overseer Manual → unmanaged, so one key both enrolls a
+worktree and detaches it again. The cycle position is read from ownership and mode
+together: a worktree created by hand under `worktree_root` is adopted as unowned but
+persisted as `Manual`, and the first `g` overwrites that stale mode when it enrolls.
+There is no confirmation prompt — every step is non-destructive and two more presses
+undo it.
+
+A worktree that already belongs to *another agent* is off the cycle and `g` declines it.
+`parent_agent_id` records both Overseer ownership and the identity-tree parent, and
+nothing persists what the parent was before enrollment, so an Overseer-managed worker is
+defined as never also being another agent's child rather than having its parent silently
+overwritten.
+
+Manual workers remain owned by Overseer but are skipped for automatic dispatch. Manual
+suppresses intervention, not occupancy: a live Manual worker still holds a worktree, a
+branch, and a tmux session, so it counts toward `max_workers` and `per_repo_limit`
+exactly like an Auto worker, and `robco overseer status` reports the same count the
+dispatch gate enforces. Cycling a worker to Manual therefore never frees a dispatch slot.
+Detaching does not free one either: it only drops Overseer ownership and leaves the
+worker and its tmux session running; use the separate kill action when the worker should
+also stop. A detached worker keeps its `Manual` mode, so a ledger entry the daemon
+already created for it stays frozen rather than resuming.
+
+On a repo row `g` acts on every worktree under the repo behind a confirmation, keeping
+the stand-down bias: any Auto worker present sets every Overseer-managed worker to
+Manual and leaves unmanaged worktrees alone, and otherwise every worktree the Overseer
+may touch becomes Auto, enrolling the unmanaged ones. The repo-level action never
+un-enrolls; detaching stays a per-worktree decision.
+
+Only worktrees under `config.worktree_root` reach the tree at all — one created
+elsewhere is never adopted, so no key can bring it under Overseer management.
 
 The triage queue is atomically persisted. At startup pending cases are loaded; an
 unreadable queue is moved aside as `queue.json.corrupt`, logged, and restarted empty.
