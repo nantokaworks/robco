@@ -41,7 +41,6 @@ fn default_discord_token_env() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct OverseerConfig {
-    pub enabled: bool,
     pub dispatch_enabled: bool,
     pub auto_merge: bool,
     pub protection_mode: ProtectionMode,
@@ -70,7 +69,6 @@ pub struct OverseerConfig {
 impl Default for OverseerConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             dispatch_enabled: true,
             auto_merge: false,
             protection_mode: ProtectionMode::Required,
@@ -131,3 +129,7 @@ impl Default for DiscordConfig {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod tests;

@@ -4,6 +4,7 @@ use crate::{
     config::Config,
     overseer::{
         command,
+        config::OverseerConfig,
         dispatch::format_dispatch_limit,
         exec::{COMMAND_TIMEOUT, run_timeout},
         is_overseer_child,
@@ -119,16 +120,28 @@ fn status() -> crate::Result<String> {
         .iter()
         .filter(|entry| !terminal(entry.phase))
         .count();
-    Ok(format!(
-        "overseer={} dispatch={} automerge={} workers={}/{} today={}/{}",
-        on_off(config.overseer.enabled),
-        on_off(config.overseer.dispatch_enabled),
-        on_off(config.overseer.auto_merge),
+    Ok(status_line(
+        &config.overseer,
         active,
-        config.overseer.max_workers,
         ledger.counters.dispatched_today,
-        format_dispatch_limit(config.overseer.daily_dispatch_limit)
     ))
+}
+
+/// Render the Discord `status` reply.
+///
+/// Kept in step with `robco overseer status`: it reports only toggles the daemon
+/// honours, so the two surfaces cannot disagree about whether the Overseer is
+/// running.
+fn status_line(config: &OverseerConfig, active: usize, dispatched_today: u32) -> String {
+    format!(
+        "dispatch={} automerge={} workers={}/{} today={}/{}",
+        on_off(config.dispatch_enabled),
+        on_off(config.auto_merge),
+        active,
+        config.max_workers,
+        dispatched_today,
+        format_dispatch_limit(config.daily_dispatch_limit)
+    )
 }
 
 fn workers() -> crate::Result<String> {
@@ -261,5 +274,15 @@ mod tests {
         assert_eq!(entry.user_id.as_deref(), Some("user-7"));
         assert_eq!(entry.task.as_deref(), Some("task-1"));
         assert!(entry.reason.contains("failed: denied"));
+    }
+
+    #[test]
+    fn status_line_reports_no_switch_the_daemon_ignores() {
+        let config = OverseerConfig::default();
+        assert!(config.dispatch_enabled);
+        let line = status_line(&config, 1, 4);
+        assert_eq!(line, "dispatch=on automerge=off workers=1/3 today=4/20");
+        // A dispatching daemon must never be described as switched off.
+        assert!(!line.contains("overseer=off"));
     }
 }

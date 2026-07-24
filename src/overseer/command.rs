@@ -7,6 +7,7 @@ use std::{
 };
 
 use super::{
+    config::OverseerConfig,
     exec::{process_alive, run_timeout},
     heartbeat_path, is_overseer_child,
     ledger::{Ledger, LedgerPhase},
@@ -66,16 +67,11 @@ fn status(config: &Config) -> Result<()> {
         heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs()))
     );
     println!(
-        "overseer: {}  dispatch: {}  auto-merge: {} (protection: {})  circuit: {}",
-        on_off(config.overseer.enabled),
-        on_off(config.overseer.dispatch_enabled),
-        on_off(config.overseer.auto_merge),
-        config.overseer.protection_mode.label(),
-        if ledger.counters.consecutive_failures >= config.overseer.failure_circuit_threshold {
-            "open"
-        } else {
-            "closed"
-        }
+        "{}",
+        toggle_line(
+            &config.overseer,
+            ledger.counters.consecutive_failures >= config.overseer.failure_circuit_threshold
+        )
     );
     println!(
         "today: {}/{}  workers: {}/{}  per-repo cap: {}",
@@ -193,6 +189,20 @@ fn read_pid() -> Option<u32> {
 fn on_off(value: bool) -> &'static str {
     if value { "on" } else { "off" }
 }
+/// Render the toggle summary line of `robco overseer status`.
+///
+/// Every toggle reported here must be one the daemon actually honours; a switch
+/// that is only displayed invites the reader to blame it for an outage it has no
+/// part in.
+fn toggle_line(config: &OverseerConfig, circuit_open: bool) -> String {
+    format!(
+        "dispatch: {}  auto-merge: {} (protection: {})  circuit: {}",
+        on_off(config.dispatch_enabled),
+        on_off(config.auto_merge),
+        config.protection_mode.label(),
+        if circuit_open { "open" } else { "closed" }
+    )
+}
 pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
     let ledger: Ledger = serde_json::from_str(&raw)?;
@@ -209,3 +219,7 @@ fn phase_name(phase: LedgerPhase) -> &'static str {
         LedgerPhase::Escalated => "escalated",
     }
 }
+
+#[cfg(test)]
+#[path = "command_tests.rs"]
+mod tests;

@@ -108,7 +108,6 @@ these defaults:
 ```json
 {
   "overseer": {
-    "enabled": false,
     "dispatch_enabled": true,
     "auto_merge": false,
     "protection_mode": "required",
