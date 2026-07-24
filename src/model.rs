@@ -59,6 +59,8 @@ pub struct AgentNode {
     pub base_commit: String,
     pub program: String,
     #[serde(default)]
+    pub claude_session_id: Option<String>,
+    #[serde(default)]
     pub profile: Option<String>,
     pub tmux_session: String,
     pub created_at: DateTime<Local>,
@@ -252,6 +254,7 @@ mod tests {
                 branch: id.into(),
                 base_commit: String::new(),
                 program: String::new(),
+                claude_session_id: None,
                 profile: None,
                 tmux_session: id.into(),
                 created_at: now,
@@ -296,6 +299,7 @@ mod tests {
             branch: "task".into(),
             base_commit: String::new(),
             program: "claude".into(),
+            claude_session_id: None,
             profile: None,
             tmux_session: "robco_task".into(),
             created_at: now,

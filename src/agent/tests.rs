@@ -180,6 +180,7 @@ fn adopt_preserves_recovered_identity() {
     assert_eq!(adopted.id, "child-id");
     assert_eq!(adopted.parent_agent_id.as_deref(), Some("parent-id"));
     assert_eq!(adopted.management, crate::model::ManagementMode::Manual);
+    assert!(adopted.claude_session_id.is_none());
 }
 
 #[test]
@@ -210,6 +211,7 @@ fn agent_titled(title: &str, branch: &str) -> AgentNode {
         branch: branch.to_string(),
         base_commit: String::new(),
         program: "claude".to_string(),
+        claude_session_id: None,
         profile: None,
         tmux_session: "robco_dropr_t".to_string(),
         created_at: now,
@@ -227,6 +229,19 @@ fn agent_titled(title: &str, branch: &str) -> AgentNode {
         subagents: Vec::new(),
         children: Vec::new(),
     }
+}
+
+#[test]
+fn relaunch_command_reuses_stored_claude_session_id() {
+    let mut agent = agent_titled("title", "branch");
+    agent.claude_session_id = Some("existing-id".to_string());
+    assert_eq!(
+        relaunch_command(&agent),
+        "claude '--session-id' 'existing-id'"
+    );
+
+    agent.claude_session_id = None;
+    assert_eq!(relaunch_command(&agent), "claude");
 }
 
 #[test]

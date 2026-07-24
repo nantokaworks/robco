@@ -23,7 +23,12 @@ pub struct TaskSubagent {
 
 /// Passive adapter boundary for coding-agent-specific subagent state.
 pub trait SubagentReader {
-    fn read(&self, worktree_path: &Path, now: SystemTime) -> Vec<TaskSubagent>;
+    fn read(
+        &self,
+        worktree_path: &Path,
+        session_id: Option<&str>,
+        now: SystemTime,
+    ) -> Vec<TaskSubagent>;
 }
 
 pub fn read_allowed(status: Status, worktree_path: &Path) -> bool {

@@ -138,7 +138,11 @@ fn live_activity(agent: &AgentNode, status: Status) -> (Option<String>, usize) {
     let subagents = if !read_allowed(status, &agent.worktree_path) {
         Vec::new()
     } else if agent.subagents.is_empty() {
-        ClaudeSubagentReader::default().read(&agent.worktree_path, SystemTime::now())
+        ClaudeSubagentReader::default().read(
+            &agent.worktree_path,
+            agent.claude_session_id.as_deref(),
+            SystemTime::now(),
+        )
     } else {
         agent.subagents.clone()
     };

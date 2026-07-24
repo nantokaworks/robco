@@ -48,8 +48,8 @@ impl Fixture {
         fs::metadata(activity).unwrap().modified().unwrap()
     }
 
-    fn read_at(&self, now: SystemTime) -> Vec<TaskSubagent> {
-        ClaudeSubagentReader::new(&self.base_dir).read(&self.worktree, now)
+    fn read_at(&self, session_id: Option<&str>, now: SystemTime) -> Vec<TaskSubagent> {
+        ClaudeSubagentReader::new(&self.base_dir).read(&self.worktree, session_id, now)
     }
 }
 
@@ -77,21 +77,49 @@ fn maps_worktree_path_to_claude_project_slug() {
 }
 
 #[test]
-fn newest_recent_session_wins_and_stale_session_is_ignored() {
+fn explicit_session_reads_only_its_own_subagents() {
     let fixture = Fixture::new();
-    let old = fixture.session("old");
-    fixture.subagent(&old, "old-agent", META);
-    let new = fixture.session("new");
-    let modified = fixture.subagent(&new, "new-agent", META);
-    fixture.set_session_mtime("old", modified - Duration::from_secs(2));
-    fixture.set_session_mtime("new", modified - Duration::from_secs(1));
+    let session_a = fixture.session("session-a");
+    let modified = fixture.subagent(&session_a, "agent-a", META);
+    let session_b = fixture.session("session-b");
+    fixture.subagent(&session_b, "agent-b", META);
 
-    let agents = fixture.read_at(modified + Duration::from_secs(1));
+    let agents = fixture.read_at(Some("session-a"), modified + Duration::from_secs(1));
     assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0].id, "new-agent");
+    assert_eq!(agents[0].id, "agent-a");
+}
 
-    let stale = fixture.read_at(modified + SESSION_RECENCY + Duration::from_secs(1));
-    assert!(stale.is_empty());
+#[test]
+fn explicit_session_does_not_fall_back_when_its_subagents_are_missing() {
+    let fixture = Fixture::new();
+    fixture.session("session-a");
+    let session_b = fixture.session("session-b");
+    let modified = fixture.subagent(&session_b, "agent-b", META);
+
+    assert!(
+        fixture
+            .read_at(Some("session-a"), modified + Duration::from_secs(1))
+            .is_empty()
+    );
+}
+
+#[test]
+fn implicit_session_reads_one_recent_session_but_rejects_ambiguity() {
+    let fixture = Fixture::new();
+    let session_a = fixture.session("session-a");
+    let modified = fixture.subagent(&session_a, "agent-a", META);
+
+    let agents = fixture.read_at(None, modified + Duration::from_secs(1));
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].id, "agent-a");
+
+    let session_b = fixture.session("session-b");
+    fixture.subagent(&session_b, "agent-b", META);
+    assert!(
+        fixture
+            .read_at(None, modified + Duration::from_secs(1))
+            .is_empty()
+    );
 }
 
 #[test]
@@ -102,7 +130,7 @@ fn classifies_recent_activity_as_running_and_older_activity_as_done() {
 
     assert_eq!(
         fixture
-            .read_at(modified + RUNNING_RECENCY)
+            .read_at(Some("session"), modified + RUNNING_RECENCY)
             .first()
             .unwrap()
             .status,
@@ -110,7 +138,10 @@ fn classifies_recent_activity_as_running_and_older_activity_as_done() {
     );
     assert_eq!(
         fixture
-            .read_at(modified + RUNNING_RECENCY + Duration::from_secs(1))
+            .read_at(
+                Some("session"),
+                modified + RUNNING_RECENCY + Duration::from_secs(1),
+            )
             .first()
             .unwrap()
             .status,
@@ -126,7 +157,7 @@ fn hides_done_subagents_outside_recency_window() {
     let now = modified + DONE_RECENCY + Duration::from_secs(1);
     fixture.set_session_mtime("session", now);
 
-    assert!(fixture.read_at(now).is_empty());
+    assert!(fixture.read_at(Some("session"), now).is_empty());
 }
 
 #[test]
@@ -143,7 +174,7 @@ fn rejects_mtimes_beyond_future_skew_tolerance() {
         now + FUTURE_MTIME_TOLERANCE + Duration::from_secs(1),
     );
 
-    let agents = fixture.read_at(now);
+    let agents = fixture.read_at(Some("valid"), now);
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0].id, "valid-agent");
 
@@ -151,7 +182,7 @@ fn rejects_mtimes_beyond_future_skew_tolerance() {
         &valid.join("agent-valid-agent.jsonl"),
         now + FUTURE_MTIME_TOLERANCE + Duration::from_secs(1),
     );
-    assert!(fixture.read_at(now).is_empty());
+    assert!(fixture.read_at(Some("valid"), now).is_empty());
 }
 
 #[test]
@@ -161,7 +192,7 @@ fn skips_malformed_metadata_but_returns_valid_entries() {
     fixture.subagent(&session, "broken", "{not-json");
     let modified = fixture.subagent(&session, "valid", META);
 
-    let agents = fixture.read_at(modified + Duration::from_secs(1));
+    let agents = fixture.read_at(Some("session"), modified + Duration::from_secs(1));
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0].id, "valid");
     assert_eq!(agents[0].agent_type, "Explore");
@@ -175,11 +206,11 @@ fn missing_project_or_subagents_directory_returns_empty() {
     let reader = ClaudeSubagentReader::new(temp.path());
     assert!(
         reader
-            .read(Path::new("/missing"), SystemTime::now())
+            .read(Path::new("/missing"), None, SystemTime::now())
             .is_empty()
     );
 
     let fixture = Fixture::new();
     fs::write(fixture.project_dir.join("session.jsonl"), "session\n").unwrap();
-    assert!(fixture.read_at(SystemTime::now()).is_empty());
+    assert!(fixture.read_at(None, SystemTime::now()).is_empty());
 }

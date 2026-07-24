@@ -24,6 +24,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 branch: "task".to_string(),
                 base_commit: "abc".to_string(),
                 program: "codex".to_string(),
+                claude_session_id: None,
                 profile: None,
                 tmux_session: "robco-task".to_string(),
                 created_at: Local::now(),

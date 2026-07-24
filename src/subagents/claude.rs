@@ -24,14 +24,22 @@ impl ClaudeSubagentReader {
         }
     }
 
-    fn active_session(&self, worktree_path: &Path, now: SystemTime) -> Option<PathBuf> {
+    fn session_dir(
+        &self,
+        worktree_path: &Path,
+        session_id: Option<&str>,
+        now: SystemTime,
+    ) -> Option<PathBuf> {
         let project_dir = self
             .base_dir
             .join("projects")
             .join(project_slug(worktree_path));
+        if let Some(session_id) = session_id {
+            return Some(project_dir.join(session_id));
+        }
         let entries = fs::read_dir(&project_dir).ok()?;
 
-        entries
+        let mut recent_sessions = entries
             .filter_map(Result::ok)
             .filter_map(|entry| {
                 let path = entry.path();
@@ -41,14 +49,16 @@ impl ClaudeSubagentReader {
                     return None;
                 }
                 let modified = entry.metadata().ok()?.modified().ok()?;
-                is_recent(now, modified, SESSION_RECENCY).then_some((modified, path))
+                is_recent(now, modified, SESSION_RECENCY).then_some(path)
             })
-            .max_by_key(|(modified, _)| *modified)
-            .and_then(|(_, session_file)| {
-                session_file
-                    .file_stem()
-                    .map(|session_id| project_dir.join(session_id))
-            })
+            .take(2);
+        let session_file = recent_sessions.next()?;
+        if recent_sessions.next().is_some() {
+            return None;
+        }
+        session_file
+            .file_stem()
+            .map(|session_id| project_dir.join(session_id))
     }
 
     fn read_session(&self, session_dir: &Path, now: SystemTime) -> Vec<TaskSubagent> {
@@ -74,8 +84,13 @@ impl Default for ClaudeSubagentReader {
 }
 
 impl SubagentReader for ClaudeSubagentReader {
-    fn read(&self, worktree_path: &Path, now: SystemTime) -> Vec<TaskSubagent> {
-        self.active_session(worktree_path, now)
+    fn read(
+        &self,
+        worktree_path: &Path,
+        session_id: Option<&str>,
+        now: SystemTime,
+    ) -> Vec<TaskSubagent> {
+        self.session_dir(worktree_path, session_id, now)
             .map_or_else(Vec::new, |session| self.read_session(&session, now))
     }
 }
@@ -112,6 +127,8 @@ fn read_subagent(meta_path: &Path, now: SystemTime) -> Option<TaskSubagent> {
     let metadata = fs::metadata(activity_path).ok()?;
     let last_activity_at = metadata.modified().ok()?;
     let age = timestamp_age(now, last_activity_at)?;
+    // Claude activity records have no reliable terminal marker; accept the
+    // short mtime window before a completed subagent transitions to Done.
     let status = if age <= RUNNING_RECENCY {
         SubagentStatus::Running
     } else {
