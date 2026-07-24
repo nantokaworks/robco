@@ -78,10 +78,20 @@ pub(super) fn exclude_selected(app: &mut App, repo_path: &Path, agent_id: &str) 
 }
 
 pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
-    let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
-        app.show_message("g: select an overseer worker to toggle auto/manual");
-        return Ok(());
-    };
+    match app.selected_item() {
+        Some(Selection::Agent { repo, agent }) => toggle_worker(app, repo, agent),
+        Some(Selection::Repo(repo)) => {
+            confirm_bulk_toggle(app, repo);
+            Ok(())
+        }
+        _ => {
+            app.show_message("g: select a repo or an overseer worker to toggle auto/manual");
+            Ok(())
+        }
+    }
+}
+
+fn toggle_worker(app: &mut App, repo: usize, agent: usize) -> Result<()> {
     let repo_path = app.registry.repos[repo].path.clone();
     let agent_id = app.registry.repos[repo].agents[agent].id.clone();
     let mut toggled = None;
@@ -107,6 +117,77 @@ pub(super) fn toggle_selected(app: &mut App) -> Result<()> {
         app.show_message("g: only overseer-managed workers toggle auto/manual");
     }
     Ok(())
+}
+
+fn confirm_bulk_toggle(app: &mut App, repo: usize) {
+    let repo = &app.registry.repos[repo];
+    let Some((target, count)) = bulk_target(&repo.agents) else {
+        app.show_message("g: no overseer-managed workers under this repo");
+        return;
+    };
+    app.mode = Mode::ConfirmOverseerBulkToggle {
+        repo_path: repo.path.clone(),
+        repo_name: repo.name.clone(),
+        target,
+        count,
+    };
+}
+
+/// The mode a repo-wide toggle moves every overseer-managed worker to, plus how
+/// many of them currently differ from it. Biased toward standing the repo down:
+/// a single Auto worker makes the whole repo Manual, and only a repo that is
+/// already fully Manual goes back to Auto. That way one press always means
+/// "hands off this repo" unless there is nothing left to stand down.
+///
+/// `None` when the repo holds no overseer-managed workers at all.
+fn bulk_target(agents: &[AgentNode]) -> Option<(ManagementMode, usize)> {
+    let managed = agents
+        .iter()
+        .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()));
+    let (mut total, mut auto) = (0usize, 0usize);
+    for agent in managed {
+        total += 1;
+        auto += usize::from(agent.management == ManagementMode::Auto);
+    }
+    match (total, auto) {
+        (0, _) => None,
+        (_, 0) => Some((ManagementMode::Auto, total)),
+        _ => Some((ManagementMode::Manual, auto)),
+    }
+}
+
+pub(super) fn bulk_toggle_repo(
+    app: &mut App,
+    repo_path: &Path,
+    target: ManagementMode,
+) -> Result<()> {
+    let mut changed = 0usize;
+    app.registry = Registry::locked_update(|registry| {
+        let Some(repo) = registry
+            .repos
+            .iter_mut()
+            .find(|repo| repo.path == repo_path)
+        else {
+            return;
+        };
+        for worker in &mut repo.agents {
+            if is_overseer_child(worker.parent_agent_id.as_deref()) && worker.management != target {
+                worker.management = target;
+                changed += 1;
+            }
+        }
+    })?;
+    app.show_message(bulk_message(changed, target));
+    Ok(())
+}
+
+fn bulk_message(changed: usize, target: ManagementMode) -> String {
+    let mode = format!("{target:?}").to_ascii_lowercase();
+    match changed {
+        0 => format!("g: no workers left to set to {mode}"),
+        1 => format!("1 worker set to {mode}"),
+        _ => format!("{changed} workers set to {mode}"),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -149,107 +230,5 @@ fn toggle_mode(parent: Option<&str>, mode: &mut ManagementMode) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{config::Config, model::Status, registry::Registry};
-    use chrono::Local;
-
-    fn worker(parent: Option<&str>, management: ManagementMode) -> AgentNode {
-        AgentNode {
-            id: "worker-1".into(),
-            parent_agent_id: parent.map(str::to_string),
-            management,
-            title: "worker".into(),
-            worktree_path: "/tmp/worker-1".into(),
-            branch: "worker-1".into(),
-            base_commit: "abc123".into(),
-            program: "claude".into(),
-            claude_session_id: None,
-            profile: None,
-            tmux_session: "worker-1".into(),
-            created_at: Local::now(),
-            updated_at: Local::now(),
-            status: Status::Idle,
-            worktree_missing: false,
-            merge_error: None,
-            last_capture: None,
-            last_spinner: None,
-            last_change_at: None,
-            last_auto_accept_at: None,
-            shell_working: false,
-            mcp_active: false,
-            pane_pid: None,
-            tracked_command: None,
-            subagents: vec![],
-            children: vec![],
-        }
-    }
-
-    #[test]
-    fn toggle_on_non_worker_selection_explains_scope() {
-        let temp = tempfile::tempdir().unwrap();
-        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-        app.overseer_visible = true;
-        app.selected = 0; // OVERSEER header row — not a worker (Selection::Agent).
-
-        toggle_selected(&mut app).unwrap();
-
-        assert!(
-            app.message
-                .as_ref()
-                .is_some_and(|(text, _)| text.contains("overseer worker")),
-            "expected a scope hint message, got {:?}",
-            app.message
-        );
-    }
-
-    #[test]
-    fn only_overseer_workers_toggle() {
-        let mut mode = ManagementMode::Auto;
-        assert!(toggle_mode(Some("overseer"), &mut mode));
-        assert_eq!(mode, ManagementMode::Manual);
-        assert!(toggle_mode(Some("chief"), &mut mode));
-        assert_eq!(mode, ManagementMode::Auto);
-        assert!(!toggle_mode(None, &mut mode));
-        assert_eq!(mode, ManagementMode::Auto);
-    }
-
-    #[test]
-    fn enroll_sets_overseer_parent_and_auto_management() {
-        let mut worker = worker(None, ManagementMode::Manual);
-
-        assert_eq!(enroll(&mut worker), EnrollOutcome::Enrolled);
-
-        assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
-        assert_eq!(worker.management, ManagementMode::Auto);
-    }
-
-    #[test]
-    fn enroll_preserves_management_when_already_managed() {
-        let mut worker = worker(Some("overseer"), ManagementMode::Manual);
-
-        assert_eq!(enroll(&mut worker), EnrollOutcome::AlreadyManaged);
-
-        assert_eq!(worker.parent_agent_id.as_deref(), Some("overseer"));
-        assert_eq!(worker.management, ManagementMode::Manual);
-    }
-
-    #[test]
-    fn exclude_clears_overseer_parent() {
-        let mut worker = worker(Some("overseer"), ManagementMode::Manual);
-
-        assert_eq!(exclude(&mut worker), ExcludeOutcome::Excluded);
-
-        assert_eq!(worker.parent_agent_id, None);
-        assert_eq!(worker.management, ManagementMode::Manual);
-    }
-
-    #[test]
-    fn exclude_preserves_non_overseer_parent() {
-        let mut worker = worker(Some("other-parent"), ManagementMode::Manual);
-
-        assert_eq!(exclude(&mut worker), ExcludeOutcome::NotOverseerChild);
-
-        assert_eq!(worker.parent_agent_id.as_deref(), Some("other-parent"));
-    }
-}
+#[path = "management_tests.rs"]
+mod tests;

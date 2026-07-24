@@ -76,6 +76,25 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
                 hint_line("y exclude   n/esc cancel"),
             ],
         ),
+        Mode::ConfirmOverseerBulkToggle {
+            repo_name,
+            target,
+            count,
+            ..
+        } => {
+            let mode = format!("{target:?}").to_ascii_lowercase();
+            (
+                "toggle whole repo?",
+                vec![
+                    Line::from(repo_name.clone()),
+                    Line::from(format!(
+                        "set {count} overseer worker{} to {mode}",
+                        if *count == 1 { "" } else { "s" }
+                    )),
+                    hint_line("y toggle   n/esc cancel"),
+                ],
+            )
+        }
         Mode::ConfirmRemoveRepo { path } => (
             "remove repo?",
             confirm_lines(path.display().to_string(), "y remove   n/esc cancel"),

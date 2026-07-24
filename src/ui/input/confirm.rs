@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::Result;
+use crate::{Result, model::ManagementMode};
 
 use super::{App, Mode, management};
 
@@ -24,7 +24,8 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
-            | Mode::ConfirmOverseerExclude { .. } => Some(Ok(())),
+            | Mode::ConfirmOverseerExclude { .. }
+            | Mode::ConfirmOverseerBulkToggle { .. } => Some(Ok(())),
             _ => None,
         };
     }
@@ -98,6 +99,17 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             app.mode = Mode::Normal;
             Some(if confirmed {
                 management::exclude_selected(app, &repo_path, &agent_id)
+            } else {
+                Ok(())
+            })
+        }
+        Mode::ConfirmOverseerBulkToggle {
+            repo_path, target, ..
+        } => {
+            let (repo_path, target): (PathBuf, ManagementMode) = (repo_path.clone(), *target);
+            app.mode = Mode::Normal;
+            Some(if confirmed {
+                management::bulk_toggle_repo(app, &repo_path, target)
             } else {
                 Ok(())
             })

@@ -14,7 +14,7 @@ use crossterm::{
 use crate::{
     Result,
     config::Config,
-    model::{OverseerCategory, Selection},
+    model::{ManagementMode, OverseerCategory, Selection},
     registry::Registry,
 };
 
@@ -85,6 +85,15 @@ enum Mode {
         repo_path: PathBuf,
         agent_id: String,
         title: String,
+    },
+    /// Move every overseer-managed worker under one repo to `target` at once.
+    /// `count` is how many of them differ from `target` when the dialog opens;
+    /// the applied count is recomputed under the registry lock.
+    ConfirmOverseerBulkToggle {
+        repo_path: PathBuf,
+        repo_name: String,
+        target: ManagementMode,
+        count: usize,
     },
     ConfirmRemoveRepo {
         path: PathBuf,
