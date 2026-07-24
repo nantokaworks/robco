@@ -1119,6 +1119,7 @@ dependencies = [
  "crossterm 0.29.0",
  "dirs",
  "fd-lock",
+ "libc",
  "nanoid",
  "ratatui",
  "rustls",
