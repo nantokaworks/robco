@@ -1,6 +1,31 @@
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use super::autonomy::AutonomyLevel;
+
+/// How strictly the auto-merge gate requires the base branch to be protected.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+#[clap(rename_all = "kebab-case")]
+pub enum ProtectionMode {
+    /// Require both a pull-request requirement and at least one required status check.
+    #[default]
+    Required,
+    /// Require only that changes go through a pull request.
+    Relaxed,
+    /// Skip the protection probe and rely on GitHub's mergeability signal alone.
+    Off,
+}
+
+impl ProtectionMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Relaxed => "relaxed",
+            Self::Off => "off",
+        }
+    }
+}
 
 fn default_worker_blocklist() -> Vec<String> {
     ["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]
@@ -19,6 +44,7 @@ pub struct OverseerConfig {
     pub enabled: bool,
     pub dispatch_enabled: bool,
     pub auto_merge: bool,
+    pub protection_mode: ProtectionMode,
     pub autonomy_level: AutonomyLevel,
     pub daily_llm_budget: u32,
     pub merge_strategy: String,
@@ -46,6 +72,7 @@ impl Default for OverseerConfig {
             enabled: false,
             dispatch_enabled: true,
             auto_merge: false,
+            protection_mode: ProtectionMode::Required,
             autonomy_level: AutonomyLevel::Conservative,
             daily_llm_budget: 200,
             merge_strategy: "squash".into(),

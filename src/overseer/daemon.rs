@@ -1,6 +1,7 @@
 mod discord_events;
 mod merge;
 mod observations;
+mod protection;
 
 use super::{
     dispatch::dispatch_pass,
@@ -34,7 +35,7 @@ pub async fn run_daemon() -> Result<()> {
     observations::adopt_registry_children(&mut ledger)?;
     ledger.save()?;
     let mut inbox = InboxReader::new()?;
-    let mut protections = merge::ProtectionCache::default();
+    let mut protections = protection::ProtectionCache::default();
     let mut exceptions = ExceptionQueue::load()?;
     let mut judgments = JudgmentQueue::load()?;
     loop {

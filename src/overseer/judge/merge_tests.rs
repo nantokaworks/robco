@@ -3,14 +3,16 @@ use crate::overseer::autonomy::ChangeFacts;
 use serde_json::json;
 
 #[test]
-fn unprotected_or_missing_status_checks_refuses() {
-    assert!(!protection_allows_merge(&json!({"message": "Not Found"})));
-    assert!(!protection_allows_merge(
-        &json!({"required_pull_request_reviews": {}, "required_status_checks": null})
-    ));
-    assert!(protection_allows_merge(
-        &json!({"required_pull_request_reviews": {}, "required_status_checks": {"contexts": ["test"]}})
-    ));
+fn base_branch_follows_the_pull_request_and_falls_back_to_main() {
+    assert_eq!(
+        base_branch(&json!({"baseRefName": "release/2026"})),
+        "release/2026"
+    );
+    assert_eq!(
+        base_branch(&json!({"baseRefName": ""})),
+        DEFAULT_BASE_BRANCH
+    );
+    assert_eq!(base_branch(&json!({})), DEFAULT_BASE_BRANCH);
 }
 
 #[test]
@@ -21,18 +23,6 @@ fn any_non_success_check_holds() {
     assert!(checks_green(
         &json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":"SUCCESS"}]})
     ));
-}
-
-#[test]
-fn positive_cache_expires_and_failures_are_not_remembered() {
-    let mut cache = ProtectionCache::default();
-    let now = Instant::now();
-    cache.remember_probe("/repo", now, None);
-    cache.remember_probe("/unprotected", now, Some(false));
-    assert!(cache.0.is_empty());
-    cache.remember_probe("/repo", now, Some(true));
-    assert!(cache.verified("/repo", now + PROTECTION_CACHE_TTL / 2));
-    assert!(!cache.verified("/repo", now + PROTECTION_CACHE_TTL));
 }
 
 #[test]
@@ -109,6 +99,34 @@ fn merge_case_saturates_additions_independently() {
     assert_eq!(case.deletions, u32::MAX);
     assert_eq!(case.head_sha, "new-sha");
     assert_eq!(facts.llm_calls_today, 7);
+}
+
+#[test]
+fn a_loosened_gate_is_identifiable_from_the_decision_alone() {
+    let entry = crate::overseer::ledger::LedgerEntry {
+        task_id: "task".into(),
+        display_id: "#1".into(),
+        repo: "/repo".into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase: LedgerPhase::PrOpened,
+        dispatched_at: chrono::Utc::now(),
+        retries: 0,
+        pr_url: Some("https://pr/1".into()),
+    };
+    let merged = serde_json::to_value(gated_decision(
+        &entry,
+        DecisionKind::Merge,
+        "squash",
+        ProtectionMode::Off,
+    ))
+    .unwrap();
+    assert_eq!(merged["protection_mode"], "off");
+    assert_eq!(merged["reason"], "squash");
+    // Decisions the protection gate does not govern stay free of the field.
+    let unrelated =
+        serde_json::to_value(decision(&entry, DecisionKind::Hold, "checks_not_green")).unwrap();
+    assert!(unrelated.get("protection_mode").is_none());
 }
 
 #[test]

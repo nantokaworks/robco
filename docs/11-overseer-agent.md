@@ -35,10 +35,11 @@ still in a non-terminal phase is held with reason `active_worker` whatever manag
 mode owns that worker, because the live worker still holds the task's branch and
 worktree. Every decision is appended to `~/.robco/overseer/decisions.jsonl`.
 
-The auto-merge gate only considers ledger entries in `pr_opened`. It verifies main
-branch protection, requires an open PR with a non-empty check rollup in which every
-check is `SUCCESS`, and invokes `gh pr merge` with the configured strategy. Workers are
-never instructed to merge their own pull requests.
+The auto-merge gate only considers ledger entries in `pr_opened`. It reads the pull
+request, verifies protection on the branch that pull request targets, requires an open PR
+with a non-empty check rollup in which every check is `SUCCESS`, and invokes `gh pr merge`
+with the configured strategy. Workers are never instructed to merge their own pull
+requests.
 
 ### Execution plane
 
@@ -90,6 +91,7 @@ these defaults:
     "enabled": false,
     "dispatch_enabled": true,
     "auto_merge": false,
+    "protection_mode": "required",
     "merge_strategy": "squash",
     "worker_profile": null,
     "max_workers": 3,
@@ -128,6 +130,7 @@ these defaults:
 | `enabled` | boolean | `false` | Reported by status surfaces. It does not currently gate `robco overseer run` or the poll loop. |
 | `dispatch_enabled` | boolean | `true` | Allows new dispatches. The circuit breaker and panic command persist this as `false`. |
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
+| `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
 | `merge_strategy` | string | `"squash"` | `"merge"` maps to `--merge`, `"rebase"` to `--rebase`, and every other value to `--squash`. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. |
@@ -185,12 +188,37 @@ not a sandbox or a substitute for controlling task authors.
 
 ### Auto-merge prerequisite
 
-Auto-merge requires GitHub `main` branch protection containing both required pull
-request reviews and at least one required status check. Overseer verifies this through
-`gh api repos/{owner}/{repo}/branches/main/protection`. Only successful verifications
-are cached, for five minutes. Unprotected responses, command failures, non-zero exits,
-and malformed JSON are not cached, so later poll passes retry them. A protected branch
-is still held until the PR is open and every reported check is successful.
+Under the default `required` mode, auto-merge requires the pull request's base branch to
+be protected by both a pull-request requirement and at least one required status check.
+GitHub reports protection through two independent APIs, and Overseer probes both:
+
+- `gh api repos/{owner}/{repo}/rules/branches/{branch}` returns the effective rules of
+  every ruleset targeting the branch. A `pull_request` rule supplies the pull-request
+  requirement and a `required_status_checks` rule with a non-empty context list supplies
+  the check requirement.
+- `gh api repos/{owner}/{repo}/branches/{branch}/protection` is the classic API. It
+  answers `404 Branch not protected` for a repository protected only by rulesets, which
+  is why the rulesets probe exists; conversely the rulesets endpoint never reports
+  classic protection.
+
+The facts from both sources are combined, because GitHub enforces them simultaneously.
+Only verifications that satisfy the active mode are cached, for five minutes, keyed by
+repository, branch, and mode — a loosened mode or a different base branch re-probes.
+Command failures, non-zero exits, and malformed JSON are not cached, so later poll passes
+retry them; a branch that answered no probe at all is held as
+`unprotected:probe_unavailable` rather than treated as unprotected. A protected branch is
+still held until the PR is open and every reported check is successful.
+
+`relaxed` accepts a base branch that merely forces changes through pull requests, for
+operators whose CI is not wired into required checks. `off` skips the probe entirely and
+relies on GitHub's own mergeability signal. Neither is the default and no existing
+configuration is migrated onto them. Both are recorded: every merge and every
+protection hold carries the active mode in its `decisions.jsonl` entry
+(`"protection_mode": "relaxed"`), so a merge that only happened because the gate was
+loosened stays distinguishable from one that cleared full protection. A refusal names the
+failing condition — `unprotected:no_pull_request_rule`,
+`unprotected:no_required_status_checks`, `unprotected:probe_unavailable`, or
+`unprotected:unknown_remote`.
 
 ### Discord rails
 
@@ -254,8 +282,11 @@ robco overseer status
 robco overseer set dispatch on
 ```
 
-`robco overseer set auto-merge on|off` changes the merge toggle. These commands persist
-their values in `~/.robco/config.json`.
+`robco overseer set auto-merge on|off` changes the merge toggle, and
+`robco overseer protection required|relaxed|off` changes how strictly that gate requires
+base-branch protection. These commands persist their values in `~/.robco/config.json`.
+`robco overseer status` reports the active mode next to `auto-merge` and warns while
+auto-merge runs under a loosened one.
 
 ### Discord application
 

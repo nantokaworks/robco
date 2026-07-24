@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::model::ManagementMode;
 use crate::overseer::{
-    config::OverseerConfig,
+    config::{OverseerConfig, ProtectionMode},
     ledger::{Ledger, LedgerPhase},
     logging::{DecisionEntry, DecisionKind},
 };
@@ -44,6 +44,11 @@ pub(super) fn append_health(
             dispatch_without_daemon,
         ),
         ("auto-merge", on_off(config.auto_merge).into(), false),
+        (
+            "protection",
+            config.protection_mode.label().into(),
+            config.auto_merge && config.protection_mode != ProtectionMode::Required,
+        ),
         (
             "circuit",
             if circuit_open { "OPEN" } else { "closed" }.into(),

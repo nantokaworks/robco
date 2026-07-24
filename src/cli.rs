@@ -2,6 +2,8 @@ use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
 
+use crate::overseer::config::ProtectionMode;
+
 #[derive(Debug, Parser)]
 #[command(
     author,
@@ -87,6 +89,8 @@ pub enum OverseerCommand {
     Set(OverseerSetArgs),
     /// Set the daily dispatch limit (0 = unlimited).
     DailyLimit(OverseerDailyLimitArgs),
+    /// Set how strictly auto-merge requires the base branch to be protected.
+    Protection(OverseerProtectionArgs),
     /// Disable dispatch and terminate all Overseer workers.
     Panic,
     /// Write a launchd service plist and load or reload it after confirmation.
@@ -105,6 +109,14 @@ pub struct OverseerSetArgs {
 pub struct OverseerDailyLimitArgs {
     /// Maximum worker dispatches per day; 0 means unlimited.
     pub value: u32,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OverseerProtectionArgs {
+    /// `required` demands a pull-request rule and required status checks, `relaxed`
+    /// demands only the pull-request rule, `off` skips the probe entirely.
+    #[arg(value_enum)]
+    pub mode: ProtectionMode,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

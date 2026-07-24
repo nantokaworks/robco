@@ -1,18 +1,14 @@
-use std::{
-    collections::HashMap,
-    process::Command,
-    time::{Duration, Instant},
-};
+use std::process::Command;
 
 use serde_json::Value;
 
-use super::COMMAND_TIMEOUT;
+use super::{COMMAND_TIMEOUT, protection, protection::ProtectionCache};
 use crate::{
     Result,
     config::Config,
-    dropr::canonical_repo,
     overseer::{
         autonomy::{Decision, merge_envelope_decision},
+        config::ProtectionMode,
         exec::run_timeout,
         judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
         ledger::{Ledger, LedgerEntry, LedgerPhase},
@@ -21,28 +17,8 @@ use crate::{
     registry::Registry,
 };
 
-const PROTECTION_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
-
-#[derive(Default)]
-pub(super) struct ProtectionCache(HashMap<String, Instant>);
-
-impl ProtectionCache {
-    fn verified(&self, repo: &str, now: Instant) -> bool {
-        self.0
-            .get(repo)
-            .is_some_and(|verified| now.saturating_duration_since(*verified) < PROTECTION_CACHE_TTL)
-    }
-
-    fn remember_verified(&mut self, repo: String, now: Instant) {
-        self.0.insert(repo, now);
-    }
-
-    fn remember_probe(&mut self, repo: &str, now: Instant, result: Option<bool>) {
-        if result == Some(true) {
-            self.remember_verified(repo.to_owned(), now);
-        }
-    }
-}
+/// Base branch used when the pull request does not report one.
+const DEFAULT_BASE_BRANCH: &str = "main";
 
 pub(super) fn auto_merge_pass(
     config: &Config,
@@ -63,10 +39,6 @@ pub(super) fn auto_merge_pass(
         {
             continue;
         }
-        if !protection_verified(entry, &registry, cache)? {
-            log(entry, DecisionKind::Hold, "unprotected")?;
-            continue;
-        }
         let Some(url) = entry.pr_url.clone() else {
             log(entry, DecisionKind::Hold, "missing_pr_url")?;
             continue;
@@ -77,7 +49,7 @@ pub(super) fn auto_merge_pass(
             "view",
             &url,
             "--json",
-            "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid",
+            "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid,baseRefName",
         ]);
         let output = match run_timeout(view, COMMAND_TIMEOUT) {
             Ok(output) if output.status.success() => output,
@@ -101,6 +73,18 @@ pub(super) fn auto_merge_pass(
                 continue;
             }
         };
+        let mode = config.overseer.protection_mode;
+        if let Some(unmet) =
+            protection::unmet_condition(entry, &registry, cache, mode, base_branch(&value))
+        {
+            log_gated(
+                entry,
+                DecisionKind::Hold,
+                &format!("unprotected:{unmet}"),
+                mode,
+            )?;
+            continue;
+        }
         if !checks_green(&value) {
             log(entry, DecisionKind::Hold, "checks_not_green")?;
             continue;
@@ -154,10 +138,11 @@ pub(super) fn auto_merge_pass(
             Ok(output) if output.status.success() => {
                 entry.phase = LedgerPhase::Merged;
                 ledger.counters.consecutive_failures = 0;
-                log(
+                log_gated(
                     entry,
                     DecisionKind::Merge,
                     strategy.trim_start_matches("--"),
+                    mode,
                 )?;
             }
             Ok(output) => log(
@@ -189,53 +174,14 @@ fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {
         .is_none_or(|agent| agent.management == crate::model::ManagementMode::Auto)
 }
 
-fn protection_verified(
-    entry: &LedgerEntry,
-    registry: &Registry,
-    cache: &mut ProtectionCache,
-) -> Result<bool> {
-    let now = Instant::now();
-    if cache.verified(&entry.repo, now) {
-        return Ok(true);
-    }
-    let remote = registry
-        .repos
-        .iter()
-        .find(|repo| repo.path.to_string_lossy() == entry.repo)
-        .and_then(|repo| repo.remote_url.as_deref());
-    let Some(name) = remote
-        .and_then(canonical_repo)
-        .and_then(|key| key.strip_prefix("github:").map(str::to_owned))
-    else {
-        return Ok(false);
-    };
-    let endpoint = format!("repos/{name}/branches/main/protection");
-    let mut command = Command::new("gh");
-    command.current_dir(&entry.repo).args(["api", &endpoint]);
-    let result = run_timeout(command, COMMAND_TIMEOUT)
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| serde_json::from_slice(&output.stdout).ok())
-        .map(|value| protection_allows_merge(&value));
-    cache.remember_probe(&entry.repo, now, result);
-    Ok(result.unwrap_or(false))
-}
-
-pub(crate) fn protection_allows_merge(value: &Value) -> bool {
+/// The pull request's base branch, which is the branch whose protection actually gates
+/// the merge.
+fn base_branch(value: &Value) -> &str {
     value
-        .get("required_pull_request_reviews")
-        .is_some_and(|value| value.is_object())
-        && value.get("required_status_checks").is_some_and(|checks| {
-            checks.is_object()
-                && (checks
-                    .get("contexts")
-                    .and_then(Value::as_array)
-                    .is_some_and(|items| !items.is_empty())
-                    || checks
-                        .get("checks")
-                        .and_then(Value::as_array)
-                        .is_some_and(|items| !items.is_empty()))
-        })
+        .get("baseRefName")
+        .and_then(Value::as_str)
+        .filter(|branch| !branch.is_empty())
+        .unwrap_or(DEFAULT_BASE_BRANCH)
 }
 
 pub(crate) fn checks_green(value: &Value) -> bool {
@@ -256,11 +202,37 @@ pub(crate) fn checks_green(value: &Value) -> bool {
 }
 
 fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
+    logging::append(&decision(entry, kind, reason))
+}
+
+fn log_gated(
+    entry: &LedgerEntry,
+    kind: DecisionKind,
+    reason: &str,
+    mode: ProtectionMode,
+) -> Result<()> {
+    logging::append(&gated_decision(entry, kind, reason, mode))
+}
+
+/// Records the active strictness mode alongside the decision, so a merge that only
+/// happened because the gate was loosened stays distinguishable in `decisions.jsonl`.
+fn gated_decision(
+    entry: &LedgerEntry,
+    kind: DecisionKind,
+    reason: &str,
+    mode: ProtectionMode,
+) -> DecisionEntry {
+    let mut decision = decision(entry, kind, reason);
+    decision.protection_mode = Some(mode.label().to_owned());
+    decision
+}
+
+fn decision(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> DecisionEntry {
     let mut decision = DecisionEntry::new(kind, reason);
     decision.task = Some(entry.task_id.clone());
     decision.repo = Some(entry.repo.clone());
     decision.source = Some("auto_merge".into());
-    logging::append(&decision)
+    decision
 }
 
 #[cfg(test)]
