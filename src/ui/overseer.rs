@@ -23,10 +23,18 @@ mod render;
 pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 
-use decisions::append_decisions;
+use decisions::{DecisionList, append_decisions};
 use render::{append_health, append_inbox, append_ledger};
 
 pub(super) type WorkerManagement = (String, ManagementMode);
+
+/// Decisions a snapshot reads out of the append-only log
+/// ([`crate::ui::actions::capture_overseer`]).
+///
+/// The log keeps growing past this; the UI only ever sees this many of the
+/// newest entries, which is why no decision list on screen can report how much
+/// history it is leaving out.
+pub(in crate::ui) const DECISION_SNAPSHOT_LIMIT: usize = 200;
 
 /// Point-in-time overseer state captured off the UI thread by the background
 /// status worker ([`crate::ui::actions::background_refresh`]). The overseer
@@ -92,7 +100,7 @@ pub(super) fn summary(app: &App) -> (String, Text<'static>) {
         &management,
     );
     append_inbox(&mut lines, app);
-    append_decisions(&mut lines, &snapshot.decisions);
+    append_decisions(&mut lines, &snapshot.decisions, DecisionList::Summary);
     ("OVERSEER / local control".into(), lines.into())
 }
 

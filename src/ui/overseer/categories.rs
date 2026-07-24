@@ -7,7 +7,7 @@ use crate::{
 
 use super::{
     App, active_worker_management,
-    decisions::append_decisions,
+    decisions::{DETAIL_LIMIT, DecisionList, append_decisions},
     render::{append_health, append_inbox, append_ledger, append_worker_management},
 };
 
@@ -38,7 +38,9 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             append_worker_management(&mut lines, &management);
         }
         OverseerCategory::Inbox => append_inbox(&mut lines, app),
-        OverseerCategory::Decisions => append_decisions(&mut lines, &snapshot.decisions),
+        OverseerCategory::Decisions => {
+            append_decisions(&mut lines, &snapshot.decisions, DecisionList::Detail);
+        }
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {
         lines.pop();
@@ -64,9 +66,12 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
                 false,
             )
         }
-        OverseerCategory::Decisions => {
-            (format!("{} recent", snapshot.decisions.len().min(3)), false)
-        }
+        // Count what expanding the category will actually list, so the row and
+        // the list below it cannot disagree about how much is on offer.
+        OverseerCategory::Decisions => (
+            format!("{} recent", snapshot.decisions.len().min(DETAIL_LIMIT)),
+            false,
+        ),
     }
 }
 
