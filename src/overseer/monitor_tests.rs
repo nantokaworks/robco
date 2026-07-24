@@ -107,7 +107,7 @@ fn stuck_detection_uses_injected_now() {
 }
 
 #[test]
-fn manual_worker_is_not_reconciled() {
+fn manual_worker_session_death_does_not_fail_the_entry() {
     let observations: Observations = serde_json::from_str(
         r#"{"manual_agents":["worker-1"],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
     )
@@ -115,6 +115,46 @@ fn manual_worker_is_not_reconciled() {
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
     let (unchanged, actions) = reconcile(&ledger(), &observations, now, 30);
     assert_eq!(unchanged.entries[0].phase, LedgerPhase::Dispatched);
+    assert!(actions.is_empty());
+}
+#[test]
+fn manual_worker_with_merged_pr_is_advanced_and_cleaned_up() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"manual_agents":["worker-1"],"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"MERGED","statusCheckRollup":[]}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (merged, actions) = reconcile(&ledger(), &observations, now, 30);
+    assert_eq!(merged.entries[0].phase, LedgerPhase::Merged);
+    assert_eq!(
+        merged.entries[0].pr_url.as_deref(),
+        Some("https://github.test/pull/1")
+    );
+    assert!(actions.contains(&Action::KillSession {
+        agent_id: "worker-1".into()
+    }));
+    assert!(actions.contains(&Action::RemoveWorktree {
+        agent_id: "worker-1".into(),
+        keep_branch: true,
+    }));
+    // Cleanup is re-emitted only while the registry row survives, so a merged
+    // Manual entry does not re-kill an already-cleaned agent every poll.
+    let (_, actions) = reconcile(&merged, &observations, now, 30);
+    assert!(actions.is_empty());
+    let registered: Observations =
+        serde_json::from_str(r#"{"manual_agents":["worker-1"],"registered_agents":["worker-1"]}"#)
+            .unwrap();
+    assert_eq!(reconcile(&merged, &registered, now, 30).1.len(), 2);
+}
+#[test]
+fn manual_worker_with_open_pr_keeps_session_and_worktree() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"manual_agents":["worker-1"],"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"OPEN","statusCheckRollup":[]}],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}],"tasks":[{"task_id":"task-131","state":"open"}],"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"blocked","task_id":"task-131","pr_url":null,"reason":"needs access"}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (open, actions) = reconcile(&ledger(), &observations, now, 30);
+    assert_eq!(open.entries[0].phase, LedgerPhase::PrOpened);
     assert!(actions.is_empty());
 }
 #[test]

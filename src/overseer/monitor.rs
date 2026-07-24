@@ -1,90 +1,16 @@
-use super::{
-    inbox::InboxReport,
-    ledger::{Ledger, LedgerEntry, LedgerPhase},
-};
+use super::ledger::{Ledger, LedgerEntry, LedgerPhase};
 use chrono::{DateTime, Duration, Utc};
-use serde::{Deserialize, Serialize};
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum FailureOrigin {
-    Worker,
-    Infra,
-}
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct Observations {
-    pub inbox: Vec<InboxObservation>,
-    pub registered_agents: Vec<String>,
-    pub sessions: Vec<SessionObservation>,
-    pub tasks: Vec<TaskObservation>,
-    pub prs: Vec<PrObservation>,
-    pub errors: Vec<String>,
-    pub manual_agents: Vec<String>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ObservationSnapshot {
-    pub at: DateTime<Utc>,
-    pub observations: Observations,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InboxObservation {
-    pub at: DateTime<Utc>,
-    pub agent_id: String,
-    pub kind: String,
-    pub task_id: Option<String>,
-    pub pr_url: Option<String>,
-    pub reason: Option<String>,
-}
-impl From<InboxReport> for InboxObservation {
-    fn from(report: InboxReport) -> Self {
-        Self {
-            at: report.at,
-            agent_id: report.agent_id,
-            kind: serde_json::to_value(report.kind)
-                .ok()
-                .and_then(|value| value.as_str().map(str::to_owned))
-                .unwrap_or_else(|| "unknown".into()),
-            task_id: report.task_id,
-            pr_url: report.pr_url,
-            reason: report.reason,
-        }
-    }
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SessionObservation {
-    pub agent_id: String,
-    pub status: String,
-    pub last_activity_at: Option<DateTime<Utc>>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TaskObservation {
-    pub task_id: String,
-    pub state: String,
-}
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default, rename_all = "camelCase")]
-pub struct PrObservation {
-    pub task_id: Option<String>,
-    pub url: Option<String>,
-    pub state: String,
-    pub status_check_rollup: Vec<serde_json::Value>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-#[rustfmt::skip]
-pub enum Action {
-    KillSession { agent_id: String },
-    RemoveWorktree { agent_id: String, keep_branch: bool },
-    MarkFailed { task_id: String, reason: String, origin: FailureOrigin },
-    Escalate { task_id: String, reason: String },
-    Notify { message: String },
-    LogDecision { task_id: Option<String>, message: String },
-}
+
+mod types;
+pub use types::*;
+
 #[rustfmt::skip]
 pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64) -> (Ledger, Vec<Action>) {
     let mut next = ledger.clone();
     let mut actions = observation_errors(observations);
     for entry in &mut next.entries {
         if observations.manual_agents.contains(&entry.agent_id) {
+            reconcile_manual_entry(entry, observations, &mut actions);
             continue;
         }
         reconcile_entry(entry, observations, now, stuck_after_mins, &mut actions);
@@ -94,18 +20,8 @@ pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc
 #[rustfmt::skip]
 fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64, actions: &mut Vec<Action>) {
     if entry.phase == LedgerPhase::Merged {
-        if observations
-            .registered_agents
-            .iter()
-            .any(|agent_id| agent_id == &entry.agent_id)
-        {
-            actions.push(Action::KillSession {
-                agent_id: entry.agent_id.clone(),
-            });
-            actions.push(Action::RemoveWorktree {
-                agent_id: entry.agent_id.clone(),
-                keep_branch: true,
-            });
+        if still_registered(entry, observations) {
+            push_cleanup(entry, actions);
         }
         return;
     }
@@ -117,14 +33,55 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
         apply_session(entry, observations, now, stuck_after_mins, actions);
     }
     if original != LedgerPhase::Merged && entry.phase == LedgerPhase::Merged {
-        actions.push(Action::KillSession {
-            agent_id: entry.agent_id.clone(),
-        });
-        actions.push(Action::RemoveWorktree {
-            agent_id: entry.agent_id.clone(),
-            keep_branch: true,
-        });
+        push_cleanup(entry, actions);
     }
+}
+/// A Manual agent is driven by a human, so Overseer must never intervene in its
+/// run: the inbox escalation, the dropr-lock escalation, and the dead/stuck
+/// session failure path are all suppressed for it, and no dispatch ever targets
+/// its task.
+///
+/// Advancing the phase is not an intervention, though. Skipping reconciliation
+/// wholesale froze the entry at whatever phase it last had, so a merged PR never
+/// reached [`LedgerPhase::Merged`] and its worktree, branch, and ledger row
+/// leaked forever. PR state is therefore applied here exactly as it is for an
+/// Auto agent.
+///
+/// `Merged` is terminal: the branch has landed and the human's work on that
+/// worktree is over, so cleanup runs from there like any other entry.
+/// [`crate::overseer::exec::execute_actions`] kills the session before touching
+/// the worktree and defers removal when the kill fails, which is what keeps the
+/// worktree from being pulled out from under a live shell.
+fn reconcile_manual_entry(
+    entry: &mut LedgerEntry,
+    observations: &Observations,
+    actions: &mut Vec<Action>,
+) {
+    if entry.phase == LedgerPhase::Merged {
+        if still_registered(entry, observations) {
+            push_cleanup(entry, actions);
+        }
+        return;
+    }
+    apply_pr(entry, observations, actions);
+    if entry.phase == LedgerPhase::Merged {
+        push_cleanup(entry, actions);
+    }
+}
+fn still_registered(entry: &LedgerEntry, observations: &Observations) -> bool {
+    observations
+        .registered_agents
+        .iter()
+        .any(|agent_id| agent_id == &entry.agent_id)
+}
+fn push_cleanup(entry: &LedgerEntry, actions: &mut Vec<Action>) {
+    actions.push(Action::KillSession {
+        agent_id: entry.agent_id.clone(),
+    });
+    actions.push(Action::RemoveWorktree {
+        agent_id: entry.agent_id.clone(),
+        keep_branch: true,
+    });
 }
 fn apply_inbox(entry: &mut LedgerEntry, observations: &Observations, actions: &mut Vec<Action>) {
     let mut reports: Vec<_> = observations

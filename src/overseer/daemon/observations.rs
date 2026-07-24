@@ -41,11 +41,7 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
         .filter(|agent| agent.management == crate::model::ManagementMode::Manual)
         .map(|agent| agent.id.clone())
         .collect();
-    let mut auto_ledger = ledger.clone();
-    auto_ledger
-        .entries
-        .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
-    for entry in &auto_ledger.entries {
+    for entry in &ledger.entries {
         let mut agent = registry
             .repos
             .iter()
@@ -70,13 +66,26 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
                 }
             }
         }
+        // The registry sweep above already listed every registered Manual agent; the
+        // recheck can surface one it missed, so fold that back in before reading it.
+        if agent
+            .as_ref()
+            .is_some_and(|agent| agent.management == crate::model::ManagementMode::Manual)
+            && !observations.manual_agents.contains(&entry.agent_id)
+        {
+            observations.manual_agents.push(entry.agent_id.clone());
+        }
+        let manual = observations.manual_agents.contains(&entry.agent_id);
         if let Some(agent) = agent {
-            if agent.management == crate::model::ManagementMode::Manual {
-                observations.manual_agents.push(entry.agent_id.clone());
-                continue;
-            }
             if entry.phase == LedgerPhase::Merged {
                 observations.registered_agents.push(entry.agent_id.clone());
+            }
+            // Overseer never kills, restarts, or fails a Manual agent's session, so a
+            // session probe could not drive any decision — but its PR state still has to
+            // be collected below, or the entry never advances past the phase it was
+            // frozen at. See `monitor::reconcile_manual_entry`.
+            if manual {
+                continue;
             }
             match liveness::probe_session_status(&agent.tmux_session) {
                 Ok(dead) => observations.sessions.push(SessionObservation {
@@ -90,7 +99,7 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
                     .errors
                     .push(format!("tmux probe skipped: {error}")),
             }
-        } else if !terminal(entry.phase) {
+        } else if !terminal(entry.phase) && !manual {
             observations.sessions.push(SessionObservation {
                 agent_id: entry.agent_id.clone(),
                 status: "dead".into(),
@@ -98,8 +107,14 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
             });
         }
     }
+    // The dropr task state only feeds escalation, which never fires for a Manual
+    // agent; PR state feeds phase advancement, which does.
+    let mut auto_ledger = ledger.clone();
+    auto_ledger
+        .entries
+        .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
     gather_task_states(&auto_ledger, &mut observations);
-    gather_pr_states(&auto_ledger, &mut observations);
+    gather_pr_states(ledger, &mut observations);
     observations
 }
 
@@ -261,37 +276,5 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn manual_overseer_children_are_not_adopted() {
-        let registry: Registry = serde_json::from_value(serde_json::json!({
-            "version": 1,
-            "repos": [{
-                "path": "/repo",
-                "name": "repo",
-                "remote_url": null,
-                "agents": [{
-                    "id": "manual-worker",
-                    "parent_agent_id": crate::overseer::OVERSEER_AGENT_ID,
-                    "management": "manual",
-                    "title": "#154",
-                    "worktree_path": "/repo/worker",
-                    "branch": "task-154",
-                    "base_commit": "",
-                    "program": "codex",
-                    "tmux_session": "robco_repo_task-154",
-                    "created_at": "2026-07-18T00:00:00+09:00",
-                    "updated_at": "2026-07-18T00:00:00+09:00"
-                }]
-            }]
-        }))
-        .unwrap();
-        let mut ledger = Ledger::default();
-
-        adopt_registry_children_from(&mut ledger, &registry);
-
-        assert!(ledger.entries.is_empty());
-    }
-}
+#[path = "observations_tests.rs"]
+mod tests;
