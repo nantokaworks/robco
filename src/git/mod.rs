@@ -1,4 +1,5 @@
 mod branch;
+mod merge_failure;
 pub mod post_merge;
 mod remote;
 #[cfg(test)]
@@ -6,6 +7,7 @@ mod test_repo;
 mod worktree;
 
 pub use branch::*;
+pub use merge_failure::*;
 pub use remote::*;
 pub use worktree::*;
 

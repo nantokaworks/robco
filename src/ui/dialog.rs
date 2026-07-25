@@ -96,7 +96,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
             "merge?",
             vec![
                 Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
-                Line::from(format!("strategy: {:?}", app.config.merge_strategy).to_lowercase()),
+                Line::from(format!("strategy: {}", app.config.merge_strategy.label())),
                 hint_line("y merge   n/esc cancel"),
             ],
         ),

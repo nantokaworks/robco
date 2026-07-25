@@ -14,6 +14,7 @@ use std::{
 
 use crate::{
     Result,
+    config::MergeStrategy,
     git::{
         self,
         post_merge::{Cleanup, CleanupStep, OnFailure},
@@ -56,7 +57,7 @@ pub(super) struct MergeTarget {
     pub repo_path: PathBuf,
     pub branch: String,
     pub mode: MergeMode,
-    pub strategy: &'static str,
+    pub strategy: MergeStrategy,
     pub worktree_path: PathBuf,
     pub tmux_session: String,
     pub shell_session: String,

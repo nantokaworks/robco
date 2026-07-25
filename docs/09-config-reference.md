@@ -20,7 +20,7 @@ does not require any config at all.
   "auto_accept": false,
   "process_indicator": true,
   "subagent_indicator": true,
-  "merge_strategy": "rebase",
+  "merge_strategy": "squash",
   "pr_prompt": "Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions.",
   "notify": {
     "enabled": true,
@@ -51,7 +51,7 @@ default.
 | `auto_accept` | boolean | `false` | When `true`, any agent detected as `Waiting` (awaiting a yes/no prompt) is auto-answered by sending `y` + Enter, throttled to at most once every 5 seconds per agent. |
 | `process_indicator` | boolean | `true` | Enables `⚙ <cmd>` child-process detection. When enabled, each UI poll takes one system-wide `ps` snapshot shared by all rows; `false` skips that call and hides the indicator. |
 | `subagent_indicator` | boolean | `true` | Enables passive Claude Code session reads, the `✻N` counts, and subagent details in the agent INFO pane. `false` skips the periodic `~/.claude/projects` filesystem reads and clears cached subagent activity. |
-| `merge_strategy` | enum | `"rebase"` | Strategy passed to `gh pr merge` when landing an agent's branch. See [merge_strategy](#merge_strategy). |
+| `merge_strategy` | enum | `"squash"` | Strategy passed to `gh pr merge` when landing an agent's branch, by the TUI and the Overseer daemon alike. See [merge_strategy](#merge_strategy). |
 | `pr_prompt` | string | `"Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions."` | Prompt sent to the selected agent when `p` is confirmed. |
 | `notify` | object | (all `true`) | Desktop-notification toggles per status. See [notify](#notify). |
 | `project_icon` | enum | `"none"` | Marker style for the PROJECTS tree rows. See [project_icon](#project_icon). |
@@ -87,13 +87,45 @@ robco --program "codex --ask-for-approval never"
 
 ## merge_strategy
 
-Controls the flag passed to `gh pr merge` when a branch is landed.
+Controls the flag passed to `gh pr merge` when a branch is landed. This is the only merge
+strategy setting: the TUI's `m` key and the Overseer daemon's auto-merge gate both read it,
+so a config that sets it once cannot make the two paths disagree.
 
 | Value | `gh` flag |
 |-------|-----------|
-| `"rebase"` (default) | `--rebase` |
-| `"squash"` | `--squash` |
+| `"rebase"` | `--rebase` |
+| `"squash"` (default) | `--squash` |
 | `"merge"` | `--merge` |
+
+`"rebase"` is the one value GitHub can refuse on a pull request it otherwise reports as
+mergeable: a head branch carrying a merge commit cannot be replayed onto the base. RobCo
+never substitutes another strategy for you — it names that cause in the merge banner and,
+in the daemon, holds the entry under `merge_refused:rebase_refused_merge_commit`.
+
+### Migrating from `overseer.merge_strategy`
+
+Earlier versions carried a second key, `overseer.merge_strategy`, that only the daemon
+read. It is retired. A config that still has it is migrated on load:
+
+| Config on disk | Result |
+|----------------|--------|
+| Neither key | `"squash"` |
+| `merge_strategy` only | That value |
+| `overseer.merge_strategy` only | That value, adopted as `merge_strategy`, reported at startup |
+| Both, same value | That value |
+| Both, different values | The `overseer.merge_strategy` value wins, and the conflict is reported at startup |
+
+The Overseer's value wins a conflict because it is the one the unattended merges have been
+landing on: keeping it leaves the path nobody is watching working exactly as it was, and
+moves the interactive path — where a failure is visible and retryable — onto it. The report
+appears on the TUI's message banner and in the daemon log, and repeats at every start until
+the config is rewritten. The retired key is dropped the next time RobCo writes the config.
+
+The default moved with it. `merge_strategy` now defaults to `"squash"` — the Overseer's old
+default — rather than `"rebase"`, so a config that named neither key no longer has the TUI
+rebasing while the daemon squashes. The consequence is that a config naming only the
+top-level key now applies it to the daemon as well, which is the point of the change: one
+setting, both paths.
 
 ## notify
 

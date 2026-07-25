@@ -170,12 +170,10 @@ fn evaluate(
         Judgment::Halt(halt) => return Ok(halt.on(&head)),
         Judgment::Queued => return Ok(Outcome::Pending),
     }
-    Ok(
-        match merge_now(entry, url, &config.overseer.merge_strategy, mode)? {
-            Ok(()) => Outcome::Merged,
-            Err(halt) => halt.on(&head),
-        },
-    )
+    Ok(match merge_now(entry, url, config.merge_strategy, mode)? {
+        Ok(()) => Outcome::Merged,
+        Err(halt) => halt.on(&head),
+    })
 }
 
 /// What the merge judge said about a pull request the deterministic gate cleared.

@@ -46,7 +46,13 @@ pub struct OverseerConfig {
     pub protection_mode: ProtectionMode,
     pub autonomy_level: AutonomyLevel,
     pub daily_llm_budget: u32,
-    pub merge_strategy: String,
+    /// Retired: the merge strategy is the top-level `merge_strategy`, which the
+    /// TUI reads too. Kept as a read-only field so a config still carrying the
+    /// key parses and `Config::load_at` can migrate its value; it is skipped on
+    /// serialization, so the next save drops the key rather than leaving two
+    /// settings that can drift apart again.
+    #[serde(rename = "merge_strategy", skip_serializing)]
+    pub legacy_merge_strategy: Option<String>,
     pub max_branch_updates: u32,
     /// Auto-merge passes one repository may be held waiting for its post-merge
     /// `git pull --ff-only` before the barrier is lifted without it. The bound is
@@ -97,7 +103,7 @@ impl Default for OverseerConfig {
             protection_mode: ProtectionMode::Required,
             autonomy_level: AutonomyLevel::Conservative,
             daily_llm_budget: 200,
-            merge_strategy: "squash".into(),
+            legacy_merge_strategy: None,
             max_branch_updates: 3,
             max_merge_settle_passes: 5,
             merge_recovery_enabled: false,

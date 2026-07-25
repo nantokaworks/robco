@@ -280,6 +280,12 @@ impl App {
                 actions::discovery::prune_unmanaged(&mut registry.repos, &worktree_root);
             });
         }
+        // A config whose merge strategy was migrated no longer reads the way it
+        // behaves, and the merge key is the operator's to press — so the banner
+        // says so before they press it.
+        if let Some(notice) = app.config.merge_strategy_notice.clone() {
+            app.show_message(notice);
+        }
         app.refresh_orphans();
         app.restore_preview();
         app

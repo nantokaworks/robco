@@ -75,7 +75,7 @@ impl App {
             repo_path: repo_path.clone(),
             branch: branch.clone(),
             mode,
-            strategy: self.config.merge_strategy.gh_flag(),
+            strategy: self.config.merge_strategy,
             worktree_path: selected.worktree_path.clone(),
             tmux_session: selected.tmux_session.clone(),
             shell_session: agent::shell_session_name(selected),
