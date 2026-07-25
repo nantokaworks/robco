@@ -2,6 +2,8 @@
 use std::io::Write;
 
 #[cfg(target_os = "macos")]
+use super::settle::{Domain, SettleBudget};
+#[cfg(target_os = "macos")]
 use crate::{Error, Result};
 
 #[cfg(target_os = "macos")]
@@ -64,10 +66,17 @@ impl BootstrapPlan {
                 crate::overseer::exec::run_timeout(command, Duration::from_secs(5))
             },
             || super::probe::run().state,
+            SettleBudget::launchd(),
         )
     }
 
-    fn apply_with<W, F, P>(self, output: &mut W, mut run: F, probe: P) -> Result<()>
+    fn apply_with<W, F, P>(
+        self,
+        output: &mut W,
+        mut run: F,
+        probe: P,
+        budget: SettleBudget,
+    ) -> Result<()>
     where
         W: Write,
         F: FnMut(&[std::ffi::OsString]) -> std::io::Result<std::process::Output>,
@@ -89,9 +98,14 @@ impl BootstrapPlan {
             )?;
             return Ok(());
         }
+        let domain = Domain {
+            name: &self.domain,
+            plist: &self.path,
+            budget,
+        };
         if matches!(self.mode, BootstrapMode::Reload) {
-            let service = format!("{}/com.robco.overseer", self.domain);
-            let result = run(&["bootout".into(), service.into()])?;
+            let service = domain.service();
+            let result = run(&["bootout".into(), service.as_str().into()])?;
             if !result.status.success() && !service_is_absent(result.status.code(), &result.stderr)
             {
                 return Err(Error::Wizard(format!(
@@ -99,18 +113,12 @@ impl BootstrapPlan {
                     String::from_utf8_lossy(&result.stderr).trim()
                 )));
             }
+            // `bootout` only means launchd accepted the teardown, so the label
+            // has to be observed leaving the domain before anything is loaded
+            // back into it.
+            domain.wait_for_bootout(&mut run)?;
         }
-        let result = run(&[
-            "bootstrap".into(),
-            self.domain.clone().into(),
-            self.path.clone().into_os_string(),
-        ])?;
-        if !result.status.success() {
-            return Err(Error::Wizard(format!(
-                "launchctl bootstrap failed: {}",
-                String::from_utf8_lossy(&result.stderr).trim()
-            )));
-        }
+        domain.bootstrap(&mut run)?;
         // `launchctl bootstrap` can exit 0 and still leave nothing running, so
         // the end state is re-probed for a plain load as well as for a reload:
         // a silent no-op here is exactly how a dead daemon survives a wizard run.
