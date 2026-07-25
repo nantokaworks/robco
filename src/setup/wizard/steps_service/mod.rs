@@ -1,5 +1,6 @@
 mod plan;
 mod probe;
+mod settle;
 mod workflow;
 #[cfg(all(test, target_os = "macos"))]
 mod workflow_tests;
