@@ -34,6 +34,30 @@ impl Registry {
         Ok(serde_json::from_str(&raw)?)
     }
 
+    /// Read the stored registry under the cross-process lock.
+    ///
+    /// [`Registry::load`] already sees a whole file — a writer renames a
+    /// finished temp file into place — but a reader that then acts on what it
+    /// read wants the value a [`Registry::locked_update`] transaction settled
+    /// on, not one it is midway through replacing. The shared lock waits that
+    /// transaction out; it never blocks another reader.
+    pub fn locked_load() -> Result<Self> {
+        Self::locked_load_at(&state_path()?)
+    }
+
+    fn locked_load_at(path: &Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self {
+                version: 1,
+                repos: Vec::new(),
+            });
+        }
+        Self::with_read_lock(path, || {
+            let raw = fs::read_to_string(path)?;
+            Ok(serde_json::from_str(&raw)?)
+        })
+    }
+
     pub fn save(&self) -> Result<()> {
         ensure_robco_dir()?;
         let path = state_path()?;
@@ -106,16 +130,25 @@ impl Registry {
     }
 
     fn with_write_lock<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
-        let lock_file = OpenOptions::new()
+        let mut lock = RwLock::new(Self::open_lock_file(path)?);
+        let _guard = lock.write()?;
+        f()
+    }
+
+    fn with_read_lock<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let lock = RwLock::new(Self::open_lock_file(path)?);
+        let _guard = lock.read()?;
+        f()
+    }
+
+    fn open_lock_file(path: &Path) -> Result<std::fs::File> {
+        Ok(OpenOptions::new()
             .create(true)
             // Lock file contents are irrelevant; keep them untouched.
             .truncate(false)
             .read(true)
             .write(true)
-            .open(path.with_extension("json.lock"))?;
-        let mut lock = RwLock::new(lock_file);
-        let _guard = lock.write()?;
-        f()
+            .open(path.with_extension("json.lock"))?)
     }
 
     fn write_unlocked(registry: &Registry, path: &Path) -> Result<()> {
