@@ -4,7 +4,6 @@ use crate::{
     Result,
     model::{AgentNode, ManagementMode, Selection},
     overseer::is_overseer_child,
-    registry::Registry,
 };
 
 use super::{App, Mode};
@@ -96,7 +95,7 @@ fn cycle_worker(app: &mut App, repo: usize, agent: usize) -> Result<()> {
     let repo_path = app.registry.repos[repo].path.clone();
     let agent_id = app.registry.repos[repo].agents[agent].id.clone();
     let mut outcome = CycleOutcome::NotFound;
-    app.registry = Registry::locked_update(|registry| {
+    app.locked_registry_update(|registry| {
         let Some(worker) = registry
             .repos
             .iter_mut()
@@ -164,7 +163,7 @@ pub(super) fn bulk_toggle_repo(
     target: ManagementMode,
 ) -> Result<()> {
     let mut changed = 0usize;
-    app.registry = Registry::locked_update(|registry| {
+    app.locked_registry_update(|registry| {
         let Some(repo) = registry
             .repos
             .iter_mut()

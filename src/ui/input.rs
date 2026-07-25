@@ -55,9 +55,27 @@ impl App {
                             None,
                         ) {
                             Ok(agent) => {
-                                self.registry.repos[repo_idx].agents.push(agent);
-                                self.registry.save()?;
-                                self.show_message(format!("created agent {title}"));
+                                let repo_path = self.registry.repos[repo_idx].path.clone();
+                                let mut registered = false;
+                                self.locked_registry_update(|registry| {
+                                    if let Some(repo) = registry
+                                        .repos
+                                        .iter_mut()
+                                        .find(|repo| repo.path == repo_path)
+                                    {
+                                        repo.agents.push(agent);
+                                        registered = true;
+                                    }
+                                })?;
+                                self.show_message(if registered {
+                                    format!("created agent {title}")
+                                } else {
+                                    // The worktree and tmux session are up; only
+                                    // the repo row is gone from the stored
+                                    // registry, so say so rather than reporting
+                                    // a clean create that left nothing behind.
+                                    format!("created agent {title}, but its repository is no longer registered")
+                                });
                             }
                             Err(err) => self.show_message(err.to_string()),
                         }

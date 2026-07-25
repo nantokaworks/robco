@@ -23,7 +23,10 @@ impl App {
     }
 }
 
-pub(super) fn prune_unmanaged(repos: &mut [crate::model::RepoNode], worktree_root: &Path) -> bool {
+pub(in crate::ui) fn prune_unmanaged(
+    repos: &mut [crate::model::RepoNode],
+    worktree_root: &Path,
+) -> bool {
     let mut removed = false;
     for repo in repos {
         let previous_len = repo.agents.len();

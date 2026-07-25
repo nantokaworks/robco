@@ -44,6 +44,7 @@ mod list;
 mod merge_dialog;
 mod overseer;
 mod preview;
+mod registry_write;
 mod repo_description;
 mod scrollback;
 #[cfg(test)]
@@ -265,7 +266,13 @@ impl App {
             overseer_inbox_selected: 0,
         };
         if app.prune_unmanaged_agents() {
-            let _ = app.registry.save();
+            // Re-run the prune against the on-disk registry rather than writing
+            // this snapshot back, so a worker another process registered while
+            // robco was starting survives the startup save.
+            let worktree_root = app.config.worktree_root.clone();
+            let _ = app.locked_registry_update(|registry| {
+                actions::discovery::prune_unmanaged(&mut registry.repos, &worktree_root);
+            });
         }
         app.refresh_orphans();
         app.restore_preview();
