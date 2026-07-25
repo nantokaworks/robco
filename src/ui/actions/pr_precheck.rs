@@ -94,17 +94,7 @@ fn spawn(target: PrPrecheckTarget) -> Receiver<std::result::Result<(), String>> 
 }
 
 fn run_precheck(target: &PrPrecheckTarget) -> std::result::Result<(), String> {
-    let running =
-        crate::tmux::has_session(&target.tmux_session).map_err(|error| error.to_string())?;
-    if !running {
-        return Err("agent session is not running".to_string());
-    }
-    let exists = crate::git::pr_exists(&target.repo_path, &target.branch)
-        .map_err(|error| error.to_string())?;
-    if exists {
-        return Err(format!("PR already open for {}", target.branch));
-    }
-    Ok(())
+    crate::pr::precheck(&target.repo_path, &target.branch, &target.tmux_session)
 }
 
 #[cfg(test)]

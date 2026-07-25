@@ -136,9 +136,9 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_returns_nine_tools() {
+    fn tools_list_returns_every_tool() {
         let response = handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap();
-        assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 9);
+        assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 12);
     }
 
     #[test]

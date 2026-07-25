@@ -15,7 +15,9 @@ const PROMPT_LINES: usize = 20;
 
 mod catalog;
 mod identity;
+mod merge;
 mod policy;
+mod pr;
 mod report;
 mod spawn;
 
@@ -80,6 +82,9 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
             let registry = Registry::load().map_err(exec_err)?;
             approve(&registry, &args.agent_id)
         }
+        "robco_pr_status" => pr::pr_status(parse_args(arguments)?),
+        "robco_pr_request" => pr::pr_request(parse_args(arguments)?),
+        "robco_merge" => merge::merge(parse_args(arguments)?),
         _ => Err(invalid_params(format!("unknown tool: {name}"))),
     }
 }
@@ -265,6 +270,8 @@ fn exec_err(err: impl std::fmt::Display) -> ToolError {
     ToolError::Execution(err.to_string())
 }
 
+#[cfg(test)]
+mod git_ops_tests;
 #[cfg(test)]
 mod tests;
 

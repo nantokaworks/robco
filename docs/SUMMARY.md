@@ -12,4 +12,5 @@
 - [Config Reference](09-config-reference.md)
 - [Agent reporting](10-agent-reporting.md)
 - [Overseer Agent](11-overseer-agent.md)
+- [MCP Tool Surface](12-mcp-tools.md)
 - [Roadmap](08-roadmap.md)

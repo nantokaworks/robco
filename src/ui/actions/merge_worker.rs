@@ -1,56 +1,39 @@
-//! The off-thread half of a merge: the `git` / `gh` sequence run for one
-//! repository, and the events it reports back to the UI thread.
+//! The off-thread half of a merge: the worker thread that runs the shared merge
+//! sequence for one repository, and the events it reports back to the UI thread.
 //!
-//! The sequence races on the target repository's `main` branch and working
-//! tree, which is why [`super::merge`] serialises merges per repository. It
-//! touches nothing outside that repository, which is why merges in different
-//! repositories run concurrently.
+//! The sequence itself lives in [`crate::git::merge_flow`] so this path and the
+//! `robco_merge` MCP tool cannot drift apart. It races on the target
+//! repository's `main` branch and working tree, which is why [`super::merge`]
+//! serialises merges per repository in memory and the shared flow takes a
+//! cross-process lock on top. It touches nothing outside that repository, which
+//! is why merges in different repositories run concurrently.
 
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
 
-use crate::{
-    Result,
-    config::MergeStrategy,
-    git::{
-        self,
-        post_merge::{Cleanup, CleanupStep, OnFailure},
-    },
-    overseer::runtime_request::{self, RuntimeRequest},
-};
+use crate::{Result, config::MergeStrategy, git::merge_flow::MergeFlow};
 
-pub(super) const MERGING_PR: &str = "merging PR";
-pub(super) const PULLING_MAIN: &str = "pulling main";
-pub(super) const CLEANING_UP: &str = "cleaning up";
+pub(super) use crate::git::merge_flow::MergeMode;
+/// Re-exported for the merge tests, which assert the labels the banner renders.
+/// Nothing outside them names a step: the flow reports steps through the
+/// callback, and the UI only ever stores what it is handed.
+#[cfg(test)]
+pub(super) use crate::git::merge_flow::{CLEANING_UP, MERGING_PR, PULLING_MAIN};
+
 pub(super) const WORKER_TERMINATED: &str = "merge worker terminated unexpectedly";
+
+/// The source recorded on the `MergeCompleted` runtime request, so the daemon
+/// log distinguishes a merge the operator pressed from one an MCP caller asked
+/// for.
+const SOURCE: &str = "ui";
 
 #[derive(Debug)]
 pub(super) enum MergeEvent {
     Step(&'static str),
     Finished(std::result::Result<(), String>),
-}
-
-/// Whether the merge itself is still outstanding. A pull request that already
-/// merged needs everything the sequence does *after* `gh pr merge` and must
-/// never be handed to `gh pr merge` again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::ui) enum MergeMode {
-    MergeThenClean,
-    CleanOnly,
-}
-
-impl MergeMode {
-    /// The step the job starts on, so the progress banner does not open on
-    /// "merging PR" for a run that never merges.
-    pub(in crate::ui) fn first_step(self) -> &'static str {
-        match self {
-            Self::MergeThenClean => MERGING_PR,
-            Self::CleanOnly => PULLING_MAIN,
-        }
-    }
 }
 
 pub(super) struct MergeTarget {
@@ -73,46 +56,17 @@ pub(super) fn spawn(target: MergeTarget) -> Receiver<MergeEvent> {
 }
 
 fn run_merge(target: &MergeTarget, sender: &Sender<MergeEvent>) -> Result<()> {
-    if target.mode == MergeMode::MergeThenClean {
-        git::merge_pr(&target.repo_path, &target.branch, target.strategy)?;
-    }
-    // A watched merge stops at the first failure so the user sees it on the
-    // banner; the Overseer daemon runs the same steps under `Continue`.
-    Cleanup {
+    MergeFlow {
         repo: &target.repo_path,
-        worktree: &target.worktree_path,
         branch: &target.branch,
-        on_failure: OnFailure::Abort,
+        worktree: &target.worktree_path,
+        tmux_session: &target.tmux_session,
+        shell_session: &target.shell_session,
+        mode: target.mode,
+        strategy: target.strategy,
+        source: SOURCE,
     }
-    .run(|step| send_step(sender, step_label(step)))?;
-    let _ = crate::tmux::kill_session(&target.tmux_session);
-    let _ = crate::tmux::kill_session(&target.shell_session);
-    announce_merge(&target.repo_path);
-    Ok(())
-}
-
-/// Tell the Overseer daemon this repository just merged, so it reconciles the
-/// merge on a pass that starts now instead of rediscovering it up to a poll
-/// interval later. Announced after cleanup rather than straight after the
-/// merge: the daemon cleans merged workers up too, and waking it mid-cleanup
-/// would have both processes removing the same worktree and killing the same
-/// sessions. Best effort — failing to announce only costs the delay this
-/// removes, and there is no way to surface an error from a worker thread that
-/// would not corrupt the TUI. A cleanup that fails aborts before this point, so
-/// that merge is left for the daemon to find by polling, exactly as before.
-fn announce_merge(repo_path: &Path) {
-    let _ = runtime_request::enqueue(RuntimeRequest::MergeCompleted {
-        source: "ui".into(),
-        repo: repo_path.display().to_string(),
-        at: chrono::Utc::now(),
-    });
-}
-
-fn step_label(step: CleanupStep) -> &'static str {
-    match step {
-        CleanupStep::PullingMain => PULLING_MAIN,
-        CleanupStep::CleaningUp => CLEANING_UP,
-    }
+    .run(|step| send_step(sender, step))
 }
 
 fn send_step(sender: &Sender<MergeEvent>, step: &'static str) {
