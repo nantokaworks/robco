@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fs, path::Path};
 
-use crate::{Result, git, model::RepoNode};
+use crate::{Result, dropr::DroprTaskFetch, git, model::RepoNode};
 
 pub fn discover_repos(launch_dir: &Path) -> Result<Vec<RepoNode>> {
     let launch_dir = launch_dir.canonicalize()?;
@@ -68,7 +68,7 @@ pub(crate) fn repo_node(path: std::path::PathBuf, pinned: bool) -> RepoNode {
         pinned,
         agents: Vec::new(),
         dropr: None,
-        dropr_tasks: Vec::new(),
+        dropr_tasks: DroprTaskFetch::default(),
         main_status: None,
         main_last_capture: None,
         main_last_spinner: None,

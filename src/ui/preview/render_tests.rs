@@ -49,7 +49,7 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         pinned: false,
         agents,
         dropr: None,
-        dropr_tasks: Vec::new(),
+        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
         main_status: None,
         main_last_capture: None,
         main_last_spinner: None,

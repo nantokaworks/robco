@@ -57,12 +57,25 @@ fn gather_repo_task_states(
             .push(ObservationError::new("dropr workspace not found").in_repo(repo));
         return;
     };
-    let Some(tasks) = crate::dropr::fetch_repo_tasks(&workspace.id) else {
-        observations
-            .errors
-            .push(ObservationError::new("dropr task probe skipped").in_repo(repo));
+    let fetch = crate::dropr::fetch_repo_tasks(&workspace.id);
+    if !fetch.answered {
+        observations.errors.push(
+            ObservationError::new(format!(
+                "dropr task probe skipped: {}",
+                fetch.problems.join("; ")
+            ))
+            .in_repo(repo),
+        );
         return;
-    };
+    }
+    // The probe answered, but not in full: an entry whose task is in a subtree
+    // the fetch could not read looks unobserved, not unchanged.
+    for problem in &fetch.problems {
+        observations.errors.push(
+            ObservationError::new(format!("dropr task probe incomplete: {problem}")).in_repo(repo),
+        );
+    }
+    let tasks = fetch.tasks;
     for entry in ledger
         .entries
         .iter()

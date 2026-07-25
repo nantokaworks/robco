@@ -280,7 +280,7 @@ fn repo_node(path: std::path::PathBuf) -> RepoNode {
         pinned: false,
         agents: Vec::new(),
         dropr: None,
-        dropr_tasks: Vec::new(),
+        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
         main_status: None,
         main_last_capture: None,
         main_last_spinner: None,

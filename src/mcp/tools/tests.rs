@@ -44,7 +44,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 children: Vec::new(),
             }],
             dropr: None,
-            dropr_tasks: Vec::new(),
+            dropr_tasks: crate::dropr::DroprTaskFetch::default(),
             main_status: None,
             main_last_capture: None,
             main_last_spinner: None,
