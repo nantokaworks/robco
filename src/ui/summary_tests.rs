@@ -40,7 +40,11 @@ fn answered(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
 }
 
 fn rendered(repo: &RepoNode) -> Vec<String> {
-    let (_, text) = repo_summary(repo, std::path::Path::new("/repos"), 40);
+    rendered_with(repo, &Ledger::default())
+}
+
+fn rendered_with(repo: &RepoNode, ledger: &Ledger) -> Vec<String> {
+    let (_, text) = repo_summary(repo, std::path::Path::new("/repos"), ledger, 40);
     text.lines
         .iter()
         .map(|line| {
@@ -87,6 +91,41 @@ fn a_linked_repo_names_its_workspace_and_lists_its_tasks() {
         !lines
             .iter()
             .any(|line| line == "no workspace resolved for this repo, so no tasks can be listed")
+    );
+}
+
+/// The summary reads the history off the selected repository's own path, so a
+/// ledger entry that repository settled has to reach the pane.
+#[test]
+fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
+    let settled = crate::overseer::ledger::Ledger {
+        entries: vec![crate::overseer::ledger::LedgerEntry {
+            task_id: "task-263".into(),
+            display_id: "#263".into(),
+            repo: "/repo".into(),
+            agent_id: "worker".into(),
+            branch: "branch".into(),
+            phase: crate::overseer::ledger::LedgerPhase::Merged,
+            dispatched_at: chrono::Utc::now(),
+            settled_at: None,
+            retries: 0,
+            pr_url: Some("https://github.com/nantokaworks/robco/pull/199".into()),
+            branch_updates: 0,
+            merge_recovery: Default::default(),
+            manual_merge_skip: None,
+        }],
+        ..Default::default()
+    };
+
+    let lines = rendered_with(
+        &repo(Some(workspace()), DroprTaskFetch::default()),
+        &settled,
+    );
+    assert!(lines.iter().any(|line| line == "HISTORY"));
+    assert!(
+        lines.iter().any(|line| line.contains("#263")
+            && line.contains("merged")
+            && line.contains("PR #199"))
     );
 }
 

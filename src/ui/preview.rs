@@ -75,6 +75,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         (_, Some(Selection::Repo(repo_idx))) => repo_summary(
             &registry.repos[repo_idx],
             &app.config.repos_root,
+            // The snapshot the OVERSEER frame already refreshes: one ledger for
+            // the whole TUI, and no disk read in the render path.
+            &app.overseer_snapshot.ledger,
             panes.preview.width.saturating_sub(4),
         ),
         (PreviewPane::Info, Some(Selection::Agent { repo, agent })) => {
