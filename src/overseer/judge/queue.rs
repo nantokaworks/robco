@@ -1,5 +1,7 @@
 use super::{
-    MergeCase, Request, audit, completion,
+    MergeCase, Request, audit,
+    completed::CompletedJudgments,
+    completion,
     keys::{dispatch_key, merge_identity, merge_identity_parts, merge_key},
     result::{DispatchAdvice, MergeAdvice, Parsed},
     revisions::RevisionCache,
@@ -11,16 +13,12 @@ use crate::{
     config::Config,
     overseer::{daily::DailyCounter, logging::DecisionKind},
 };
-use std::{
-    collections::{HashMap, VecDeque},
-    path::PathBuf,
-    sync::mpsc::TryRecvError,
-};
+use std::{collections::VecDeque, path::PathBuf, sync::mpsc::TryRecvError};
 
 pub struct JudgmentQueue {
     pending: VecDeque<Request>,
     active: Option<(Request, crate::overseer::session::SessionHandle)>,
-    completed: HashMap<String, Parsed>,
+    completed: CompletedJudgments,
     terminal_merges: RevisionCache,
     root: PathBuf,
     log_path: PathBuf,
@@ -49,7 +47,7 @@ impl JudgmentQueue {
         Ok(Self {
             pending: VecDeque::new(),
             active: None,
-            completed: HashMap::new(),
+            completed: CompletedJudgments::default(),
             terminal_merges,
             root,
             log_path,
@@ -84,7 +82,7 @@ impl JudgmentQueue {
                         ignored_fields: Vec::new(),
                     });
                     audit::record(&self.log_path, &request, &parsed)?;
-                    self.completed.insert(request.key().to_owned(), parsed);
+                    self.completed.insert(request, parsed);
                     return Ok(());
                 }
                 self.counter.increment(&self.counter_path)?;
@@ -105,7 +103,7 @@ impl JudgmentQueue {
         let (request, _) = self.active.take().unwrap();
         let parsed = completion::normalize(received, &request);
         audit::record(&self.log_path, &request, &parsed)?;
-        self.completed.insert(request.key().to_owned(), parsed);
+        self.completed.insert(request, parsed);
         Ok(())
     }
 
@@ -122,7 +120,7 @@ impl JudgmentQueue {
             });
         }
         let key = dispatch_key(approved);
-        if let Some(Parsed::Dispatch(advice)) = self.completed.remove(&key) {
+        if let Some(Parsed::Dispatch(advice)) = self.completed.take(&key) {
             return Some(advice);
         }
         self.enqueue_once(Request::Dispatch {
@@ -133,55 +131,34 @@ impl JudgmentQueue {
     }
 
     /// Drops dispatch judgments keyed to a candidate set that no longer exists,
-    /// recording each discard.
-    ///
-    /// `dispatch_key` hashes the approved ids, so one task appearing or
-    /// disappearing between a round being enqueued and its verdict arriving
-    /// leaves that verdict stranded under a key nothing will ask for again.
-    /// Dropping it silently is what made a whole round read as "the Overseer did
-    /// nothing this pass". Every dispatch pass calls this, judged or not, so the
-    /// reset is recorded even when the pass that supersedes the round never
+    /// recording each discard. Every dispatch pass calls this, judged or not, so
+    /// the reset is recorded even when the pass that supersedes the round never
     /// needed a judge.
     pub fn discard_stale_dispatch(
         &mut self,
         approved: &[crate::overseer::dispatch::Candidate],
     ) -> Result<()> {
-        let current = dispatch_key(approved);
-        let stale = self
-            .completed
-            .iter()
-            .filter(|(key, parsed)| **key != current && matches!(parsed, Parsed::Dispatch(_)))
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
-        for key in stale {
-            self.completed.remove(&key);
-            audit::log(
-                &self.log_path,
-                DecisionKind::Skip,
-                None,
-                None,
-                &format!("judgment_discarded:candidate_set_changed:{key}"),
-            )?;
-        }
-        Ok(())
+        self.completed
+            .discard_stale_dispatch(&self.log_path, approved)
     }
 
     pub fn merge_advice(&mut self, case: MergeCase) -> Result<Option<MergeAdvice>> {
         let identity = merge_identity(&case);
-        if self.terminal_merges.matches(&identity, &case.head_sha) {
+        let key = merge_key(&case);
+        if self.terminal_merges.matches(&identity, &key) {
             return Ok(None);
         }
-        let key = merge_key(&case);
-        if let Some(Parsed::Merge(advice)) = self.completed.remove(&key) {
+        // Anything still held for this pull request under another key answered a
+        // version of the change that no longer exists.
+        self.completed
+            .discard_superseded_merges(&self.log_path, &identity, &key)?;
+        if let Some(Parsed::Merge(advice)) = self.completed.take(&key) {
             if advice.outcome == super::result::MergeJudgment::Allow {
                 self.terminal_merges
                     .clear(&self.revisions_path, &identity)?;
             } else {
-                self.terminal_merges.remember(
-                    &self.revisions_path,
-                    identity,
-                    case.head_sha.clone(),
-                )?;
+                self.terminal_merges
+                    .remember(&self.revisions_path, identity, key.clone())?;
             }
             return Ok(Some(advice));
         }
@@ -229,8 +206,11 @@ impl JudgmentQueue {
 
     #[cfg(test)]
     pub(super) fn cache_merge(&mut self, case: &MergeCase, advice: MergeAdvice) {
-        self.completed
-            .insert(merge_key(case), Parsed::Merge(advice));
+        let request = Request::Merge {
+            key: merge_key(case),
+            case: case.clone(),
+        };
+        self.completed.insert(request, Parsed::Merge(advice));
     }
 
     #[cfg(test)]
@@ -239,8 +219,11 @@ impl JudgmentQueue {
         approved: &[crate::overseer::dispatch::Candidate],
         advice: DispatchAdvice,
     ) {
-        self.completed
-            .insert(dispatch_key(approved), Parsed::Dispatch(advice));
+        let request = Request::Dispatch {
+            key: dispatch_key(approved),
+            approved: approved.to_vec(),
+        };
+        self.completed.insert(request, Parsed::Dispatch(advice));
     }
 
     #[cfg(test)]

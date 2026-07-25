@@ -1,5 +1,6 @@
 mod audit;
 mod briefing;
+mod completed;
 mod completion;
 mod keys;
 mod merge_gate;

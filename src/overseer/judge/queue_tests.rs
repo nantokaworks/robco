@@ -67,6 +67,44 @@ fn a_judgment_the_candidate_set_outran_is_discarded_on_the_record() {
     assert_eq!(logged, 1);
 }
 
+/// The merge path's half of the same rule. A verdict for a diff the worker has
+/// since replaced answers a question nobody will ask again; leaving it in memory
+/// is how a verdict the gate paid for disappears without a trace.
+#[test]
+fn a_merge_verdict_the_diff_outran_is_discarded_on_the_record() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+    queue.cache_merge(
+        &case,
+        result::MergeAdvice {
+            outcome: result::MergeJudgment::Allow,
+            reason: "reviewed".into(),
+            fail_safe: false,
+            ignored_fields: Vec::new(),
+        },
+    );
+
+    let mut pushed = case.clone();
+    pushed.files.push("src/new.rs".into());
+    assert!(queue.merge_advice(pushed).unwrap().is_none());
+
+    assert_eq!(queue.completed_len(), 0);
+    let discarded = logging::tail_from(&temp.path().join("decisions.jsonl"), 20)
+        .unwrap()
+        .into_iter()
+        .filter(|entry| {
+            entry
+                .reason
+                .starts_with("judgment_discarded:change_superseded:")
+                && entry.task.as_deref() == Some(case.task_id.as_str())
+        })
+        .count();
+    assert_eq!(discarded, 1);
+}
+
 /// A merge case that clears the deterministic gate spends several passes in the
 /// queue before its verdict lands. That wait used to write nothing at all, so
 /// `decisions.jsonl` carried an entry for every auto-merge outcome except the

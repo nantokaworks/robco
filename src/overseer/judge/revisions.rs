@@ -1,7 +1,17 @@
+//! The terminal verdicts a pull request already received.
+//!
+//! A veto or an escalation is remembered against the change it was given for —
+//! [`super::keys::merge_key`]'s fingerprint, not the head sha. Keying on the
+//! head meant a mechanical base update made the gate re-ask a question it had
+//! already refused; keying on the fingerprint means the refusal stands until
+//! the worker actually changes something, and lifts the moment it does.
+
 use crate::Result;
 use nanoid::nanoid;
 use std::{collections::HashMap, fs, io::ErrorKind, path::Path};
 
+/// Merge identity (task + pull request) to the change fingerprint its terminal
+/// verdict was given for.
 #[derive(Clone, Default)]
 pub(super) struct RevisionCache(HashMap<String, String>);
 
@@ -14,17 +24,24 @@ impl RevisionCache {
         }
     }
 
-    pub(super) fn matches(&self, identity: &str, sha: &str) -> bool {
-        self.0.get(identity).is_some_and(|judged| judged == sha)
+    pub(super) fn matches(&self, identity: &str, fingerprint: &str) -> bool {
+        self.0
+            .get(identity)
+            .is_some_and(|judged| judged == fingerprint)
     }
 
     pub(super) fn contains(&self, identity: &str) -> bool {
         self.0.contains_key(identity)
     }
 
-    pub(super) fn remember(&mut self, path: &Path, identity: String, sha: String) -> Result<()> {
+    pub(super) fn remember(
+        &mut self,
+        path: &Path,
+        identity: String,
+        fingerprint: String,
+    ) -> Result<()> {
         let mut next = self.clone();
-        next.0.insert(identity, sha);
+        next.0.insert(identity, fingerprint);
         next.save(path)?;
         *self = next;
         Ok(())
