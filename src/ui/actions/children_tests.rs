@@ -1,7 +1,7 @@
 use std::{path::Path, process::Command};
 
 use super::*;
-use crate::model::AgentNode;
+use crate::model::{AgentNode, ManagementMode};
 
 struct Fixture {
     _temp: tempfile::TempDir,
@@ -208,6 +208,43 @@ fn merged_producer_slot_reports_zero_commits_ahead() {
         fixture.repo.agents[0].children[0].ahead_behind,
         Some((1, 0))
     );
+}
+
+#[test]
+fn recovered_identity_of_a_tracked_agent_does_not_add_a_second_row() {
+    let mut fixture = Fixture::new();
+    fixture.repo.agents[0].management = ManagementMode::Auto;
+    let tracked_id = fixture.repo.agents[0].id.clone();
+    let tracked_path = fixture.repo.agents[0].worktree_path.clone();
+    // The worktree git reports is the tracked agent under a spelling `path_key`
+    // cannot match — the registry entry's directory no longer canonicalizes, so
+    // its lexical path is compared against git's. Its session still names the
+    // tracked agent, which is what a second row would clone the id from.
+    let renamed = fixture.config.worktree_root.join("dropr_task-749_renamed");
+    let worktree = Worktree {
+        path: renamed,
+        head: None,
+        branch: Some("dropr/task-749".into()),
+    };
+
+    let added = adopt_top_level(
+        &mut fixture.repo,
+        &fixture.config,
+        worktree,
+        Some("robco_repo_task-749".into()),
+        Some(agent::RecoveredIdentity {
+            id: tracked_id.clone(),
+            parent_agent_id: None,
+        }),
+    );
+
+    assert!(!added);
+    assert_eq!(fixture.repo.agents.len(), 1);
+    assert_eq!(fixture.repo.agents[0].id, tracked_id);
+    assert_eq!(fixture.repo.agents[0].worktree_path, tracked_path);
+    // The row a management toggle reaches is still the only row for this id, so
+    // no second row is left rendering a mode nothing updates.
+    assert_eq!(fixture.repo.agents[0].management, ManagementMode::Auto);
 }
 
 #[test]
