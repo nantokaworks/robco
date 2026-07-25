@@ -206,6 +206,7 @@ mod tests {
             pr_url: pr_url.map(str::to_owned),
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         }
     }

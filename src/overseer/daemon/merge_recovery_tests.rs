@@ -15,6 +15,7 @@ fn entry() -> LedgerEntry {
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: None,
     }
 }
@@ -80,14 +81,78 @@ fn an_unrecognised_reason_is_never_handed_to_a_worker() {
     }
 }
 
+/// Switched off, the classification was inert *and* invisible: nothing was handed
+/// back and nothing said so, which is why an operator reading `merge-recovery:
+/// off` had no way to tell what the setting was costing them.
 #[test]
-fn recovery_stays_idle_until_it_is_switched_on() {
+fn a_disabled_recovery_records_the_failure_it_did_not_hand_back() {
     let mut entry = entry();
     assert_eq!(
         plan(&mut entry, "merge_state:dirty", "sha-1", false, 2),
-        RecoveryPlan::Idle
+        RecoveryPlan::Dropped
     );
+    assert_eq!(entry.merge_recovery.dropped, 1);
+    assert_eq!(entry.merge_recovery.dropped_head.as_deref(), Some("sha-1"));
+    // Nothing is charged and no worker is chosen: the switch still decides
+    // whether anything happens, only the silence is gone.
+    assert_eq!(entry.merge_recovery.charged, 0);
+    assert_eq!(entry.merge_recovery.head, None);
+
+    // One decision per revision, not one per poll. A new head is a new failure.
+    for reason in ["merge_state:dirty", "judge_veto:still not right"] {
+        assert_eq!(
+            plan(&mut entry, reason, "sha-1", false, 2),
+            RecoveryPlan::Idle
+        );
+    }
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-2", false, 2),
+        RecoveryPlan::Dropped
+    );
+    assert_eq!(entry.merge_recovery.dropped, 2);
+}
+
+/// The drop is a consequence of the setting, so a failure no worker could fix
+/// stays silent whether recovery is on or off.
+#[test]
+fn a_disabled_recovery_records_nothing_for_an_operator_only_failure() {
+    let mut entry = entry();
+    for reason in [
+        "unprotected:unknown_remote",
+        "checks_waiting",
+        "missing_pr_url",
+    ] {
+        assert_eq!(
+            plan(&mut entry, reason, "sha-1", false, 2),
+            RecoveryPlan::Idle
+        );
+    }
     assert_eq!(entry.merge_recovery, MergeRecovery::default());
+}
+
+/// The drops the disabled setting accumulated are what `robco overseer status`
+/// reports next to the switch, terminal entries included: an entry that escalated
+/// because nobody was handed its failure is the case worth reading.
+#[test]
+fn the_ledger_totals_the_failures_the_switch_dropped() {
+    let with_drops = |dropped: u32, phase| LedgerEntry {
+        phase,
+        merge_recovery: MergeRecovery {
+            dropped,
+            ..MergeRecovery::default()
+        },
+        ..entry()
+    };
+    let ledger = crate::overseer::ledger::Ledger {
+        entries: vec![
+            with_drops(2, LedgerPhase::PrOpened),
+            with_drops(0, LedgerPhase::PrOpened),
+            with_drops(3, LedgerPhase::Escalated),
+        ],
+        ..Default::default()
+    };
+
+    assert_eq!(ledger.merge_recovery_drops(), 5);
 }
 
 #[test]
@@ -169,22 +234,26 @@ fn a_worker_with_no_registered_session_cannot_be_handed_anything() {
 
 #[test]
 fn a_disabled_recovery_never_reaches_a_worker() {
-    // `consider` is the whole delivery path; with recovery off it must return
-    // without resolving a session, sending a prompt, or writing a decision, so
-    // the merge pass behaves exactly as it did before the feature existed.
-    let mut entry = entry();
+    // `plan` is what selects the delivery path, and with recovery off no reason
+    // and no revision may select it: the switch still decides whether a worker is
+    // ever driven, and only `Dispatch` resolves a session or sends a prompt.
     let config = crate::overseer::config::OverseerConfig::default();
     assert!(!config.merge_recovery_enabled);
-    consider(
-        &mut entry,
+    let mut entry = entry();
+    for reason in [
         "merge_state:dirty",
-        "sha-1",
-        &config,
-        &Registry::default(),
-    )
-    .unwrap();
+        "judge_veto:no rollback",
+        "unprotected:unknown_remote",
+    ] {
+        for head in ["sha-1", "sha-2", ""] {
+            assert!(matches!(
+                plan(&mut entry, reason, head, false, config.max_merge_recoveries),
+                RecoveryPlan::Idle | RecoveryPlan::Dropped
+            ));
+        }
+    }
     assert_eq!(entry.phase, LedgerPhase::PrOpened);
-    assert_eq!(entry.merge_recovery, MergeRecovery::default());
+    assert_eq!(entry.merge_recovery.charged, 0);
 }
 
 #[test]
@@ -221,6 +290,10 @@ fn every_recorded_reason_names_the_merge_recovery_step() {
     assert_eq!(
         skipped("send_failed:tmux send-keys failed"),
         "merge_recovery_skipped:send_failed:tmux send-keys failed"
+    );
+    assert_eq!(
+        disabled("merge_state:dirty"),
+        "merge_recovery_disabled:merge_state:dirty"
     );
     assert_eq!(CAP_REACHED, "merge_recovery_cap_reached");
 }

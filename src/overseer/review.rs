@@ -13,7 +13,10 @@
 //! dispatch, merge, unblock, or write the ledger. `tick` takes the ledger by
 //! shared reference, which is where that guarantee actually lives.
 //!
-//! With `review_profile` unset the whole pass is inert.
+//! The deterministic findings run on the review's clock whether or not a reviewer
+//! model is configured. `review_profile` switches on the model stage alone: what
+//! it adds is diagnosis, and detection that depended on it would be detection that
+//! never ran on the default configuration.
 
 mod briefing;
 mod digest;
@@ -88,9 +91,6 @@ impl ReviewPass {
 
     /// Runs at most one step of the review and never waits for a model process.
     pub fn tick(&mut self, config: &Config, ledger: &Ledger, now: DateTime<Utc>) -> Result<()> {
-        if config.overseer.review_profile.is_none() {
-            return Ok(());
-        }
         if self.active.is_some() {
             return self.poll_session();
         }
@@ -123,6 +123,13 @@ impl ReviewPass {
         // Saved after the escalations, not before: a crash in between should
         // replay a finding rather than mark it reported and lose it.
         self.state.save(&self.state_path)?;
+        // Everything above is arithmetic over the board's own history and costs
+        // nothing to run. `review_profile` switches on the model stage below it,
+        // not the detection: gating the whole pass on a profile is what left the
+        // rules that would have caught a seven-hour hold having never run once.
+        if config.overseer.review_profile.is_none() {
+            return Ok(());
+        }
         if self.counter.count_today() >= config.overseer.daily_review_budget {
             // The deterministic findings above still ran; only the model stage
             // is out of budget, and saying so keeps a quiet reviewer from

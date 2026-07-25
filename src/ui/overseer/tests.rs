@@ -84,6 +84,7 @@ fn management_app() -> App {
             pr_url: None,
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         },
         LedgerEntry {
@@ -99,6 +100,7 @@ fn management_app() -> App {
             pr_url: None,
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         },
     ];
@@ -652,6 +654,7 @@ fn active_phases_excludes_terminal_entries() {
                 pr_url: None,
                 branch_updates: 0,
                 merge_recovery: Default::default(),
+                merge_hold: Default::default(),
                 manual_merge_skip: None,
             },
             LedgerEntry {
@@ -667,6 +670,7 @@ fn active_phases_excludes_terminal_entries() {
                 pr_url: None,
                 branch_updates: 0,
                 merge_recovery: Default::default(),
+                merge_hold: Default::default(),
                 manual_merge_skip: None,
             },
         ],

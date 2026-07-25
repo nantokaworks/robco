@@ -74,7 +74,8 @@ fn status(config: &Config) -> Result<()> {
         "{}",
         toggle_line(
             &config.overseer,
-            ledger.counters.consecutive_failures >= config.overseer.failure_circuit_threshold
+            ledger.counters.consecutive_failures >= config.overseer.failure_circuit_threshold,
+            ledger.merge_recovery_drops()
         )
     );
     println!(
@@ -149,14 +150,24 @@ fn llm_line(config: &Config, judgments: &JudgmentQueue) -> Result<String> {
         "llm today: judge {judge}/{}  review {review}/{} ({})",
         config.overseer.daily_llm_budget,
         config.overseer.daily_review_budget,
-        config.overseer.review_profile.as_deref().map_or_else(
-            || "disabled".to_string(),
-            |profile| format!(
-                "every {}m via {profile}",
-                config.overseer.review_interval_mins
-            )
-        )
+        review_state(&config.overseer)
     ))
+}
+
+/// How the board review is running.
+///
+/// The pass itself always runs on its interval, and its deterministic findings
+/// with it; `review_profile` decides only whether a reviewer model reads the same
+/// digest afterwards. The line used to print `disabled` for a missing profile,
+/// which read as "the review is off" — and was, which is the bug this wording
+/// outlived. The two states are now named separately, because an operator seeing a
+/// quiet board needs to know whether nothing was found or nothing looked.
+fn review_state(config: &OverseerConfig) -> String {
+    let interval = config.review_interval_mins;
+    config.review_profile.as_deref().map_or_else(
+        || format!("findings every {interval}m, no reviewer model"),
+        |profile| format!("every {interval}m via {profile}"),
+    )
 }
 
 /// The daemon's identity line: whether it is up, which process it is, when it
@@ -266,14 +277,14 @@ fn on_off(value: bool) -> &'static str {
 /// Every toggle reported here must be one the daemon actually honours; a switch
 /// that is only displayed invites the reader to blame it for an outage it has no
 /// part in.
-fn toggle_line(config: &OverseerConfig, circuit_open: bool) -> String {
+fn toggle_line(config: &OverseerConfig, circuit_open: bool, recovery_drops: u32) -> String {
     format!(
         "dispatch: {}  auto-merge: {} (protection: {})  autonomy: {}  merge-recovery: {}  circuit: {}",
         on_off(config.dispatch_enabled),
         on_off(config.auto_merge),
         config.protection_mode.label(),
         config.autonomy_level.label(),
-        merge_recovery_state(config),
+        merge_recovery_state(config, recovery_drops),
         if circuit_open { "open" } else { "closed" }
     )
 }
@@ -281,12 +292,20 @@ fn toggle_line(config: &OverseerConfig, circuit_open: bool) -> String {
 /// Merge recovery reads as one setting, so its cap travels with its switch: an
 /// operator who sees only `on` cannot tell how many handbacks a stuck pull
 /// request still has before it reaches them.
-fn merge_recovery_state(config: &OverseerConfig) -> String {
+///
+/// Switched off, the number that matters is the opposite one — how many failures
+/// a worker could have fixed went to nobody. Without it `off` is a flag; with it
+/// the flag has a consequence attached, which is what an operator needs to decide
+/// whether to switch it on. It is omitted while nothing has been dropped, so the
+/// line names an exception rather than a permanent zero.
+fn merge_recovery_state(config: &OverseerConfig, drops: u32) -> String {
     if config.merge_recovery_enabled {
-        format!("on (max {})", config.max_merge_recoveries)
-    } else {
-        "off".into()
+        return format!("on (max {})", config.max_merge_recoveries);
     }
+    if drops == 0 {
+        return "off".into();
+    }
+    format!("off ({drops} dropped)")
 }
 pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;

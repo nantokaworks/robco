@@ -5,7 +5,7 @@ use crate::overseer::autonomy::AutonomyLevel;
 fn toggle_line_reports_no_switch_the_daemon_ignores() {
     let config = OverseerConfig::default();
     assert!(config.dispatch_enabled);
-    let line = toggle_line(&config, false);
+    let line = toggle_line(&config, false, 0);
     assert_eq!(
         line,
         "dispatch: on  auto-merge: off (protection: required)  autonomy: conservative  merge-recovery: off  circuit: closed"
@@ -23,7 +23,19 @@ fn toggle_line_reports_the_merge_recovery_budget_with_its_switch() {
         max_merge_recoveries: 3,
         ..OverseerConfig::default()
     };
-    assert!(toggle_line(&config, false).contains("merge-recovery: on (max 3)"));
+    assert!(toggle_line(&config, false, 0).contains("merge-recovery: on (max 3)"));
+}
+
+#[test]
+fn toggle_line_reports_what_a_switched_off_recovery_has_dropped() {
+    // `off` on its own is a flag. What an operator needs in order to decide
+    // whether to switch it on is what the flag has cost — failures a worker could
+    // have fixed that reached nobody.
+    let config = OverseerConfig::default();
+    assert!(!config.merge_recovery_enabled);
+    assert!(toggle_line(&config, false, 4).contains("merge-recovery: off (4 dropped)"));
+    // Nothing dropped is not an exception worth a number.
+    assert!(toggle_line(&config, false, 0).contains("merge-recovery: off  "));
 }
 
 #[test]
@@ -41,7 +53,7 @@ fn toggle_line_reports_the_autonomy_level_the_envelope_runs_under() {
             ..OverseerConfig::default()
         };
         assert!(
-            toggle_line(&config, false).contains(&format!("autonomy: {label}")),
+            toggle_line(&config, false, 0).contains(&format!("autonomy: {label}")),
             "expected autonomy: {label}"
         );
     }
@@ -53,7 +65,23 @@ fn toggle_line_reports_dispatch_off_when_dispatch_is_disabled() {
         dispatch_enabled: false,
         ..OverseerConfig::default()
     };
-    assert!(toggle_line(&config, true).starts_with("dispatch: off"));
+    assert!(toggle_line(&config, true, 0).starts_with("dispatch: off"));
+}
+
+#[test]
+fn the_review_line_separates_the_pass_from_its_reviewer_model() {
+    // The findings pass runs on its interval either way, so a missing profile is
+    // "no model read the digest", not "nothing looked". Printing one word for
+    // both is what let an inert review pass read as a quiet board.
+    let mut config = OverseerConfig::default();
+    assert!(config.review_profile.is_none());
+    let without = review_state(&config);
+    assert!(without.contains("findings every 20m"));
+    assert!(without.contains("no reviewer model"));
+    assert!(!without.contains("disabled"));
+
+    config.review_profile = Some("claude".into());
+    assert_eq!(review_state(&config), "every 20m via claude");
 }
 
 #[test]

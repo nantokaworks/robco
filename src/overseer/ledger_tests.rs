@@ -18,6 +18,7 @@ fn save_load_round_trip() {
             pr_url: Some("https://example.test/pr/1".into()),
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         }],
         skip_list: vec!["task-2".into()],
@@ -86,6 +87,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         pr_url: None,
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: None,
     };
     let ledger = Ledger {
@@ -129,6 +131,9 @@ fn a_ledger_written_before_merge_recovery_still_loads() {
     // Nothing recorded when this entry settled, and nothing may be invented:
     // the history view reads the absence as "unknown", not as "just now".
     assert_eq!(entry.settled_at, None);
+    // The merge in flight when the daemon was upgraded starts from a full hold
+    // budget rather than from a ledger the new field cannot be read out of.
+    assert_eq!(entry.merge_hold, MergeHold::default());
     // The file is intact, so the load was a genuine default rather than the
     // corrupt-ledger fallback.
     assert!(path.exists());
@@ -149,6 +154,7 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         pr_url: skip.map(str::to_owned),
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: skip.map(str::to_owned),
     };
     let ledger = Ledger {

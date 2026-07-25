@@ -67,6 +67,16 @@ pub struct OverseerConfig {
     /// The ceiling is what stops a worker that cannot fix the failure from being
     /// re-prompted on every push.
     pub max_merge_recoveries: u32,
+    /// Auto-merge passes one pull request may be held under the same reason at
+    /// the same head before it escalates. Without a bound, every gate exit that
+    /// is not a merge re-records its reason once per poll for as long as the
+    /// condition lasts, which is how a pull request came to be held for seven
+    /// hours with nothing on the board saying so.
+    ///
+    /// At the default poll interval the default is thirty minutes: comfortably
+    /// past the 5-15 minutes a healthy check run takes, and still well inside an
+    /// hour. `0` escalates on the first held pass.
+    pub max_merge_holds: u32,
     pub worker_profile: Option<String>,
     pub max_workers: usize,
     pub per_repo_limit: usize,
@@ -115,6 +125,7 @@ impl Default for OverseerConfig {
             max_merge_settle_passes: 5,
             merge_recovery_enabled: false,
             max_merge_recoveries: 2,
+            max_merge_holds: 30,
             worker_profile: None,
             max_workers: 3,
             per_repo_limit: 1,

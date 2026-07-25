@@ -155,8 +155,12 @@ timeout. The process is then terminated. Returned actions are parsed into a clos
 command enum; unknown or unsafe actions are rejected.
 
 The board review is the one surface that reads Overseer's own history rather than a single
-case. It runs on its own clock (`review_interval_mins`), never on every poll, and is
-disabled entirely unless `review_profile` is set. Each run builds a size-bounded digest —
+case. It runs on its own clock (`review_interval_mins`), never on every poll. Its
+deterministic stage runs whether or not a reviewer model is configured: `review_profile`
+switches on the model stage alone, and detection that depended on it would be detection
+that never ran on the default configuration — which is exactly what happened, leaving the
+two rules below with no recorded finding across the daemon's whole history. Each run
+builds a size-bounded digest —
 at most 200 recent decisions with each reason truncated, at most 50 live ledger entries
 with their age, and the dispatch counters — and applies deterministic rules to it: a
 reason repeating three times or more is reported as `repeating_failure` (a structural
@@ -174,8 +178,12 @@ merge judgement. Its result schema carries a severity and a sentence and nothing
 `warn` and `critical` findings become escalations, `info` is recorded only, and there is
 no field through which the reviewer can dispatch, merge, unblock, or write the ledger. An
 exhausted budget stops the session but not the deterministic findings, and records
-`review_budget_exhausted` so a quiet reviewer does not read as a healthy board.
-`robco overseer status` reports the judge and review counts separately.
+`review_budget_exhausted` so a quiet reviewer does not read as a healthy board. A missing
+profile stops the session too, and records nothing: no budget is charged and no session is
+spawned, because there is no model to run. `robco overseer status` reports the judge and
+review counts separately, and names the two states apart — `findings every 20m, no
+reviewer model` against `every 20m via <profile>` — so a quiet board can be read as
+"nothing was found" rather than "nothing looked".
 
 Task text, exception reasons, tmux capture, Discord messages, and other external values
 are each placed in explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a
@@ -198,6 +206,7 @@ these defaults:
     "max_branch_updates": 3,
     "merge_recovery_enabled": false,
     "max_merge_recoveries": 2,
+    "max_merge_holds": 30,
     "worker_profile": null,
     "max_workers": 3,
     "per_repo_limit": 1,
@@ -243,8 +252,9 @@ these defaults:
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
-| `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. |
+| `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. Switched off, each failure it would have acted on is still recorded once per revision as `merge_recovery_disabled:<reason>` and counted into `merge-recovery: off (N dropped)`. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
+| `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
@@ -256,7 +266,7 @@ these defaults:
 | `failure_circuit_threshold` | non-negative integer | `3` | Accumulated monitor or spawn failures that open the circuit and disable dispatch. The counter resets when a worker's PR merges or when an operator re-enables dispatch; a successful spawn alone does not reset it. |
 | `triage_enabled` | boolean | `true` | Enables exception queueing and ephemeral triage sessions. |
 | `triage_profile` | string or `null` | `null` | Profile used by triage and Discord ops; `null` uses `default_program`. |
-| `review_profile` | string or `null` | `null` | Profile used by the periodic board review, and the review's only on/off switch. `null` disables the pass entirely, including its deterministic findings. A named profile that does not exist fails the session rather than falling back. |
+| `review_profile` | string or `null` | `null` | Profile used by the periodic board review's model stage. `null` runs the pass without a model: the digest is still built and the deterministic findings still escalate, but no session is spawned and no review budget is charged. A named profile that does not exist fails the session rather than falling back. |
 | `review_interval_mins` | non-negative integer | `20` | Minimum minutes between board reviews. The last run time is persisted, so a daemon that restarts often still reviews on this cadence rather than on every start-up. |
 | `daily_review_budget` | non-negative integer | `96` | Board-review sessions per UTC date, counted separately from `daily_llm_budget`. Exhausting it stops the reviewer session, not the deterministic findings. |
 | `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage, judgment, or board-review LLM process. |
@@ -374,6 +384,32 @@ GitHub adds later is held under its own lowercased name. `CLEAN` and `HAS_HOOKS`
 a pull request that reports no merge state at all proceeds too, since the rest of the gate
 has already cleared it.
 
+### How long a hold may last
+
+Every gate exit that is not a merge names a reason and returns, and the next pass one poll
+interval later reads the same pull request, reaches the same exit, and records the same
+reason again. For a check run that finishes in ten minutes that is a running commentary;
+for a condition nothing is going to clear it is the entire life of the pull request
+written to `decisions.jsonl` one line at a time, with no counter, no age, and no phase
+change — the board reads healthy while nothing moves.
+
+So a held pass costs budget. Each one is charged to the entry's `merge_hold` and bounded by
+`max_merge_holds`; the pair the budget is spent on is (reason, head sha), so a new head —
+the worker's answer to the last one — and a changed reason each restart the count, while a
+frozen pair keeps spending it. When the budget runs out the entry reaches `escalated`,
+records `merge_hold_cap_reached:<reason>` once, and stops recording that hold, which is
+what puts it in front of an operator in `robco overseer status` and the TUI Inbox instead
+of leaving it to accumulate identical lines.
+
+The exits that already carry a budget of their own are not charged here: the `behind_*`
+family is bounded by `max_branch_updates`, the settle barrier by `max_merge_settle_passes`,
+and a skip leaves the entry terminal already. One condition must never spend two budgets
+and escalate under whichever ran out first.
+
+An entry that gets past the deterministic gate — it merged, or only its judgment is
+outstanding — forgets what it was held on, so a condition that comes back after clearing
+starts from a full budget rather than inheriting the old one's residue.
+
 ### A pull request that has already settled
 
 Not every pull request the gate reads is still open. The TUI merges, `gh` merges, and
@@ -460,6 +496,16 @@ failure on the same revision is therefore handed back once rather than once per 
 interval; a new head resets that deduplication — the worker pushed, so the next failure is
 a genuinely new one — but never the budget, or a worker that pushes a broken fix each round
 would loop forever. A spent budget escalates with `merge_recovery_cap_reached`.
+
+With `merge_recovery_enabled` off — the default — nothing is handed back, and the
+classification above is inert. It is not silent, though: a failure that classified as
+worker-fixable is recorded once per (entry, head sha) as
+`merge_recovery_disabled:<reason>`, and `robco overseer status` reports the running total
+beside the switch as `merge-recovery: off (N dropped)`. The entry keeps its phase and no
+worker is touched, so the daemon behaves exactly as it did before; what changes is that
+the setting now reads as a consequence rather than a flag. Operator-only failures record
+nothing either way — they were never a worker's to fix. Whether to switch the setting on
+stays the operator's call; this is the evidence for making it.
 
 A handback returns the entry to `pr_opened` so the next pass re-evaluates it normally; a
 judge veto had escalated it, and that escalation is superseded rather than left to strand

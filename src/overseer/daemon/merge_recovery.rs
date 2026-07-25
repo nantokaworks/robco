@@ -87,14 +87,20 @@ pub(super) fn classify(reason: &str) -> FailureClass {
 /// What to do about one recorded failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RecoveryPlan {
-    /// Recovery is off, the failure is an operator's, or this revision has
-    /// already been handed back. Nothing is recorded: these are the steady
-    /// states, and a decision per poll interval would bury the real ones.
+    /// The failure is an operator's, or this revision has already been handed
+    /// back. Nothing is recorded: these are the steady states, and a decision per
+    /// poll interval would bury the real ones.
     Idle,
     /// Charge one handback and prompt the worker.
     Dispatch,
     /// The budget is spent; the entry escalates to an operator.
     CapReached,
+    /// A failure the owning worker could have fixed, left alone because recovery
+    /// is switched off. Recorded once per revision rather than acted on: whether
+    /// to switch the setting on is the operator's call, and until this was
+    /// counted the entire recoverable classification was invisible in the
+    /// default configuration.
+    Dropped,
 }
 
 /// Charges one handback to `entry` and reports how to spend it.
@@ -113,8 +119,11 @@ pub(super) fn plan(
 ) -> RecoveryPlan {
     // Without a head sha there is no deduplication key, and a handback that
     // cannot be deduplicated would re-prompt the worker on every pass.
-    if !enabled || head_sha.is_empty() || classify(reason) == FailureClass::Operator {
+    if head_sha.is_empty() || classify(reason) == FailureClass::Operator {
         return RecoveryPlan::Idle;
+    }
+    if !enabled {
+        return dropped(entry, head_sha);
     }
     if entry.merge_recovery.head.as_deref() == Some(head_sha) {
         return RecoveryPlan::Idle;
@@ -125,6 +134,29 @@ pub(super) fn plan(
     entry.merge_recovery.charged = entry.merge_recovery.charged.saturating_add(1);
     entry.merge_recovery.head = Some(head_sha.to_owned());
     RecoveryPlan::Dispatch
+}
+
+/// Counts one failure the disabled setting left unhanded, at most once per
+/// revision.
+///
+/// The deduplication key is the head sha the handback would have used, so the
+/// cost is one decision per revision rather than one per poll — the same shape
+/// the enabled path already has. The count is kept on the entry so
+/// `robco overseer status` can report the setting's consequence beside the
+/// setting itself.
+fn dropped(entry: &mut LedgerEntry, head_sha: &str) -> RecoveryPlan {
+    if entry.merge_recovery.dropped_head.as_deref() == Some(head_sha) {
+        return RecoveryPlan::Idle;
+    }
+    entry.merge_recovery.dropped_head = Some(head_sha.to_owned());
+    entry.merge_recovery.dropped = entry.merge_recovery.dropped.saturating_add(1);
+    RecoveryPlan::Dropped
+}
+
+/// Reason recorded for a recoverable failure nobody was handed, carrying the
+/// failure verbatim so the log says what the setting cost.
+fn disabled(reason: &str) -> String {
+    format!("merge_recovery_disabled:{reason}")
 }
 
 /// Acts on a recorded merge failure: hands it back, escalates it, or leaves it.
@@ -143,6 +175,10 @@ pub(super) fn consider(
         config.max_merge_recoveries,
     ) {
         RecoveryPlan::Idle => Ok(()),
+        // Recorded, not acted on: the entry keeps its phase and its worker is
+        // never touched, so the daemon behaves exactly as it did with recovery
+        // off — it just no longer does so silently.
+        RecoveryPlan::Dropped => log(entry, DecisionKind::Hold, &disabled(reason)),
         RecoveryPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
             log(entry, DecisionKind::Escalate, CAP_REACHED)

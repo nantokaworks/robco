@@ -68,6 +68,7 @@ fn merge_case_saturates_additions_independently() {
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: None,
     };
     let value = json!({
@@ -97,6 +98,7 @@ fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: None,
     };
     assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
@@ -122,6 +124,7 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: None,
     };
     let now = chrono::Local::now();

@@ -22,23 +22,68 @@ fn logged(path: &std::path::Path) -> Vec<DecisionEntry> {
     logging::tail_from(path, 100).unwrap()
 }
 
+/// The detection the default configuration used to skip entirely: with no
+/// reviewer profile the whole pass returned before the digest was built, so the
+/// two rules written for the incidents that went undiagnosed had never run.
 #[test]
-fn a_disabled_reviewer_leaves_no_trace() {
+fn the_deterministic_findings_run_without_a_reviewer_model() {
     let temp = tempfile::tempdir().unwrap();
-    let mut review = pass(temp.path());
-    let ledger = ledger_with(vec![live_entry(
+    let log = temp.path().join("decisions.jsonl");
+    let config = Config::default();
+    assert!(config.overseer.review_profile.is_none());
+    for _ in 0..3 {
+        let mut held = DecisionEntry::new(DecisionKind::Hold, "checks_waiting");
+        held.task = Some("#204".into());
+        held.source = Some("auto_merge".into());
+        logging::append_to(&log, &held).unwrap();
+    }
+    let stalled = ledger_with(vec![live_entry(
         "#204",
         LedgerPhase::PrOpened,
         now() - chrono::Duration::minutes(600),
     )]);
+    let mut review = pass(temp.path());
 
-    review
-        .tick(&config_with_review(None), &ledger, now())
-        .unwrap();
+    review.tick(&config, &stalled, now()).unwrap();
 
-    assert!(!temp.path().join("decisions.jsonl").exists());
-    assert!(!temp.path().join("review").exists());
+    let escalated = |entries: Vec<DecisionEntry>| {
+        entries
+            .into_iter()
+            .filter(|entry| entry.kind == DecisionKind::Escalate)
+            .collect::<Vec<_>>()
+    };
+    let found = escalated(logged(&log));
+    assert!(found.iter().any(|entry| {
+        entry
+            .reason
+            .starts_with("repeating_hold: 3× checks_waiting")
+    }));
+    assert!(
+        found
+            .iter()
+            .any(|entry| entry.reason.starts_with("stalled: #204"))
+    );
+    assert!(
+        found
+            .iter()
+            .all(|entry| entry.source.as_deref() == Some(SOURCE))
+    );
+    // A profile is what buys the model stage, so without one nothing is spawned,
+    // nothing is charged, and no budget notice is written.
+    assert!(review.active.is_none());
     assert_eq!(review.calls_today(), 0);
+    assert!(
+        !logged(&log)
+            .iter()
+            .any(|entry| entry.reason == "review_budget_exhausted")
+    );
+
+    // Both conditions still hold an interval later, and both were already
+    // reported: a standing problem escalates once, not once per interval.
+    review
+        .tick(&config, &stalled, now() + chrono::Duration::minutes(60))
+        .unwrap();
+    assert_eq!(escalated(logged(&log)).len(), found.len());
 }
 
 #[test]
