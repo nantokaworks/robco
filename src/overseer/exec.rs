@@ -5,7 +5,10 @@ use super::{
 pub(crate) use crate::exec::run_timeout;
 use crate::{
     Result,
-    git::post_merge::{Cleanup, OnFailure},
+    git::{
+        merge_lock::with_merge_lock_if_free,
+        post_merge::{Cleanup, OnFailure},
+    },
     registry::Registry,
 };
 use fd_lock::RwLock;
@@ -111,17 +114,18 @@ fn kill_agent_session(agent_id: &str) -> Result<()> {
 
 /// Runs the post-merge cleanup for one merged agent and drops its registry row.
 ///
-/// The sequence itself lives in [`crate::git::post_merge`] so this path and the
-/// interactive merge cannot drift apart. It runs under [`OnFailure::Continue`]:
-/// nobody is watching the daemon, and a base branch that refuses to fast-forward
-/// must not leave the worktree and the branch behind forever.
+/// The cleanup touches the same base branch and working tree an interactive or
+/// MCP merge does, so it runs under the repository's merge lock — the daemon is
+/// the third surface that has to take it for the other two to mean anything.
 ///
-/// The registry row survives a failed worktree removal on purpose. It is what
-/// makes the next reconcile pass re-emit the cleanup, so the retry keeps
-/// happening until the worktree is actually gone.
+/// It does not *wait* for the lock. A daemon pass covers every repository it
+/// watches, and blocking one of them on however long a merge takes would stall
+/// the whole pass. Losing the race is left for the next pass instead, which the
+/// surviving registry row is what arranges — see [`clean_up_locked`].
 ///
 /// Returns the repository path when the base fast-forward succeeded, which is
-/// the signal the merge gate's per-repository barrier waits on.
+/// the signal the merge gate's per-repository barrier waits on. Contention
+/// returns `None`: the pull did not run, so the barrier must not lift.
 fn clean_up_agent(agent_id: &str) -> Result<Option<String>> {
     let registry = Registry::load()?;
     let target = registry.repos.iter().find_map(|repo| {
@@ -139,10 +143,47 @@ fn clean_up_agent(agent_id: &str) -> Result<Option<String>> {
     let Some((repo, worktree, branch)) = target else {
         return Ok(None);
     };
+    let ran = with_merge_lock_if_free(&repo, || {
+        clean_up_locked(agent_id, &repo, &worktree, &branch)
+    })?;
+    let Some(pulled) = ran else {
+        // Logged as its own thing rather than through `log_cleanup_failure`:
+        // nothing failed, and calling it a failure would have an operator
+        // reading the log for a cleanup that needs looking at find a merge
+        // that was working as intended.
+        log_message(
+            None,
+            &format!(
+                "cleanup for {agent_id} deferred: another robco process is merging in {}",
+                repo.display()
+            ),
+        )?;
+        return Ok(None);
+    };
+    Ok(pulled)
+}
+
+/// The cleanup itself, with the repository's merge lock held.
+///
+/// The sequence lives in [`crate::git::post_merge`] so this path and the
+/// interactive merge cannot drift apart. It runs under [`OnFailure::Continue`]:
+/// nobody is watching the daemon, and a base branch that refuses to fast-forward
+/// must not leave the worktree and the branch behind forever.
+///
+/// The registry row survives a failed worktree removal on purpose. It is what
+/// makes the next reconcile pass re-emit the cleanup, so the retry keeps
+/// happening until the worktree is actually gone. A pass that never got the lock
+/// does not reach this function at all, so its row survives for the same reason.
+fn clean_up_locked(
+    agent_id: &str,
+    repo: &Path,
+    worktree: &Path,
+    branch: &str,
+) -> Result<Option<String>> {
     let outcome = Cleanup {
-        repo: &repo,
-        worktree: &worktree,
-        branch: &branch,
+        repo,
+        worktree,
+        branch,
         on_failure: OnFailure::Continue,
     }
     .run(|_| ())?;

@@ -1,7 +1,9 @@
 mod branch;
 mod merge_failure;
 pub mod merge_flow;
-mod merge_lock;
+// Crate-visible rather than private: the Overseer daemon's post-merge cleanup
+// takes the same lock from outside this module.
+pub(crate) mod merge_lock;
 pub mod post_merge;
 mod remote;
 #[cfg(test)]
