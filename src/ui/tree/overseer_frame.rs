@@ -15,6 +15,13 @@ use crate::ui::{App, theme::DEFAULT as THEME};
 /// status glyph and a category's summary both sit one of these off their label.
 const GAP: &str = "  ";
 
+/// Indent of an expanded category's detail rows. It matches the column
+/// `category_line` puts the category label at, so detail text reads as sitting
+/// under its label instead of being outdented past it. On a 24-column sidebar
+/// every column spent here is a column of content lost, so the frame nests in
+/// one step and stops.
+const DETAIL_INDENT: &str = "    ";
+
 pub(in crate::ui) struct FrameContent {
     pub(in crate::ui) lines: Vec<Line<'static>>,
     pub(in crate::ui) selected_row: u16,
@@ -149,7 +156,7 @@ fn category_line(
     };
     Line::from(vec![
         Span::styled(
-            format!("{}   {arrow} {}  ", marker(selected), category.label()),
+            format!("{} {arrow} {}{GAP}", marker(selected), category.label()),
             row_style(selected),
         ),
         Span::styled(
@@ -165,9 +172,12 @@ fn category_line(
     ])
 }
 
+/// Nests a category's detail rows directly under its label, which
+/// [`category_line`] puts at column 4. The detail rows carry no indent of their
+/// own, so this is the frame's single indent origin for them.
 fn indent_detail(line: Line<'static>) -> Line<'static> {
     let mut spans = Vec::with_capacity(line.spans.len() + 1);
-    spans.push(Span::styled("      ", THEME.muted_style()));
+    spans.push(Span::styled(DETAIL_INDENT, THEME.muted_style()));
     spans.extend(line.spans);
     Line::from(spans)
 }
@@ -214,6 +224,66 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let app = App::new(Registry::default(), Config::default(), temp.path().into());
         (warnings, app)
+    }
+
+    /// One inbox item so the category renders a marker row, a `none`-free
+    /// header, and the key hint — the three rows that used to carry their own
+    /// leading spaces on top of the frame indent.
+    fn inbox_app() -> App {
+        let (_, mut app) = warning_state();
+        app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
+            kind: crate::ui::inbox::InboxKind::Escalation,
+            target_session: None,
+            target_id: "task-1".into(),
+            label: "task-1".into(),
+            at: chrono::Utc::now(),
+        }];
+        app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+        app
+    }
+
+    #[test]
+    fn expanded_detail_rows_share_one_indent_under_the_category_label() {
+        let app = inbox_app();
+        let content = build_content_with_warnings(&app, Some(23), &[]);
+
+        let label = OverseerCategory::Inbox.label();
+        let category = content
+            .lines
+            .iter()
+            .position(|line| line.to_string().contains(label))
+            .expect("no Inbox category row");
+        // The label the detail rows nest under starts at column 4. Measured in
+        // columns, not bytes: the expand arrow ahead of it is three bytes wide.
+        let row = content.lines[category].to_string();
+        let label_at = row.find(label).expect("no Inbox label");
+        assert_eq!(
+            unicode_width::UnicodeWidthStr::width(&row[..label_at]),
+            DETAIL_INDENT.len()
+        );
+
+        // Every detail row starts at exactly that column: one indent origin, no
+        // row adding a second one of its own.
+        let detail_count =
+            crate::ui::overseer::category_detail(&app, OverseerCategory::Inbox).len();
+        let details = content.lines[category + 1..=category + detail_count]
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        assert!(
+            details.iter().any(|line| line.contains("[ESC]")),
+            "inbox item row missing: {details:?}"
+        );
+        for detail in &details {
+            if detail.trim().is_empty() {
+                continue;
+            }
+            assert_eq!(
+                detail.len() - detail.trim_start().len(),
+                DETAIL_INDENT.len(),
+                "detail row is not at the frame's single indent origin: {detail:?}"
+            );
+        }
     }
 
     #[test]

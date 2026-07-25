@@ -191,7 +191,7 @@ pub(super) fn append_inbox(lines: &mut Vec<Line<'static>>, app: &App) {
         THEME.accent_bold_style(),
     )));
     if app.overseer_inbox.is_empty() {
-        lines.push(Line::from(Span::styled("  none", THEME.muted_style())));
+        lines.push(Line::from(Span::styled("none", THEME.muted_style())));
     }
     for (index, item) in app.overseer_inbox.iter().enumerate() {
         let marker = if index == app.overseer_inbox_selected {
@@ -207,13 +207,15 @@ pub(super) fn append_inbox(lines: &mut Vec<Line<'static>>, app: &App) {
             .target_session
             .as_deref()
             .map_or("display-only", |session| session);
+        // The selection marker is the row head, exactly as in the tree rows —
+        // the caller owns the indent, so no leading space of our own.
         lines.push(Line::from(format!(
-            " {marker} [{kind}] {} => {target}",
+            "{marker} [{kind}] {} => {target}",
             item.label
         )));
     }
     lines.push(Line::from(Span::styled(
-        "  [/] select   a answer   y approve",
+        "[/] select   a answer   y approve",
         THEME.hint_style(),
     )));
     lines.push(Line::default());
