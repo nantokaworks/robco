@@ -1,8 +1,18 @@
 name: Basic Checks
 
+# A push to a branch with an open pull request would otherwise validate it twice:
+# once for the push and once for the pull request, under the same check name. Only
+# `main` is validated on push; every other branch is validated as a pull request.
 on:
   push:
+    branches:
+      - main
   pull_request:
+
+# A superseded run of the same ref answers about a head nobody is merging any more.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:

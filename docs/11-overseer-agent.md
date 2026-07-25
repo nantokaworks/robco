@@ -88,7 +88,7 @@ rather than parking the task for its full TTL.
 
 The auto-merge gate only considers ledger entries in `pr_opened`. It reads the pull
 request, verifies protection on the branch that pull request targets, requires an open PR
-with a non-empty check rollup in which every check is `SUCCESS`, requires GitHub to report
+with a non-empty check rollup in which every check is satisfied, requires GitHub to report
 the pull request as mergeable, and invokes `gh pr merge` with the configured strategy.
 Merges are serialised per repository: once one pull request of a repository merges, the
 rest of that repository is held with `repo_merged_this_pass` until the next pass, because
@@ -443,6 +443,16 @@ another [`merge_strategy`](09-config-reference.md#merge_strategy).
 finished holds under `checks_waiting` instead, so a worker turn is never spent on a pull
 request that has not failed at anything. A pull request that is no longer open never
 reaches either: the gate concludes on it first.
+
+The rollup is read per check *name*, on that name's most recent run, which is the unit
+branch protection requires. Two consequences: a run superseded by a newer one of the same
+name — a duplicate a workflow's concurrency group cancelled, or one stranded in the queue
+behind the run that overtook it — cannot veto the run that replaced it, and a name whose
+newest run genuinely failed still reads `checks_not_green`. Runs of one name that started
+in the same second cannot be ordered, so the gate holds until both have reported.
+`SKIPPED` and `NEUTRAL` are read as satisfied rather than as still-running: they are
+terminal conclusions, and a required workflow a path filter excluded reports one of them
+and will never report anything else.
 
 Each handback is charged to the entry's `merge_recovery.charged` before it runs, bounded by
 `max_merge_recoveries`, and deduplicated by the head sha it was charged against. The same
