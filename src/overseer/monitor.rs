@@ -176,7 +176,11 @@ fn apply_pr(entry: &mut LedgerEntry, observations: &Observations, actions: &mut 
                     entry.pr_url.clone_from(&pr.url);
                 }
             }
-            "CLOSED" => {}
+            // Neither moves an entry that is already terminal. An escalated entry
+            // is read again so a hand-merge can reach it, and its pull request is
+            // usually still open while the operator looks — a state, not a
+            // surprise, and the arm below would report it every poll interval.
+            "OPEN" | "CLOSED" => {}
             state => actions.push(Action::LogDecision {
                 task_id: Some(entry.task_id.clone()),
                 message: format!("ignored unknown PR state {state:?}"),
@@ -287,6 +291,9 @@ fn observation_errors(observations: &Observations) -> Vec<Action> {
 #[cfg(test)]
 #[path = "monitor_observation_tests.rs"]
 mod observation_tests;
+#[cfg(test)]
+#[path = "monitor_pr_tests.rs"]
+mod pr_tests;
 #[cfg(test)]
 #[path = "monitor_tests.rs"]
 mod tests;

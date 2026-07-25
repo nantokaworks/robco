@@ -92,4 +92,32 @@ fn only_a_gated_halt_carries_the_strictness_mode() {
     let gated = Halt::gated("unprotected:unknown_remote");
     assert_eq!(gated.kind, DecisionKind::Hold);
     assert_eq!(gated.reason, "unprotected:unknown_remote");
+    // A skip is the gate saying there is nothing here to do, which is not the
+    // protection gate's business either.
+    assert_eq!(Halt::skip("pr_already_merged").kind, DecisionKind::Skip);
+}
+
+/// The exit this task exists for: a pull request merged outside the gate used to
+/// hold under `checks_waiting` forever, promising a wait for checks that would
+/// never report on a pull request that had already landed.
+#[test]
+fn a_merged_pull_request_ends_the_entry_instead_of_waiting_on_it() {
+    let mut entry = entry();
+    let halt = concluded(&mut entry, PrConclusion::Merged);
+    assert_eq!(halt.kind, DecisionKind::Skip);
+    assert_eq!(halt.reason, "pr_already_merged");
+    // The merge this entry was waiting for happened, so the monitor cleans its
+    // worker up from here exactly as it does for a merge the gate performed.
+    assert_eq!(entry.phase, LedgerPhase::Merged);
+}
+
+#[test]
+fn a_closed_pull_request_stays_an_operators_problem() {
+    let mut entry = entry();
+    let halt = concluded(&mut entry, PrConclusion::Closed);
+    assert_eq!(halt.kind, DecisionKind::Escalate);
+    assert_eq!(halt.reason, "pr_closed_unmerged");
+    // Nothing landed and no worker can make it land — reopening is a human act —
+    // so the entry stays where `robco`'s inbox shows it to one.
+    assert_eq!(entry.phase, LedgerPhase::Escalated);
 }

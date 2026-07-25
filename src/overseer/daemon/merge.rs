@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::{
     merge_apply::{merge_now, merge_state_cleared},
-    merge_decision::{Halt, Outcome, log, log_halt, manual_skip},
+    merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
     merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection,
@@ -26,8 +26,8 @@ use crate::{
 /// Reason recorded when a check finished and did not pass — the worker's own head is red.
 const CHECKS_FAILED: &str = "checks_not_green";
 
-/// Reason recorded when the checks have not finished, or the pull request is no longer
-/// open. Nothing has failed, so nothing is handed back.
+/// Reason recorded when the checks have not finished. Nothing has failed, so nothing
+/// is handed back.
 const CHECKS_WAITING: &str = "checks_waiting";
 
 pub(super) fn auto_merge_pass(
@@ -132,10 +132,10 @@ fn log_repo(repo: &str, reason: &str) -> Result<()> {
     logging::append(&decision)
 }
 
-/// Runs one pull request through the gate: read, protection, checks, merge state,
-/// merge judge, merge. Every non-merge exit names itself, so the caller has one
-/// place to record the decision and one place to decide whether the failure is
-/// the owning worker's to fix.
+/// Runs one pull request through the gate: read, conclusion, protection, checks,
+/// merge state, merge judge, merge. Every non-merge exit names itself, so the
+/// caller has one place to record the decision and one place to decide whether
+/// the failure is the owning worker's to fix.
 fn evaluate(
     entry: &mut LedgerEntry,
     url: &str,
@@ -151,6 +151,16 @@ fn evaluate(
         Err(reason) => return Ok(Halt::hold(reason).on("")),
     };
     let head = head_sha(&value).to_owned();
+    // A pull request GitHub no longer reports as open is a fact rather than
+    // something to wait for, and it is read first because everything below costs
+    // GitHub calls that cannot change the answer. The judge's terminal verdict is
+    // dropped with it: that verdict is what keeps an escalated entry re-entering
+    // this gate every pass, and a pull request that can never merge again has
+    // nothing left to re-judge.
+    if let Some(conclusion) = pull_request::conclusion(&value) {
+        judgments.forget_terminal_merge(&entry.task_id, url)?;
+        return Ok(merge_decision::concluded(entry, conclusion).on(&head));
+    }
     let mode = config.overseer.protection_mode;
     if let Some(unmet) =
         protection::unmet_condition(entry, registry, cache, mode, base_branch(&value))

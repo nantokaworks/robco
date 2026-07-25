@@ -18,8 +18,10 @@ poll then performs the same ordered pass:
    ledger requests, and drain the runtime requests other processes left in
    `~/.robco/overseer/runtime_requests/`.
 2. Gather new inbox reports, registry/tmux state, dropr task state, and GitHub pull
-   request state. The observation is appended to
-   `~/.robco/overseer/observations.jsonl`.
+   request state. Pull request state is read for every entry that is still live, and
+   also for an escalated entry that already has a pull request — an escalation is a
+   question put to an operator, and the answer is often the merge itself. The
+   observation is appended to `~/.robco/overseer/observations.jsonl`.
 3. Reconcile those facts with `~/.robco/overseer/ledger.json`. The monitor drops entries
    for workers that are no longer Overseer children, advances phases, detects dead or
    stuck workers, escalates released task locks, and cleans up merged workers.
@@ -36,7 +38,10 @@ least two seconds apart, so a burst of requests coalesces into one pass — ever
 in the queue is drained by it — and the hold is recorded in `decisions.jsonl`. A woken
 pass does exactly what a timed pass does; the request only decides *when*, never *what*.
 Merges performed outside RobCo (GitHub's web UI, `gh` on another machine) have nothing
-local to announce them and are still found by polling.
+local to announce them and are still found by polling — including a merge an operator
+performs to resolve an escalation, which is why an escalated entry with a pull request
+is still read. That read only ever moves such an entry on a merge: a pull request that is
+still open, or closed without merging, leaves it escalated and says nothing.
 
 The dispatch engine considers ready tasks from dropr workspaces associated with RobCo's
 registered repository remotes. It applies the dispatch toggle, daily limit, failure
@@ -366,6 +371,39 @@ GitHub adds later is held under its own lowercased name. `CLEAN` and `HAS_HOOKS`
 a pull request that reports no merge state at all proceeds too, since the rest of the gate
 has already cleared it.
 
+### A pull request that has already settled
+
+Not every pull request the gate reads is still open. The TUI merges, `gh` merges, and
+merges from GitHub's web UI all land without telling Overseer, and an operator answering
+an escalation usually answers it that way. The gate therefore reads the pull request's
+own `state` from the same `gh pr view` and acts on it **before** the protection probe,
+because everything below that point costs GitHub calls that cannot change the answer:
+
+- `MERGED` takes the entry to `merged` under `pr_already_merged`, recorded as a skip
+  rather than a hold — nothing failed, and the merge this entry was waiting for
+  happened. The monitor cleans the worker up from there like any other merge.
+- `CLOSED` without a merge stays escalated under `pr_closed_unmerged`. Nothing landed
+  and no worker can make it land, since reopening a pull request is a human act, so it
+  belongs in the operator inbox. `failed` would have the ledger report a failure no
+  worker committed.
+
+A state Overseer does not recognise, or a read that reports none at all, is not treated
+as a conclusion: it still holds under `checks_waiting`, because a read that did not
+answer is not a terminal fact.
+
+Neither conclusion raises the per-repository settle barrier. That barrier guards against
+reads made stale by a merge *this pass* performed, and it is lowered by the `git pull
+--ff-only` in the cleanup sequence — which may never run for a worker that is already
+gone. An external merge advanced the base long ago, so raising the barrier would park the
+repository until `repo_merge_settle_cap_reached` for nothing.
+
+Both conclusions also drop any terminal verdict the merge judge left for that pull
+request. That verdict is what keeps an escalated entry re-entering the gate every pass to
+be reconsidered, and a pull request that can never be merged again has nothing left to
+re-judge. It is what holds the invariant this exit exists for: every exit taken for a
+pull request that is no longer open leaves the reconsidering set, so the same decision is
+recorded once instead of once per poll interval.
+
 ### Merge recovery
 
 A merge failure is not always an operator's problem. The worker that wrote the branch is
@@ -388,9 +426,10 @@ Reasons are classified into the worker's and the operator's:
   worker verbatim, because it is the actual instruction.
 - **Operator-only:** `unprotected:*`, `missing_pr_url`, `autonomy_envelope`,
   `repo_merged_this_pass`, `behind_branch_updated` (already the recovery), `checks_waiting`
-  (nothing has failed yet), `merge_refused:*`, and every probe or parse failure. **An
-  unrecognised reason is operator-only** — a failure nobody anticipated must not silently
-  drive a worker.
+  (nothing has failed yet), `pr_already_merged` (the pull request landed, so there is
+  nothing to fix), `pr_closed_unmerged` (only a human can reopen it), `merge_refused:*`,
+  and every probe or parse failure. **An unrecognised reason is operator-only** — a failure
+  nobody anticipated must not silently drive a worker.
 
 `merge_refused:rebase_refused_merge_commit` is a rebase GitHub declined because the head
 branch carries a merge commit. It is deliberately the operator's: the worker cannot clear
@@ -398,8 +437,9 @@ it without rewriting a published branch, which the rails forbid, and the fix is 
 another [`merge_strategy`](09-config-reference.md#merge_strategy).
 
 `checks_not_green` means a check finished and did not pass. A head whose checks have not
-finished, and a pull request that is no longer open, hold under `checks_waiting` instead,
-so a worker turn is never spent on a pull request that has not failed at anything.
+finished holds under `checks_waiting` instead, so a worker turn is never spent on a pull
+request that has not failed at anything. A pull request that is no longer open never
+reaches either: the gate concludes on it first.
 
 Each handback is charged to the entry's `merge_recovery.charged` before it runs, bounded by
 `max_merge_recoveries`, and deduplicated by the head sha it was charged against. The same

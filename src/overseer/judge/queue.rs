@@ -2,18 +2,14 @@ use super::{
     MergeCase, Request, audit,
     completed::CompletedJudgments,
     completion,
-    keys::{dispatch_key, merge_identity, merge_identity_parts, merge_key},
+    keys::dispatch_key,
     pending::PendingQueue,
-    result::{self, DispatchAdvice, MergeAdvice, Parsed},
+    result::{self, DispatchAdvice, Parsed},
     revisions::RevisionCache,
     snapshot::QueueSnapshot,
     spawn_session,
 };
-use crate::{
-    Result,
-    config::Config,
-    overseer::{daily::DailyCounter, logging::DecisionKind},
-};
+use crate::{Result, config::Config, overseer::daily::DailyCounter};
 use std::{
     collections::{HashSet, VecDeque},
     fs,
@@ -177,42 +173,6 @@ impl JudgmentQueue {
             .discard_stale_dispatch(&self.log_path, approved)
     }
 
-    pub fn merge_advice(&mut self, case: MergeCase) -> Result<Option<MergeAdvice>> {
-        let identity = merge_identity(&case);
-        let key = merge_key(&case);
-        if self.terminal_merges.matches(&identity, &key) {
-            return Ok(None);
-        }
-        // Anything still held for this pull request under another key answered a
-        // version of the change that no longer exists.
-        self.completed
-            .discard_superseded_merges(&self.log_path, &identity, &key)?;
-        if let Some(Parsed::Merge(advice)) = self.completed.take(&key) {
-            if advice.outcome == super::result::MergeJudgment::Allow {
-                self.terminal_merges
-                    .clear(&self.revisions_path, &identity)?;
-            } else {
-                self.terminal_merges
-                    .remember(&self.revisions_path, identity, key.clone())?;
-            }
-            return Ok(Some(advice));
-        }
-        let (task_id, repo) = (case.task_id.clone(), case.repo.clone());
-        // Recorded on the transition into the queue only. The waiting pull
-        // request is otherwise the one auto-merge outcome that writes nothing,
-        // and several ticks of silence read as a dead auto-merge.
-        if self.enqueue_once(Request::Merge { key, case }) {
-            audit::log(
-                &self.log_path,
-                DecisionKind::Hold,
-                Some(&task_id),
-                Some(&repo),
-                audit::MERGE_PENDING,
-            )?;
-        }
-        Ok(None)
-    }
-
     pub fn llm_calls_today(&self) -> u32 {
         self.counter.count_today()
     }
@@ -220,13 +180,6 @@ impl JudgmentQueue {
     /// Last published queue state, for readers outside the daemon process.
     pub fn snapshot(&self) -> &QueueSnapshot {
         &self.snapshot
-    }
-
-    pub fn has_terminal_merge(&self, task_id: &str, pr_url: Option<&str>) -> bool {
-        pr_url.is_some_and(|url| {
-            self.terminal_merges
-                .contains(&merge_identity_parts(task_id, url))
-        })
     }
 
     /// Returns `true` when the request was newly queued rather than already
@@ -290,6 +243,9 @@ impl JudgmentQueue {
         Ok(())
     }
 }
+
+#[path = "queue_merges.rs"]
+mod merges;
 
 #[cfg(test)]
 #[path = "queue_test_support.rs"]
