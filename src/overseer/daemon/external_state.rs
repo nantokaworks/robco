@@ -8,7 +8,7 @@ use crate::{
     overseer::{
         exec::run_timeout,
         ledger::Ledger,
-        monitor::{Observations, PrObservation, TaskObservation},
+        monitor::{ObservationError, Observations, PrObservation, TaskObservation},
     },
 };
 use std::{collections::HashSet, process::Command};
@@ -37,16 +37,16 @@ fn gather_repo_task_states(
     let output = match run_timeout(command, COMMAND_TIMEOUT) {
         Ok(output) if output.status.success() => output,
         Ok(output) => {
-            observations.errors.push(format!(
-                "git origin probe exited {} for {repo}",
-                output.status
-            ));
+            observations.errors.push(
+                ObservationError::new(format!("git origin probe exited {}", output.status))
+                    .in_repo(repo),
+            );
             return;
         }
         Err(error) => {
-            observations
-                .errors
-                .push(format!("git origin probe skipped for {repo}: {error}"));
+            observations.errors.push(
+                ObservationError::new(format!("git origin probe skipped: {error}")).in_repo(repo),
+            );
             return;
         }
     };
@@ -54,23 +54,26 @@ fn gather_repo_task_states(
     let Some(workspace) = workspaces.find_by_repo_url(origin.trim()) else {
         observations
             .errors
-            .push(format!("dropr workspace not found for {repo}"));
+            .push(ObservationError::new("dropr workspace not found").in_repo(repo));
         return;
     };
     let fetch = crate::dropr::fetch_repo_tasks(&workspace.id);
     if !fetch.answered {
-        observations.errors.push(format!(
-            "dropr task probe skipped for {repo}: {}",
-            fetch.problems.join("; ")
-        ));
+        observations.errors.push(
+            ObservationError::new(format!(
+                "dropr task probe skipped: {}",
+                fetch.problems.join("; ")
+            ))
+            .in_repo(repo),
+        );
         return;
     }
     // The probe answered, but not in full: an entry whose task is in a subtree
     // the fetch could not read looks unobserved, not unchanged.
     for problem in &fetch.problems {
-        observations
-            .errors
-            .push(format!("dropr task probe incomplete for {repo}: {problem}"));
+        observations.errors.push(
+            ObservationError::new(format!("dropr task probe incomplete: {problem}")).in_repo(repo),
+        );
     }
     let tasks = fetch.tasks;
     for entry in ledger
@@ -90,35 +93,111 @@ fn gather_repo_task_states(
     }
 }
 
+const PR_FIELDS: &str = "state,statusCheckRollup,url";
+
 pub(super) fn gather_pr_states(ledger: &Ledger, observations: &mut Observations) {
     for entry in ledger.entries.iter().filter(|entry| !terminal(entry.phase)) {
-        let mut command = Command::new("gh");
-        let selector = entry.pr_url.as_deref().unwrap_or(&entry.branch);
-        command.current_dir(&entry.repo).args([
-            "pr",
-            "view",
-            selector,
-            "--json",
-            "state,statusCheckRollup,url",
-        ]);
-        match run_timeout(command, COMMAND_TIMEOUT) {
-            Ok(output) if output.status.success() => {
-                match serde_json::from_slice::<PrObservation>(&output.stdout) {
-                    Ok(mut pr) => {
-                        pr.task_id = Some(entry.task_id.clone());
-                        observations.prs.push(pr);
-                    }
-                    Err(error) => observations
-                        .errors
-                        .push(format!("gh PR JSON skipped: {error}")),
-                }
+        let observed = match &entry.pr_url {
+            Some(url) => view_pr(&entry.repo, url),
+            None => list_branch_prs(&entry.repo, &entry.branch),
+        };
+        match observed {
+            Ok(Some(mut pr)) => {
+                pr.task_id = Some(entry.task_id.clone());
+                observations.prs.push(pr);
             }
-            Ok(output) => observations
+            // The branch has no pull request yet. A worker spends many minutes
+            // implementing before it opens one, so this is the normal case and
+            // there is nothing to report.
+            Ok(None) => {}
+            Err(message) => observations
                 .errors
-                .push(format!("gh PR probe exited {}", output.status)),
-            Err(error) => observations
-                .errors
-                .push(format!("gh PR probe skipped: {error}")),
+                .push(ObservationError::new(message).about(&entry.task_id, &entry.repo)),
         }
+    }
+}
+
+/// Reads the pull request an entry already knows the URL of.
+///
+/// A failure here is genuine: the entry has a pull request, so `gh` failing to
+/// read it is a probe that did not work rather than a state.
+fn view_pr(repo: &str, url: &str) -> std::result::Result<Option<PrObservation>, String> {
+    let mut command = Command::new("gh");
+    command
+        .current_dir(repo)
+        .args(["pr", "view", url, "--json", PR_FIELDS]);
+    match run_timeout(command, COMMAND_TIMEOUT) {
+        Ok(output) if output.status.success() => serde_json::from_slice(&output.stdout)
+            .map(Some)
+            .map_err(|error| format!("gh PR JSON unreadable: {error}")),
+        Ok(output) => Err(format!("gh PR probe exited {}", output.status)),
+        Err(error) => Err(format!("gh PR probe skipped: {error}")),
+    }
+}
+
+/// Looks for a pull request on an entry's branch, before one is known.
+///
+/// `gh pr view <branch>` exits 1 while the branch has none, which made "the
+/// worker has not opened its pull request yet" indistinguishable from a real
+/// `gh` failure — and wrote an error into `decisions.jsonl` on every pass for
+/// every entry still being implemented. `gh pr list` reports the same absence as
+/// an empty array and exit 0, which is the distinction [`crate::git::PrState`]
+/// already draws with its `Absent` variant.
+///
+/// The states are ranked the way `git::remote::pr_state_from_list` ranks them: a
+/// branch can carry several pull requests at once, an open one is still
+/// mergeable, and a merge that landed outweighs an attempt that was abandoned.
+fn list_branch_prs(repo: &str, branch: &str) -> std::result::Result<Option<PrObservation>, String> {
+    let mut command = Command::new("gh");
+    command
+        .current_dir(repo)
+        .args(["pr", "list", "--head", branch, "--state", "all"])
+        .args(["--json", PR_FIELDS]);
+    let output = match run_timeout(command, COMMAND_TIMEOUT) {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => return Err(format!("gh PR list exited {}", output.status)),
+        Err(error) => return Err(format!("gh PR list skipped: {error}")),
+    };
+    let prs: Vec<PrObservation> = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("gh PR list JSON unreadable: {error}"))?;
+    Ok(best_pr(prs))
+}
+
+fn best_pr(prs: Vec<PrObservation>) -> Option<PrObservation> {
+    let rank = |pr: &PrObservation| match pr.state.to_ascii_uppercase().as_str() {
+        "OPEN" => 0,
+        "MERGED" => 1,
+        _ => 2,
+    };
+    prs.into_iter().min_by_key(rank)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pr(state: &str) -> PrObservation {
+        PrObservation {
+            state: state.into(),
+            url: Some(format!("https://pr/{state}")),
+            ..PrObservation::default()
+        }
+    }
+
+    /// The case that used to write an error into `decisions.jsonl` on every
+    /// pass: a worker is still implementing and has not opened its pull request.
+    #[test]
+    fn a_branch_with_no_pull_request_is_a_state_not_an_error() {
+        assert_eq!(best_pr(Vec::new()), None);
+    }
+
+    #[test]
+    fn an_open_pull_request_outranks_earlier_attempts() {
+        let best = best_pr(vec![pr("CLOSED"), pr("OPEN"), pr("MERGED")]).unwrap();
+        assert_eq!(best.state, "OPEN");
+        // A merge that landed still outweighs an attempt that was abandoned, so
+        // a reopened-then-closed branch does not read as unmerged.
+        let best = best_pr(vec![pr("CLOSED"), pr("MERGED")]).unwrap();
+        assert_eq!(best.state, "MERGED");
     }
 }

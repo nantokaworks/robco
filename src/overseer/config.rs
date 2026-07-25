@@ -48,6 +48,11 @@ pub struct OverseerConfig {
     pub daily_llm_budget: u32,
     pub merge_strategy: String,
     pub max_branch_updates: u32,
+    /// Auto-merge passes one repository may be held waiting for its post-merge
+    /// `git pull --ff-only` before the barrier is lifted without it. The bound is
+    /// what stops a pull that never succeeds from parking the repository
+    /// forever. At the default poll interval this is five minutes.
+    pub max_merge_settle_passes: u32,
     /// Whether a merge failure the owning worker could fix is handed back to it
     /// instead of parking the pull request. Default-off, so a daemon that has
     /// never heard of merge recovery behaves exactly as it did before it existed.
@@ -94,6 +99,7 @@ impl Default for OverseerConfig {
             daily_llm_budget: 200,
             merge_strategy: "squash".into(),
             max_branch_updates: 3,
+            max_merge_settle_passes: 5,
             merge_recovery_enabled: false,
             max_merge_recoveries: 2,
             worker_profile: None,

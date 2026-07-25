@@ -1,7 +1,9 @@
 mod discord_events;
 mod merge;
+mod merge_apply;
 mod merge_decision;
 mod merge_recovery;
+mod merge_settle;
 mod merge_state;
 mod observations;
 mod protection;
@@ -16,7 +18,7 @@ use super::{
     judge::JudgmentQueue,
     ledger::{Ledger, LedgerPhase},
     logging,
-    monitor::{Action, FailureOrigin, ObservationSnapshot, reconcile},
+    monitor::{Action, FailureOrigin, ObservationError, ObservationSnapshot, reconcile},
     pidfile_path,
     review::ReviewPass,
     runtime_request, snapshots_path,
@@ -79,9 +81,9 @@ pub async fn run_daemon() -> Result<()> {
                 observations: observed.clone(),
             },
         ) {
-            observed
-                .errors
-                .push(format!("snapshot write failed: {error}"));
+            observed.errors.push(ObservationError::new(format!(
+                "snapshot write failed: {error}"
+            )));
         }
         let (mut next, actions) =
             reconcile(&ledger, &observed, now, config.overseer.stuck_after_mins);
@@ -98,8 +100,14 @@ pub async fn run_daemon() -> Result<()> {
         // reviews the board the pass inherited rather than the one this pass is
         // in the middle of changing.
         review.tick(&config, &next, now)?;
-        execute_actions(&actions)?;
-        merge::auto_merge_pass(&config, &mut next, &mut protections, &mut judgments)?;
+        let pulled = execute_actions(&actions)?;
+        merge::auto_merge_pass(
+            &config,
+            &mut next,
+            &mut protections,
+            &mut judgments,
+            &pulled,
+        )?;
         dispatch_pass(&mut config, &mut next, now, &mut judgments)?;
         // Persist decisions before removing their queue item. A crash before this
         // point replays the marker without repeating actions; after it, replay is

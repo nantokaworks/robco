@@ -6,7 +6,7 @@ use crate::{
         inbox::InboxReader,
         is_overseer_child,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
-        monitor::{Observations, SessionObservation},
+        monitor::{ObservationError, Observations, SessionObservation},
     },
     registry::Registry,
 };
@@ -25,14 +25,14 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
         Ok(reports) => observations.inbox = reports.into_iter().map(Into::into).collect(),
         Err(error) => observations
             .errors
-            .push(format!("inbox read failed: {error}")),
+            .push(ObservationError::new(format!("inbox read failed: {error}"))),
     }
     let registry = match Registry::load() {
         Ok(registry) => registry,
         Err(error) => {
-            observations
-                .errors
-                .push(format!("registry read failed: {error}"));
+            observations.errors.push(ObservationError::new(format!(
+                "registry read failed: {error}"
+            )));
             return observations;
         }
     };
@@ -67,9 +67,10 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
                         .cloned();
                 }
                 Err(error) => {
-                    observations
-                        .errors
-                        .push(format!("registry recheck failed: {error}"));
+                    observations.errors.push(
+                        ObservationError::new(format!("registry recheck failed: {error}"))
+                            .about(&entry.task_id, &entry.repo),
+                    );
                     continue;
                 }
             }
@@ -103,9 +104,10 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
                         .then(|| tmux_activity(&agent.tmux_session))
                         .flatten(),
                 }),
-                Err(error) => observations
-                    .errors
-                    .push(format!("tmux probe skipped: {error}")),
+                Err(error) => observations.errors.push(
+                    ObservationError::new(format!("tmux probe skipped: {error}"))
+                        .about(&entry.task_id, &entry.repo),
+                ),
             }
         } else if !terminal(entry.phase) && !manual {
             observations.sessions.push(SessionObservation {

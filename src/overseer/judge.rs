@@ -1,8 +1,10 @@
 mod audit;
 mod briefing;
+mod completed;
 mod completion;
 mod keys;
 mod merge_gate;
+mod pending;
 mod queue;
 mod result;
 mod revisions;
@@ -34,7 +36,12 @@ pub struct MergeCase {
     pub deletions: u32,
 }
 
-#[derive(Debug, Clone)]
+/// One question put to a judgment session.
+///
+/// Serializable because the queue is durable: a daemon restart must not lose a
+/// question that was waiting, nor the one that was in flight — see
+/// [`pending::PendingQueue`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) enum Request {
     Dispatch {
         key: String,
@@ -126,3 +133,7 @@ mod tests;
 #[cfg(test)]
 #[path = "judge/queue_tests.rs"]
 mod queue_tests;
+
+#[cfg(test)]
+#[path = "judge/pending_tests.rs"]
+mod pending_tests;

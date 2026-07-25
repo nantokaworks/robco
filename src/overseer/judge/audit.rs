@@ -40,7 +40,7 @@ pub(super) fn record(log_path: &Path, request: &Request, parsed: &Parsed) -> Res
                     kind,
                     Some(&candidate.task_id),
                     Some(&candidate.repo),
-                    &advice.reason,
+                    &with_ignored(&advice.reason, &advice.ignored_fields),
                 )?;
             }
         }
@@ -56,12 +56,26 @@ pub(super) fn record(log_path: &Path, request: &Request, parsed: &Parsed) -> Res
                 kind,
                 Some(&case.task_id),
                 Some(&case.repo),
-                &advice.reason,
+                &with_ignored(&advice.reason, &advice.ignored_fields),
             )?;
         }
         _ => unreachable!("request and judgment type must match"),
     }
     Ok(())
+}
+
+/// The verdict's reason, with the names of any keys the parser ignored.
+///
+/// The parser accepts a verdict that carries more than the schema asked for
+/// rather than fail-safing over it, which means the extra keys are dropped. They
+/// are named here so the drop is visible in the same decision entry as the
+/// verdict they arrived with — an operator reading `decisions.jsonl` can see
+/// that the model said more than was recorded, and where to find it.
+fn with_ignored(reason: &str, ignored: &[String]) -> String {
+    if ignored.is_empty() {
+        return reason.to_owned();
+    }
+    format!("{reason} (ignored fields: {})", ignored.join(", "))
 }
 
 pub(super) fn log(

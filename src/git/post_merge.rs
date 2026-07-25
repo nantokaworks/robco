@@ -45,6 +45,14 @@ pub struct Cleanup<'a> {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CleanupOutcome {
+    /// Whether `git pull --ff-only` brought the primary worktree up to the
+    /// merge. Reported separately from [`Self::notes`] because a caller has to
+    /// be able to *act* on it: under [`OnFailure::Continue`] a failed pull is
+    /// only a note among the others, and the Overseer merge gate needs to know
+    /// whether the base it is about to merge onto has caught up. Always true
+    /// under [`OnFailure::Abort`], which returns the failure instead of
+    /// finishing.
+    pub base_pulled: bool,
     pub worktree_removed: bool,
     pub branch: BranchOutcome,
     /// Failures and skipped steps, in the order they happened. Always empty
@@ -67,8 +75,11 @@ impl Cleanup<'_> {
     pub fn run(&self, mut step: impl FnMut(CleanupStep)) -> Result<CleanupOutcome> {
         let mut outcome = CleanupOutcome::default();
         step(CleanupStep::PullingMain);
-        if let Err(error) = git::pull_ff_only(self.repo) {
-            self.record(&mut outcome, "fast-forwarding the primary worktree", error)?;
+        match git::pull_ff_only(self.repo) {
+            Ok(()) => outcome.base_pulled = true,
+            Err(error) => {
+                self.record(&mut outcome, "fast-forwarding the primary worktree", error)?;
+            }
         }
         step(CleanupStep::CleaningUp);
         self.remove_worktree(&mut outcome)?;

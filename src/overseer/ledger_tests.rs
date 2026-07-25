@@ -25,12 +25,29 @@ fn save_load_round_trip() {
             dispatched_today: 2,
             consecutive_failures: 1,
         },
+        merge_settling: [(
+            "nantokaworks/robco".to_string(),
+            MergeSettling { passes_held: 2 },
+        )]
+        .into_iter()
+        .collect(),
     };
 
     ledger.save_to(&path).unwrap();
     let serialized = fs::read_to_string(&path).unwrap();
     assert!(serialized.contains("\"pr_opened\""));
     assert_eq!(Ledger::load_from(&path).unwrap(), ledger);
+}
+
+/// A ledger written before the barrier existed still loads: the merge that was
+/// in flight when the daemon was upgraded must not be turned into a corrupt
+/// ledger and a lost board.
+#[test]
+fn a_ledger_without_the_settling_field_loads() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ledger.json");
+    fs::write(&path, r#"{"entries":[],"skip_list":[]}"#).unwrap();
+    assert_eq!(Ledger::load_from(&path).unwrap(), Ledger::default());
 }
 
 #[test]

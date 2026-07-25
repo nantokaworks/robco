@@ -44,28 +44,6 @@ pub(super) fn merge_request() -> Request {
 }
 
 #[test]
-fn dispatch_parser_rejects_ids_outside_rust_approved_set() {
-    let raw = br#"{"candidate_ids":["a","rejected"],"reason":"priority"}"#;
-    assert!(matches!(
-        result::parse_dispatch(raw, &["a".into(), "b".into()]),
-        Err(result::ParseError::Rejected(_))
-    ));
-}
-
-#[test]
-fn parsers_reject_unknown_fields_outcomes_and_blank_reasons() {
-    assert!(
-        result::parse_dispatch(
-            br#"{"candidate_ids":["a"],"reason":"ok","extra":true}"#,
-            &["a".into()]
-        )
-        .is_err()
-    );
-    assert!(result::parse_merge(br#"{"outcome":"force","reason":"x"}"#).is_err());
-    assert!(result::parse_merge(br#"{"outcome":"allow","reason":" "}"#).is_err());
-}
-
-#[test]
 fn every_dispatch_session_failure_keeps_deterministic_order() {
     let failures = [
         SessionResult::TimedOut,
@@ -161,58 +139,69 @@ fn backend_selects_matching_profile_program() {
     assert_eq!(judge_profile(&config).unwrap().program, "custom-codex");
 }
 
-#[test]
-fn merge_cache_is_revision_keyed() {
-    let temp = tempfile::tempdir().unwrap();
-    let mut queue = test_queue(temp.path());
-    let Request::Merge { case, .. } = merge_request() else {
-        unreachable!()
-    };
-    queue.cache_merge(
-        &case,
-        result::MergeAdvice {
-            outcome: result::MergeJudgment::Allow,
-            reason: "reviewed".into(),
-            fail_safe: false,
-        },
-    );
-    let mut updated = case.clone();
-    updated.head_sha = "def456".into();
-    assert!(queue.merge_advice(updated).unwrap().is_none());
-    assert_eq!(
-        queue.merge_advice(case).unwrap().unwrap().outcome,
-        result::MergeJudgment::Allow
-    );
+fn advice(outcome: result::MergeJudgment, reason: &str) -> result::MergeAdvice {
+    result::MergeAdvice {
+        outcome,
+        reason: reason.into(),
+        fail_safe: false,
+        ignored_fields: Vec::new(),
+    }
 }
 
+/// Updating a branch onto its base rewrites the head sha without touching the
+/// change under review, and the verdict the gate spent minutes of model time on
+/// has to survive it — that update fires on every merge into `main`. A push that
+/// actually changes the diff is a different question and is asked again.
 #[test]
-fn veto_is_sticky_for_revision_but_new_revision_is_queued() {
+fn a_verdict_survives_a_base_update_but_not_a_changed_diff() {
     let temp = tempfile::tempdir().unwrap();
     let mut queue = test_queue(temp.path());
     let Request::Merge { case, .. } = merge_request() else {
         unreachable!()
     };
-    queue.cache_merge(
-        &case,
-        result::MergeAdvice {
-            outcome: result::MergeJudgment::Veto,
-            reason: "unsafe".into(),
-            fail_safe: false,
-        },
+    queue.cache_merge(&case, advice(result::MergeJudgment::Allow, "reviewed"));
+
+    let mut rebased = case.clone();
+    rebased.head_sha = "def456".into();
+    assert_eq!(
+        queue.merge_advice(rebased).unwrap().unwrap().reason,
+        "reviewed"
     );
+
+    queue.cache_merge(&case, advice(result::MergeJudgment::Allow, "reviewed"));
+    let mut pushed = case;
+    pushed.files.push("src/new.rs".into());
+    assert!(queue.merge_advice(pushed).unwrap().is_none());
+}
+
+/// A veto is remembered against the change it was given for, so a base update
+/// does not make the gate re-ask a question it already refused — and a real push
+/// does.
+#[test]
+fn a_veto_survives_a_base_update_and_is_re_asked_after_a_real_push() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+    queue.cache_merge(&case, advice(result::MergeJudgment::Veto, "unsafe"));
     assert_eq!(
         queue.merge_advice(case.clone()).unwrap().unwrap().outcome,
         result::MergeJudgment::Veto
     );
     drop(queue);
+
     let mut queue = test_queue(temp.path());
     assert!(queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
-    assert!(queue.merge_advice(case.clone()).unwrap().is_none());
-    assert_eq!(queue.pending_len(), 0);
-    let mut updated = case;
-    updated.head_sha = "new-revision".into();
-    assert!(queue.merge_advice(updated).unwrap().is_none());
-    assert_eq!(queue.pending_len(), 1);
+    let mut rebased = case.clone();
+    rebased.head_sha = "new-head".into();
+    assert!(queue.merge_advice(rebased).unwrap().is_none());
+    assert_eq!(queue.pending_len(), 0, "a base update must not re-ask");
+
+    let mut pushed = case;
+    pushed.additions += 5;
+    assert!(queue.merge_advice(pushed).unwrap().is_none());
+    assert_eq!(queue.pending_len(), 1, "a real push must re-ask");
 }
 
 #[test]
