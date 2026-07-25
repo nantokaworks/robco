@@ -216,7 +216,7 @@ impl Status {
     pub fn glyph(self) -> &'static str {
         match self {
             Status::Idle => "·",
-            Status::Running => "▶",
+            Status::Running => "⠿",
             Status::Waiting => "?",
             Status::Done => "✓",
             Status::Dead => "✗",
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn status_badges_and_glyphs_are_stable() {
         assert_eq!(Status::Running.badge(), "run");
-        assert_eq!(Status::Running.glyph(), "▶");
+        assert_eq!(Status::Running.glyph(), "⠿");
         assert_eq!(Status::Waiting.glyph(), "?");
         assert_eq!(Status::Done.glyph(), "✓");
         assert_eq!(Status::Idle.glyph(), "·");
