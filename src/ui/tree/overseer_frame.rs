@@ -11,6 +11,10 @@ use crate::model::{OverseerCategory, Selection};
 use super::{IndicatorState, indicator, label, select};
 use crate::ui::{App, theme::DEFAULT as THEME};
 
+/// The separator between a label and the value that describes it — the header's
+/// status glyph and a category's summary both sit one of these off their label.
+const GAP: &str = "  ";
+
 pub(in crate::ui) struct FrameContent {
     pub(in crate::ui) lines: Vec<Line<'static>>,
     pub(in crate::ui) selected_row: u16,
@@ -94,27 +98,34 @@ fn build_content_with_warnings(
 /// no arrow and no selection marker, because it is not a focus target.
 fn header_line(app: &App, warning_count: usize, width: Option<u16>) -> Line<'static> {
     let style = THEME.accent_bold_style();
-    let mut spans = vec![Span::styled("OVERSEER", style)];
-    if warning_count > 0 {
-        spans.push(Span::styled(
-            format!("  ⚠×{warning_count}"),
-            warning_style(false),
-        ));
-    }
-
     let status = select(IndicatorState::with_status(Some(
         app.overseer_snapshot.status(),
     )));
     let indicator = indicator::primary_span(status, false, app.started.elapsed(), 1);
+
+    // The glyph follows the label after the same two-column gap `category_line`
+    // puts between a label and its summary. Padding it out to the frame width
+    // instead would strand it ~37 columns away on a wide sidebar, where it no
+    // longer reads as the status of the name beside it.
+    let mut spans = vec![Span::styled("OVERSEER", style)];
     if let Some(width) = width {
-        label::trim_spans_to_width(&mut spans, usize::from(width.saturating_sub(1)));
-        let used = Line::from(spans.clone()).width().saturating_add(1);
-        let padding = usize::from(width).saturating_sub(used);
-        spans.push(Span::styled(" ".repeat(padding), style));
-    } else {
-        spans.push(Span::styled("  ", style));
+        // Reserve the gap and the glyph up front so a narrow frame trims the
+        // label rather than the status it describes.
+        label::trim_spans_to_width(&mut spans, usize::from(width).saturating_sub(GAP.len() + 1));
     }
+    spans.push(Span::styled(GAP, style));
     spans.push(indicator);
+    // Warnings trail the indicator so the glyph stays adjacent to the label
+    // whatever the warning count is, and so they are what a narrow frame drops.
+    if warning_count > 0 {
+        spans.push(Span::styled(
+            format!("{GAP}⚠×{warning_count}"),
+            warning_style(false),
+        ));
+    }
+    if let Some(width) = width {
+        label::trim_spans_to_width(&mut spans, usize::from(width));
+    }
     Line::from(spans)
 }
 
@@ -237,6 +248,29 @@ mod tests {
         assert!(header.starts_with("OVERSEER"), "header row: {header:?}");
         assert!(!header.contains('▾') && !header.contains('▸'));
         assert!(header.contains("⚠×3"));
+    }
+
+    #[test]
+    fn the_header_indicator_stays_beside_the_label_at_every_frame_width() {
+        let (warnings, app) = warning_state();
+        // A fresh app reports a dead daemon, so the glyph is the static Dead
+        // status rather than a time-dependent spinner frame.
+        let glyph = crate::model::Status::Dead.glyph();
+
+        let mut headers = Vec::new();
+        for tree_width in [24_u16, 48] {
+            let content = build_content_with_warnings(&app, Some(tree_width - 1), &warnings);
+            let header = content.lines[0].to_string();
+            assert_eq!(
+                header,
+                format!("OVERSEER  {glyph}  ⚠×3"),
+                "header row at tree width {tree_width}"
+            );
+            headers.push(header);
+        }
+        // The row does not grow with the frame: widening the sidebar must not
+        // push the glyph away from the label it describes.
+        assert_eq!(headers[0], headers[1]);
     }
 
     #[test]
