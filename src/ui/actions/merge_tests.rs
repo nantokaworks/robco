@@ -4,7 +4,7 @@ use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::{
-    super::merge_worker::{CLEANING_UP, PULLING_MAIN},
+    super::merge_worker::{CLEANING_UP, MERGING_PR, PULLING_MAIN},
     *,
 };
 use crate::{
@@ -110,6 +110,84 @@ fn progress_labels_are_stable_and_specific() {
         [MERGING_PR, PULLING_MAIN, CLEANING_UP],
         ["merging PR", "pulling main", "cleaning up",]
     );
+}
+
+#[test]
+fn a_clean_only_run_opens_on_the_first_post_merge_step() {
+    assert_eq!(MergeMode::MergeThenClean.first_step(), MERGING_PR);
+    assert_eq!(MergeMode::CleanOnly.first_step(), PULLING_MAIN);
+}
+
+/// The three states `m` has to tell apart: only a merged pull request may take
+/// the cleanup path, because only that one has its work somewhere other than
+/// the worktree and branch about to be removed.
+#[test]
+fn only_a_merged_pull_request_takes_the_cleanup_path() {
+    let cases = [
+        (crate::git::PrState::Open, "confirm merge"),
+        (crate::git::PrState::Merged, "confirm cleanup"),
+        (
+            crate::git::PrState::ClosedUnmerged,
+            "closed without merging",
+        ),
+        (crate::git::PrState::Absent, "create a PR first"),
+    ];
+
+    for (state, expected) in cases {
+        let mut app = test_app();
+        app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+
+        app.offer_merge_or_cleanup(state, 0, 0, "feature/wanted");
+
+        let message = app
+            .message
+            .as_ref()
+            .map(|(message, _)| message.clone())
+            .unwrap_or_default();
+        match &app.mode {
+            Mode::ConfirmMerge { repo, agent } => {
+                assert_eq!(expected, "confirm merge");
+                assert_eq!((*repo, *agent), (0, 0));
+            }
+            Mode::ConfirmCleanup { repo, agent } => {
+                assert_eq!(expected, "confirm cleanup");
+                assert_eq!((*repo, *agent), (0, 0));
+            }
+            Mode::Normal => assert!(
+                message.contains("feature/wanted") && message.contains(expected),
+                "{state:?} reported {message:?}"
+            ),
+            _ => panic!("{state:?} opened an unrelated dialog"),
+        }
+    }
+}
+
+#[test]
+fn confirming_the_cleanup_dialog_starts_a_run_that_skips_the_merge() {
+    let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+    app.mode = Mode::ConfirmCleanup { repo: 0, agent: 0 };
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(matches!(app.mode, Mode::Normal));
+    let job = app.merge_job(&PathBuf::from("/repo")).unwrap();
+    assert_eq!(job.agent_id, "wanted");
+    assert_eq!(job.step, PULLING_MAIN);
+}
+
+#[test]
+fn cancelling_the_cleanup_dialog_starts_nothing() {
+    let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+    app.mode = Mode::ConfirmCleanup { repo: 0, agent: 0 };
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(app.merge_jobs.is_empty());
 }
 
 #[test]

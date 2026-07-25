@@ -243,6 +243,7 @@ impl App {
             Mode::ConfirmKill { .. }
             | Mode::ConfirmRemoveRepo { .. }
             | Mode::ConfirmMerge { .. }
+            | Mode::ConfirmCleanup { .. }
             | Mode::ConfirmDeleteBranch { .. }
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic

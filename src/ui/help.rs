@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 38;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 39;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -24,6 +24,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("Repo"),
         Line::from("  a              clone <git-url> [branch], or add local repo path"),
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),
+        Line::from("                 already-merged PR: clean up without merging again"),
         Line::from("  p              edit and request PR from selected running agent"),
         Line::from(""),
         Line::from("Indicators"),
