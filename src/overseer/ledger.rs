@@ -66,6 +66,14 @@ pub struct MergeRecovery {
     pub charged: u32,
     /// Head sha the last handback was charged against.
     pub head: Option<String>,
+    /// Failures the owning worker could have fixed that were left alone because
+    /// `overseer.merge_recovery_enabled` is off. Counted rather than acted on:
+    /// the setting is the operator's call, and this is the evidence they need to
+    /// make it.
+    pub dropped: u32,
+    /// Head sha the last drop was recorded against, so a standing failure costs
+    /// one decision per revision rather than one per poll.
+    pub dropped_head: Option<String>,
 }
 
 /// What the merge gate remembers about holding this pull request back.
@@ -207,6 +215,20 @@ impl Ledger {
             .iter()
             .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
             .count()
+    }
+
+    /// Merge failures a worker could have fixed that were left alone because
+    /// merge recovery is switched off.
+    ///
+    /// Counted across every entry the ledger still holds, terminal ones included:
+    /// an entry that escalated *because* nobody was handed its failure is the
+    /// clearest evidence the setting costs something, and dropping it from the
+    /// count would hide exactly the cases worth reading. The retention window is
+    /// what bounds how far back this reaches.
+    pub fn merge_recovery_drops(&self) -> u32 {
+        self.entries.iter().fold(0, |total, entry| {
+            total.saturating_add(entry.merge_recovery.dropped)
+        })
     }
 
     pub fn load() -> Result<Self> {

@@ -252,7 +252,7 @@ these defaults:
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
-| `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. |
+| `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. Switched off, each failure it would have acted on is still recorded once per revision as `merge_recovery_disabled:<reason>` and counted into `merge-recovery: off (N dropped)`. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
@@ -486,6 +486,16 @@ failure on the same revision is therefore handed back once rather than once per 
 interval; a new head resets that deduplication — the worker pushed, so the next failure is
 a genuinely new one — but never the budget, or a worker that pushes a broken fix each round
 would loop forever. A spent budget escalates with `merge_recovery_cap_reached`.
+
+With `merge_recovery_enabled` off — the default — nothing is handed back, and the
+classification above is inert. It is not silent, though: a failure that classified as
+worker-fixable is recorded once per (entry, head sha) as
+`merge_recovery_disabled:<reason>`, and `robco overseer status` reports the running total
+beside the switch as `merge-recovery: off (N dropped)`. The entry keeps its phase and no
+worker is touched, so the daemon behaves exactly as it did before; what changes is that
+the setting now reads as a consequence rather than a flag. Operator-only failures record
+nothing either way — they were never a worker's to fix. Whether to switch the setting on
+stays the operator's call; this is the evidence for making it.
 
 A handback returns the entry to `pr_opened` so the next pass re-evaluates it normally; a
 judge veto had escalated it, and that escalation is superseded rather than left to strand
