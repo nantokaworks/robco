@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::{
     COMMAND_TIMEOUT,
-    merge_decision::{Halt, Outcome, log, log_gated, log_halt},
+    merge_decision::{Halt, Outcome, log, log_gated, log_halt, manual_skip},
     merge_recovery, merge_state,
     merge_state::{BehindPlan, MergeState},
     protection,
@@ -20,7 +20,7 @@ use crate::{
         exec::run_timeout,
         judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
         ledger::{Ledger, LedgerEntry, LedgerPhase},
-        logging::DecisionKind,
+        logging::{self, DecisionKind},
     },
     registry::Registry,
 };
@@ -54,9 +54,19 @@ pub(super) fn auto_merge_pass(
     for entry in ledger.entries.iter_mut() {
         let reconsidering = entry.phase == LedgerPhase::Escalated
             && judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref());
-        if (entry.phase != LedgerPhase::PrOpened && !reconsidering)
-            || !worker_is_auto(entry, &registry)
-        {
+        if entry.phase != LedgerPhase::PrOpened && !reconsidering {
+            continue;
+        }
+        // The management check is not the phase check. An entry the phase check
+        // drops is not a merge candidate and there is nothing to say about it;
+        // an entry whose worker is manual *is* a candidate Overseer is declining
+        // to act on, and taking that silently left the operator unable to tell
+        // "Overseer decided not to merge this" from "the merge pass never ran".
+        let auto = worker_is_auto(entry, &registry);
+        if let Some(skip) = manual_skip(entry, auto) {
+            logging::append(&skip)?;
+        }
+        if !auto {
             continue;
         }
         if merged_repos.contains(&entry.repo) {

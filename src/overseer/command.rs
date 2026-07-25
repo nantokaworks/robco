@@ -92,6 +92,13 @@ fn status(config: &Config) -> Result<()> {
     println!("{}", judgments.snapshot().summary());
     println!("workers by repo: {:?}", active.repos);
     println!("phases: {phases:?}");
+    // Only when there is something to report: the line names an exception state,
+    // and a pull request Overseer is deliberately leaving to its owner is the
+    // one thing the phase counts above cannot distinguish from a stalled merge.
+    let manual_merges = ledger.manual_merge_skips();
+    if manual_merges != 0 {
+        println!("merge-eligible, manual: {manual_merges}");
+    }
     println!("skip list: {:?}", ledger.skip_list);
     println!("recent decisions:");
     for entry in logging::tail(10)? {
