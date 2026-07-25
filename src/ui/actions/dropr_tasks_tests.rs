@@ -1,11 +1,20 @@
 use super::*;
+use crate::dropr::DroprTaskCandidate;
 
 fn task(display_id: &str) -> DroprTaskCandidate {
     DroprTaskCandidate {
         display_id: display_id.to_owned(),
         title: display_id.to_owned(),
         priority: String::new(),
-        status: "ready".to_owned(),
+        status: "open".to_owned(),
+    }
+}
+
+fn answered(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
+    DroprTaskFetch {
+        tasks,
+        problems: Vec::new(),
+        answered: true,
     }
 }
 
@@ -35,29 +44,74 @@ fn loaded_overlay_with_no_match_reports_missing_linkage() {
 
 #[test]
 fn fetched_rows_overwrite_current_tasks() {
-    let mut current = vec![task("#1")];
+    let mut current = answered(vec![task("#1")]);
 
-    apply_fetched_tasks(&mut current, Some(vec![task("#2")]));
+    apply_fetched_tasks(&mut current, answered(vec![task("#2")]));
 
-    assert_eq!(current, vec![task("#2")]);
+    assert_eq!(current.tasks, vec![task("#2")]);
 }
 
 #[test]
 fn fetched_empty_rows_clear_current_tasks() {
-    let mut current = vec![task("#1")];
+    let mut current = answered(vec![task("#1")]);
 
-    apply_fetched_tasks(&mut current, Some(Vec::new()));
+    apply_fetched_tasks(&mut current, answered(Vec::new()));
 
-    assert!(current.is_empty());
+    assert!(current.tasks.is_empty());
+    assert!(current.answered);
+}
+
+/// The defect: a failed fetch used to leave the previous rows in place, so the
+/// pane went on presenting a list nothing had re-checked as if it were current.
+#[test]
+fn failed_fetch_replaces_current_tasks_with_the_failure() {
+    let mut current = answered(vec![task("#1")]);
+
+    apply_fetched_tasks(&mut current, DroprTaskFetch::failed("dropr did not answer"));
+
+    assert!(current.tasks.is_empty());
+    assert!(!current.answered);
+    assert_eq!(current.problems, ["dropr did not answer"]);
+}
+
+/// A reload the operator asked for that never came back has to say so; the pane
+/// otherwise sits unchanged and reads as "nothing to update".
+#[test]
+fn an_abandoned_manual_reload_is_reported_on_the_pane() {
+    let mut current = answered(vec![task("#1")]);
+
+    note_abandoned_reload(&mut current);
+    note_abandoned_reload(&mut current);
+
+    // The rows stay — they are what the pane has — but they no longer read as
+    // current, and repeated sweeps do not stack the same line.
+    assert_eq!(current.tasks, vec![task("#1")]);
+    assert_eq!(current.problems, [ABANDONED_RELOAD]);
 }
 
 #[test]
-fn failed_fetch_retains_current_tasks() {
-    let mut current = vec![task("#1")];
+fn a_stale_manual_refresh_is_named_when_it_is_swept() {
+    let now = Instant::now();
+    let mut refresh = DroprTaskRefresh::new();
+    refresh
+        .in_flight
+        .insert("manual-workspace".to_owned(), now - REFRESH_STALE_AFTER);
+    refresh
+        .in_flight
+        .insert("background-workspace".to_owned(), now - REFRESH_STALE_AFTER);
+    refresh.manual.insert("manual-workspace".to_owned());
 
-    apply_fetched_tasks(&mut current, None);
+    let abandoned = expire_stale_refreshes(&mut refresh, now);
 
-    assert_eq!(current, vec![task("#1")]);
+    // Only the manual one is reported: nobody is waiting on the background sweep.
+    assert_eq!(abandoned, ["manual-workspace"]);
+}
+
+/// The budget the fetch runs under has to be shorter than the window the UI
+/// will still accept an answer in, or a slow dropr silently loses every reload.
+#[test]
+fn the_fetch_budget_fits_inside_the_stale_window() {
+    assert!(crate::dropr::FETCH_BUDGET < REFRESH_STALE_AFTER);
 }
 
 #[test]

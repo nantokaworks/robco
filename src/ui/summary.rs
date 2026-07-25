@@ -60,29 +60,46 @@ pub(in crate::ui) fn repo_summary(
         ]),
     ]);
 
-    if let Some(dropr) = &repo.dropr {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "─".repeat(usize::from(width)),
-            THEME.muted_style(),
-        )));
-        lines.push(Line::from(Span::styled("DROPR", THEME.accent_style())));
-        lines.push(Line::from(vec![
-            Span::styled("kind: ", THEME.muted_style()),
-            Span::raw(dropr.kind.clone()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("id: ", THEME.muted_style()),
-            Span::raw(dropr.id.clone()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("name: ", THEME.muted_style()),
-            Span::raw(dropr.name.clone()),
-        ]));
-        lines.extend(dropr_task_lines(&repo.dropr_tasks));
-    }
+    lines.extend(dropr_section(repo, width));
 
     (repo.name.clone(), lines.into())
+}
+
+/// The DROPR block of a repository summary.
+///
+/// Always rendered. An unlinked repo used to drop the block entirely, which
+/// looks identical to a linked repo whose task list happens to be empty — so
+/// the operator could not tell "no tasks" from "robco never found a workspace
+/// for this repo".
+fn dropr_section(repo: &RepoNode, width: u16) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "─".repeat(usize::from(width)),
+            THEME.muted_style(),
+        )),
+        Line::from(Span::styled("DROPR", THEME.accent_style())),
+    ];
+    let Some(dropr) = &repo.dropr else {
+        lines.push(Line::from(Span::styled(
+            "no workspace resolved for this repo, so no tasks can be listed",
+            THEME.muted_style(),
+        )));
+        return lines;
+    };
+    let field = |name: &str, value: String| {
+        Line::from(vec![
+            Span::styled(format!("{name}: "), THEME.muted_style()),
+            Span::raw(value),
+        ])
+    };
+    lines.extend([
+        field("kind", dropr.kind.clone()),
+        field("id", dropr.id.clone()),
+        field("name", dropr.name.clone()),
+    ]);
+    lines.extend(dropr_task_lines(&repo.dropr_tasks));
+    lines
 }
 
 pub(in crate::ui) fn agent_summary(repo: &RepoNode, agent: &AgentNode) -> (String, Text<'static>) {
@@ -218,3 +235,7 @@ pub(in crate::ui) fn child_summary(
         lines.into(),
     )
 }
+
+#[cfg(test)]
+#[path = "summary_tests.rs"]
+mod tests;

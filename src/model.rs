@@ -4,7 +4,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dropr::{DroprTaskCandidate, DroprWorkspace},
+    dropr::{DroprTaskFetch, DroprWorkspace},
     subagents::TaskSubagent,
 };
 
@@ -20,8 +20,10 @@ pub struct RepoNode {
     pub agents: Vec<AgentNode>,
     #[serde(skip)]
     pub dropr: Option<DroprWorkspace>,
+    /// Result of the last dropr task fetch, failures included: a pane that
+    /// cannot tell a failed fetch from an empty board misreports both.
     #[serde(skip)]
-    pub dropr_tasks: Vec<DroprTaskCandidate>,
+    pub dropr_tasks: DroprTaskFetch,
     /// Status of the repo's own main-worktree AI session, or `None` when no such
     /// session is running (the main worktree does not auto-launch one). Runtime
     /// only; refreshed each tick and never persisted.

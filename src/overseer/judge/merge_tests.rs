@@ -159,7 +159,7 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
             pinned: false,
             agents: vec![agent(management)],
             dropr: None,
-            dropr_tasks: Vec::new(),
+            dropr_tasks: crate::dropr::DroprTaskFetch::default(),
             main_status: None,
             main_last_capture: None,
             main_last_spinner: None,
