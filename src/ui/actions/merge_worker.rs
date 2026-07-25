@@ -32,9 +32,30 @@ pub(super) enum MergeEvent {
     Finished(std::result::Result<(), String>),
 }
 
+/// Whether the merge itself is still outstanding. A pull request that already
+/// merged needs everything the sequence does *after* `gh pr merge` and must
+/// never be handed to `gh pr merge` again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ui) enum MergeMode {
+    MergeThenClean,
+    CleanOnly,
+}
+
+impl MergeMode {
+    /// The step the job starts on, so the progress banner does not open on
+    /// "merging PR" for a run that never merges.
+    pub(in crate::ui) fn first_step(self) -> &'static str {
+        match self {
+            Self::MergeThenClean => MERGING_PR,
+            Self::CleanOnly => PULLING_MAIN,
+        }
+    }
+}
+
 pub(super) struct MergeTarget {
     pub repo_path: PathBuf,
     pub branch: String,
+    pub mode: MergeMode,
     pub strategy: &'static str,
     pub worktree_path: PathBuf,
     pub tmux_session: String,
@@ -51,7 +72,9 @@ pub(super) fn spawn(target: MergeTarget) -> Receiver<MergeEvent> {
 }
 
 fn run_merge(target: &MergeTarget, sender: &Sender<MergeEvent>) -> Result<()> {
-    git::merge_pr(&target.repo_path, &target.branch, target.strategy)?;
+    if target.mode == MergeMode::MergeThenClean {
+        git::merge_pr(&target.repo_path, &target.branch, target.strategy)?;
+    }
     // A watched merge stops at the first failure so the user sees it on the
     // banner; the Overseer daemon runs the same steps under `Continue`.
     Cleanup {

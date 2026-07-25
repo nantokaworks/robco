@@ -98,20 +98,45 @@ impl App {
             }
         }
 
-        match git::pr_exists(&repo_node.path, &selected.branch) {
-            Ok(true) => {
+        match git::pr_state(&repo_node.path, &selected.branch) {
+            Ok(state) => self.offer_merge_or_cleanup(state, repo, agent_idx, &selected.branch),
+            Err(err) => self.show_message(err.to_string()),
+        }
+    }
+
+    /// Routes `m` by what the branch's pull request actually is. A merge that
+    /// landed elsewhere — the Overseer's auto-merge pass, the GitHub web UI,
+    /// another terminal — leaves the merge step done and the cleanup after it
+    /// undone, which is the only reason this agent is still in the tree.
+    pub(in crate::ui) fn offer_merge_or_cleanup(
+        &mut self,
+        state: git::PrState,
+        repo: usize,
+        agent_idx: usize,
+        branch: &str,
+    ) {
+        match state {
+            git::PrState::Open => {
                 self.mode = Mode::ConfirmMerge {
                     repo,
                     agent: agent_idx,
                 }
             }
-            Ok(false) => {
-                self.show_message(format!(
-                    "no open PR for {}; create a PR first",
-                    selected.branch
-                ));
+            git::PrState::Merged => {
+                self.mode = Mode::ConfirmCleanup {
+                    repo,
+                    agent: agent_idx,
+                }
             }
-            Err(err) => self.show_message(err.to_string()),
+            // Closed without merging: the branch still holds the only copy of
+            // its work, so removing the worktree and deleting the branch would
+            // destroy it.
+            git::PrState::ClosedUnmerged => self.show_message(format!(
+                "PR for {branch} was closed without merging; reopen it or open a new one"
+            )),
+            git::PrState::Absent => {
+                self.show_message(format!("no open PR for {branch}; create a PR first"))
+            }
         }
     }
 

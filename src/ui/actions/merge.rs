@@ -8,7 +8,7 @@ use crate::{Result, agent};
 use super::{
     super::{App, Mode},
     lifecycle::resolve_agent,
-    merge_worker::{MERGING_PR, MergeEvent, MergeTarget, WORKER_TERMINATED, spawn},
+    merge_worker::{MergeEvent, MergeMode, MergeTarget, WORKER_TERMINATED, spawn},
 };
 
 /// One in-flight merge. Jobs live in [`App::merge_jobs`] keyed by repository
@@ -50,6 +50,16 @@ impl App {
     }
 
     pub(in crate::ui) fn start_merge(&mut self, repo: usize, agent_idx: usize) {
+        self.start_merge_job(repo, agent_idx, MergeMode::MergeThenClean);
+    }
+
+    /// Runs the post-merge sequence alone, for an agent whose pull request
+    /// merged somewhere other than this key.
+    pub(in crate::ui) fn start_cleanup(&mut self, repo: usize, agent_idx: usize) {
+        self.start_merge_job(repo, agent_idx, MergeMode::CleanOnly);
+    }
+
+    fn start_merge_job(&mut self, repo: usize, agent_idx: usize, mode: MergeMode) {
         self.mode = Mode::Normal;
         let Some(repo_node) = self.registry.repos.get(repo) else {
             return;
@@ -64,6 +74,7 @@ impl App {
         let target = MergeTarget {
             repo_path: repo_path.clone(),
             branch: branch.clone(),
+            mode,
             strategy: self.config.merge_strategy.gh_flag(),
             worktree_path: selected.worktree_path.clone(),
             tmux_session: selected.tmux_session.clone(),
@@ -90,7 +101,7 @@ impl App {
             MergeJob {
                 agent_id,
                 branch,
-                step: MERGING_PR,
+                step: mode.first_step(),
                 receiver: spawn(target),
             },
         );
@@ -199,6 +210,10 @@ impl App {
                 agent,
             }
             | Mode::ConfirmMerge {
+                repo: dialog_repo,
+                agent,
+            }
+            | Mode::ConfirmCleanup {
                 repo: dialog_repo,
                 agent,
             }

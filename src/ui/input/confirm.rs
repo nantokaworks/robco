@@ -20,6 +20,7 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             Mode::ConfirmKill { .. }
             | Mode::ConfirmRemoveRepo { .. }
             | Mode::ConfirmMerge { .. }
+            | Mode::ConfirmCleanup { .. }
             | Mode::ConfirmDeleteBranch { .. }
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
@@ -52,6 +53,15 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             let (repo, agent) = (*repo, *agent);
             if confirmed {
                 app.start_merge(repo, agent);
+            } else {
+                app.mode = Mode::Normal;
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmCleanup { repo, agent } => {
+            let (repo, agent) = (*repo, *agent);
+            if confirmed {
+                app.start_cleanup(repo, agent);
             } else {
                 app.mode = Mode::Normal;
             }

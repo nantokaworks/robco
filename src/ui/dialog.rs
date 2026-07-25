@@ -100,6 +100,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
                 hint_line("y merge   n/esc cancel"),
             ],
         ),
+        Mode::ConfirmCleanup { repo, agent } => (
+            "clean up merged PR?",
+            vec![
+                Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
+                Line::from("already merged: pull main, remove worktree, delete branch"),
+                hint_line("y clean up   n/esc cancel"),
+            ],
+        ),
         Mode::ConfirmPr {
             repo_path,
             agent_id,

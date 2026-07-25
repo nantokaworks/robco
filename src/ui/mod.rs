@@ -99,6 +99,12 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    /// The agent's pull request already merged, so `m` offers the cleanup that
+    /// normally follows a merge instead of a merge that has nothing left to do.
+    ConfirmCleanup {
+        repo: usize,
+        agent: usize,
+    },
     ConfirmPr {
         repo_path: PathBuf,
         agent_id: String,
