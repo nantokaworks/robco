@@ -3,9 +3,10 @@ use std::{
     os::unix::process::ExitStatusExt,
     path::PathBuf,
     process::{ExitStatus, Output},
+    time::Duration,
 };
 
-use super::{BootstrapMode, BootstrapPlan, SetenvPlan, service_is_absent};
+use super::{BootstrapMode, BootstrapPlan, SetenvPlan, SettleBudget, service_is_absent};
 use crate::setup::wizard::steps_service::{ServicePlan, probe::ServiceState};
 
 fn bootstrap_plan(execute: bool, mode: BootstrapMode) -> BootstrapPlan {
@@ -16,6 +17,29 @@ fn bootstrap_plan(execute: bool, mode: BootstrapMode) -> BootstrapPlan {
         execute,
         mode,
     }
+}
+
+/// Zero intervals keep the injected-runner tests instant; only the attempt caps
+/// matter for the behaviour under test.
+fn budget() -> SettleBudget {
+    SettleBudget {
+        polls: 4,
+        poll_interval: Duration::ZERO,
+        bootstrap_attempts: 3,
+        retry_interval: Duration::ZERO,
+    }
+}
+
+fn launchctl(code: i32, stderr: &str) -> Output {
+    Output {
+        status: ExitStatus::from_raw(code << 8),
+        stdout: Vec::new(),
+        stderr: stderr.as_bytes().to_vec(),
+    }
+}
+
+fn ok() -> Output {
+    launchctl(0, "")
 }
 
 #[test]
@@ -73,13 +97,15 @@ fn reload_executes_bootout_before_bootstrap() {
             &mut Vec::new(),
             |args| {
                 invocations.push(args.to_vec());
-                Ok(Output {
-                    status: ExitStatus::from_raw(0),
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
+                // The teardown has already landed, so the first poll clears.
+                Ok(if args[0] == "print" {
+                    launchctl(113, "Could not find service")
+                } else {
+                    ok()
                 })
             },
             || ServiceState::Loaded,
+            budget(),
         )
         .unwrap();
 
@@ -88,6 +114,10 @@ fn reload_executes_bootout_before_bootstrap() {
         vec![
             vec![
                 OsString::from("bootout"),
+                OsString::from("gui/501/com.robco.overseer")
+            ],
+            vec![
+                OsString::from("print"),
                 OsString::from("gui/501/com.robco.overseer")
             ],
             vec![
@@ -100,18 +130,137 @@ fn reload_executes_bootout_before_bootstrap() {
 }
 
 #[test]
-fn load_that_does_not_take_effect_is_an_error() {
+fn reload_waits_for_a_settling_bootout_before_bootstrapping() {
+    let mut polls = 0;
+    let mut bootstrapped_after = None;
+    bootstrap_plan(true, BootstrapMode::Reload)
+        .apply_with(
+            &mut Vec::new(),
+            |args| {
+                if args[0] == "print" {
+                    polls += 1;
+                    // The daemon is still on its way out for the first two polls.
+                    return Ok(if polls < 3 {
+                        ok()
+                    } else {
+                        launchctl(113, "Could not find service")
+                    });
+                }
+                if args[0] == "bootstrap" {
+                    bootstrapped_after = Some(polls);
+                }
+                Ok(ok())
+            },
+            || ServiceState::Loaded,
+            budget(),
+        )
+        .unwrap();
+
+    assert_eq!(polls, 3);
+    assert_eq!(bootstrapped_after, Some(3));
+}
+
+#[test]
+fn a_bootout_that_never_lands_reports_the_manual_recovery() {
+    let mut polls = 0;
+    let error = bootstrap_plan(true, BootstrapMode::Reload)
+        .apply_with(
+            &mut Vec::new(),
+            |args| {
+                if args[0] == "print" {
+                    polls += 1;
+                }
+                assert_ne!(args[0], "bootstrap");
+                Ok(ok())
+            },
+            || ServiceState::Loaded,
+            budget(),
+        )
+        .unwrap_err()
+        .to_string();
+
+    assert_eq!(polls, budget().polls);
+    assert!(error.contains("still shutting down"));
+    assert!(error.contains("launchctl bootstrap gui/501 /tmp/robco.plist"));
+}
+
+#[test]
+fn a_bootstrap_onto_a_busy_domain_is_retried() {
+    let mut attempts = 0;
+    bootstrap_plan(true, BootstrapMode::Load)
+        .apply_with(
+            &mut Vec::new(),
+            |args| {
+                assert_eq!(args[0], "bootstrap");
+                attempts += 1;
+                Ok(if attempts == 1 {
+                    launchctl(5, "Bootstrap failed: 5: Input/output error")
+                } else {
+                    ok()
+                })
+            },
+            || ServiceState::Loaded,
+            budget(),
+        )
+        .unwrap();
+
+    assert_eq!(attempts, 2);
+}
+
+#[test]
+fn a_domain_that_stays_busy_reports_the_manual_recovery() {
+    let mut attempts = 0;
     let error = bootstrap_plan(true, BootstrapMode::Load)
         .apply_with(
             &mut Vec::new(),
             |_| {
-                Ok(Output {
-                    status: ExitStatus::from_raw(0),
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
-                })
+                attempts += 1;
+                Ok(launchctl(5, "Bootstrap failed: 5: Input/output error"))
             },
+            || ServiceState::Loaded,
+            budget(),
+        )
+        .unwrap_err()
+        .to_string();
+
+    assert_eq!(attempts, budget().bootstrap_attempts);
+    assert!(error.contains("Input/output error"));
+    assert!(error.contains("still shutting down"));
+    assert!(error.contains("launchctl bootstrap gui/501 /tmp/robco.plist"));
+}
+
+#[test]
+fn a_bootstrap_failure_that_is_not_transient_is_not_retried() {
+    let mut attempts = 0;
+    let error = bootstrap_plan(true, BootstrapMode::Load)
+        .apply_with(
+            &mut Vec::new(),
+            |_| {
+                attempts += 1;
+                Ok(launchctl(
+                    112,
+                    "Bootstrap failed: 112: Operation not permitted",
+                ))
+            },
+            || ServiceState::Loaded,
+            budget(),
+        )
+        .unwrap_err()
+        .to_string();
+
+    assert_eq!(attempts, 1);
+    assert!(error.contains("Operation not permitted"));
+    assert!(!error.contains("still shutting down"));
+}
+
+#[test]
+fn load_that_does_not_take_effect_is_an_error() {
+    let error = bootstrap_plan(true, BootstrapMode::Load)
+        .apply_with(
+            &mut Vec::new(),
+            |_| Ok(ok()),
             || ServiceState::Unloaded,
+            budget(),
         )
         .unwrap_err();
 
@@ -126,17 +275,7 @@ fn load_that_does_not_take_effect_is_an_error() {
 fn successful_load_reports_the_loaded_state() {
     let mut output = Vec::new();
     bootstrap_plan(true, BootstrapMode::Load)
-        .apply_with(
-            &mut output,
-            |_| {
-                Ok(Output {
-                    status: ExitStatus::from_raw(0),
-                    stdout: Vec::new(),
-                    stderr: Vec::new(),
-                })
-            },
-            || ServiceState::Loaded,
-        )
+        .apply_with(&mut output, |_| Ok(ok()), || ServiceState::Loaded, budget())
         .unwrap();
 
     assert!(
