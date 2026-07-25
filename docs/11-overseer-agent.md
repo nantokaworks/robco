@@ -536,6 +536,20 @@ report the active protection mode and autonomy level next to `auto-merge`, and b
 while auto-merge runs under a loosened gate — naming, for `full_auto`, the risks the
 envelope stops escalating.
 
+### Which build the daemon is running
+
+The daemon executes the image it started from until the service restarts, so a fix that
+is merged, released, and installed does not reach the board until the daemon is restarted
+too. Each pass therefore records its own version in the heartbeat, and
+`robco overseer status` reports it as `version=` beside `pid` and `heartbeat`. When that
+version differs from the `robco` binary answering the command — the exact
+"installed but not restarted" state — both the status command and the TUI Health frame
+warn and name the two builds; the OVERSEER header carries it as a `stale build` warning
+row. A heartbeat written before the daemon recorded its build reads as `unknown` and
+warns the same way, because only a release older than this one leaves the field out.
+Restart the daemon (`robco overseer stop` then `robco overseer run`, or restart the
+installed service) to clear it; nothing restarts it automatically on drift.
+
 ### Discord application
 
 1. In the Discord Developer Portal, create an application and add a bot.

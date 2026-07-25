@@ -11,6 +11,7 @@ pub(crate) mod daily;
 pub mod discord;
 pub mod dispatch;
 pub mod exec;
+pub mod heartbeat;
 pub mod inbox;
 pub mod judge;
 pub mod ledger;
