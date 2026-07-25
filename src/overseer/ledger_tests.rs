@@ -13,6 +13,7 @@ fn save_load_round_trip() {
             branch: "task-128".into(),
             phase: LedgerPhase::PrOpened,
             dispatched_at: Utc::now(),
+            settled_at: None,
             retries: 1,
             pr_url: Some("https://example.test/pr/1".into()),
             branch_updates: 0,
@@ -80,6 +81,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         branch: "branch".into(),
         phase,
         dispatched_at: Utc::now(),
+        settled_at: None,
         retries: 0,
         pr_url: None,
         branch_updates: 0,
@@ -124,6 +126,9 @@ fn a_ledger_written_before_merge_recovery_still_loads() {
     let entry = &ledger.entries[0];
     assert_eq!(entry.branch_updates, 0);
     assert_eq!(entry.merge_recovery, MergeRecovery::default());
+    // Nothing recorded when this entry settled, and nothing may be invented:
+    // the history view reads the absence as "unknown", not as "just now".
+    assert_eq!(entry.settled_at, None);
     // The file is intact, so the load was a genuine default rather than the
     // corrupt-ledger fallback.
     assert!(path.exists());
@@ -139,6 +144,7 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         branch: "branch".into(),
         phase,
         dispatched_at: Utc::now(),
+        settled_at: None,
         retries: 0,
         pr_url: skip.map(str::to_owned),
         branch_updates: 0,

@@ -7,17 +7,21 @@ use std::time::{Duration, SystemTime};
 
 use crate::{
     model::{AgentNode, ChildWorktree, RepoNode},
+    overseer::ledger::Ledger,
     subagents::SubagentStatus,
 };
 
 use super::{blockfont, repo_description, theme::DEFAULT as THEME};
 
 mod dropr_tasks;
+mod history;
 use dropr_tasks::dropr_task_lines;
+use history::history_section;
 
 pub(in crate::ui) fn repo_summary(
     repo: &RepoNode,
     repos_root: &std::path::Path,
+    ledger: &Ledger,
     width: u16,
 ) -> (String, Text<'static>) {
     let rendered_name = blockfont::render_fitting(&repo.name, usize::from(width));
@@ -61,6 +65,7 @@ pub(in crate::ui) fn repo_summary(
     ]);
 
     lines.extend(dropr_section(repo, width));
+    lines.extend(history_section(ledger, &repo.path, width));
 
     (repo.name.clone(), lines.into())
 }

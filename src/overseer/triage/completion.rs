@@ -12,6 +12,7 @@ use crate::{
         session::SessionResult,
     },
 };
+use chrono::Utc;
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -157,6 +158,13 @@ fn apply_completion(
                 .find(|entry| entry.task_id == case.task_id)
             {
                 entry.phase = LedgerPhase::Escalated;
+                // Triage is the second place an entry can reach a terminal
+                // phase, and reconciliation only stamps the transitions it
+                // makes itself — an entry escalated here is already terminal by
+                // the time the next pass reads it, so this is its only chance
+                // to record when it settled. Kept if it is already set, so a
+                // repeat escalation cannot move the timestamp.
+                entry.settled_at.get_or_insert_with(Utc::now);
             }
             if !replay && let Err(error) = scribble(&case.task_id, &completion.reason) {
                 log(

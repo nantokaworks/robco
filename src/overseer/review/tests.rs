@@ -68,6 +68,7 @@ pub(super) fn live_entry(
         branch: "branch".into(),
         phase,
         dispatched_at,
+        settled_at: None,
         retries: 0,
         pr_url: None,
         branch_updates: 0,
