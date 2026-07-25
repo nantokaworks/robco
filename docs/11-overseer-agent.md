@@ -198,6 +198,7 @@ these defaults:
     "max_branch_updates": 3,
     "merge_recovery_enabled": false,
     "max_merge_recoveries": 2,
+    "max_merge_holds": 30,
     "worker_profile": null,
     "max_workers": 3,
     "per_repo_limit": 1,
@@ -245,6 +246,7 @@ these defaults:
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
 | `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
+| `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
@@ -373,6 +375,32 @@ not ready, and `merge_state:unknown` is GitHub still computing mergeability. A s
 GitHub adds later is held under its own lowercased name. `CLEAN` and `HAS_HOOKS` proceed;
 a pull request that reports no merge state at all proceeds too, since the rest of the gate
 has already cleared it.
+
+### How long a hold may last
+
+Every gate exit that is not a merge names a reason and returns, and the next pass one poll
+interval later reads the same pull request, reaches the same exit, and records the same
+reason again. For a check run that finishes in ten minutes that is a running commentary;
+for a condition nothing is going to clear it is the entire life of the pull request
+written to `decisions.jsonl` one line at a time, with no counter, no age, and no phase
+change — the board reads healthy while nothing moves.
+
+So a held pass costs budget. Each one is charged to the entry's `merge_hold` and bounded by
+`max_merge_holds`; the pair the budget is spent on is (reason, head sha), so a new head —
+the worker's answer to the last one — and a changed reason each restart the count, while a
+frozen pair keeps spending it. When the budget runs out the entry reaches `escalated`,
+records `merge_hold_cap_reached:<reason>` once, and stops recording that hold, which is
+what puts it in front of an operator in `robco overseer status` and the TUI Inbox instead
+of leaving it to accumulate identical lines.
+
+The exits that already carry a budget of their own are not charged here: the `behind_*`
+family is bounded by `max_branch_updates`, the settle barrier by `max_merge_settle_passes`,
+and a skip leaves the entry terminal already. One condition must never spend two budgets
+and escalate under whichever ran out first.
+
+An entry that gets past the deterministic gate — it merged, or only its judgment is
+outstanding — forgets what it was held on, so a condition that comes back after clearing
+starts from a full budget rather than inheriting the old one's residue.
 
 ### A pull request that has already settled
 

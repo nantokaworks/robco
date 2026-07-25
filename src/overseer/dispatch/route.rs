@@ -121,6 +121,7 @@ mod tests {
             pr_url: None,
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         }
     }

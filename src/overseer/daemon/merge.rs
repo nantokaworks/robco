@@ -5,6 +5,7 @@ use serde_json::Value;
 use super::{
     merge_apply::{merge_now, merge_state_cleared},
     merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
+    merge_hold::{self, HoldPlan},
     merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection,
@@ -29,6 +30,10 @@ const CHECKS_FAILED: &str = "checks_not_green";
 /// Reason recorded when the checks have not finished. Nothing has failed, so nothing
 /// is handed back.
 const CHECKS_WAITING: &str = "checks_waiting";
+
+/// Reason recorded for a merge candidate whose pull request the ledger never
+/// learned. There is nothing to read, so the gate stops before every other step.
+const MISSING_PR_URL: &str = "missing_pr_url";
 
 pub(super) fn auto_merge_pass(
     config: &Config,
@@ -92,7 +97,10 @@ pub(super) fn auto_merge_pass(
             }
         }
         let Some(url) = entry.pr_url.clone() else {
-            log(entry, DecisionKind::Hold, "missing_pr_url")?;
+            // The gate stops before it can read a revision, so the budget is keyed
+            // on the reason alone. It still ends the repetition, which is the only
+            // thing an entry with no pull request ever produced.
+            hold(entry, &Halt::hold(MISSING_PR_URL), "", config, &registry)?;
             continue;
         };
         let outcome = evaluate(
@@ -107,16 +115,47 @@ pub(super) fn auto_merge_pass(
         match outcome {
             Outcome::Merged => {
                 counters.consecutive_failures = 0;
+                merge_hold::cleared(entry);
                 merge_settle::begin(merge_settling, &entry.repo);
             }
-            Outcome::Halted { halt, head } => {
-                log_halt(entry, &halt, config.overseer.protection_mode)?;
-                merge_recovery::consider(entry, &halt.reason, &head, &config.overseer, &registry)?;
-            }
-            Outcome::Pending => {}
+            Outcome::Halted { halt, head } => hold(entry, &halt, &head, config, &registry)?,
+            // The deterministic gate cleared and only the judgment is outstanding,
+            // so whatever this entry was last held on is no longer what is holding
+            // it. Forgetting it here is what keeps a condition that came back after
+            // clearing from inheriting the old condition's spent budget.
+            Outcome::Pending => merge_hold::cleared(entry),
         }
     }
     Ok(())
+}
+
+/// Records one held pass and charges it against the entry's hold budget.
+///
+/// Recovery is consulted only while the hold is still being recorded. Past the cap
+/// the entry belongs to an operator, and a handback would return it to the phase it
+/// just left — the escalation would undo itself on the pass that raised it.
+fn hold(
+    entry: &mut LedgerEntry,
+    halt: &Halt,
+    head: &str,
+    config: &Config,
+    registry: &Registry,
+) -> Result<()> {
+    match merge_hold::charge(entry, halt, head, config.overseer.max_merge_holds) {
+        HoldPlan::Record => {
+            log_halt(entry, halt, config.overseer.protection_mode)?;
+            merge_recovery::consider(entry, &halt.reason, head, &config.overseer, registry)
+        }
+        HoldPlan::CapReached => {
+            entry.phase = LedgerPhase::Escalated;
+            log(
+                entry,
+                DecisionKind::Escalate,
+                &merge_hold::cap_reached(&halt.reason),
+            )
+        }
+        HoldPlan::Spent => Ok(()),
+    }
 }
 
 /// Records a decision about a repository rather than about one of its entries.

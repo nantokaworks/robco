@@ -89,6 +89,7 @@ pub(super) fn spawn_candidate(
         pr_url: None,
         branch_updates: 0,
         merge_recovery: Default::default(),
+        merge_hold: Default::default(),
         manual_merge_skip: None,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
@@ -157,6 +158,7 @@ mod tests {
             pr_url: None,
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         }
     }

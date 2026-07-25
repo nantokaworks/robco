@@ -67,6 +67,7 @@ mod tests {
             pr_url: Some("https://pr".into()),
             branch_updates: 0,
             merge_recovery: Default::default(),
+            merge_hold: Default::default(),
             manual_merge_skip: None,
         };
         let mut decision = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
