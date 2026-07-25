@@ -83,3 +83,27 @@ fn the_review_line_separates_the_pass_from_its_reviewer_model() {
     config.review_profile = Some("claude".into());
     assert_eq!(review_state(&config), "every 20m via claude");
 }
+
+#[test]
+fn daemon_line_names_the_build_the_daemon_started_from() {
+    // The whole point of the field: `healthy` says the daemon is up, never that
+    // it carries what has been merged since it started.
+    let line = daemon_line(
+        true,
+        Some(1234),
+        Some(Duration::from_secs(4)),
+        Some("0.1.66"),
+    );
+    assert_eq!(line, "daemon: healthy pid=1234 heartbeat=4s version=0.1.66");
+}
+
+#[test]
+fn daemon_line_survives_a_heartbeat_from_before_version_recording() {
+    // An older daemon leaves the field out entirely; the line must still render
+    // rather than fail the status command.
+    let line = daemon_line(false, None, None, None);
+    assert_eq!(
+        line,
+        "daemon: down/stale pid=- heartbeat=missing version=unknown"
+    );
+}

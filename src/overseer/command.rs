@@ -9,7 +9,7 @@ use std::{
 use super::{
     config::OverseerConfig,
     exec::{process_alive, run_timeout},
-    heartbeat_path, is_overseer_child,
+    heartbeat, heartbeat_path, is_overseer_child,
     judge::JudgmentQueue,
     ledger::Ledger,
     logging::{self, DecisionEntry, DecisionKind},
@@ -54,10 +54,12 @@ fn status(config: &Config) -> Result<()> {
     let ledger = Ledger::load()?;
     let judgments = JudgmentQueue::load()?;
     let pid = read_pid();
-    let heartbeat_age = fs::metadata(heartbeat_path()?)
+    let heartbeat = heartbeat_path()?;
+    let heartbeat_age = fs::metadata(&heartbeat)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
+    let daemon_version = heartbeat::recorded_version(&heartbeat);
     let healthy = daemon_healthy(config.overseer.poll_interval_secs);
     let active = ledger.active_workers();
     let mut phases = BTreeMap::new();
@@ -65,10 +67,8 @@ fn status(config: &Config) -> Result<()> {
         *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
     }
     println!(
-        "daemon: {} pid={} heartbeat={}",
-        if healthy { "healthy" } else { "down/stale" },
-        pid.map_or_else(|| "-".into(), |pid| pid.to_string()),
-        heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs()))
+        "{}",
+        daemon_line(healthy, pid, heartbeat_age, daemon_version.as_deref())
     );
     println!(
         "{}",
@@ -111,6 +111,12 @@ fn status(config: &Config) -> Result<()> {
             entry.repo.as_deref().unwrap_or("-"),
             entry.reason
         );
+    }
+    // First of the warnings, and gated on the daemon being up: a stale build is
+    // the one state in which every line above is accurate and still describes a
+    // daemon that has none of what was merged since it started.
+    if healthy && let Some(warning) = heartbeat::drift(daemon_version.as_deref()) {
+        println!("warning: {warning}");
     }
     if config.overseer.dispatch_enabled && !healthy {
         println!("warning: {}", crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT);
@@ -161,6 +167,25 @@ fn review_state(config: &OverseerConfig) -> String {
     config.review_profile.as_deref().map_or_else(
         || format!("findings every {interval}m, no reviewer model"),
         |profile| format!("every {interval}m via {profile}"),
+    )
+}
+
+/// The daemon's identity line: whether it is up, which process it is, when it
+/// last reported, and — the one thing a running daemon cannot otherwise be
+/// asked — which build it started from. A daemon keeps that build until the
+/// service restarts, so `healthy` alone never says whether a merged fix is live.
+fn daemon_line(
+    healthy: bool,
+    pid: Option<u32>,
+    heartbeat_age: Option<Duration>,
+    daemon_version: Option<&str>,
+) -> String {
+    format!(
+        "daemon: {} pid={} heartbeat={} version={}",
+        if healthy { "healthy" } else { "down/stale" },
+        pid.map_or_else(|| "-".into(), |pid| pid.to_string()),
+        heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs())),
+        daemon_version.unwrap_or("unknown")
     )
 }
 

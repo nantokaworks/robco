@@ -44,6 +44,9 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
         && heartbeat
             .as_ref()
             .is_some_and(|path| heartbeat_is_fresh(path, overseer.poll_interval_secs));
+    let daemon_version = heartbeat
+        .as_ref()
+        .and_then(|path| crate::overseer::heartbeat::recorded_version(path));
     OverseerResult {
         inbox,
         snapshot: OverseerSnapshot {
@@ -52,6 +55,7 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
             decisions,
             daemon_alive,
             heartbeat_age,
+            daemon_version,
         },
     }
 }

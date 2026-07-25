@@ -198,7 +198,7 @@ fn open_circuit_shows_recovery_hint() {
     let mut open = Ledger::default();
     open.counters.consecutive_failures = 3;
     let mut lines = Vec::new();
-    super::render::append_health(&mut lines, &config, &open, false, None);
+    super::render::append_health(&mut lines, &config, &open, false, None, None, None);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -221,7 +221,7 @@ fn open_circuit_shows_recovery_hint() {
     let mut closed = Ledger::default();
     closed.counters.consecutive_failures = 2;
     let mut lines = Vec::new();
-    super::render::append_health(&mut lines, &config, &closed, false, None);
+    super::render::append_health(&mut lines, &config, &closed, false, None, None, None);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -239,7 +239,15 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
             ..OverseerConfig::default()
         };
         let mut lines = Vec::new();
-        super::render::append_health(&mut lines, &config, &Ledger::default(), true, None);
+        super::render::append_health(
+            &mut lines,
+            &config,
+            &Ledger::default(),
+            true,
+            None,
+            None,
+            None,
+        );
         lines
             .iter()
             .flat_map(|line| line.spans.iter())
@@ -277,7 +285,15 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
         auto_merge: true,
         ..OverseerConfig::default()
     };
-    super::render::append_health(&mut lines, &config, &Ledger::default(), true, None);
+    super::render::append_health(
+        &mut lines,
+        &config,
+        &Ledger::default(),
+        true,
+        None,
+        None,
+        None,
+    );
     assert_eq!(
         lines
             .iter()
@@ -299,7 +315,7 @@ fn health_summary_keeps_all_critical_badges() {
     };
     let mut ledger = Ledger::default();
     ledger.counters.consecutive_failures = 2;
-    let (summary, warn) = super::categories::health_summary_from(&config, &ledger, false);
+    let (summary, warn) = super::categories::health_summary_from(&config, &ledger, false, false);
 
     assert!(warn);
     assert!(summary.contains("STALE/OFFLINE"));
@@ -311,7 +327,15 @@ fn health_summary_keeps_all_critical_badges() {
 fn health_frame_shows_merge_recovery_and_flags_it_when_it_cannot_fire() {
     let rendered = |config: &OverseerConfig| {
         let mut lines = Vec::new();
-        super::render::append_health(&mut lines, config, &Ledger::default(), true, None);
+        super::render::append_health(
+            &mut lines,
+            config,
+            &Ledger::default(),
+            true,
+            None,
+            None,
+            None,
+        );
         lines
     };
     let text = |lines: &[ratatui::text::Line<'static>]| {
@@ -349,6 +373,125 @@ fn health_frame_shows_merge_recovery_and_flags_it_when_it_cannot_fire() {
             .fg,
         Some(Color::Red)
     );
+}
+
+#[test]
+fn health_frame_reports_the_build_the_daemon_started_from() {
+    let mut lines = Vec::new();
+    super::render::append_health(
+        &mut lines,
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        true,
+        None,
+        Some("0.1.66"),
+        None,
+    );
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(rendered.contains("version: 0.1.66"), "{rendered}");
+    assert_ne!(
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content == "0.1.66")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red),
+        "a daemon on the querying build must not read as an error"
+    );
+}
+
+#[test]
+fn health_frame_flags_a_daemon_running_another_build() {
+    let mut lines = Vec::new();
+    super::render::append_health(
+        &mut lines,
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        true,
+        None,
+        Some("0.1.66"),
+        Some("daemon is running 0.1.66 but this binary is 0.1.67"),
+    );
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(
+        rendered.contains("daemon is running 0.1.66 but this binary is 0.1.67"),
+        "{rendered}"
+    );
+    assert_eq!(
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content == "0.1.66")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red)
+    );
+}
+
+#[test]
+fn a_heartbeat_without_a_build_still_renders_the_health_frame() {
+    // Every reader of a heartbeat written before the daemon recorded its build
+    // sees `None` here; the frame must stay readable rather than hide the row.
+    let mut lines = Vec::new();
+    super::render::append_health(
+        &mut lines,
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        true,
+        None,
+        None,
+        None,
+    );
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(rendered.contains("version: unknown"), "{rendered}");
+}
+
+#[test]
+fn a_stale_build_is_badged_in_the_health_summary() {
+    let (summary, warn) = super::categories::health_summary_from(
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        true,
+        true,
+    );
+
+    assert!(warn);
+    assert!(
+        summary.contains(crate::overseer::heartbeat::DRIFT_LABEL),
+        "{summary}"
+    );
+}
+
+#[test]
+fn a_dead_daemon_does_not_drift() {
+    // The drift warning names a restart. A daemon that is already reported down
+    // is getting one regardless, so saying it twice adds no state to act on.
+    let mut app = test_app();
+    app.overseer_snapshot.daemon_alive = false;
+    app.overseer_snapshot.daemon_version = Some("0.0.1".into());
+
+    assert_eq!(app.overseer_snapshot.version_drift(), None);
+
+    app.overseer_snapshot.daemon_alive = true;
+    assert!(app.overseer_snapshot.version_drift().is_some());
 }
 
 fn category_text(app: &App, category: OverseerCategory) -> String {

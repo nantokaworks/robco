@@ -88,7 +88,7 @@ rather than parking the task for its full TTL.
 
 The auto-merge gate only considers ledger entries in `pr_opened`. It reads the pull
 request, verifies protection on the branch that pull request targets, requires an open PR
-with a non-empty check rollup in which every check is `SUCCESS`, requires GitHub to report
+with a non-empty check rollup in which every check is satisfied, requires GitHub to report
 the pull request as mergeable, and invokes `gh pr merge` with the configured strategy.
 Merges are serialised per repository: once one pull request of a repository merges, the
 rest of that repository is held with `repo_merged_this_pass` until the next pass, because
@@ -480,6 +480,16 @@ finished holds under `checks_waiting` instead, so a worker turn is never spent o
 request that has not failed at anything. A pull request that is no longer open never
 reaches either: the gate concludes on it first.
 
+The rollup is read per check *name*, on that name's most recent run, which is the unit
+branch protection requires. Two consequences: a run superseded by a newer one of the same
+name — a duplicate a workflow's concurrency group cancelled, or one stranded in the queue
+behind the run that overtook it — cannot veto the run that replaced it, and a name whose
+newest run genuinely failed still reads `checks_not_green`. Runs of one name that started
+in the same second cannot be ordered, so the gate holds until both have reported.
+`SKIPPED` and `NEUTRAL` are read as satisfied rather than as still-running: they are
+terminal conclusions, and a required workflow a path filter excluded reports one of them
+and will never report anything else.
+
 Each handback is charged to the entry's `merge_recovery.charged` before it runs, bounded by
 `max_merge_recoveries`, and deduplicated by the head sha it was charged against. The same
 failure on the same revision is therefore handed back once rather than once per poll
@@ -581,6 +591,20 @@ their values in `~/.robco/config.json`. `robco overseer status` and the TUI OVER
 report the active protection mode and autonomy level next to `auto-merge`, and both warn
 while auto-merge runs under a loosened gate — naming, for `full_auto`, the risks the
 envelope stops escalating.
+
+### Which build the daemon is running
+
+The daemon executes the image it started from until the service restarts, so a fix that
+is merged, released, and installed does not reach the board until the daemon is restarted
+too. Each pass therefore records its own version in the heartbeat, and
+`robco overseer status` reports it as `version=` beside `pid` and `heartbeat`. When that
+version differs from the `robco` binary answering the command — the exact
+"installed but not restarted" state — both the status command and the TUI Health frame
+warn and name the two builds; the OVERSEER header carries it as a `stale build` warning
+row. A heartbeat written before the daemon recorded its build reads as `unknown` and
+warns the same way, because only a release older than this one leaves the field out.
+Restart the daemon (`robco overseer stop` then `robco overseer run`, or restart the
+installed service) to clear it; nothing restarts it automatically on drift.
 
 ### Discord application
 
