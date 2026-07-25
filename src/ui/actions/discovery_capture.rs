@@ -15,7 +15,7 @@ use super::{
     background_support::fingerprint,
     children, discovery,
     dropr_overlay::{self, OverlayStatus},
-    orphans, subagents,
+    orphans, registry_sync, subagents,
 };
 
 pub(super) struct DiscoveryResult {
@@ -34,6 +34,16 @@ pub(super) fn capture_discovery(
     reload_overlay: bool,
 ) -> DiscoveryResult {
     let fingerprint = fingerprint(&registry);
+    // Take the stored row set before anything reads or prunes this snapshot, so
+    // the whole pass — adoption, subagent ingest, orphan discovery — sees the
+    // agents that still exist rather than ones another process already removed.
+    // The fingerprint above deliberately stays the pre-reconcile one: it guards
+    // the hand-off back to the UI thread, which knows nothing of this read. A
+    // failed read leaves the snapshot alone rather than emptying the tree, and a
+    // successful one needs no save — disk is where these rows came from.
+    if let Ok(stored) = Registry::locked_load() {
+        registry_sync::adopt_stored_agents(&mut registry.repos, &stored);
+    }
     if !config.subagent_indicator {
         subagents::ingest(
             &mut registry.repos,

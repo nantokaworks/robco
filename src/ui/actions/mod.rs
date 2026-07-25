@@ -16,6 +16,7 @@ pub(super) mod overseer_refresh;
 mod pr;
 pub(super) mod pr_precheck;
 pub(super) mod preview_capture;
+mod registry_sync;
 mod settings;
 pub(super) mod slots;
 mod subagents;

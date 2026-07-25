@@ -585,7 +585,7 @@ persisted as `Manual`, and the first `g` overwrites that stale mode when it enro
 There is no confirmation prompt — every step is non-destructive and two more presses
 undo it.
 
-The tree reports this axis with an accent-coloured `◆` at the **row head**, in the cell
+The tree reports this axis with an accent-coloured `▶` at the **row head**, in the cell
 between the selection cursor and the identity-tree indent, so a column of agents can be
 scanned at a glance. Only Auto workers are marked: a Manual worker and an unmanaged
 worktree both render blank there, and the difference between them is read from the OVERSEER
