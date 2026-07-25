@@ -1,6 +1,7 @@
 use crate::{
     Error, Result, agent, git,
     model::{Selection, Status},
+    registry::Registry,
 };
 
 use super::{
@@ -19,6 +20,20 @@ pub(super) fn force_recoverable(error: &Error) -> bool {
                 ..
             }
     )
+}
+
+/// Drop `agent_id` from `repo_path`'s worktree list in the stored registry.
+/// Matching by identity rather than by an index read from this process's
+/// snapshot keeps the removal aimed at the right row when the locked reload
+/// picks up worktrees another writer added or removed.
+fn remove_agent(registry: &mut Registry, repo_path: &std::path::Path, agent_id: &str) {
+    if let Some(repo) = registry
+        .repos
+        .iter_mut()
+        .find(|repo| repo.path == repo_path)
+    {
+        repo.agents.retain(|agent| agent.id != agent_id);
+    }
 }
 
 fn error_lines(error: &Error, worktree: Option<&std::path::Path>, force: bool) -> Vec<String> {
@@ -140,15 +155,19 @@ impl App {
         selected_agent: &crate::model::AgentNode,
     ) -> Result<()> {
         if git::branch_exists(&selected_repo.path, &selected_agent.branch).unwrap_or(false) {
+            // `status` is runtime-only, so there is nothing here to persist —
+            // and writing the registry anyway would push this snapshot over any
+            // concurrent edit for no gain. The branch row is removed for real by
+            // `delete_agent_branch`.
             self.registry.repos[repo].agents[agent_idx].status = Status::BranchOnly;
-            self.registry.save()?;
             self.mode = Mode::ConfirmDeleteBranch {
                 repo,
                 agent: agent_idx,
             };
         } else {
-            self.registry.repos[repo].agents.remove(agent_idx);
-            self.registry.save()?;
+            self.locked_registry_update(|registry| {
+                remove_agent(registry, &selected_repo.path, &selected_agent.id);
+            })?;
             self.mode = Mode::Normal;
             self.show_message(format!("killed {}", selected_agent.title));
         }
@@ -175,8 +194,9 @@ impl App {
         let selected_agent = agent_node.clone();
         match git::delete_branch(&selected_repo.path, &selected_agent.branch) {
             Ok(()) => {
-                self.registry.repos[repo].agents.remove(agent_idx);
-                self.registry.save()?;
+                self.locked_registry_update(|registry| {
+                    remove_agent(registry, &selected_repo.path, &selected_agent.id);
+                })?;
                 self.show_message(format!("deleted branch {}", selected_agent.branch));
             }
             Err(error) => {

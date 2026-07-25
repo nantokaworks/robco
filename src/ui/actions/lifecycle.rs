@@ -39,13 +39,18 @@ impl App {
             return Ok(());
         }
 
-        let removed = self.registry.repos.remove(repo);
-        if repo < self.expanded.len() {
-            self.expanded.remove(repo);
-        }
-        self.registry.save()?;
+        let removed = self.registry.repos[repo].name.clone();
+        let path = path.to_path_buf();
+        // Re-check the precondition against the stored row instead of dropping
+        // the repo on the strength of this process's snapshot: another writer
+        // may have registered an agent under it since the registry was read.
+        self.locked_registry_update(|registry| {
+            registry.repos.retain(|stored| {
+                stored.path != path || !(stored.pinned && stored.agents.is_empty())
+            })
+        })?;
         self.clamp_selection();
-        self.show_message(format!("removed {}", removed.name));
+        self.show_message(format!("removed {removed}"));
         Ok(())
     }
 
@@ -135,18 +140,10 @@ impl App {
             return;
         };
 
-        let previous_len = self.registry.repos.len();
-        let changed = match self.registry.add_pinned(&path) {
-            Ok(added) => added,
-            Err(err) => {
-                self.show_message(err.to_string());
-                return;
-            }
-        };
-        if self.registry.repos.len() > previous_len {
-            self.expanded.push(true);
-        }
-        if let Err(err) = self.registry.save() {
+        let mut changed = false;
+        if let Err(err) =
+            self.locked_registry_update(|registry| changed = registry.add_canonical_pinned(path))
+        {
             self.show_message(err.to_string());
         } else if !changed {
             self.show_message("repository already listed");
