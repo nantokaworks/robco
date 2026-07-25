@@ -1,3 +1,4 @@
+mod merge_strategy;
 mod paths;
 
 use std::{
@@ -5,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub use merge_strategy::MergeStrategy;
 use paths::config_path;
 pub use paths::{config_file_path, ensure_robco_dir, state_path};
 pub(crate) use paths::{expand_tilde, home_dir, robco_dir};
@@ -31,15 +33,6 @@ use crate::{Result, model::Status, openclaw::OpenClawConfig, overseer::config::O
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum MergeStrategy {
-    #[default]
-    Rebase,
-    Squash,
-    Merge,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
 pub enum ProjectIcon {
     #[default]
     None,
@@ -57,16 +50,6 @@ impl ProjectIcon {
             (ProjectIcon::Nerdfont, false) => "\u{f07b}", // nf-fa-folder
             (ProjectIcon::Emoji, true) => "📂",
             (ProjectIcon::Emoji, false) => "📁",
-        }
-    }
-}
-
-impl MergeStrategy {
-    pub fn gh_flag(self) -> &'static str {
-        match self {
-            MergeStrategy::Rebase => "--rebase",
-            MergeStrategy::Squash => "--squash",
-            MergeStrategy::Merge => "--merge",
         }
     }
 }
@@ -133,8 +116,18 @@ pub struct Config {
     pub process_indicator: bool,
     #[serde(default = "notify_flag_default")]
     pub subagent_indicator: bool,
+    /// The strategy every merge path passes to `gh pr merge` — the TUI's `m`
+    /// key and the Overseer's auto-merge gate both read this one field. See
+    /// [`merge_strategy::resolve`] for how a config still carrying the retired
+    /// `overseer.merge_strategy` is migrated onto it.
     #[serde(default)]
     pub merge_strategy: MergeStrategy,
+    /// How `merge_strategy` was arrived at, when that is worth telling the
+    /// operator: a legacy `overseer.merge_strategy` adopted, or overruling a
+    /// top-level value that disagreed with it. Derived on load and never part
+    /// of the file.
+    #[serde(skip)]
+    pub merge_strategy_notice: Option<String>,
     /// Prompt sent to an agent when requesting a PR. Defaults to "Commit any
     /// remaining changes, push the branch, and open a pull request against main
     /// following the project's PR conventions."
@@ -148,6 +141,16 @@ pub struct Config {
     pub project_icon: ProjectIcon,
     #[serde(default, alias = "chief")]
     pub overseer: OverseerConfig,
+}
+
+/// Presence probe for the top-level `merge_strategy`. [`Config`] deserializes
+/// that field with a default, which cannot tell a key written as the default
+/// from a key that is absent — and the legacy-key migration turns on exactly
+/// that distinction.
+#[derive(Deserialize)]
+struct StrategyProbe {
+    #[serde(default)]
+    merge_strategy: Option<MergeStrategy>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -206,6 +209,7 @@ impl Default for Config {
             process_indicator: true,
             subagent_indicator: true,
             merge_strategy: MergeStrategy::default(),
+            merge_strategy_notice: None,
             pr_prompt: default_pr_prompt(),
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
@@ -234,7 +238,21 @@ impl Config {
         // and are not re-adopted as duplicates.
         config.worktree_root = expand_tilde(&config.worktree_root);
         config.repos_root = expand_tilde(&config.repos_root);
+        config.migrate_merge_strategy(&raw)?;
         Ok(config)
+    }
+
+    /// Collapses the retired `overseer.merge_strategy` onto the top-level
+    /// `merge_strategy`, so the TUI and the Overseer cannot end a load holding
+    /// different answers. The legacy key is cleared here and skipped on
+    /// serialization, so the next save drops it from the file.
+    fn migrate_merge_strategy(&mut self, raw: &str) -> Result<()> {
+        let probe: StrategyProbe = serde_json::from_str(raw)?;
+        let legacy = self.overseer.legacy_merge_strategy.take();
+        let resolved = merge_strategy::resolve(probe.merge_strategy, legacy.as_deref());
+        self.merge_strategy = resolved.strategy;
+        self.merge_strategy_notice = resolved.notice;
+        Ok(())
     }
 
     /// Atomically persist the config via a temp file and rename, so a crash

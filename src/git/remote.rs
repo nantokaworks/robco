@@ -1,7 +1,13 @@
-use std::{path::Path, process::Command};
+use std::{
+    path::Path,
+    process::{Command, Output},
+};
 
-use super::{GIT_NETWORK_TIMEOUT, command_output, command_unit};
-use crate::{Result, exec::run_timeout};
+use super::{
+    GIT_NETWORK_TIMEOUT, command_output, command_unit,
+    merge_failure::{command_failure_text, explain_merge_failure},
+};
+use crate::{Error, Result, config::MergeStrategy, exec::run_timeout};
 
 pub fn delete_remote_branch(repo: &Path, branch: &str) -> Result<()> {
     let mut command = Command::new("git");
@@ -77,13 +83,34 @@ fn pr_state_from_list(json: &str) -> Result<PrState> {
     })
 }
 
-pub fn merge_pr(repo: &Path, branch: &str, strategy_flag: &str) -> Result<()> {
+pub fn merge_pr(repo: &Path, branch: &str, strategy: MergeStrategy) -> Result<()> {
     let mut command = Command::new("gh");
     command
         .current_dir(repo)
-        .args(["pr", "merge", branch, strategy_flag]);
+        .args(["pr", "merge", branch, strategy.gh_flag()]);
     let output = run_timeout(command, GIT_NETWORK_TIMEOUT)?;
-    command_unit(output, "gh pr merge")
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(Error::Command {
+        context: "gh pr merge",
+        stderr: refusal_detail(strategy, &output),
+    })
+}
+
+/// The failure an operator reads. A refusal robco can explain leads with the
+/// cause, because `gh`'s own line names the exit rather than the branch shape
+/// behind it; the raw output still follows, so nothing is hidden.
+fn refusal_detail(strategy: MergeStrategy, output: &Output) -> String {
+    let raw = command_failure_text(output);
+    match explain_merge_failure(strategy, &raw) {
+        Some(refusal) => format!(
+            "{} refused: {} (gh: {raw})",
+            strategy.label(),
+            refusal.message
+        ),
+        None => raw,
+    }
 }
 
 pub fn pull_ff_only(main_worktree: &Path) -> Result<()> {

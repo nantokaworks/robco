@@ -79,12 +79,81 @@ fn built_in_profiles_have_autonomous_defaults() {
     );
 }
 
+/// A config file carrying the top-level `merge_strategy`, the retired
+/// `overseer.merge_strategy`, both, or neither — the four shapes on disk that
+/// the one setting has to resolve the same way for every merge path.
+fn config_json(top_level: Option<&str>, legacy: Option<&str>) -> serde_json::Value {
+    let mut value = serde_json::to_value(Config::default()).unwrap();
+    let object = value.as_object_mut().unwrap();
+    object.remove("merge_strategy");
+    if let Some(top_level) = top_level {
+        object.insert("merge_strategy".into(), top_level.into());
+    }
+    if let Some(legacy) = legacy {
+        let overseer = object["overseer"].as_object_mut().unwrap();
+        overseer.insert("merge_strategy".into(), legacy.into());
+    }
+    value
+}
+
+fn load_written(dir: &Path, top_level: Option<&str>, legacy: Option<&str>) -> Config {
+    let path = dir.join("config.json");
+    let raw = serde_json::to_string(&config_json(top_level, legacy)).unwrap();
+    fs::write(&path, raw).unwrap();
+    Config::load_at(&path).unwrap()
+}
+
 #[test]
-fn merge_strategy_defaults_and_maps_to_gh_flags() {
-    assert_eq!(MergeStrategy::default(), MergeStrategy::Rebase);
-    assert_eq!(MergeStrategy::Rebase.gh_flag(), "--rebase");
-    assert_eq!(MergeStrategy::Squash.gh_flag(), "--squash");
-    assert_eq!(MergeStrategy::Merge.gh_flag(), "--merge");
+fn a_config_naming_no_merge_strategy_takes_the_shared_default() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = load_written(temp.path(), None, None);
+    assert_eq!(config.merge_strategy, MergeStrategy::Squash);
+    assert_eq!(config.merge_strategy_notice, None);
+}
+
+#[test]
+fn the_top_level_merge_strategy_alone_drives_both_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = load_written(temp.path(), Some("rebase"), None);
+    assert_eq!(config.merge_strategy, MergeStrategy::Rebase);
+    assert_eq!(config.merge_strategy_notice, None);
+}
+
+#[test]
+fn the_legacy_overseer_merge_strategy_alone_is_adopted_and_reported() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = load_written(temp.path(), None, Some("merge"));
+    assert_eq!(config.merge_strategy, MergeStrategy::Merge);
+    assert!(config.merge_strategy_notice.is_some());
+    assert_eq!(config.overseer.legacy_merge_strategy, None);
+}
+
+/// The shape that produced the divergence: the daemon squashed while the TUI
+/// rebased. One value survives, and the operator is told which.
+#[test]
+fn conflicting_merge_strategy_keys_resolve_to_one_value_and_report_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = load_written(temp.path(), Some("rebase"), Some("squash"));
+    assert_eq!(config.merge_strategy, MergeStrategy::Squash);
+    let notice = config
+        .merge_strategy_notice
+        .expect("the conflict is reported");
+    assert!(notice.contains("overseer.merge_strategy"), "{notice}");
+}
+
+/// The migration is only finished once the file stops carrying the key that can
+/// drift, so the next save has to drop it.
+#[test]
+fn the_legacy_overseer_key_does_not_survive_a_save() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.json");
+    let config = load_written(temp.path(), Some("rebase"), Some("merge"));
+    config.save_at(&path).unwrap();
+
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert!(saved["overseer"].get("merge_strategy").is_none());
+    assert_eq!(saved["merge_strategy"], serde_json::json!("merge"));
 }
 
 #[test]

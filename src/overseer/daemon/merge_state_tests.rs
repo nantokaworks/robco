@@ -1,7 +1,22 @@
 use serde_json::json;
 
 use super::*;
-use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
+use crate::overseer::{
+    config::OverseerConfig,
+    ledger::{LedgerEntry, LedgerPhase},
+};
+
+/// The update budget lives under `overseer`, the strategy it spends lives at the
+/// top level — one config carries both, which is the point.
+fn config(max_branch_updates: u32) -> Config {
+    Config {
+        overseer: OverseerConfig {
+            max_branch_updates,
+            ..OverseerConfig::default()
+        },
+        ..Config::default()
+    }
+}
 
 fn entry() -> LedgerEntry {
     LedgerEntry {
@@ -60,10 +75,7 @@ fn an_unreported_merge_state_does_not_park_the_pull_request() {
 
 #[test]
 fn branch_updates_are_bounded_and_charged_before_they_run() {
-    let mut config = OverseerConfig {
-        max_branch_updates: 2,
-        ..OverseerConfig::default()
-    };
+    let mut config = config(2);
     let mut entry = entry();
     for spent in 1..=2 {
         assert_eq!(plan_update(&mut entry, &config), BehindPlan::Update(None));
@@ -76,8 +88,8 @@ fn branch_updates_are_bounded_and_charged_before_they_run() {
     assert_eq!(plan_update(&mut entry, &config), BehindPlan::Escalate);
     assert_eq!(entry.branch_updates, 2);
 
-    config.merge_strategy = "rebase".into();
-    config.max_branch_updates = 3;
+    config.merge_strategy = MergeStrategy::Rebase;
+    config.overseer.max_branch_updates = 3;
     assert_eq!(
         plan_update(&mut entry, &config),
         BehindPlan::Update(Some("--rebase"))
@@ -86,10 +98,7 @@ fn branch_updates_are_bounded_and_charged_before_they_run() {
 
 #[test]
 fn a_zero_budget_never_updates_a_branch() {
-    let config = OverseerConfig {
-        max_branch_updates: 0,
-        ..OverseerConfig::default()
-    };
+    let config = config(0);
     let mut entry = entry();
     assert_eq!(plan_update(&mut entry, &config), BehindPlan::Escalate);
     assert_eq!(entry.branch_updates, 0);
@@ -97,8 +106,7 @@ fn a_zero_budget_never_updates_a_branch() {
 
 #[test]
 fn only_a_rebase_strategy_rebases_the_update() {
-    assert_eq!(update_flag("rebase"), Some("--rebase"));
-    for strategy in ["squash", "merge", ""] {
-        assert_eq!(update_flag(strategy), None);
-    }
+    assert_eq!(update_flag(MergeStrategy::Rebase), Some("--rebase"));
+    assert_eq!(update_flag(MergeStrategy::Squash), None);
+    assert_eq!(update_flag(MergeStrategy::Merge), None);
 }

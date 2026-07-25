@@ -189,7 +189,6 @@ these defaults:
     "auto_merge": false,
     "protection_mode": "required",
     "autonomy_level": "conservative",
-    "merge_strategy": "squash",
     "max_branch_updates": 3,
     "merge_recovery_enabled": false,
     "max_merge_recoveries": 2,
@@ -235,7 +234,7 @@ these defaults:
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
 | `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
-| `merge_strategy` | string | `"squash"` | `"merge"` maps to `--merge`, `"rebase"` to `--rebase`, and every other value to `--squash`. |
+| `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
 | `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
@@ -347,9 +346,11 @@ whose required checks have not run yet, and the check rollup always describes th
 head, so the next pass holds with `checks_waiting` until they report. Falling behind is an
 expected, recoverable state and never counts toward `consecutive_failures`.
 
-The update is a merge commit from the base by default. Only when `merge_strategy` is
-`rebase` does the gate pass `--rebase`, which rewrites the pull request's own branch; no
-other branch is ever rewritten.
+The update is a merge commit from the base by default. Only when the top-level
+[`merge_strategy`](09-config-reference.md#merge_strategy) is `rebase` does the gate pass
+`--rebase`, which rewrites the pull request's own branch; no other branch is ever
+rewritten. The two follow one setting deliberately: a branch updated with a merge commit is
+exactly the shape GitHub later refuses to rebase-merge.
 
 Each update is charged to the entry's `branch_updates` before it runs, and
 `max_branch_updates` bounds it. A branch that keeps losing the race against other merges —
@@ -387,8 +388,14 @@ Reasons are classified into the worker's and the operator's:
   worker verbatim, because it is the actual instruction.
 - **Operator-only:** `unprotected:*`, `missing_pr_url`, `autonomy_envelope`,
   `repo_merged_this_pass`, `behind_branch_updated` (already the recovery), `checks_waiting`
-  (nothing has failed yet), and every probe or parse failure. **An unrecognised reason is
-  operator-only** — a failure nobody anticipated must not silently drive a worker.
+  (nothing has failed yet), `merge_refused:*`, and every probe or parse failure. **An
+  unrecognised reason is operator-only** — a failure nobody anticipated must not silently
+  drive a worker.
+
+`merge_refused:rebase_refused_merge_commit` is a rebase GitHub declined because the head
+branch carries a merge commit. It is deliberately the operator's: the worker cannot clear
+it without rewriting a published branch, which the rails forbid, and the fix is to choose
+another [`merge_strategy`](09-config-reference.md#merge_strategy).
 
 `checks_not_green` means a check finished and did not pass. A head whose checks have not
 finished, and a pull request that is no longer open, hold under `checks_waiting` instead,

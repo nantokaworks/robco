@@ -38,6 +38,12 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 pub async fn run_daemon() -> Result<()> {
     let _pid_guard = PidGuard::acquire(pidfile_path()?)?;
     let mut config = Config::load()?;
+    // Logged once at startup rather than on every reload: the notice describes
+    // the file, which does not change between passes, and the daemon merges
+    // unattended — the log is where an operator finds out its strategy moved.
+    if let Some(notice) = &config.merge_strategy_notice {
+        logging::log_message(None, notice)?;
+    }
     let (ledger_request_tx, ledger_request_rx) = mpsc::channel();
     let mut discord = None;
     sync_discord(&mut discord, &config.overseer.discord, &ledger_request_tx);

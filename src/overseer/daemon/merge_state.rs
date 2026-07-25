@@ -16,7 +16,10 @@ use std::process::Command;
 use serde_json::Value;
 
 use super::COMMAND_TIMEOUT;
-use crate::overseer::{config::OverseerConfig, exec::run_timeout, ledger::LedgerEntry};
+use crate::{
+    config::{Config, MergeStrategy},
+    overseer::{exec::run_timeout, ledger::LedgerEntry},
+};
 
 /// Reason recorded when a branch was updated onto its base. The pull request is held
 /// rather than merged, because its required checks must re-run against the new head.
@@ -78,18 +81,20 @@ pub(super) enum BehindPlan {
 /// The attempt is charged before it runs, so an update that fails still consumes budget
 /// and a branch that can never be updated escalates instead of retrying forever. This
 /// mirrors how `max_retries_per_task` counts dispatch attempts.
-pub(super) fn plan_update(entry: &mut LedgerEntry, config: &OverseerConfig) -> BehindPlan {
-    if entry.branch_updates >= config.max_branch_updates {
+pub(super) fn plan_update(entry: &mut LedgerEntry, config: &Config) -> BehindPlan {
+    if entry.branch_updates >= config.overseer.max_branch_updates {
         return BehindPlan::Escalate;
     }
     entry.branch_updates = entry.branch_updates.saturating_add(1);
-    BehindPlan::Update(update_flag(&config.merge_strategy))
+    BehindPlan::Update(update_flag(config.merge_strategy))
 }
 
 /// Keeps the update consistent with the configured merge strategy: a repository that
 /// merges by rebase gets a rebased branch rather than a merge commit from the base.
-fn update_flag(merge_strategy: &str) -> Option<&'static str> {
-    (merge_strategy == "rebase").then_some("--rebase")
+/// A merge commit here is exactly what would later make the rebase merge itself
+/// impossible, so the two settings cannot be allowed to drift apart.
+fn update_flag(strategy: MergeStrategy) -> Option<&'static str> {
+    (strategy == MergeStrategy::Rebase).then_some("--rebase")
 }
 
 /// Runs `gh pr update-branch`, returning the hold reason when it does not succeed.
