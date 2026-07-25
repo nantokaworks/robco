@@ -189,6 +189,7 @@ mod tests {
                 branch: "task-159".into(),
                 phase: LedgerPhase::Escalated,
                 dispatched_at: at(1),
+                settled_at: None,
                 retries: 0,
                 pr_url: None,
                 branch_updates: 0,

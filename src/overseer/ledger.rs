@@ -15,6 +15,14 @@ pub struct LedgerEntry {
     pub branch: String,
     pub phase: LedgerPhase,
     pub dispatched_at: DateTime<Utc>,
+    /// When the entry reached a terminal phase — merged, failed, or escalated.
+    /// `dispatched_at` says when the work started; a history view needs when it
+    /// ended, and reconciliation is the only pass that can tell. Stamped once,
+    /// on the transition, so a later pass cannot rewrite it. `None` while the
+    /// entry is still live, and for entries that settled before the field
+    /// existed. Defaulted so ledgers written before then still load.
+    #[serde(default)]
+    pub settled_at: Option<DateTime<Utc>>,
     pub retries: u32,
     pub pr_url: Option<String>,
     /// Times the auto-merge pass has updated this pull request's branch onto its base

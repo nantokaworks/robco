@@ -36,6 +36,7 @@ fn ledger_for(agent_id: &str) -> Ledger {
             branch: "task-154".into(),
             phase: LedgerPhase::Working,
             dispatched_at: Utc::now(),
+            settled_at: None,
             retries: 0,
             pr_url: None,
             branch_updates: 0,

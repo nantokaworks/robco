@@ -201,6 +201,7 @@ mod tests {
             branch: "branch".into(),
             phase,
             dispatched_at: chrono::Utc::now(),
+            settled_at: None,
             retries: 0,
             pr_url: pr_url.map(str::to_owned),
             branch_updates: 0,

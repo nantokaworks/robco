@@ -116,6 +116,7 @@ mod tests {
             branch: "branch".into(),
             phase: LedgerPhase::Working,
             dispatched_at: Utc::now(),
+            settled_at: None,
             retries: 0,
             pr_url: None,
             branch_updates: 0,

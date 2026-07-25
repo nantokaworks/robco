@@ -7,12 +7,13 @@
 //! charged to every pass — and once a history view reads settled entries, the
 //! retention window silently becomes the history window.
 //!
-//! The window is a count per repository rather than an age, because a settled
-//! entry records no settling time: `dispatched_at` is the only timestamp an
-//! entry carries, and dating retention off it would evict a long-running task
-//! that merged this morning ahead of a short one that failed last week.
-//! Repositories are counted separately so a busy one cannot push another
-//! repository's history out of the ledger.
+//! The window is a count per repository rather than an age, and it ranks on
+//! `dispatched_at`. An entry now also records `settled_at`, but only for the
+//! settlements observed since that field existed — every entry already terminal
+//! when it arrived carries `None`, and ranking on a timestamp half the ledger
+//! lacks would evict by upgrade date rather than by recency. `dispatched_at` is
+//! the one instant every entry has. Repositories are counted separately so a
+//! busy one cannot push another repository's history out of the ledger.
 //!
 //! Two entries are never dropped:
 //!

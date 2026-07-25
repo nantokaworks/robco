@@ -14,6 +14,7 @@ fn entry(task: &str, repo: &str, phase: LedgerPhase, minute: i64) -> LedgerEntry
         phase,
         dispatched_at: Utc.with_ymd_and_hms(2026, 7, 20, 0, 0, 0).unwrap()
             + Duration::minutes(minute),
+        settled_at: None,
         retries: 0,
         pr_url: None,
         branch_updates: 0,

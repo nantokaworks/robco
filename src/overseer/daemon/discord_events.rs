@@ -62,6 +62,7 @@ mod tests {
             branch: "branch".into(),
             phase: LedgerPhase::PrOpened,
             dispatched_at: Utc::now(),
+            settled_at: None,
             retries: 0,
             pr_url: Some("https://pr".into()),
             branch_updates: 0,
