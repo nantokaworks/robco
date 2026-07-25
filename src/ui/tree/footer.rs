@@ -18,7 +18,6 @@ pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect, message: Option
 
     let hints = Paragraph::new(super::hints::hints_line(
         message,
-        super::hints::r_hint_label(app.selected_item()),
         app.overseer_snapshot.circuit_open(),
     ))
     .alignment(Alignment::Center);
