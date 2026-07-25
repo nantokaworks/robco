@@ -145,7 +145,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 ));
                 if expanded && repo.agents.is_empty() {
                     lines.push(Line::from(Span::styled(
-                        "    (no agents)",
+                        format!("    {}(no agents)", label::AGENT_INDENT),
                         THEME.muted_style(),
                     )));
                 }
@@ -223,7 +223,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 });
                 let child_style = if selected { style } else { THEME.hint_style() };
                 let mut spans = vec![Span::styled(
-                    format!("{marker}     {}└ {label}", "  ".repeat(depth)),
+                    format!(
+                        "{marker}     {}{}└ {label}",
+                        label::AGENT_INDENT,
+                        "  ".repeat(depth)
+                    ),
                     child_style,
                 )];
                 if child.clean == Some(false) {
