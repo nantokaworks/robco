@@ -70,6 +70,13 @@ pub struct OverseerConfig {
     pub worker_profile: Option<String>,
     pub max_workers: usize,
     pub per_repo_limit: usize,
+    /// Settled ledger entries kept per repository. Nothing else ever removes a
+    /// terminal entry, so without a bound the ledger grows for the life of the
+    /// installation and every save rewrites all of it. `0` keeps every entry,
+    /// which is exactly how the ledger behaved before the window existed. See
+    /// [`crate::overseer::daemon::retention`] for what the window refuses to
+    /// drop.
+    pub terminal_retention_per_repo: usize,
     pub poll_interval_secs: u64,
     pub stuck_after_mins: u64,
     pub max_retries_per_task: u32,
@@ -111,6 +118,11 @@ impl Default for OverseerConfig {
             worker_profile: None,
             max_workers: 3,
             per_repo_limit: 1,
+            // Deep enough that a repository's recent history is still readable
+            // — well past the live-entry cap every other surface applies — and
+            // shallow enough that the file the daemon rewrites every pass stays
+            // small.
+            terminal_retention_per_repo: 50,
             poll_interval_secs: 60,
             stuck_after_mins: 30,
             max_retries_per_task: 1,
