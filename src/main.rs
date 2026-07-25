@@ -13,6 +13,7 @@ mod new_agent;
 mod notify;
 mod openclaw;
 mod overseer;
+mod pr;
 mod registry;
 mod setup;
 mod spawn;

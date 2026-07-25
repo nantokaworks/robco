@@ -1,5 +1,7 @@
 mod branch;
 mod merge_failure;
+pub mod merge_flow;
+mod merge_lock;
 pub mod post_merge;
 mod remote;
 #[cfg(test)]

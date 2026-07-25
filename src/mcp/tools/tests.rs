@@ -144,10 +144,10 @@ fn activity_output_schemas_require_new_fields() {
 }
 
 #[test]
-fn catalog_includes_agent_create_and_nine_tools() {
+fn catalog_includes_agent_create_and_every_tool() {
     let tools = catalog::list_tools();
     let tools = tools.as_array().unwrap();
-    assert_eq!(tools.len(), 9);
+    assert_eq!(tools.len(), 12);
     let create = tools
         .iter()
         .find(|tool| tool["name"] == "robco_agent_create")

@@ -1,11 +1,13 @@
 use serde_json::{Value, json};
 
+mod git_ops;
+
 pub fn list_tools() -> Value {
-    json!([
+    let mut tools = vec![
         tool(
             "robco_whoami",
             "Report the calling agent's inherited identity.",
-            empty_schema()
+            empty_schema(),
         ),
         tool(
             "robco_report",
@@ -21,7 +23,7 @@ pub fn list_tools() -> Value {
                 },
                 "required": ["message"],
                 "additionalProperties": false
-            })
+            }),
         ),
         tool_with_output(
             "robco_overseer_policy",
@@ -40,13 +42,13 @@ pub fn list_tools() -> Value {
                 "required": ["dispatch_enabled", "auto_merge", "max_workers",
                     "daemon_alive", "dispatch_without_daemon", "circuit_open"],
                 "additionalProperties": false
-            })
+            }),
         ),
         tool_with_output(
             "robco_agent_list",
             "List repos and agents with live status.",
             empty_schema(),
-            agent_list_schema()
+            agent_list_schema(),
         ),
         tool_with_output(
             "robco_agent_create",
@@ -73,7 +75,7 @@ pub fn list_tools() -> Value {
                 },
                 "required": ["id", "branch", "worktree_path", "tmux_session"],
                 "additionalProperties": false
-            })
+            }),
         ),
         tool_with_output(
             "robco_agent_status",
@@ -84,12 +86,12 @@ pub fn list_tools() -> Value {
                 "required": ["agent_id"],
                 "additionalProperties": false
             }),
-            agent_status_schema()
+            agent_status_schema(),
         ),
         tool(
             "robco_question_list",
             "List agents awaiting confirmation prompts.",
-            empty_schema()
+            empty_schema(),
         ),
         tool(
             "robco_answer",
@@ -102,7 +104,7 @@ pub fn list_tools() -> Value {
                 },
                 "required": ["agent_id", "text"],
                 "additionalProperties": false
-            })
+            }),
         ),
         tool(
             "robco_approve",
@@ -112,9 +114,11 @@ pub fn list_tools() -> Value {
                 "properties": { "agent_id": { "type": "string" } },
                 "required": ["agent_id"],
                 "additionalProperties": false
-            })
-        )
-    ])
+            }),
+        ),
+    ];
+    tools.extend(git_ops::tools());
+    Value::Array(tools)
 }
 
 fn empty_schema() -> Value {
