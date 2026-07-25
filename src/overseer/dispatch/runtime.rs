@@ -7,6 +7,7 @@ use super::{
     worker::{SpawnOutcome, spawn_candidate},
 };
 use crate::overseer::{
+    config_write,
     exec::COMMAND_TIMEOUT,
     judge::JudgmentQueue,
     ledger::Ledger,
@@ -129,7 +130,10 @@ where
 
 fn open_circuit(config: &mut Config) -> Result<()> {
     config.overseer.dispatch_enabled = false;
-    config.save()?;
+    // The snapshot this pass carries can be minutes old by now, so persist the one
+    // field the circuit owns rather than writing the whole stale struct back over
+    // an operator's edits. The CircuitOpen entry below records the rewrite.
+    config_write::persist_dispatch_enabled(false)?;
     log_global(DecisionKind::CircuitOpen, "failure threshold reached")?;
     log_global(
         DecisionKind::Escalate,

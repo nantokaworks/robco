@@ -6,6 +6,7 @@ mod protection;
 mod pull_request;
 
 use super::{
+    config_write,
     dispatch::dispatch_pass,
     exec::{PidGuard, append_jsonl, execute_actions},
     heartbeat_path,
@@ -59,7 +60,7 @@ pub async fn run_daemon() -> Result<()> {
         match runtime_request::drain(&mut ledger, &mut config) {
             Ok(config_changed) => {
                 if config_changed {
-                    config.save()?;
+                    persist_drained_config(config.overseer.dispatch_enabled)?;
                 }
             }
             Err(error) => logging::log_message(
@@ -116,6 +117,19 @@ pub async fn run_daemon() -> Result<()> {
             return Ok(());
         }
     }
+}
+
+/// Write back what the drained requests changed. `runtime_request::apply` only
+/// ever flips `overseer.dispatch_enabled`, so the write narrows to that field
+/// rather than serialising this pass's snapshot over an operator's edits.
+fn persist_drained_config(dispatch_enabled: bool) -> Result<()> {
+    if config_write::persist_dispatch_enabled(dispatch_enabled)? {
+        logging::log_message(
+            None,
+            &format!("config rewritten: overseer.dispatch_enabled={dispatch_enabled}"),
+        )?;
+    }
+    Ok(())
 }
 
 fn sync_discord(
