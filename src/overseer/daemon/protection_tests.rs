@@ -175,6 +175,7 @@ fn off_mode_skips_the_probe_entirely() {
         branch: "branch".into(),
         phase: crate::overseer::ledger::LedgerPhase::PrOpened,
         dispatched_at: chrono::Utc::now(),
+        settled_at: None,
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,

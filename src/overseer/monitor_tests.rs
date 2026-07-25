@@ -10,6 +10,7 @@ pub(super) fn ledger() -> Ledger {
             branch: "task-131".into(),
             phase: LedgerPhase::Dispatched,
             dispatched_at: Utc.with_ymd_and_hms(2026, 7, 16, 0, 0, 0).unwrap(),
+            settled_at: None,
             retries: 0,
             pr_url: None,
             branch_updates: 0,
@@ -152,6 +153,67 @@ fn manual_worker_with_open_pr_keeps_session_and_worktree() {
     assert_eq!(open.entries[0].phase, LedgerPhase::PrOpened);
     assert!(actions.is_empty());
 }
+/// The history view orders entries by when they settled, so the instant a
+/// worker phase becomes terminal has to be recorded — and recorded from the
+/// pass's clock, which is the only one a test can pin down.
+#[test]
+fn reaching_a_terminal_phase_stamps_the_pass_clock() {
+    let dead: Observations = serde_json::from_str(
+        r#"{"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap();
+    let (failed, _) = reconcile(&ledger(), &dead, now, 30);
+    assert_eq!(failed.entries[0].phase, LedgerPhase::Failed);
+    assert_eq!(failed.entries[0].settled_at, Some(now));
+}
+
+/// The stamp is the moment the entry settled, not the moment it was last looked
+/// at: re-running the pass an hour later must leave it alone, or the history
+/// would report every terminal entry as having settled just now.
+#[test]
+fn a_later_pass_does_not_restamp_a_settled_entry() {
+    let dead: Observations = serde_json::from_str(
+        r#"{"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
+    )
+    .unwrap();
+    let settled = Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap();
+    let (failed, _) = reconcile(&ledger(), &dead, settled, 30);
+    let later = Utc.with_ymd_and_hms(2026, 7, 16, 1, 5, 0).unwrap();
+    let (again, _) = reconcile(&failed, &dead, later, 30);
+    assert_eq!(again.entries[0].settled_at, Some(settled));
+}
+
+/// A live entry has not settled, so it carries no timestamp for the history to
+/// order it by.
+#[test]
+fn a_worker_phase_carries_no_settled_timestamp() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"claimed","task_id":"task-131","pr_url":null,"reason":null}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
+    let (claimed, _) = reconcile(&ledger(), &observations, now, 30);
+    assert_eq!(claimed.entries[0].phase, LedgerPhase::Claimed);
+    assert!(claimed.entries[0].settled_at.is_none());
+}
+
+/// A Manual worker's entry advances through the same phases, so it settles the
+/// same way — the human's merged pull request is history too.
+#[test]
+fn a_manual_entry_is_stamped_when_its_pull_request_merges() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"manual_agents":["worker-1"],"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"MERGED","statusCheckRollup":[]}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (merged, _) = reconcile(&ledger(), &observations, now, 30);
+    assert_eq!(merged.entries[0].settled_at, Some(now));
+    let later = Utc.with_ymd_and_hms(2026, 7, 16, 2, 0, 0).unwrap();
+    let (again, _) = reconcile(&merged, &observations, later, 30);
+    assert_eq!(again.entries[0].settled_at, Some(now));
+}
+
 #[test]
 fn claimed_worker_without_activity_is_not_marked_stuck() {
     let mut claimed = ledger();

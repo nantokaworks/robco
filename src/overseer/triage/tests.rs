@@ -35,6 +35,7 @@ fn ledger() -> Ledger {
             branch: "task-1".into(),
             phase: LedgerPhase::Failed,
             dispatched_at: Utc::now(),
+            settled_at: None,
             retries: 0,
             pr_url: None,
             branch_updates: 0,

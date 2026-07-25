@@ -203,6 +203,7 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
                 branch: agent.branch.clone(),
                 phase: LedgerPhase::Dispatched,
                 dispatched_at: agent.created_at.with_timezone(&Utc),
+                settled_at: None,
                 retries: 0,
                 pr_url: None,
                 branch_updates: 0,

@@ -27,6 +27,7 @@ fn entry() -> LedgerEntry {
         branch: "branch".into(),
         phase: LedgerPhase::PrOpened,
         dispatched_at: chrono::Utc::now(),
+        settled_at: None,
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
