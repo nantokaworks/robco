@@ -26,7 +26,7 @@ fn dispatch_request() -> Request {
     }
 }
 
-fn merge_request() -> Request {
+pub(super) fn merge_request() -> Request {
     Request::Merge {
         key: "merge-test".into(),
         case: MergeCase {
