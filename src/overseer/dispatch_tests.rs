@@ -29,6 +29,7 @@ fn entry(phase: LedgerPhase) -> LedgerEntry {
         pr_url: None,
         branch_updates: 0,
         merge_recovery: Default::default(),
+        manual_merge_skip: None,
     }
 }
 
