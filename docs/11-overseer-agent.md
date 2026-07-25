@@ -27,7 +27,8 @@ poll then performs the same ordered pass:
    stuck workers, escalates released task locks, and cleans up merged workers.
 4. Queue and poll exception triage, execute deterministic monitor actions, run the
    auto-merge gate, and dispatch eligible ready tasks.
-5. Atomically save the ledger, acknowledge completed triage and inbox work, write the
+5. Drop the settled ledger entries that fall outside the retention window, then
+   atomically save the ledger, acknowledge completed triage and inbox work, write the
    heartbeat, and wait for the remainder of `poll_interval_secs`.
 
 That wait also ends early when another process enqueues a runtime request: enqueuing
@@ -200,6 +201,7 @@ these defaults:
     "worker_profile": null,
     "max_workers": 3,
     "per_repo_limit": 1,
+    "terminal_retention_per_repo": 50,
     "poll_interval_secs": 60,
     "stuck_after_mins": 30,
     "max_retries_per_task": 1,
@@ -246,6 +248,7 @@ these defaults:
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
+| `terminal_retention_per_repo` | non-negative integer | `50` | Settled (`merged`, `failed`, `escalated`) ledger entries kept per repository. The oldest beyond the window are dropped at the end of a pass — see below. `0` keeps every settled entry, which is how the ledger behaved before the window existed. |
 | `poll_interval_secs` | non-negative integer | `60` | Target period between daemon passes; also defines heartbeat freshness as `max(2 × value, 5)` seconds. |
 | `stuck_after_mins` | non-negative integer | `30` | A dispatched, claimed, or working worker with older tmux activity is failed. |
 | `max_retries_per_task` | non-negative integer | `1` | Dispatch is skipped when the highest recorded retry count reaches this value. Every dispatch attempt for a task is recorded before its worker is spawned, so an attempt whose spawn fails counts too. The default permits one first attempt and one retry. |
@@ -609,6 +612,35 @@ registered children whose parent is `overseer`. This adoption can recover worker
 branch, repository, and creation time, but not the original dropr task id, so the agent
 id and title are substituted. Only a later inbox record carrying a task id can heal
 that field; the current public report command does not include one.
+
+### Ledger retention
+
+Nothing but a detach used to remove a ledger entry, so everything that reached `merged`,
+`failed`, or `escalated` stayed on the ledger for the life of the installation — a file
+rewritten on every save and cloned on every reconcile pass. `terminal_retention_per_repo`
+bounds that: at the end of each pass, the settled entries ranked outside the most recent
+N of their repository are dropped, and each drop is recorded in `decisions.jsonl` under
+source `retention` with the entry's task, repository, and pull request. Repositories are
+counted separately, so a busy one cannot push another's history off the ledger, and the
+window is a count rather than an age because an entry records when it was dispatched, not
+when it settled.
+
+The window is applied last, after reconcile, notifications, triage, merge, and dispatch
+have read the board, so it only decides how much settled history the *next* pass
+inherits. It never drops a non-terminal entry — live work holds a worktree and a dispatch
+slot, so `active_workers()`, `max_workers`, and `per_repo_limit` read exactly the counts
+they read before — and it never drops a terminal entry whose worker is still registered:
+merged cleanup is re-pushed for as long as the registry row survives, and dropping the
+entry first would leak the session and worktree that cleanup was about to remove. A
+`failed` or `escalated` worktree left standing for an operator therefore stays visible for
+as long as it exists, though it still occupies a place in its repository's window.
+
+Retention is the one thing that erases dispatch history: `max_retries_per_task` counts a
+task's recorded entries, so a task whose entries have all aged out is one Overseer no
+longer remembers attempting, and a still-ready one may be dispatched afresh. That is the
+intended reading of a retention window — a task untouched across the last N settlements
+of its repository is being started again, not retried — and `skip_list` remains the
+durable way to say never.
 
 The JSONL decision log is the durable audit trail used by `robco overseer status`, the TUI
 Overseer info pane, and Discord notifications. The daemon writes observation snapshots
