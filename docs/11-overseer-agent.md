@@ -188,6 +188,7 @@ these defaults:
     "dispatch_enabled": true,
     "auto_merge": false,
     "protection_mode": "required",
+    "autonomy_level": "conservative",
     "merge_strategy": "squash",
     "max_branch_updates": 3,
     "worker_profile": null,
@@ -231,6 +232,7 @@ these defaults:
 | `dispatch_enabled` | boolean | `true` | Allows new dispatches. The circuit breaker and panic command persist this as `false`. |
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
 | `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
+| `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | string | `"squash"` | `"merge"` maps to `--merge`, `"rebase"` to `--rebase`, and every other value to `--squash`. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
@@ -423,9 +425,12 @@ robco overseer set dispatch on
 
 `robco overseer set auto-merge on|off` changes the merge toggle, and
 `robco overseer protection required|relaxed|off` changes how strictly that gate requires
-base-branch protection. These commands persist their values in `~/.robco/config.json`.
-`robco overseer status` reports the active mode next to `auto-merge` and warns while
-auto-merge runs under a loosened one.
+base-branch protection, and `robco overseer autonomy approval_only|conservative|full_auto`
+changes how much of the merge envelope the daemon clears on its own. These commands persist
+their values in `~/.robco/config.json`. `robco overseer status` and the TUI OVERSEER frame
+report the active protection mode and autonomy level next to `auto-merge`, and both warn
+while auto-merge runs under a loosened gate — naming, for `full_auto`, the risks the
+envelope stops escalating.
 
 ### Discord application
 

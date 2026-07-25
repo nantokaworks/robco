@@ -2,7 +2,7 @@ use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
 
-use crate::overseer::config::ProtectionMode;
+use crate::overseer::{autonomy::AutonomyLevel, config::ProtectionMode};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -91,6 +91,8 @@ pub enum OverseerCommand {
     DailyLimit(OverseerDailyLimitArgs),
     /// Set how strictly auto-merge requires the base branch to be protected.
     Protection(OverseerProtectionArgs),
+    /// Set how much of the merge envelope the daemon may clear on its own.
+    Autonomy(OverseerAutonomyArgs),
     /// Disable dispatch and terminate all Overseer workers.
     Panic,
     /// Write a launchd service plist and load or reload it after confirmation.
@@ -117,6 +119,14 @@ pub struct OverseerProtectionArgs {
     /// demands only the pull-request rule, `off` skips the probe entirely.
     #[arg(value_enum)]
     pub mode: ProtectionMode,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OverseerAutonomyArgs {
+    /// `approval_only` escalates every merge, `conservative` auto-merges only a
+    /// risk-free docs-or-tests change, `full_auto` escalates the hard stops alone.
+    #[arg(value_enum)]
+    pub level: AutonomyLevel,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

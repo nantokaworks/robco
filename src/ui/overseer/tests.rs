@@ -1,5 +1,6 @@
 use super::render::append_ledger;
 use super::*;
+use crate::overseer::autonomy::AutonomyLevel;
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 use crate::{
     config::Config,
@@ -219,6 +220,66 @@ fn open_circuit_shows_recovery_hint() {
         .map(|span| span.content.as_ref())
         .collect::<String>();
     assert!(!rendered.contains("robco overseer set dispatch on"));
+}
+
+#[test]
+fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelope() {
+    let render = |autonomy_level, auto_merge| {
+        let config = OverseerConfig {
+            autonomy_level,
+            auto_merge,
+            ..OverseerConfig::default()
+        };
+        let mut lines = Vec::new();
+        super::render::append_health(&mut lines, &config, &Ledger::default(), true, None);
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+    };
+
+    for (level, label) in [
+        (AutonomyLevel::ApprovalOnly, "approval_only"),
+        (AutonomyLevel::Conservative, "conservative"),
+        (AutonomyLevel::FullAuto, "full_auto"),
+    ] {
+        assert!(
+            render(level, true).contains(&format!("autonomy: {label}")),
+            "expected autonomy: {label}"
+        );
+    }
+
+    assert!(
+        render(AutonomyLevel::FullAuto, true).contains(crate::overseer::FULL_AUTO_ENVELOPE_HINT)
+    );
+    // The envelope only decides anything while the merge pass runs, so a level
+    // no merge pass consults must not be reported as a loosened gate.
+    assert!(
+        !render(AutonomyLevel::FullAuto, false).contains(crate::overseer::FULL_AUTO_ENVELOPE_HINT)
+    );
+    assert!(
+        !render(AutonomyLevel::Conservative, true)
+            .contains(crate::overseer::FULL_AUTO_ENVELOPE_HINT)
+    );
+
+    let mut lines = Vec::new();
+    let config = OverseerConfig {
+        autonomy_level: AutonomyLevel::FullAuto,
+        auto_merge: true,
+        ..OverseerConfig::default()
+    };
+    super::render::append_health(&mut lines, &config, &Ledger::default(), true, None);
+    assert_eq!(
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content == "full_auto")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red)
+    );
 }
 
 #[test]
