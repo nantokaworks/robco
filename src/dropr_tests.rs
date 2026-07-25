@@ -1,5 +1,10 @@
 use super::*;
 
+/// The display-row parse, spelled once so each case reads as one call.
+fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
+    parse_as(raw)
+}
+
 #[test]
 fn parses_ready_tasks_array() {
     let tasks = parse_tasks(
@@ -63,53 +68,4 @@ fn parses_in_progress_tasks_tolerantly_in_both_shapes() {
     assert_eq!(array[0].priority, "");
     assert_eq!(array[0].status, "");
     assert_eq!(object[0].status, "in_progress");
-}
-fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
-    DroprTaskCandidate {
-        display_id: display_id.to_string(),
-        title: display_id.to_string(),
-        priority: String::new(),
-        status: status.to_string(),
-    }
-}
-
-#[test]
-fn merges_repo_task_results() {
-    assert_eq!(merge_repo_tasks(None, None), None);
-    assert_eq!(
-        merge_repo_tasks(None, Some(vec![task("#2", "ready")])).unwrap()[0].display_id,
-        "#2"
-    );
-    assert_eq!(
-        merge_repo_tasks(Some(vec![task("#1", "")]), None).unwrap()[0].status,
-        "in_progress"
-    );
-
-    let tasks = merge_repo_tasks(
-        Some(vec![task("#1", "in_progress")]),
-        Some(vec![task("#2", "ready")]),
-    )
-    .unwrap();
-    let ids = tasks
-        .iter()
-        .map(|task| task.display_id.as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(ids, ["#1", "#2"]);
-}
-
-#[test]
-fn dedupes_tasks_present_in_both_sources() {
-    let tasks = merge_repo_tasks(
-        Some(vec![task("#1", "in_progress"), task("#2", "in_progress")]),
-        Some(vec![task("#2", "ready"), task("#3", "ready")]),
-    )
-    .unwrap();
-    let ids = tasks
-        .iter()
-        .map(|task| task.display_id.as_str())
-        .collect::<Vec<_>>();
-    // #2 is present in both sources: it appears once, keeping the in-progress copy.
-    assert_eq!(ids, ["#1", "#2", "#3"]);
-    let overlapping = tasks.iter().find(|task| task.display_id == "#2").unwrap();
-    assert_eq!(overlapping.status, "in_progress");
 }

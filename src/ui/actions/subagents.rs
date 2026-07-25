@@ -135,7 +135,7 @@ mod tests {
                 children: Vec::new(),
             }],
             dropr: None,
-            dropr_tasks: Vec::new(),
+            dropr_tasks: crate::dropr::DroprTaskFetch::default(),
             main_status: Some(Status::Idle),
             main_last_capture: None,
             main_last_spinner: None,
