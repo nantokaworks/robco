@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use super::config::OverseerConfig;
@@ -7,13 +8,42 @@ const LARGE_LINE_COUNT: u32 = 500;
 const LOW_RISK_FILE_COUNT: u32 = 5;
 const LOW_RISK_LINE_COUNT: u32 = 200;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+/// How much of the merge envelope the Overseer may clear without an operator.
+///
+/// The CLI spells the levels exactly as `~/.robco/config.json` and the MCP policy
+/// tool do, so an operator who read `full_auto` off either surface can type it
+/// back unchanged rather than translating it into another casing.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ValueEnum)]
 #[serde(rename_all = "snake_case")]
+#[clap(rename_all = "snake_case")]
 pub enum AutonomyLevel {
+    /// Escalate every merge, whatever the change looks like.
     ApprovalOnly,
+    /// Auto-merge only a small docs-or-tests change that trips no risk at all.
     #[default]
     Conservative,
+    /// Auto-merge anything that trips none of the hard-stop risks.
     FullAuto,
+}
+
+impl AutonomyLevel {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ApprovalOnly => "approval_only",
+            Self::Conservative => "conservative",
+            Self::FullAuto => "full_auto",
+        }
+    }
+
+    /// Names what a widened envelope no longer escalates, so the autonomy command,
+    /// `status`, and the TUI warn in the same words. `None` for the levels that
+    /// escalate at least as much as the default one.
+    pub fn envelope_warning(self) -> Option<&'static str> {
+        match self {
+            Self::ApprovalOnly | Self::Conservative => None,
+            Self::FullAuto => Some(super::FULL_AUTO_ENVELOPE_HINT),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

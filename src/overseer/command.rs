@@ -32,7 +32,7 @@ pub(crate) use escalation::escalate_workers;
 use service::install_service;
 pub(crate) use service::write_service_plist;
 pub(crate) use settings::set_runtime;
-use settings::{daily_limit, protection_mode, protection_warning, set};
+use settings::{autonomy_level, daily_limit, protection_mode, protection_warning, set};
 
 pub(crate) use super::ledger::{ActiveWorkers, terminal};
 
@@ -44,6 +44,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         OverseerCommand::DailyLimit(args) => daily_limit(args.value),
         OverseerCommand::Protection(args) => protection_mode(args.mode),
+        OverseerCommand::Autonomy(args) => autonomy_level(args.level),
         OverseerCommand::Panic => panic_stop(),
         OverseerCommand::InstallService => install_service(),
     }
@@ -108,6 +109,14 @@ fn status(config: &Config) -> Result<()> {
     }
     if config.overseer.auto_merge
         && let Some(warning) = protection_warning(config.overseer.protection_mode)
+    {
+        println!("warning: {warning}");
+    }
+    // Both warnings are gated on auto-merge: the envelope only decides anything
+    // while the merge pass runs, so warning about it otherwise would name a gate
+    // that is not currently in the path.
+    if config.overseer.auto_merge
+        && let Some(warning) = config.overseer.autonomy_level.envelope_warning()
     {
         println!("warning: {warning}");
     }
@@ -227,10 +236,11 @@ fn on_off(value: bool) -> &'static str {
 /// part in.
 fn toggle_line(config: &OverseerConfig, circuit_open: bool) -> String {
     format!(
-        "dispatch: {}  auto-merge: {} (protection: {})  circuit: {}",
+        "dispatch: {}  auto-merge: {} (protection: {})  autonomy: {}  circuit: {}",
         on_off(config.dispatch_enabled),
         on_off(config.auto_merge),
         config.protection_mode.label(),
+        config.autonomy_level.label(),
         if circuit_open { "open" } else { "closed" }
     )
 }
