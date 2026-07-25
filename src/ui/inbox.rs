@@ -192,6 +192,7 @@ mod tests {
                 retries: 0,
                 pr_url: None,
                 branch_updates: 0,
+                merge_recovery: Default::default(),
             }],
             ..Ledger::default()
         }

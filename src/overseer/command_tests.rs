@@ -7,10 +7,22 @@ fn toggle_line_reports_no_switch_the_daemon_ignores() {
     let line = toggle_line(&config, false);
     assert_eq!(
         line,
-        "dispatch: on  auto-merge: off (protection: required)  circuit: closed"
+        "dispatch: on  auto-merge: off (protection: required)  merge-recovery: off  circuit: closed"
     );
     // A dispatching daemon must never be described as switched off.
     assert!(!line.contains("overseer: off"));
+}
+
+#[test]
+fn toggle_line_reports_the_merge_recovery_budget_with_its_switch() {
+    // A worker handback is a worker turn, so an operator reading the status line
+    // has to see how many are left before a stuck pull request reaches them.
+    let config = OverseerConfig {
+        merge_recovery_enabled: true,
+        max_merge_recoveries: 3,
+        ..OverseerConfig::default()
+    };
+    assert!(toggle_line(&config, false).contains("merge-recovery: on (max 3)"));
 }
 
 #[test]

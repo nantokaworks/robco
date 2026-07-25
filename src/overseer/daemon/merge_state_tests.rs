@@ -15,6 +15,7 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
+        merge_recovery: Default::default(),
     }
 }
 

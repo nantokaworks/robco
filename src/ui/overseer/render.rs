@@ -50,6 +50,13 @@ pub(super) fn append_health(
             config.auto_merge && config.protection_mode != ProtectionMode::Required,
         ),
         (
+            "merge-recovery",
+            merge_recovery_state(config),
+            // Recovery without auto-merge is inert: nothing ever fails a merge
+            // to hand back, so the setting reads as armed while doing nothing.
+            config.merge_recovery_enabled && !config.auto_merge,
+        ),
+        (
             "circuit",
             if circuit_open { "OPEN" } else { "closed" }.into(),
             circuit_open,
@@ -186,6 +193,16 @@ pub(super) fn append_inbox(lines: &mut Vec<Line<'static>>, app: &App) {
         THEME.hint_style(),
     )));
     lines.push(Line::default());
+}
+
+/// Merge recovery as one reading: the switch and, when it is on, the number of
+/// handbacks a stuck pull request has left before it escalates to the operator.
+fn merge_recovery_state(config: &OverseerConfig) -> String {
+    if config.merge_recovery_enabled {
+        format!("on (max {})", config.max_merge_recoveries)
+    } else {
+        "off".into()
+    }
 }
 
 fn dispatches_on(ledger: &Ledger, today: NaiveDate) -> u32 {

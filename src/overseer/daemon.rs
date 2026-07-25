@@ -1,5 +1,7 @@
 mod discord_events;
 mod merge;
+mod merge_decision;
+mod merge_recovery;
 mod merge_state;
 mod observations;
 mod protection;
@@ -274,6 +276,7 @@ mod tests {
             retries: 0,
             pr_url: None,
             branch_updates: 0,
+            merge_recovery: Default::default(),
         };
         let mut previous = Ledger {
             entries: vec![entry(LedgerPhase::Working)],

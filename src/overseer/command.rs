@@ -227,12 +227,24 @@ fn on_off(value: bool) -> &'static str {
 /// part in.
 fn toggle_line(config: &OverseerConfig, circuit_open: bool) -> String {
     format!(
-        "dispatch: {}  auto-merge: {} (protection: {})  circuit: {}",
+        "dispatch: {}  auto-merge: {} (protection: {})  merge-recovery: {}  circuit: {}",
         on_off(config.dispatch_enabled),
         on_off(config.auto_merge),
         config.protection_mode.label(),
+        merge_recovery_state(config),
         if circuit_open { "open" } else { "closed" }
     )
+}
+
+/// Merge recovery reads as one setting, so its cap travels with its switch: an
+/// operator who sees only `on` cannot tell how many handbacks a stuck pull
+/// request still has before it reaches them.
+fn merge_recovery_state(config: &OverseerConfig) -> String {
+    if config.merge_recovery_enabled {
+        format!("on (max {})", config.max_merge_recoveries)
+    } else {
+        "off".into()
+    }
 }
 pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
