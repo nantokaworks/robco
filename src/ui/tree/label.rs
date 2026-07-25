@@ -12,11 +12,12 @@ const START_PAUSE: Duration = Duration::from_millis(1_000);
 const STEP: Duration = Duration::from_millis(300);
 const END_PAUSE: Duration = Duration::from_millis(1_000);
 
-/// Marks an agent row as an Overseer worker under automatic dispatch. It sits at
-/// the row head so a column of agents can be scanned at a glance; Manual workers
-/// and unmanaged worktrees render blank there (the OVERSEER pane still reports
-/// the difference).
-const OVERSEER_AUTO_MARKER: &str = "◆";
+/// Marks an agent row as an Overseer worker under automatic dispatch. The play
+/// glyph carries that meaning directly: the row is driven, not hand-started. It
+/// sits at the row head so a column of agents can be scanned at a glance; Manual
+/// workers and unmanaged worktrees render blank there (the OVERSEER pane still
+/// reports the difference).
+const OVERSEER_AUTO_MARKER: &str = "▶";
 
 /// One nesting step, applied to every agent row so its title starts right of
 /// the repo name above it and the row reads as a child of that repo. The marker

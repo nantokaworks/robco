@@ -92,7 +92,7 @@ fn only_an_overseer_auto_worker_carries_the_row_head_marker() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     assert!(
-        row_containing(&rows, "auto-worker").starts_with("  ◆ "),
+        row_containing(&rows, "auto-worker").starts_with("  ▶ "),
         "auto worker row: {:?}",
         row_containing(&rows, "auto-worker")
     );
@@ -107,7 +107,7 @@ fn only_an_overseer_auto_worker_carries_the_row_head_marker() {
 
 /// An agent hangs off the repo above it, so its title has to start right of the
 /// repo name. Sharing that column makes an Overseer Auto worker read as a
-/// sibling of its own repo — the `◆` sits where the indentation would be, so
+/// sibling of its own repo — the `▶` sits where the indentation would be, so
 /// nothing else in the row prefix expresses containment.
 #[test]
 fn an_agent_title_starts_right_of_its_repo_name() {
