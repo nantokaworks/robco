@@ -48,6 +48,14 @@ pub struct OverseerConfig {
     pub daily_llm_budget: u32,
     pub merge_strategy: String,
     pub max_branch_updates: u32,
+    /// Whether a merge failure the owning worker could fix is handed back to it
+    /// instead of parking the pull request. Default-off, so a daemon that has
+    /// never heard of merge recovery behaves exactly as it did before it existed.
+    pub merge_recovery_enabled: bool,
+    /// Handbacks one pull request may be charged before it escalates to a human.
+    /// The ceiling is what stops a worker that cannot fix the failure from being
+    /// re-prompted on every push.
+    pub max_merge_recoveries: u32,
     pub worker_profile: Option<String>,
     pub max_workers: usize,
     pub per_repo_limit: usize,
@@ -86,6 +94,8 @@ impl Default for OverseerConfig {
             daily_llm_budget: 200,
             merge_strategy: "squash".into(),
             max_branch_updates: 3,
+            merge_recovery_enabled: false,
+            max_merge_recoveries: 2,
             worker_profile: None,
             max_workers: 3,
             per_repo_limit: 1,

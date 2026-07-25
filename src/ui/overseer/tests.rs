@@ -82,6 +82,7 @@ fn management_app() -> App {
             retries: 0,
             pr_url: None,
             branch_updates: 0,
+            merge_recovery: Default::default(),
         },
         LedgerEntry {
             task_id: "manual-task".into(),
@@ -94,6 +95,7 @@ fn management_app() -> App {
             retries: 0,
             pr_url: None,
             branch_updates: 0,
+            merge_recovery: Default::default(),
         },
     ];
     app
@@ -299,6 +301,50 @@ fn health_summary_keeps_all_critical_badges() {
     assert!(summary.contains("dispatch/no daemon"));
 }
 
+#[test]
+fn health_frame_shows_merge_recovery_and_flags_it_when_it_cannot_fire() {
+    let rendered = |config: &OverseerConfig| {
+        let mut lines = Vec::new();
+        super::render::append_health(&mut lines, config, &Ledger::default(), true, None);
+        lines
+    };
+    let text = |lines: &[ratatui::text::Line<'static>]| {
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+    };
+
+    let off = rendered(&OverseerConfig::default());
+    assert!(text(&off).contains("merge-recovery: off"));
+
+    let armed = OverseerConfig {
+        auto_merge: true,
+        merge_recovery_enabled: true,
+        max_merge_recoveries: 2,
+        ..OverseerConfig::default()
+    };
+    assert!(text(&rendered(&armed)).contains("merge-recovery: on (max 2)"));
+
+    // Recovery without auto-merge never fires: no merge is attempted, so no
+    // failure is ever handed back. That must read as a warning, not as armed.
+    let inert = OverseerConfig {
+        auto_merge: false,
+        ..armed
+    };
+    assert_eq!(
+        rendered(&inert)
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .find(|span| span.content == "on (max 2)")
+            .unwrap()
+            .style
+            .fg,
+        Some(Color::Red)
+    );
+}
+
 fn category_text(app: &App, category: OverseerCategory) -> String {
     category_detail(app, category)
         .iter()
@@ -435,6 +481,7 @@ fn active_phases_excludes_terminal_entries() {
                 retries: 0,
                 pr_url: None,
                 branch_updates: 0,
+                merge_recovery: Default::default(),
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -447,6 +494,7 @@ fn active_phases_excludes_terminal_entries() {
                 retries: 0,
                 pr_url: None,
                 branch_updates: 0,
+                merge_recovery: Default::default(),
             },
         ],
         ..Ledger::default()

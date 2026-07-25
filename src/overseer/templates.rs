@@ -21,6 +21,38 @@ Never merge. Never force push. Never push to main. Never create extra worktrees.
     )
 }
 
+/// What a worker is told when Overseer could not merge the pull request it opened.
+///
+/// The failure reason is passed through verbatim: for a judge veto it is the
+/// judge's own words and therefore the actual instruction, and for a merge state
+/// it names the state to resolve. Paraphrasing it here would put an Overseer-side
+/// guess between the verdict and the worker acting on it.
+///
+/// The rails are restated rather than assumed. A merge failure is exactly the
+/// situation where a worker is most tempted to merge the pull request itself, and
+/// the original dispatch prompt may be far up its transcript by now.
+pub fn merge_recovery_prompt(
+    display_id: &str,
+    task_id: &str,
+    pr_url: &str,
+    reason: &str,
+) -> String {
+    format!(
+        r#"Overseer could not merge the pull request for Dropr task {display_id} ({task_id}).
+Pull request: {pr_url}
+Failure reason (verbatim, this is your instruction): {reason}
+
+Fix it on the branch you were already assigned — do not create a new branch or worktree.
+Resolve the failure the reason names (a conflict with the base, a red check, a reviewer
+veto), re-run the relevant tests, commit with `(refs dropr:{task_id})` in the message, and
+push the same branch. Then run `robco report --kind done`. Overseer re-evaluates the pull
+request on its next pass and merges it once the gate is satisfied.
+
+Never merge. Never force push. Never push to main. Never create extra worktrees.
+You fix the branch; Overseer merges it."#
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,5 +72,35 @@ mod tests {
         let prompt = worker_prompt("#132", "abc", "Build overseer", "/repo");
         assert!(prompt.contains("already claimed #132"));
         assert!(prompt.contains("Do NOT run `dropr task next`"));
+    }
+
+    #[test]
+    fn recovery_prompt_carries_the_reason_verbatim_and_the_rails() {
+        let prompt = merge_recovery_prompt(
+            "#132",
+            "abc",
+            "https://pr/1",
+            "judge_veto:touches the migration registry without a rollback",
+        );
+        assert!(prompt.contains("judge_veto:touches the migration registry without a rollback"));
+        assert!(prompt.contains("https://pr/1"));
+        assert!(prompt.contains("(refs dropr:abc)"));
+        for rail in [
+            "Never merge",
+            "Never force push",
+            "Never push to main",
+            "Never create extra worktrees",
+        ] {
+            assert!(prompt.contains(rail), "missing rail: {rail}");
+        }
+    }
+
+    #[test]
+    fn recovery_prompt_never_asks_for_a_new_branch() {
+        // A worker that cut a second branch would strand the pull request
+        // Overseer is waiting on, so the instruction has to be explicit.
+        let prompt = merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty");
+        assert!(prompt.contains("do not create a new branch or worktree"));
+        assert!(prompt.contains("push the same branch"));
     }
 }

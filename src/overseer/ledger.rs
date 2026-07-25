@@ -23,6 +23,27 @@ pub struct LedgerEntry {
     /// looping. Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub branch_updates: u32,
+    /// Handbacks of a failed merge to the worker that owns this branch.
+    /// Defaulted so ledgers written before the field existed still load.
+    #[serde(default)]
+    pub merge_recovery: MergeRecovery,
+}
+
+/// What the merge gate remembers about handing this pull request's failures back
+/// to its worker.
+///
+/// The counter is the budget — bounded by `overseer.max_merge_recoveries`, so a
+/// worker that cannot fix the failure escalates instead of being re-prompted
+/// forever. The head sha is the deduplication key: it stops the same failure on
+/// the same revision from being handed back once per poll interval, and a worker
+/// that pushed a fix presents a new head, which is a genuinely new failure.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct MergeRecovery {
+    /// Handbacks charged so far. A new head resets the deduplication, never this.
+    pub charged: u32,
+    /// Head sha the last handback was charged against.
+    pub head: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -152,114 +173,5 @@ impl Ledger {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn save_load_round_trip() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("overseer/ledger.json");
-        let ledger = Ledger {
-            entries: vec![LedgerEntry {
-                task_id: "task-1".into(),
-                display_id: "#128".into(),
-                repo: "nantokaworks/robco".into(),
-                agent_id: "worker-1".into(),
-                branch: "task-128".into(),
-                phase: LedgerPhase::PrOpened,
-                dispatched_at: Utc::now(),
-                retries: 1,
-                pr_url: Some("https://example.test/pr/1".into()),
-                branch_updates: 0,
-            }],
-            skip_list: vec!["task-2".into()],
-            counters: LedgerCounters {
-                date: Some(Utc::now().date_naive()),
-                dispatched_today: 2,
-                consecutive_failures: 1,
-            },
-        };
-
-        ledger.save_to(&path).unwrap();
-        let serialized = fs::read_to_string(&path).unwrap();
-        assert!(serialized.contains("\"pr_opened\""));
-        assert_eq!(Ledger::load_from(&path).unwrap(), ledger);
-    }
-
-    #[test]
-    fn phases_serialize_to_required_strings() {
-        let phases = [
-            (LedgerPhase::Dispatched, "dispatched"),
-            (LedgerPhase::Claimed, "claimed"),
-            (LedgerPhase::Working, "working"),
-            (LedgerPhase::PrOpened, "pr_opened"),
-            (LedgerPhase::Merged, "merged"),
-            (LedgerPhase::Failed, "failed"),
-            (LedgerPhase::Escalated, "escalated"),
-        ];
-
-        for (phase, expected) in phases {
-            assert_eq!(
-                serde_json::to_string(&phase).unwrap(),
-                format!("\"{expected}\"")
-            );
-        }
-    }
-
-    #[test]
-    fn active_workers_counts_every_non_terminal_entry() {
-        let entry = |repo: &str, phase| LedgerEntry {
-            task_id: "task-1".into(),
-            display_id: "#1".into(),
-            repo: repo.into(),
-            agent_id: "agent".into(),
-            branch: "branch".into(),
-            phase,
-            dispatched_at: Utc::now(),
-            retries: 0,
-            pr_url: None,
-            branch_updates: 0,
-        };
-        let ledger = Ledger {
-            entries: vec![
-                entry("/one", LedgerPhase::Working),
-                entry("/one", LedgerPhase::PrOpened),
-                entry("/two", LedgerPhase::Dispatched),
-                entry("/one", LedgerPhase::Merged),
-                entry("/two", LedgerPhase::Failed),
-                entry("/three", LedgerPhase::Escalated),
-            ],
-            ..Ledger::default()
-        };
-
-        let active = ledger.active_workers();
-        assert_eq!(active.count, 3);
-        assert_eq!(
-            active.repos,
-            BTreeMap::from([("/one".to_string(), 2), ("/two".to_string(), 1)])
-        );
-        // The repository total is the sum of the per-repository counts, so the
-        // global cap and the per-repository cap can never read different ledgers.
-        assert_eq!(active.count, active.repos.values().sum::<usize>());
-    }
-
-    #[test]
-    fn missing_ledger_defaults() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("ledger.json");
-        assert_eq!(Ledger::load_from(&path).unwrap(), Ledger::default());
-    }
-
-    #[test]
-    fn corrupt_ledger_is_preserved_aside() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("ledger.json");
-        fs::write(&path, "not json").unwrap();
-        assert_eq!(Ledger::load_from(&path).unwrap(), Ledger::default());
-        assert!(!path.exists());
-        assert_eq!(
-            fs::read_to_string(path.with_extension("json.corrupt")).unwrap(),
-            "not json"
-        );
-    }
-}
+#[path = "ledger_tests.rs"]
+mod tests;

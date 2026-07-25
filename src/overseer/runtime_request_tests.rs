@@ -148,5 +148,6 @@ fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://example.test/pr/202".into()),
         branch_updates: 0,
+        merge_recovery: Default::default(),
     }
 }
