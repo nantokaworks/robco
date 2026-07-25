@@ -1,3 +1,4 @@
+mod check_rollup;
 mod discord_events;
 mod merge;
 mod merge_apply;
