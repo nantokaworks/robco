@@ -51,6 +51,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
 
 fn status(config: &Config) -> Result<()> {
     let ledger = Ledger::load()?;
+    let judgments = JudgmentQueue::load()?;
     let pid = read_pid();
     let heartbeat_age = fs::metadata(heartbeat_path()?)
         .ok()
@@ -83,7 +84,11 @@ fn status(config: &Config) -> Result<()> {
         config.overseer.max_workers,
         config.overseer.per_repo_limit
     );
-    println!("{}", llm_line(config)?);
+    println!("{}", llm_line(config, &judgments)?);
+    // Read straight after the LLM budget: a judge that spent nothing today is
+    // either idle or queued behind one long judgment, and only this line says
+    // which.
+    println!("{}", judgments.snapshot().summary());
     println!("workers by repo: {:?}", active.repos);
     println!("phases: {phases:?}");
     println!("skip list: {:?}", ledger.skip_list);
@@ -115,8 +120,8 @@ fn status(config: &Config) -> Result<()> {
 /// on its own, so it carries its own. Reporting the two counts separately is
 /// what lets an operator see which surface exhausted which budget instead of
 /// inferring it from a single number.
-fn llm_line(config: &Config) -> Result<String> {
-    let judge = JudgmentQueue::load()?.llm_calls_today();
+fn llm_line(config: &Config, judgments: &JudgmentQueue) -> Result<String> {
+    let judge = judgments.llm_calls_today();
     let review = ReviewPass::load()?.calls_today();
     Ok(format!(
         "llm today: judge {judge}/{}  review {review}/{} ({})",

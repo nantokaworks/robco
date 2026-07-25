@@ -1,3 +1,4 @@
+mod audit;
 mod briefing;
 mod completion;
 mod keys;
@@ -5,6 +6,7 @@ mod merge_gate;
 mod queue;
 mod result;
 mod revisions;
+mod snapshot;
 
 pub(crate) use merge_gate::{change_facts, judgment_after_gate, merge_case};
 pub use queue::JudgmentQueue;
@@ -48,6 +50,16 @@ impl Request {
     pub(super) fn key(&self) -> &str {
         match self {
             Self::Dispatch { key, .. } | Self::Merge { key, .. } => key,
+        }
+    }
+
+    /// Operator-facing name for the queue snapshot. Keys are hashes, so they
+    /// say nothing to a reader comparing the queue against `decisions.jsonl`;
+    /// the task id is what both surfaces have in common.
+    pub(super) fn label(&self) -> String {
+        match self {
+            Self::Dispatch { approved, .. } => format!("dispatch:{}", approved.len()),
+            Self::Merge { case, .. } => format!("merge:{}", case.task_id),
         }
     }
 }
