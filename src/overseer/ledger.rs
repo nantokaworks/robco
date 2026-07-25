@@ -27,6 +27,14 @@ pub struct LedgerEntry {
     /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub merge_recovery: MergeRecovery,
+    /// Pull request the merge pass has already recorded a manual-management skip
+    /// for. The skip is a standing state — it lasts as long as the operator
+    /// leaves the worker manual — so recording it once per pull request keeps it
+    /// out of `decisions.jsonl` on every later poll pass. Cleared as soon as the
+    /// entry is Overseer's to merge again. Defaulted so ledgers written before
+    /// the field existed still load.
+    #[serde(default)]
+    pub manual_merge_skip: Option<String>,
 }
 
 /// What the merge gate remembers about handing this pull request's failures back
@@ -124,6 +132,21 @@ impl Ledger {
             *repos.entry(entry.repo.clone()).or_default() += 1;
         }
         ActiveWorkers { count, repos }
+    }
+
+    /// Live merge candidates the merge pass is declining because their worker is
+    /// manual-managed.
+    ///
+    /// Read off the marker the merge pass itself writes rather than re-derived
+    /// from the registry, so every surface reports the gate's own verdict instead
+    /// of a second opinion that can disagree with it. Terminal entries are
+    /// excluded: a pull request a human merged themselves is no longer something
+    /// Overseer is holding back.
+    pub fn manual_merge_skips(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
+            .count()
     }
 
     pub fn load() -> Result<Self> {

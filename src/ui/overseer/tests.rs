@@ -83,6 +83,7 @@ fn management_app() -> App {
             pr_url: None,
             branch_updates: 0,
             merge_recovery: Default::default(),
+            manual_merge_skip: None,
         },
         LedgerEntry {
             task_id: "manual-task".into(),
@@ -96,6 +97,7 @@ fn management_app() -> App {
             pr_url: None,
             branch_updates: 0,
             merge_recovery: Default::default(),
+            manual_merge_skip: None,
         },
     ];
     app
@@ -388,6 +390,28 @@ fn ledger_detail_shows_zero_manual_worker_count() {
 }
 
 #[test]
+fn ledger_detail_reports_the_pull_requests_management_is_withholding() {
+    let mut app = management_app();
+    // Nothing is being withheld until the merge pass says so, and the operator
+    // should not read a manual worker that has not opened a pull request yet as
+    // one whose merge is being declined.
+    assert!(!category_text(&app, OverseerCategory::Ledger).contains("merge-eligible, manual"));
+
+    let entry = app
+        .overseer_snapshot
+        .ledger
+        .entries
+        .iter_mut()
+        .find(|entry| entry.agent_id == "manual-agent")
+        .unwrap();
+    entry.phase = LedgerPhase::PrOpened;
+    entry.pr_url = Some("https://pr/1".into());
+    entry.manual_merge_skip = Some("https://pr/1".into());
+
+    assert!(category_text(&app, OverseerCategory::Ledger).contains("merge-eligible, manual: 1"));
+}
+
+#[test]
 fn ledger_detail_shows_each_active_worker_management_mode() {
     let app = management_app();
     let lines = category_detail(&app, OverseerCategory::Ledger);
@@ -482,6 +506,7 @@ fn active_phases_excludes_terminal_entries() {
                 pr_url: None,
                 branch_updates: 0,
                 merge_recovery: Default::default(),
+                manual_merge_skip: None,
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -495,6 +520,7 @@ fn active_phases_excludes_terminal_entries() {
                 pr_url: None,
                 branch_updates: 0,
                 merge_recovery: Default::default(),
+                manual_merge_skip: None,
             },
         ],
         ..Ledger::default()

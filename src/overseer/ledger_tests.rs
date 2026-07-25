@@ -17,6 +17,7 @@ fn save_load_round_trip() {
             pr_url: Some("https://example.test/pr/1".into()),
             branch_updates: 0,
             merge_recovery: Default::default(),
+            manual_merge_skip: None,
         }],
         skip_list: vec!["task-2".into()],
         counters: LedgerCounters {
@@ -66,6 +67,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         pr_url: None,
         branch_updates: 0,
         merge_recovery: Default::default(),
+        manual_merge_skip: None,
     };
     let ledger = Ledger {
         entries: vec![
@@ -108,6 +110,36 @@ fn a_ledger_written_before_merge_recovery_still_loads() {
     // The file is intact, so the load was a genuine default rather than the
     // corrupt-ledger fallback.
     assert!(path.exists());
+}
+
+#[test]
+fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
+    let entry = |phase, skip: Option<&str>| LedgerEntry {
+        task_id: "task-1".into(),
+        display_id: "#1".into(),
+        repo: "/one".into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase,
+        dispatched_at: Utc::now(),
+        retries: 0,
+        pr_url: skip.map(str::to_owned),
+        branch_updates: 0,
+        merge_recovery: Default::default(),
+        manual_merge_skip: skip.map(str::to_owned),
+    };
+    let ledger = Ledger {
+        entries: vec![
+            entry(LedgerPhase::PrOpened, Some("https://pr/1")),
+            entry(LedgerPhase::PrOpened, Some("https://pr/2")),
+            entry(LedgerPhase::PrOpened, None),
+            // Merged by its own owner: no longer held back by anyone.
+            entry(LedgerPhase::Merged, Some("https://pr/3")),
+        ],
+        ..Ledger::default()
+    };
+
+    assert_eq!(ledger.manual_merge_skips(), 2);
 }
 
 #[test]

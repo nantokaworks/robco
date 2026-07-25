@@ -67,6 +67,41 @@ impl Halt {
     }
 }
 
+/// Reason recorded for a merge candidate left alone because its worker is
+/// manual-managed.
+const MANUAL_MANAGED: &str = "manual";
+
+/// What the management gate has to say about `entry`, and the marker that keeps
+/// it from saying it again next pass.
+///
+/// A manual worker belongs to a human, so declining the merge is correct and does
+/// not change here — only its silence does. The decision is recorded once per pull
+/// request rather than once per pass: manual management is a standing state, and at
+/// the poll cadence a per-pass entry would bury the log exactly the way the silent
+/// skip hid in it. The pull request URL is the deduplication key, where a handback
+/// uses the head sha: this gate stops before reading the pull request, so no head is
+/// known, and buying one costs a GitHub read every pass for a pull request it will
+/// never merge. An entry with no pull request has nothing to decline yet, so it stays
+/// quiet until one is open.
+pub(super) fn manual_skip(entry: &mut LedgerEntry, auto: bool) -> Option<DecisionEntry> {
+    if auto {
+        // Overseer's to merge again: drop the marker so a later switch back to
+        // manual records its own skip instead of being swallowed as a repeat.
+        entry.manual_merge_skip = None;
+        return None;
+    }
+    let url = entry.pr_url.clone()?;
+    if entry.manual_merge_skip.as_deref() == Some(url.as_str()) {
+        return None;
+    }
+    // The same word the dispatch gate uses for the same condition, under this
+    // gate's own source, so the two are greppable together and still separable.
+    let mut skip = decision(entry, DecisionKind::Skip, MANUAL_MANAGED);
+    skip.pr_url = Some(url.clone());
+    entry.manual_merge_skip = Some(url);
+    Some(skip)
+}
+
 pub(super) fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
     logging::append(&decision(entry, kind, reason))
 }

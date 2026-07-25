@@ -149,6 +149,17 @@ pub(super) fn append_ledger(
             false,
         ));
     }
+    // The management pair above counts live workers; this one counts the pull
+    // requests that management is actually withholding from the merge gate, which
+    // is the state an operator mistakes for a merge that failed.
+    let manual_merges = ledger.manual_merge_skips();
+    if manual_merges != 0 {
+        lines.push(pair(
+            "merge-eligible, manual",
+            &manual_merges.to_string(),
+            false,
+        ));
+    }
     if !ledger.skip_list.is_empty() {
         lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
     }

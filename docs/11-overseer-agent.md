@@ -603,6 +603,18 @@ branch, and a tmux session, so it counts toward `max_workers` and `per_repo_limi
 exactly like an Auto worker, and `robco overseer status` reports the same count the
 dispatch gate enforces. Cycling a worker to Manual therefore never frees a dispatch slot.
 
+Manual stops the auto-merge gate too, and the gate says so. A Manual worker's pull request
+is never merged by Overseer — that part does not change — but an entry sitting at
+`pr_opened` with a pull request open is a merge candidate Overseer *declined*, not one it
+never reached, and the two used to look identical from `decisions.jsonl`. The pass records
+a `manual` skip under source `auto_merge` carrying the pull request URL. It is recorded
+once per pull request rather than once per poll pass: management is a standing state, so a
+per-pass entry would bury the log the way the silent skip hid in it. While the state
+stands, `robco overseer status` and the OVERSEER ledger detail both report
+`merge-eligible, manual: N`. Cycling the worker back to Auto clears the marker, so a later
+switch to Manual is recorded again. The skip happens before the gate reads the pull
+request, so a Manual worker's pull request is never handed back by merge recovery either.
+
 Detaching does free one, because it ends Overseer ownership entirely. The next daemon
 pass sees a worker that is no longer its child and **drops that worker's ledger entry**,
 logging the drop to the decision log. The entry is removed rather than marked terminal:
