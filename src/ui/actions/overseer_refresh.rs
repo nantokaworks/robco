@@ -77,11 +77,14 @@ impl App {
     }
 
     pub(super) fn apply_overseer(&mut self, result: OverseerResult) {
+        // The inbox is re-aggregated and re-sorted newest-first on every refresh,
+        // so the row under the cursor is re-anchored by identity. Clamping an
+        // index instead would leave the cursor on whatever a newly arrived
+        // escalation pushed into that slot — and `y` would approve that worker.
+        let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
         self.overseer_snapshot = result.snapshot;
         self.overseer_inbox = result.inbox;
-        self.overseer_inbox_selected = self
-            .overseer_inbox_selected
-            .min(self.overseer_inbox.len().saturating_sub(1));
+        self.restore_selection(selected_identity);
     }
 
     pub(in crate::ui) fn refresh_overseer_snapshot(&mut self) {
@@ -119,6 +122,51 @@ mod tests {
             app.overseer_snapshot.overseer.dispatch_enabled,
             !fresh_dispatch
         );
+    }
+
+    #[test]
+    fn a_newly_arrived_escalation_does_not_slide_the_cursor_onto_another_worker() {
+        use crate::{
+            model::{OverseerCategory, Selection},
+            overseer::logging::{DecisionEntry, DecisionKind},
+        };
+
+        fn escalation(task: &str, second: u32) -> DecisionEntry {
+            let mut decision = DecisionEntry::new(DecisionKind::Escalate, "needs user");
+            decision.at = chrono::Utc::now() - chrono::Duration::seconds(second.into());
+            decision.task = Some(task.into());
+            decision
+        }
+
+        fn refresh(app: &mut App, decisions: &[DecisionEntry]) {
+            app.apply_overseer(OverseerResult {
+                inbox: inbox::aggregate(&Ledger::default(), decisions, &[]),
+                snapshot: OverseerSnapshot::default(),
+            });
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.orphans = Vec::new();
+        app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+
+        let older = escalation("task-older", 10);
+        refresh(&mut app, std::slice::from_ref(&older));
+        app.selected = app
+            .visible()
+            .iter()
+            .position(|row| matches!(row, Selection::OverseerInbox(_)))
+            .expect("no inbox item row");
+        let identity = app.item_key(app.selected_item().unwrap());
+
+        // The list is re-aggregated newest-first, so this pushes the selected
+        // item down a slot. A clamped index would leave the cursor on the new
+        // escalation — and `y` would approve a worker the operator never chose.
+        refresh(&mut app, &[escalation("task-newer", 0), older]);
+
+        assert_eq!(app.selected_item(), Some(Selection::OverseerInbox(1)));
+        assert_eq!(app.item_key(app.selected_item().unwrap()), identity);
     }
 
     fn status_result(dispatch_enabled: bool) -> StatusResult {

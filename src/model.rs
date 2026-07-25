@@ -361,6 +361,10 @@ impl OverseerCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
     OverseerCategory(OverseerCategory),
+    /// One aggregated Overseer Inbox item, indexing into [`crate::ui::App`]'s
+    /// inbox list. Present only while the Inbox category is expanded, so the
+    /// operator answers an escalation from the same cursor that walks the tree.
+    OverseerInbox(usize),
     Repo(usize),
     Agent {
         repo: usize,

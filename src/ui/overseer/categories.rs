@@ -8,7 +8,8 @@ use crate::{
 use super::{
     App, active_worker_management,
     decisions::{DETAIL_LIMIT, append_decisions},
-    render::{append_health, append_inbox, append_ledger, append_worker_management},
+    inbox_rows,
+    render::{append_health, append_ledger, append_worker_management},
 };
 
 pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> Vec<Line<'static>> {
@@ -39,7 +40,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             }
             append_worker_management(&mut lines, &management);
         }
-        OverseerCategory::Inbox => append_inbox(&mut lines, app),
+        OverseerCategory::Inbox => lines.extend(inbox_rows::detail_lines(app)),
         OverseerCategory::Decisions => {
             append_decisions(&mut lines, &snapshot.decisions);
         }

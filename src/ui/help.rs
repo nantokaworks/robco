@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 39;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 43;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -21,6 +21,10 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("                 on a repo row: any Auto -> all Manual, else all Auto"),
         Line::from("  S              stop overseer (dispatch off + kill workers)"),
         Line::from("  R              reset dispatch circuit (when open)"),
+        Line::from("Overseer inbox"),
+        Line::from("  l              expand OVERSEER > Inbox to reach its item rows"),
+        Line::from("  enter          on an item row: answer the waiting worker"),
+        Line::from("  y              on an item row: approve it (sends y + enter)"),
         Line::from("Repo"),
         Line::from("  a              clone <git-url> [branch], or add local repo path"),
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),

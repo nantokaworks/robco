@@ -18,6 +18,18 @@ pub(crate) enum InboxKind {
     Question,
 }
 
+impl InboxKind {
+    /// Short tag at the head of an inbox row. It doubles as the kind half of an
+    /// item's stable identity, so the row the cursor sits on survives a refresh
+    /// that re-sorts the list.
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Escalation => "ESC",
+            Self::Question => "?",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InboxItem {
     pub kind: InboxKind,

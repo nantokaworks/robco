@@ -87,11 +87,21 @@ fn build_content_with_warnings(
             *warn,
         ));
         if app.overseer_category_expanded(category) {
+            let first_detail = lines.len();
             lines.extend(
                 crate::ui::overseer::category_detail(app, category)
                     .into_iter()
                     .map(indent_detail),
             );
+            // Inbox items are rows, not read-only detail: when the cursor is on
+            // one, it — not the category above it — is what the frame scrolls to
+            // keep on screen. The detail builder draws the marker itself.
+            if let Some(Selection::OverseerInbox(index)) = selected
+                && category == OverseerCategory::Inbox
+            {
+                let row = first_detail + crate::ui::overseer::INBOX_ITEM_ROW_OFFSET + index;
+                selected_row = u16::try_from(row).unwrap_or(u16::MAX);
+            }
         }
     }
 
