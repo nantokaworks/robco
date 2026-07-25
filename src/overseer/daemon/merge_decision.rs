@@ -6,11 +6,12 @@
 //! whether the failure is the owning worker's to fix. Naming every exit in one
 //! place is what lets both read the same reason.
 
+use super::pull_request::PrConclusion;
 use crate::{
     Result,
     overseer::{
         config::ProtectionMode,
-        ledger::LedgerEntry,
+        ledger::{LedgerEntry, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
     },
 };
@@ -52,6 +53,20 @@ impl Halt {
         }
     }
 
+    /// The gate looked and decided there is nothing here for it to do.
+    ///
+    /// Kept apart from `hold`, which promises the pull request will be looked at
+    /// again once something changes. Writing `hold` for a fact that will never
+    /// change is what let one settled pull request record the same wait every
+    /// minute for hours.
+    pub(super) fn skip(reason: impl Into<String>) -> Self {
+        Self {
+            kind: DecisionKind::Skip,
+            reason: reason.into(),
+            gated: false,
+        }
+    }
+
     pub(super) fn gated(reason: impl Into<String>) -> Self {
         Self {
             gated: true,
@@ -70,6 +85,35 @@ impl Halt {
 /// Reason recorded for a merge candidate left alone because its worker is
 /// manual-managed.
 const MANUAL_MANAGED: &str = "manual";
+
+/// Reason recorded when the pull request had already been merged — by the TUI, by
+/// `gh`, or by a human on GitHub — before the gate got to it.
+const ALREADY_MERGED: &str = "pr_already_merged";
+
+/// Reason recorded when the pull request was closed without merging.
+const CLOSED_UNMERGED: &str = "pr_closed_unmerged";
+
+/// Ends the entry on the pull request's own conclusion.
+///
+/// A merge that happened somewhere else is still the merge this entry was waiting
+/// for, so the entry reaches `Merged` and the monitor cleans its worker up from
+/// there; nothing failed, so it is recorded as a skip rather than a hold. A pull
+/// request closed without merging is the opposite — nothing landed, and no worker
+/// can make it land, because reopening a pull request is a human act — so it stays
+/// escalated, where `robco`'s inbox shows it to an operator. `Failed` would have
+/// the ledger report a failure no worker committed.
+pub(super) fn concluded(entry: &mut LedgerEntry, conclusion: PrConclusion) -> Halt {
+    match conclusion {
+        PrConclusion::Merged => {
+            entry.phase = LedgerPhase::Merged;
+            Halt::skip(ALREADY_MERGED)
+        }
+        PrConclusion::Closed => {
+            entry.phase = LedgerPhase::Escalated;
+            Halt::escalate(CLOSED_UNMERGED)
+        }
+    }
+}
 
 /// What the management gate has to say about `entry`, and the marker that keeps
 /// it from saying it again next pass.

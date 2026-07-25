@@ -204,6 +204,31 @@ fn a_veto_survives_a_base_update_and_is_re_asked_after_a_real_push() {
     assert_eq!(queue.pending_len(), 1, "a real push must re-ask");
 }
 
+/// A remembered veto is what keeps the merge gate reconsidering a pull request,
+/// so once the pull request itself has settled the verdict has to go — and it has
+/// to stay gone across a restart, or the daemon would come back reconsidering a
+/// pull request that can never be merged again.
+#[test]
+fn a_settled_pull_request_forgets_its_verdict_for_good() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+    queue.cache_merge(&case, advice(result::MergeJudgment::Veto, "unsafe"));
+    assert!(queue.merge_advice(case.clone()).unwrap().is_some());
+    assert!(queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
+
+    queue
+        .forget_terminal_merge(&case.task_id, &case.pr_url)
+        .unwrap();
+    assert!(!queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
+    drop(queue);
+
+    let queue = test_queue(temp.path());
+    assert!(!queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
+}
+
 #[test]
 fn daily_counter_survives_queue_reload() {
     let temp = tempfile::tempdir().unwrap();

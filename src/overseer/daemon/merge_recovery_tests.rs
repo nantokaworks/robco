@@ -48,9 +48,13 @@ fn every_reason_the_merge_gate_emits_resolves_to_one_class() {
         "repo_merge_settling",
         "repo_merge_settle_cap_reached",
         "repo_merge_settled",
-        // Nothing has failed: the checks are still running, or the pull request
-        // is no longer open. Neither is worth a worker turn.
+        // Nothing has failed: the checks are still running, which is not worth a
+        // worker turn.
         "checks_waiting",
+        // The pull request has settled. There is no branch left for a worker to
+        // push to, and reopening a closed pull request is a human act.
+        "pr_already_merged",
+        "pr_closed_unmerged",
         // Already the recovery: the branch was updated and re-queued.
         "behind_branch_updated",
         "behind_update_exit:exit status: 1",

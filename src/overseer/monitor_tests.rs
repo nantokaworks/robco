@@ -19,7 +19,7 @@ pub(super) fn ledger() -> Ledger {
         ..Ledger::default()
     }
 }
-fn replay(lines: &[&str]) -> (Ledger, Vec<Action>) {
+pub(super) fn replay(lines: &[&str]) -> (Ledger, Vec<Action>) {
     let mut current = ledger();
     let mut actions = Vec::new();
     for line in lines {
@@ -45,53 +45,6 @@ fn replays_claimed_working_and_pr_opened_transitions() {
         ledger.entries[0].pr_url.as_deref(),
         Some("https://github.test/pull/1")
     );
-}
-#[test]
-fn merged_snapshot_emits_cleanup_once() {
-    let line = r#"{"at":"2026-07-16T00:04:00Z","observations":{"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"MERGED","statusCheckRollup":[]}]}}"#;
-    let (merged, actions) = replay(&[line]);
-    assert_eq!(merged.entries[0].phase, LedgerPhase::Merged);
-    assert!(actions.contains(&Action::KillSession {
-        agent_id: "worker-1".into()
-    }));
-    assert!(actions.contains(&Action::RemoveWorktree {
-        agent_id: "worker-1".into(),
-    }));
-    let (_, actions) = reconcile(
-        &merged,
-        &serde_json::from_str::<ObservationSnapshot>(line)
-            .unwrap()
-            .observations,
-        Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap(),
-        30,
-    );
-    assert!(actions.is_empty());
-}
-#[test]
-fn merged_entry_reemits_cleanup_while_agent_is_registered() {
-    let mut merged = ledger();
-    merged.entries[0].phase = LedgerPhase::Merged;
-    let observations: Observations =
-        serde_json::from_str(r#"{"registered_agents":["worker-1"]}"#).unwrap();
-    let (_, actions) = reconcile(
-        &merged,
-        &observations,
-        Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap(),
-        30,
-    );
-    assert!(actions.contains(&Action::KillSession {
-        agent_id: "worker-1".into(),
-    }));
-    assert!(actions.contains(&Action::RemoveWorktree {
-        agent_id: "worker-1".into(),
-    }));
-    let (_, actions) = reconcile(
-        &merged,
-        &Observations::default(),
-        Utc.with_ymd_and_hms(2026, 7, 16, 0, 6, 0).unwrap(),
-        30,
-    );
-    assert!(actions.is_empty());
 }
 #[test]
 fn stuck_detection_uses_injected_now() {

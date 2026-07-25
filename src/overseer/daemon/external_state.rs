@@ -7,7 +7,7 @@ use crate::{
     dropr::DroprOverlay,
     overseer::{
         exec::run_timeout,
-        ledger::Ledger,
+        ledger::{Ledger, LedgerEntry, LedgerPhase},
         monitor::{ObservationError, Observations, PrObservation, TaskObservation},
     },
 };
@@ -95,8 +95,24 @@ fn gather_repo_task_states(
 
 const PR_FIELDS: &str = "state,statusCheckRollup,url";
 
+/// Whether an entry's pull request is still worth a `gh` read.
+///
+/// A live entry is always read. An escalated one is read too, as long as it
+/// already has a pull request: escalation is a question put to an operator, and
+/// the answer is very often the merge itself, performed by hand. Without this the
+/// ledger had no way to learn that happened, and the entry stayed escalated for as
+/// long as the daemon ran.
+///
+/// The other terminal phases are left alone. `merged` has already run its cleanup,
+/// `failed` was reported to dropr and must not be quietly revived by a probe, and
+/// an entry that escalated before opening a pull request will not grow one. Every
+/// entry this admits costs one `gh pr view`, never the branch-wide list.
+fn worth_probing(entry: &LedgerEntry) -> bool {
+    !terminal(entry.phase) || (entry.phase == LedgerPhase::Escalated && entry.pr_url.is_some())
+}
+
 pub(super) fn gather_pr_states(ledger: &Ledger, observations: &mut Observations) {
-    for entry in ledger.entries.iter().filter(|entry| !terminal(entry.phase)) {
+    for entry in ledger.entries.iter().filter(|entry| worth_probing(entry)) {
         let observed = match &entry.pr_url {
             Some(url) => view_pr(&entry.repo, url),
             None => list_branch_prs(&entry.repo, &entry.branch),
@@ -176,6 +192,23 @@ fn best_pr(prs: Vec<PrObservation>) -> Option<PrObservation> {
 mod tests {
     use super::*;
 
+    fn entry(phase: LedgerPhase, pr_url: Option<&str>) -> LedgerEntry {
+        LedgerEntry {
+            task_id: "task".into(),
+            display_id: "#1".into(),
+            repo: "/repo".into(),
+            agent_id: "agent".into(),
+            branch: "branch".into(),
+            phase,
+            dispatched_at: chrono::Utc::now(),
+            retries: 0,
+            pr_url: pr_url.map(str::to_owned),
+            branch_updates: 0,
+            merge_recovery: Default::default(),
+            manual_merge_skip: None,
+        }
+    }
+
     fn pr(state: &str) -> PrObservation {
         PrObservation {
             state: state.into(),
@@ -189,6 +222,28 @@ mod tests {
     #[test]
     fn a_branch_with_no_pull_request_is_a_state_not_an_error() {
         assert_eq!(best_pr(Vec::new()), None);
+    }
+
+    /// An escalation an operator answered by merging the pull request themselves
+    /// used to be invisible: the entry was terminal, so it was never read again.
+    #[test]
+    fn an_escalated_entry_is_still_read_while_it_has_a_pull_request() {
+        let url = Some("https://pr/1");
+        assert!(worth_probing(&entry(LedgerPhase::Escalated, url)));
+        // Nothing to read, and nothing that will appear later.
+        assert!(!worth_probing(&entry(LedgerPhase::Escalated, None)));
+        // Cleanup has already run for one, and the other was reported to dropr as
+        // a failure that a probe must not quietly revive.
+        assert!(!worth_probing(&entry(LedgerPhase::Merged, url)));
+        assert!(!worth_probing(&entry(LedgerPhase::Failed, url)));
+        for live in [
+            LedgerPhase::Dispatched,
+            LedgerPhase::Claimed,
+            LedgerPhase::Working,
+            LedgerPhase::PrOpened,
+        ] {
+            assert!(worth_probing(&entry(live, None)), "{live:?} is still live");
+        }
     }
 
     #[test]
