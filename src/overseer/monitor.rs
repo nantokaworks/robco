@@ -275,12 +275,18 @@ fn observation_errors(observations: &Observations) -> Vec<Action> {
     observations
         .errors
         .iter()
-        .map(|message| Action::LogDecision {
-            task_id: None,
-            message: format!("observation skipped: {message}"),
+        .map(|error| Action::LogDecision {
+            task_id: error.task_id.clone(),
+            message: match &error.repo {
+                Some(repo) => format!("observation skipped in {repo}: {}", error.message),
+                None => format!("observation skipped: {}", error.message),
+            },
         })
         .collect()
 }
+#[cfg(test)]
+#[path = "monitor_observation_tests.rs"]
+mod observation_tests;
 #[cfg(test)]
 #[path = "monitor_tests.rs"]
 mod tests;

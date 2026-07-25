@@ -26,8 +26,16 @@ pub(crate) fn process_alive(pid: u32) -> bool {
     run_timeout(command, Duration::from_secs(2)).is_ok_and(|output| output.status.success())
 }
 
-pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
+/// Runs the pass's actions and reports which repositories the post-merge
+/// fast-forward brought up to date.
+///
+/// The return value is what lifts the merge gate's per-repository barrier: the
+/// pull runs here, on a later pass than the merge that needs it, so without it
+/// the gate would have to assume the base caught up rather than know it. See
+/// [`crate::overseer::daemon::merge_settle`].
+pub(crate) fn execute_actions(actions: &[Action]) -> Result<HashSet<String>> {
     let mut cleanup_blocked = HashSet::new();
+    let mut pulled = HashSet::new();
     for action in actions {
         match action {
             Action::KillSession { agent_id } => {
@@ -44,8 +52,14 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
                             "worktree cleanup deferred for {agent_id}: session cleanup failed"
                         ),
                     )?;
-                } else if let Err(error) = clean_up_agent(agent_id) {
-                    log_cleanup_failure(agent_id, "worktree", &error)?;
+                } else {
+                    match clean_up_agent(agent_id) {
+                        Ok(Some(repo)) => {
+                            pulled.insert(repo);
+                        }
+                        Ok(None) => {}
+                        Err(error) => log_cleanup_failure(agent_id, "worktree", &error)?,
+                    }
                 }
             }
             Action::Notify { message } => eprintln!("overseer: {message}"),
@@ -61,7 +75,7 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<()> {
             Action::LogDecision { task_id, message } => log_message(task_id.as_deref(), message)?,
         }
     }
-    Ok(())
+    Ok(pulled)
 }
 
 fn log_cleanup_failure(agent_id: &str, target: &str, error: &dyn std::fmt::Display) -> Result<()> {
@@ -105,7 +119,10 @@ fn kill_agent_session(agent_id: &str) -> Result<()> {
 /// The registry row survives a failed worktree removal on purpose. It is what
 /// makes the next reconcile pass re-emit the cleanup, so the retry keeps
 /// happening until the worktree is actually gone.
-fn clean_up_agent(agent_id: &str) -> Result<()> {
+///
+/// Returns the repository path when the base fast-forward succeeded, which is
+/// the signal the merge gate's per-repository barrier waits on.
+fn clean_up_agent(agent_id: &str) -> Result<Option<String>> {
     let registry = Registry::load()?;
     let target = registry.repos.iter().find_map(|repo| {
         repo.agents
@@ -120,7 +137,7 @@ fn clean_up_agent(agent_id: &str) -> Result<()> {
             })
     });
     let Some((repo, worktree, branch)) = target else {
-        return Ok(());
+        return Ok(None);
     };
     let outcome = Cleanup {
         repo: &repo,
@@ -132,15 +149,18 @@ fn clean_up_agent(agent_id: &str) -> Result<()> {
     for note in &outcome.notes {
         log_message(None, &format!("cleanup for {agent_id}: {note}"))?;
     }
+    let pulled = outcome
+        .base_pulled
+        .then(|| repo.to_string_lossy().into_owned());
     if !outcome.worktree_removed {
-        return Ok(());
+        return Ok(pulled);
     }
     Registry::locked_update(|registry| {
         for repo in &mut registry.repos {
             repo.agents.retain(|agent| agent.id != agent_id);
         }
     })?;
-    Ok(())
+    Ok(pulled)
 }
 
 fn command_error(command: &str, output: &Output) -> std::io::Error {

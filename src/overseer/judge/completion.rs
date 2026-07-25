@@ -32,6 +32,7 @@ fn dispatch_fail_safe(ids: Vec<String>, reason: String) -> Parsed {
         candidate_ids: ids,
         reason: format!("judgment fail-safe: {reason}"),
         fail_safe: true,
+        ignored_fields: Vec::new(),
     })
 }
 
@@ -40,6 +41,7 @@ fn merge_fail_safe(reason: String) -> Parsed {
         outcome: MergeJudgment::Escalate,
         reason: format!("judgment fail-safe: {reason}"),
         fail_safe: true,
+        ignored_fields: Vec::new(),
     })
 }
 

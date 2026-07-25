@@ -74,12 +74,31 @@ pub struct LedgerCounters {
     pub consecutive_failures: u32,
 }
 
+/// A repository whose merge has landed but whose primary worktree has not been
+/// confirmed to hold it yet.
+///
+/// The merge gate reads this to keep a second merge out of the same repository
+/// until the post-merge `git pull --ff-only` has actually run — see
+/// [`crate::overseer::daemon::merge_settle`]. It lives in the ledger rather than
+/// in the pass, because the pull it waits on runs on a *later* pass.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct MergeSettling {
+    /// Auto-merge passes this repository has been held for. Bounded by
+    /// `overseer.max_merge_settle_passes`, so a pull that never succeeds does
+    /// not park the repository forever.
+    pub passes_held: u32,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Ledger {
     pub entries: Vec<LedgerEntry>,
     pub skip_list: Vec<String>,
     pub counters: LedgerCounters,
+    /// Repositories waiting on a post-merge fast-forward, keyed by repository
+    /// path. Defaulted so ledgers written before the field existed still load.
+    pub merge_settling: BTreeMap<String, MergeSettling>,
 }
 
 /// Live workers counted globally and per repository.

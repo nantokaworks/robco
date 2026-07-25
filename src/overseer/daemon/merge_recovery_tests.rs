@@ -45,7 +45,9 @@ fn every_reason_the_merge_gate_emits_resolves_to_one_class() {
         "unprotected:unknown_remote",
         "missing_pr_url",
         "autonomy_envelope",
-        "repo_merged_this_pass",
+        "repo_merge_settling",
+        "repo_merge_settle_cap_reached",
+        "repo_merge_settled",
         // Nothing has failed: the checks are still running, or the pull request
         // is no longer open. Neither is worth a worker turn.
         "checks_waiting",

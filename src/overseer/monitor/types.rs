@@ -14,12 +14,45 @@ pub struct Observations {
     pub sessions: Vec<SessionObservation>,
     pub tasks: Vec<TaskObservation>,
     pub prs: Vec<PrObservation>,
-    pub errors: Vec<String>,
+    pub errors: Vec<ObservationError>,
     pub manual_agents: Vec<String>,
     /// Agents that still hold a ledger entry but are no longer Overseer
     /// children. Their entries are dropped rather than reconciled — see
     /// [`crate::overseer::monitor`].
     pub detached_agents: Vec<String>,
+}
+/// A probe that could not be completed.
+///
+/// The subject is carried alongside the message because the decision this
+/// becomes is otherwise unattributable: `decisions.jsonl` used to record every
+/// probe failure with no task and no repository, so an operator could see that
+/// something failed but never which entry it failed for.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ObservationError {
+    pub message: String,
+    pub task_id: Option<String>,
+    pub repo: Option<String>,
+}
+impl ObservationError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            task_id: None,
+            repo: None,
+        }
+    }
+    /// Names the ledger entry the failed probe belongs to.
+    pub fn about(mut self, task_id: &str, repo: &str) -> Self {
+        self.task_id = Some(task_id.to_owned());
+        self.repo = Some(repo.to_owned());
+        self
+    }
+    /// Names the repository a repository-wide probe failed for.
+    pub fn in_repo(mut self, repo: &str) -> Self {
+        self.repo = Some(repo.to_owned());
+        self
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObservationSnapshot {

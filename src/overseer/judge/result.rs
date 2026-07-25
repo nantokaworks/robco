@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DispatchAdvice {
     pub candidate_ids: Vec<String>,
     pub reason: String,
     pub fail_safe: bool,
+    /// Keys the verdict carried that the schema does not name, sorted. Ignored
+    /// by the parser and recorded by [`super::audit`] — see [`RawMerge`].
+    pub ignored_fields: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,6 +24,9 @@ pub struct MergeAdvice {
     pub outcome: MergeJudgment,
     pub reason: String,
     pub fail_safe: bool,
+    /// Keys the verdict carried that the schema does not name, sorted. Ignored
+    /// by the parser and recorded by [`super::audit`] — see [`RawMerge`].
+    pub ignored_fields: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -36,17 +42,35 @@ pub enum ParseError {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawDispatch {
     candidate_ids: Vec<String>,
     reason: String,
+    /// See [`RawMerge`]: the dispatch round has the same trust model and the
+    /// same failure mode, so it gets the same treatment.
+    #[serde(flatten)]
+    extra: BTreeMap<String, serde_json::Value>,
 }
 
+/// A merge verdict exactly as the model wrote it.
+///
+/// Unknown keys are collected rather than refused. `deny_unknown_fields` is the
+/// right instinct for a payload an attacker controls, but this one comes from a
+/// local model session whose shape drift is expected: a judge that answered
+/// `allow` and added a `verification` object of its own accord had the whole
+/// approval thrown away and the pull request escalated. The fail-safe exists to
+/// protect against a verdict that cannot be *understood*, not one that says more
+/// than it was asked to.
+///
+/// What the parser still refuses is unchanged: an `outcome` outside
+/// [`MergeJudgment`], and a `reason` that is missing or blank. The ignored keys
+/// are carried out on [`MergeAdvice::ignored_fields`] so dropping the model's
+/// extra work is visible in `decisions.jsonl` rather than silent.
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawMerge {
     outcome: MergeJudgment,
     reason: String,
+    #[serde(flatten)]
+    extra: BTreeMap<String, serde_json::Value>,
 }
 
 pub(super) fn is_complete(raw: &[u8]) -> bool {
@@ -78,6 +102,7 @@ pub(super) fn parse_dispatch(
         candidate_ids: value.candidate_ids,
         reason: value.reason,
         fail_safe: false,
+        ignored_fields: value.extra.into_keys().collect(),
     })
 }
 
@@ -91,5 +116,10 @@ pub(super) fn parse_merge(raw: &[u8]) -> Result<MergeAdvice, ParseError> {
         outcome: value.outcome,
         reason: value.reason,
         fail_safe: false,
+        ignored_fields: value.extra.into_keys().collect(),
     })
 }
+
+#[cfg(test)]
+#[path = "result_tests.rs"]
+mod tests;
