@@ -19,11 +19,14 @@ fn warning_state() -> (Vec<&'static str>, App) {
     (warnings, app)
 }
 
-/// One inbox item so the category renders a marker row, a `none`-free
-/// header, and the key hint — the three rows that used to carry their own
-/// leading spaces on top of the frame indent.
+/// One inbox item so the category renders a `none`-free header and an item
+/// row, with the cursor on the item — the two rows that used to carry their
+/// own leading spaces on top of the frame indent. The cursor sits on the item
+/// so its marker is `>`; an unselected row spends that column on a space,
+/// which is the row idiom rather than a second indent.
 fn inbox_app() -> App {
     let (_, mut app) = warning_state();
+    app.overseer_visible = true;
     app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
         kind: crate::ui::inbox::InboxKind::Escalation,
         target_session: None,
@@ -32,6 +35,11 @@ fn inbox_app() -> App {
         at: chrono::Utc::now(),
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::OverseerInbox(0)))
+        .expect("no inbox item row");
     app
 }
 
@@ -76,6 +84,29 @@ fn expanded_detail_rows_share_one_indent_under_the_category_label() {
             "detail row is not at the frame's single indent origin: {detail:?}"
         );
     }
+}
+
+#[test]
+fn the_selected_inbox_item_is_the_row_the_frame_scrolls_to() {
+    // The item row, not the Inbox category above it, is what the cursor is on,
+    // so it is what must stay on screen and carry the marker.
+    let app = inbox_app();
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+
+    let row = usize::from(content.selected_row);
+    let selected = content.lines[row].to_string();
+    assert!(
+        selected.trim_start().starts_with("> [ESC]"),
+        "selected row: {selected:?}"
+    );
+    // The rows above it: the `inbox (N)` header, and the category row that owns
+    // both — neither of which the cursor is on.
+    assert!(content.lines[row - 1].to_string().contains("inbox (1)"));
+    assert!(
+        content.lines[row - 2]
+            .to_string()
+            .contains(OverseerCategory::Inbox.label())
+    );
 }
 
 #[test]

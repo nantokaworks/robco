@@ -155,6 +155,9 @@ pub enum PreviewPane {
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
         Some(Selection::OverseerCategory(_)) => &[PreviewPane::Info, PreviewPane::Claude],
+        // The inbox row is acted on from the left frame, so its preview is the
+        // Inbox listing itself and there is no second tab to cycle to.
+        Some(Selection::OverseerInbox(_)) => &[PreviewPane::Info],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -220,8 +223,10 @@ pub struct App {
     dropr_task_refresh: DroprTaskRefresh,
     background_refresh: BackgroundRefresh,
     preview_capture: PreviewCapture,
+    /// Aggregated inbox, newest first. The rows the operator moves between are
+    /// [`Selection::OverseerInbox`] entries into this list; it carries no cursor
+    /// of its own.
     overseer_inbox: Vec<inbox::InboxItem>,
-    overseer_inbox_selected: usize,
     /// Overseer state (ledger, decisions, daemon liveness) captured off-thread by
     /// the background status worker. The overseer frame and previews render from
     /// this instead of reading disk on every draw.
@@ -269,7 +274,6 @@ impl App {
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),
             overseer_snapshot: overseer::OverseerSnapshot::default(),
-            overseer_inbox_selected: 0,
         };
         if app.prune_unmanaged_agents() {
             // Re-run the prune against the on-disk registry rather than writing

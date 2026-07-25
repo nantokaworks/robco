@@ -17,11 +17,13 @@ use super::App;
 
 mod categories;
 mod decisions;
+mod inbox_rows;
 mod render;
 
 #[cfg(test)]
 pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
+pub(in crate::ui) use inbox_rows::ITEM_ROW_OFFSET as INBOX_ITEM_ROW_OFFSET;
 
 pub(super) type WorkerManagement = (String, ManagementMode);
 

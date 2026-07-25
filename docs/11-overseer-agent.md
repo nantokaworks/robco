@@ -717,6 +717,36 @@ Overseer info pane, and Discord notifications. The daemon writes observation sna
 separately so a failed probe becomes a logged skipped observation instead of invented
 state.
 
+### The Inbox in the TUI
+
+The `Inbox` category under `OVERSEER` aggregates what is waiting on the operator: every
+escalation the daemon recorded, plus every worker sitting on a confirmation prompt. The
+category row summarises it as `N/M actionable` — how many of the listed items have a live
+tmux session to answer into.
+
+Expanding the category (`l`, `→`, or `Enter` on the category row) turns each item into a
+row of its own. Those rows are ordinary tree rows: `j` / `k` move onto them, they carry the
+tree's own selection marker, and `h` folds them back under the category. There is no second
+cursor and no key that only works while a particular preview tab is showing — an item lives
+in the left frame, so what the right pane happens to display never decides what acting on it
+does.
+
+Two keys act on the selected item:
+
+- `Enter` opens the answer prompt. Submitting sends the text, then `Enter`, to that item's
+  tmux session — the same thing an operator would type after attaching.
+- `y` approves it, sending `y` + `Enter` to the same session.
+
+An item whose worker is dead or branch-only has no session to answer into. It is still
+listed — the escalation is real and the operator still needs to see it — but it renders as
+`display-only`, and both keys say so rather than appearing to send something. `Enter` on
+such a row never falls through to attaching a session.
+
+The list is re-aggregated on every refresh and sorted newest-first, so a newly arrived
+escalation shifts the rows below it. The cursor is re-anchored by the item's own identity
+rather than by its position, so an arrival cannot slide the selection onto a different
+worker between the operator reading a row and pressing `y` on it.
+
 ### Worktree management in the TUI
 
 `g` is the only key for this axis. On a worktree row it cycles

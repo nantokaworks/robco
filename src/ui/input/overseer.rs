@@ -51,55 +51,50 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         app.show_message("circuit is closed; nothing to reset");
         return true;
     }
-    if !matches!(app.selected_item(), Some(Selection::OverseerCategory(_))) {
-        return false;
-    }
-    if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
-        app.mode = Mode::PromptOverseer {
-            input: String::new(),
-        };
-        return true;
-    }
-    if app.preview != PreviewPane::Info {
-        return false;
-    }
-    match code {
-        KeyCode::Char('[') => {
-            app.overseer_inbox_selected = app.overseer_inbox_selected.saturating_sub(1);
-        }
-        KeyCode::Char(']') => {
-            app.overseer_inbox_selected =
-                (app.overseer_inbox_selected + 1).min(app.overseer_inbox.len().saturating_sub(1));
-        }
-        KeyCode::Char('a') => {
-            if let Some(item) = app.overseer_inbox.get(app.overseer_inbox_selected) {
-                if let Some(target_session) = item.target_session.clone() {
-                    app.mode = Mode::PromptInbox {
-                        target_session,
-                        label: item.label.clone(),
-                        input: String::new(),
-                    };
-                } else {
-                    app.show_message("inbox item is display-only");
-                }
-            } else {
-                app.show_message("overseer inbox is empty");
+    match app.selected_item() {
+        Some(Selection::OverseerCategory(_)) => {
+            if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
+                app.mode = Mode::PromptOverseer {
+                    input: String::new(),
+                };
+                return true;
             }
+            false
         }
+        Some(Selection::OverseerInbox(index)) => inbox_key(app, index, code),
+        _ => false,
+    }
+}
+
+/// Why an inbox item cannot be answered: the escalation is real, but the worker
+/// it came from is gone, so there is no session to send an answer into.
+const DISPLAY_ONLY: &str = "display-only inbox item: no live session to answer";
+
+/// Keys that act on the selected Inbox row. They work from every preview tab —
+/// the row lives in the left frame, so what the right pane shows has no say in
+/// what acting on it does.
+fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
+    match code {
         KeyCode::Char('y') | KeyCode::Char('Y') => {
-            if let Some(session) = app
+            match app
                 .overseer_inbox
-                .get(app.overseer_inbox_selected)
+                .get(index)
                 .and_then(|item| item.target_session.clone())
             {
-                app.approve_inbox(&session);
-            } else {
-                app.show_message("overseer inbox is empty");
+                Some(session) => app.approve_inbox(&session),
+                None => app.show_message(DISPLAY_ONLY),
             }
+            true
         }
-        _ => return false,
+        // `a` answered the inbox before this became a tree row, and it is still
+        // the global add-repository key. Claiming it here keeps that muscle
+        // memory from opening a clone prompt, and says where answering went.
+        KeyCode::Char('a') => {
+            app.show_message("press enter to answer the selected inbox item");
+            true
+        }
+        _ => false,
     }
-    true
 }
 
 pub(super) enum InboxResponse<'a> {
@@ -123,6 +118,26 @@ pub(super) fn send_response(
 }
 
 impl App {
+    /// Open the answer prompt for the selected Inbox row, or say why the row
+    /// cannot be answered. Never falls through to an attach: an inbox row has no
+    /// session of its own to attach to.
+    pub(in crate::ui) fn answer_inbox_selected(&mut self, index: usize) {
+        let Some(item) = self.overseer_inbox.get(index) else {
+            self.show_message("inbox item is no longer listed");
+            return;
+        };
+        let Some(target_session) = item.target_session.clone() else {
+            self.show_message(DISPLAY_ONLY);
+            return;
+        };
+        let label = item.label.clone();
+        self.mode = Mode::PromptInbox {
+            target_session,
+            label,
+            input: String::new(),
+        };
+    }
+
     pub(super) fn answer_inbox(&mut self, session: &str, answer: &str) {
         let result = send_response(
             session,

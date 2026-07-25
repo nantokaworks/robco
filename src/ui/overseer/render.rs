@@ -13,8 +13,8 @@ use crate::overseer::{
     logging::DecisionEntry,
 };
 
-use super::{App, WorkerManagement};
-use crate::ui::{inbox::InboxKind, theme::DEFAULT as THEME};
+use super::WorkerManagement;
+use crate::ui::theme::DEFAULT as THEME;
 
 pub(super) fn append_health(
     lines: &mut Vec<Line<'static>>,
@@ -199,42 +199,6 @@ pub(super) fn append_worker_management(
             false,
         ));
     }
-}
-
-pub(super) fn append_inbox(lines: &mut Vec<Line<'static>>, app: &App) {
-    lines.push(Line::from(Span::styled(
-        format!("inbox ({})", app.overseer_inbox.len()),
-        THEME.accent_bold_style(),
-    )));
-    if app.overseer_inbox.is_empty() {
-        lines.push(Line::from(Span::styled("none", THEME.muted_style())));
-    }
-    for (index, item) in app.overseer_inbox.iter().enumerate() {
-        let marker = if index == app.overseer_inbox_selected {
-            ">"
-        } else {
-            " "
-        };
-        let kind = match item.kind {
-            InboxKind::Escalation => "ESC",
-            InboxKind::Question => "?",
-        };
-        let target = item
-            .target_session
-            .as_deref()
-            .map_or("display-only", |session| session);
-        // The selection marker is the row head, exactly as in the tree rows —
-        // the caller owns the indent, so no leading space of our own.
-        lines.push(Line::from(format!(
-            "{marker} [{kind}] {} => {target}",
-            item.label
-        )));
-    }
-    lines.push(Line::from(Span::styled(
-        "[/] select   a answer   y approve",
-        THEME.hint_style(),
-    )));
-    lines.push(Line::default());
 }
 
 /// Merge recovery as one reading: the switch and, when it is on, the number of

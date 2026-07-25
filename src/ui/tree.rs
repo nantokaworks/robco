@@ -39,7 +39,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         };
 
         match *item {
-            Selection::OverseerCategory(_) => continue,
+            Selection::OverseerCategory(_) | Selection::OverseerInbox(_) => continue,
             Selection::Repo(repo_idx) => {
                 let repo = &app.registry.repos[repo_idx];
                 let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);

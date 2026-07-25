@@ -54,16 +54,115 @@ fn answer_and_approve_use_existing_tmux_sequences() {
     assert_eq!(calls.borrow().as_slice(), ["keys:target:y,Enter"]);
 }
 
-#[test]
-fn inbox_navigation_is_handled_from_category_selection() {
+fn inbox_app(target_session: Option<&str>) -> App {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
-    app.selected = OverseerCategory::Inbox.index();
-    app.preview = PreviewPane::Info;
+    app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
+        kind: crate::ui::inbox::InboxKind::Question,
+        target_session: target_session.map(ToString::to_string),
+        target_id: "agent-1".into(),
+        label: "agent-1 — worker".into(),
+        at: chrono::Utc::now(),
+    }];
+    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::OverseerInbox(0)))
+        .expect("no inbox item row");
+    app
+}
 
-    assert!(handle_normal(&mut app, KeyCode::Char('[')));
-    assert!(handle_normal(&mut app, KeyCode::Char(']')));
+#[test]
+fn the_removed_second_cursor_keys_bind_to_nothing() {
+    // `[` / `]` drove the retired `overseer_inbox_selected` index. The tree's
+    // own j/k cursor replaces them, so nothing may claim these keys.
+    let mut app = inbox_app(Some("robco-agent-1"));
+
+    assert!(!handle_normal(&mut app, KeyCode::Char('[')));
+    assert!(!handle_normal(&mut app, KeyCode::Char(']')));
+    assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn the_old_answer_key_reports_instead_of_opening_the_add_repo_prompt() {
+    // `a` is the global clone / add-repository key and used to answer the
+    // inbox. From an inbox row it must reach neither outcome.
+    let mut app = inbox_app(Some("robco-agent-1"));
+
+    press(&mut app, KeyCode::Char('a'));
+
+    assert!(
+        matches!(app.mode, Mode::Normal),
+        "a from an inbox row opened a dialog"
+    );
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("press enter to answer the selected inbox item")
+    );
+}
+
+#[test]
+fn approve_acts_on_the_selected_row_from_any_preview_tab() {
+    for pane in [PreviewPane::Info, PreviewPane::Claude] {
+        let mut app = inbox_app(None);
+        app.preview = pane;
+
+        // A display-only row has no session to approve into, and says so
+        // rather than silently doing nothing — which is what the key reports
+        // from every tab, so the tab is never what decides the outcome.
+        assert!(handle_normal(&mut app, KeyCode::Char('y')));
+        assert_eq!(
+            app.message.as_ref().map(|(message, _)| message.as_str()),
+            Some(DISPLAY_ONLY),
+            "preview tab {pane:?}"
+        );
+    }
+}
+
+fn press(app: &mut App, code: KeyCode) {
+    assert!(
+        !app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
+            .unwrap(),
+        "key {code:?} quit the app"
+    );
+}
+
+#[test]
+fn enter_opens_the_answer_prompt_for_an_actionable_row() {
+    let mut app = inbox_app(Some("robco-agent-1"));
+
+    press(&mut app, KeyCode::Enter);
+
+    match &app.mode {
+        Mode::PromptInbox {
+            target_session,
+            label,
+            input,
+        } => {
+            assert_eq!(target_session, "robco-agent-1");
+            assert_eq!(label, "agent-1 — worker");
+            assert!(input.is_empty());
+        }
+        _ => panic!("enter did not open the answer prompt"),
+    }
+}
+
+#[test]
+fn enter_on_a_display_only_row_explains_itself_and_never_attaches() {
+    let mut app = inbox_app(None);
+
+    press(&mut app, KeyCode::Enter);
+
+    assert!(
+        matches!(app.mode, Mode::Normal),
+        "a display-only row must not open a prompt or attach"
+    );
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some(DISPLAY_ONLY)
+    );
 }
 
 #[test]

@@ -33,6 +33,53 @@ fn overseer_categories_are_always_listed_and_the_header_is_not_a_row() {
     assert_eq!(app.visible(), expected.to_vec());
 }
 
+fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
+    crate::ui::inbox::InboxItem {
+        kind: crate::ui::inbox::InboxKind::Escalation,
+        target_session: Some("robco-agent-1".into()),
+        target_id: target_id.into(),
+        label: format!("{target_id} — escalated"),
+        at: chrono::Utc::now(),
+    }
+}
+
+#[test]
+fn expanding_the_inbox_lists_its_items_as_rows_and_collapsing_takes_them_back() {
+    let mut app = test_app();
+    app.set_overseer_visibility(true);
+    app.orphans = Vec::new();
+    app.overseer_inbox = vec![inbox_item("#1"), inbox_item("#2")];
+
+    // Collapsed, the categories are still the only OVERSEER rows: an item the
+    // operator cannot see is not one the cursor can land on.
+    let categories = OverseerCategory::ALL
+        .map(Selection::OverseerCategory)
+        .to_vec();
+    assert_eq!(app.visible(), categories);
+
+    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+    let inbox_row = OverseerCategory::Inbox.index();
+    assert_eq!(
+        app.visible(),
+        [
+            &categories[..=inbox_row],
+            &[Selection::OverseerInbox(0), Selection::OverseerInbox(1)],
+            &categories[inbox_row + 1..],
+        ]
+        .concat()
+    );
+
+    // Collapsing takes the item rows away and leaves the cursor on a real row
+    // rather than past the end of the list.
+    app.selected = inbox_row + 2;
+    app.set_overseer_category_expanded(OverseerCategory::Inbox, false);
+    assert_eq!(app.visible(), categories);
+    assert_eq!(
+        app.selected_item(),
+        Some(Selection::OverseerCategory(OverseerCategory::Decisions))
+    );
+}
+
 #[test]
 fn app_overseer_frame_height_tracks_content_within_bounds() {
     let mut app = test_app();

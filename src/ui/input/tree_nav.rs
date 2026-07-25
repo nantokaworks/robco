@@ -65,6 +65,11 @@ impl App {
             Some(Selection::OverseerCategory(category)) => {
                 self.set_overseer_category_expanded(category, false);
             }
+            // An item row collapses the category that owns it, like a child row
+            // folding away under its parent.
+            Some(Selection::OverseerInbox(_)) => {
+                self.set_overseer_category_expanded(crate::model::OverseerCategory::Inbox, false);
+            }
             Some(Selection::Repo(repo)) => {
                 if let Some(expanded) = self.expanded.get_mut(repo) {
                     *expanded = false;

@@ -24,6 +24,13 @@ impl App {
             Selection::OverseerCategory(category) => {
                 format!("overseer:{}", category.label().to_lowercase())
             }
+            // Keyed on what the item *is*, never on where it currently sits: the
+            // inbox re-aggregates newest-first on every refresh, so an index
+            // would slide the cursor onto whatever a new escalation displaced.
+            Selection::OverseerInbox(item) => self.overseer_inbox.get(item).map_or_else(
+                || "overseer-inbox:missing".to_string(),
+                |item| format!("overseer-inbox:{}:{}", item.kind.code(), item.target_id),
+            ),
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
             }
@@ -163,11 +170,15 @@ impl App {
             // These focus entries map to the dedicated OVERSEER frame; tree
             // rendering excludes them from the PROJECTS frame. The OVERSEER
             // header itself is a plain label, so it never becomes a row here.
-            visible.extend(
-                OverseerCategory::ALL
-                    .into_iter()
-                    .map(Selection::OverseerCategory),
-            );
+            for category in OverseerCategory::ALL {
+                visible.push(Selection::OverseerCategory(category));
+                // The Inbox is the one category whose detail is acted on rather
+                // than read, so its items are rows of their own under it.
+                if category == OverseerCategory::Inbox && self.overseer_category_expanded(category)
+                {
+                    visible.extend((0..self.overseer_inbox.len()).map(Selection::OverseerInbox));
+                }
+            }
         }
         for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
             if self.repo_is_local(repo) {
