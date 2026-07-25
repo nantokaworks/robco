@@ -282,6 +282,50 @@ fn locked_update_keeps_a_row_a_stale_snapshot_would_erase() {
 }
 
 #[test]
+fn locked_load_reads_what_the_last_transaction_committed() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("state.json");
+
+    // No state file yet is not an error; a reader that treated it as one would
+    // have no row set to reconcile against.
+    let empty = Registry::locked_load_at(&path).unwrap();
+    assert_eq!(empty.version, 1);
+    assert!(empty.repos.is_empty());
+
+    Registry::locked_update_at(&path, |registry| {
+        registry.repos.push(repo("/a/one", vec![dummy_agent()]));
+    })
+    .unwrap();
+
+    let loaded = Registry::locked_load_at(&path).unwrap();
+    assert_eq!(loaded.repos.len(), 1);
+    assert_eq!(loaded.repos[0].agents[0].id, "agent123");
+}
+
+/// The shared lock must not exclude another reader: the UI's discovery pass
+/// takes it on every tick, and self-deadlocking there would freeze the refresh.
+#[test]
+fn locked_load_admits_concurrent_readers() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = Arc::new(temp.path().join("state.json"));
+    Registry::locked_update_at(&path, |registry| registry.version = 9).unwrap();
+
+    let threads: Vec<_> = (0..4)
+        .map(|_| {
+            let path = Arc::clone(&path);
+            std::thread::spawn(move || {
+                for _ in 0..25 {
+                    assert_eq!(Registry::locked_load_at(&path).unwrap().version, 9);
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+}
+
+#[test]
 fn save_under_lock_round_trips() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("state.json");

@@ -74,7 +74,9 @@ fn carry_repo(source: &RepoNode, target: &mut RepoNode) {
     target.main_subagents_active = source.main_subagents_active;
 }
 
-fn carry_agent(source: &AgentNode, target: &mut AgentNode) {
+/// Move every `#[serde(skip)]` field of `source` onto `target`. Shared with the
+/// discovery refresh, which faces the same reloaded-from-disk row.
+pub(in crate::ui) fn carry_agent(source: &AgentNode, target: &mut AgentNode) {
     target.status = source.status;
     target.worktree_missing = source.worktree_missing;
     target.merge_error.clone_from(&source.merge_error);

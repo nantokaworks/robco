@@ -19,6 +19,7 @@ use super::{
     discovery_capture::{DiscoveryResult, capture_discovery},
     dropr_overlay::{self, OverlayStatus},
     overseer_refresh::{OverseerResult, capture_overseer},
+    registry_sync,
 };
 use crate::ui::{App, list};
 
@@ -167,6 +168,7 @@ impl App {
             return;
         }
         let selected = self.selected_item().map(|item| self.item_key(item));
+        let dialog_agent = registry_sync::dialog_agent(&self.mode, &self.registry.repos);
         let expanded_by_path = self
             .registry
             .repos
@@ -201,6 +203,7 @@ impl App {
         if let Some(orphans) = result.orphans {
             self.orphans = orphans;
         }
+        registry_sync::restore_dialog_agent(&mut self.mode, &self.registry.repos, dialog_agent);
         self.restore_selection(selected);
         if result.save {
             self.background_refresh
