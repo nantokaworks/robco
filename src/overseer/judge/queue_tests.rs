@@ -44,6 +44,7 @@ fn a_judgment_the_candidate_set_outran_is_discarded_on_the_record() {
             candidate_ids: vec!["a".into(), "b".into()],
             reason: "both retained".into(),
             fail_safe: false,
+            ignored_fields: Vec::new(),
         },
     );
 

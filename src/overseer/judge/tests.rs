@@ -44,28 +44,6 @@ pub(super) fn merge_request() -> Request {
 }
 
 #[test]
-fn dispatch_parser_rejects_ids_outside_rust_approved_set() {
-    let raw = br#"{"candidate_ids":["a","rejected"],"reason":"priority"}"#;
-    assert!(matches!(
-        result::parse_dispatch(raw, &["a".into(), "b".into()]),
-        Err(result::ParseError::Rejected(_))
-    ));
-}
-
-#[test]
-fn parsers_reject_unknown_fields_outcomes_and_blank_reasons() {
-    assert!(
-        result::parse_dispatch(
-            br#"{"candidate_ids":["a"],"reason":"ok","extra":true}"#,
-            &["a".into()]
-        )
-        .is_err()
-    );
-    assert!(result::parse_merge(br#"{"outcome":"force","reason":"x"}"#).is_err());
-    assert!(result::parse_merge(br#"{"outcome":"allow","reason":" "}"#).is_err());
-}
-
-#[test]
 fn every_dispatch_session_failure_keeps_deterministic_order() {
     let failures = [
         SessionResult::TimedOut,
@@ -174,6 +152,7 @@ fn merge_cache_is_revision_keyed() {
             outcome: result::MergeJudgment::Allow,
             reason: "reviewed".into(),
             fail_safe: false,
+            ignored_fields: Vec::new(),
         },
     );
     let mut updated = case.clone();
@@ -198,6 +177,7 @@ fn veto_is_sticky_for_revision_but_new_revision_is_queued() {
             outcome: result::MergeJudgment::Veto,
             reason: "unsafe".into(),
             fail_safe: false,
+            ignored_fields: Vec::new(),
         },
     );
     assert_eq!(

@@ -81,6 +81,7 @@ impl JudgmentQueue {
                         candidate_ids: approved.iter().map(|item| item.task_id.clone()).collect(),
                         reason: "daily_llm_budget".into(),
                         fail_safe: true,
+                        ignored_fields: Vec::new(),
                     });
                     audit::record(&self.log_path, &request, &parsed)?;
                     self.completed.insert(request.key().to_owned(), parsed);
@@ -117,6 +118,7 @@ impl JudgmentQueue {
                 candidate_ids: Vec::new(),
                 reason: "no approved candidates".into(),
                 fail_safe: false,
+                ignored_fields: Vec::new(),
             });
         }
         let key = dispatch_key(approved);

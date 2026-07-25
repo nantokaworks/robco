@@ -201,6 +201,7 @@ fn judgment_cannot_add_a_candidate_rejected_by_rust_caps() {
         ],
         reason: "try rejected".into(),
         fail_safe: false,
+        ignored_fields: Vec::new(),
     };
     let judged = apply_judgment(plan.decisions, &advice);
     assert!(!judged.iter().any(|decision| {
