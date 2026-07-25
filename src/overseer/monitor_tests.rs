@@ -1,6 +1,6 @@
 use super::*;
 use chrono::{TimeZone, Utc};
-fn ledger() -> Ledger {
+pub(super) fn ledger() -> Ledger {
     Ledger {
         entries: vec![LedgerEntry {
             task_id: "task-131".into(),
@@ -259,7 +259,7 @@ fn delayed_done_does_not_revive_escalated_entry() {
 #[test]
 fn blocked_dead_and_unknown_observations_degrade_safely() {
     let malformed: Observations = serde_json::from_str(
-        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"future-kind","task_id":"task-131","pr_url":null,"reason":null}],"sessions":[{"agent_id":"worker-1","status":"future-status","last_activity_at":null}],"errors":["gh returned malformed JSON"]}"#,
+        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"future-kind","task_id":"task-131","pr_url":null,"reason":null}],"sessions":[{"agent_id":"worker-1","status":"future-status","last_activity_at":null}],"errors":[{"message":"gh returned malformed JSON","task_id":"task-131","repo":"/repo"}]}"#,
     ).unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
     let (unchanged, actions) = reconcile(&ledger(), &malformed, now, 30);

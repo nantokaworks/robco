@@ -16,7 +16,7 @@ use super::{
     judge::JudgmentQueue,
     ledger::{Ledger, LedgerPhase},
     logging,
-    monitor::{Action, FailureOrigin, ObservationSnapshot, reconcile},
+    monitor::{Action, FailureOrigin, ObservationError, ObservationSnapshot, reconcile},
     pidfile_path,
     review::ReviewPass,
     runtime_request, snapshots_path,
@@ -79,9 +79,9 @@ pub async fn run_daemon() -> Result<()> {
                 observations: observed.clone(),
             },
         ) {
-            observed
-                .errors
-                .push(format!("snapshot write failed: {error}"));
+            observed.errors.push(ObservationError::new(format!(
+                "snapshot write failed: {error}"
+            )));
         }
         let (mut next, actions) =
             reconcile(&ledger, &observed, now, config.overseer.stuck_after_mins);
