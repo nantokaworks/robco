@@ -86,9 +86,13 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
         }
         let manual = observations.manual_agents.contains(&entry.agent_id);
         if let Some(agent) = agent {
-            if entry.phase == LedgerPhase::Merged {
-                observations.registered_agents.push(entry.agent_id.clone());
-            }
+            // Every phase, not just `merged`. `monitor::reconcile` only asks
+            // about a merged entry — whose cleanup is re-pushed for as long as
+            // the row survives — but retention asks about a settled one of any
+            // phase, and a list that answered "no" for a `failed` worker whose
+            // session is still standing would let its entry be forgotten while
+            // the worktree it names is still there.
+            observations.registered_agents.push(entry.agent_id.clone());
             // Overseer never kills, restarts, or fails a Manual agent's session, so a
             // session probe could not drive any decision — but its PR state still has to
             // be collected below, or the entry never advances past the phase it was
