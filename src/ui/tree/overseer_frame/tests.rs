@@ -136,6 +136,37 @@ fn the_header_indicator_stays_beside_the_label_at_every_frame_width() {
 }
 
 #[test]
+fn a_live_daemon_leaves_the_header_label_bare() {
+    let (warnings, mut app) = warning_state();
+    app.overseer_snapshot.daemon_alive = true;
+
+    // Dispatch on (the state that used to animate forever) and dispatch off
+    // are both healthy, so neither draws a glyph beside the label.
+    for dispatch_enabled in [true, false] {
+        app.overseer_snapshot.overseer.dispatch_enabled = dispatch_enabled;
+        for tree_width in [24_u16, 48] {
+            let content = build_content_with_warnings(&app, Some(tree_width - 1), &warnings);
+            assert_eq!(
+                content.lines[0].to_string(),
+                "OVERSEER  ⚠×3",
+                "header row with dispatch_enabled={dispatch_enabled} at tree width {tree_width}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_bare_header_hands_its_reserved_columns_back_to_the_label() {
+    let (_, mut app) = warning_state();
+    app.overseer_snapshot.daemon_alive = true;
+
+    // Eight columns is exactly the label: with no glyph to reserve room for,
+    // nothing is trimmed off it.
+    let content = build_content_with_warnings(&app, Some(8), &[]);
+    assert_eq!(content.lines[0].to_string(), "OVERSEER");
+}
+
+#[test]
 fn warning_rows_are_included_in_selected_category_scroll_position() {
     let (warnings, mut app) = warning_state();
     app.overseer_visible = true;
