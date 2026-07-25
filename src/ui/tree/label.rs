@@ -18,8 +18,18 @@ const END_PAUSE: Duration = Duration::from_millis(1_000);
 /// the difference).
 const OVERSEER_AUTO_MARKER: &str = "◆";
 
-/// The prefix of an agent row: cursor, Overseer marker cell, identity-tree
-/// indent, then the expand arrow for a row that has child worktrees.
+/// One nesting step, applied to every agent row so its title starts right of
+/// the repo name above it and the row reads as a child of that repo. The marker
+/// cell sits left of this, at the row head, and does not buy the containment
+/// back — it occupies the cell that would otherwise have read as indentation.
+///
+/// Rows that must track the agent title column carry this too: the child-worktree
+/// row and the empty-repo filler in the parent module.
+pub(super) const AGENT_INDENT: &str = "  ";
+
+/// The prefix of an agent row: cursor, Overseer marker cell, the nesting step
+/// under the repo, the identity-tree indent, then the expand arrow for a row
+/// that has child worktrees.
 ///
 /// The marker spends one of the three cells that already separated the cursor
 /// from the indent, so the title column sits at the same offset whether or not
@@ -36,7 +46,7 @@ pub(super) fn agent_row_prefix(
         " "
     };
     format!(
-        "{cursor} {marker} {}{}",
+        "{cursor} {marker} {AGENT_INDENT}{}{}",
         "  ".repeat(depth),
         child_marker.unwrap_or("")
     )
