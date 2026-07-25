@@ -95,19 +95,32 @@ fn timeout_escalates() {
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
 }
 
+/// Triage escalates outside the reconcile pass, and the next pass sees an entry
+/// that is already terminal and leaves it alone — so if triage does not stamp
+/// the entry here, nothing ever will and the history cannot order it.
 #[test]
-fn malformed_result_escalates() {
+fn malformed_result_escalates_and_records_when_the_entry_settled() {
     let temp = tempfile::tempdir().unwrap();
     let mut ledger = ledger();
-    apply_session_result_with(
-        SessionResult::Result(b"not-json".to_vec()),
-        &mut ledger,
-        &case(),
-        &temp.path().join("decisions.jsonl"),
-        &no_scribble,
-    )
-    .unwrap();
+    let escalate = |ledger: &mut Ledger| {
+        apply_session_result_with(
+            SessionResult::Result(b"not-json".to_vec()),
+            ledger,
+            &case(),
+            &temp.path().join("decisions.jsonl"),
+            &no_scribble,
+        )
+        .unwrap();
+    };
+
+    escalate(&mut ledger);
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
+    let settled = ledger.entries[0].settled_at;
+    assert!(settled.is_some());
+
+    // A repeat escalation of the same entry must not move the timestamp.
+    escalate(&mut ledger);
+    assert_eq!(ledger.entries[0].settled_at, settled);
 }
 
 #[test]
