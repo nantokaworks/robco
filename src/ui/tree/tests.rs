@@ -1,5 +1,4 @@
 use ratatui::{Terminal, backend::TestBackend};
-use unicode_width::UnicodeWidthStr;
 
 use super::*;
 use crate::{config::Config, registry::Registry};
@@ -78,12 +77,14 @@ fn row_containing(rows: &[String], title: &str) -> String {
         .clone()
 }
 
-/// The column the title starts at, measured in cells rather than bytes so the
-/// multi-byte marker does not distort it.
+/// The column the title starts at, counted in cells rather than bytes or display
+/// width so neither the multi-byte marker nor a two-column project icon distorts
+/// it. A wide glyph lives in a single cell and its second column is left blank,
+/// so one cell is one column here.
 fn title_column(rows: &[String], title: &str) -> usize {
     let row = row_containing(rows, title);
     let byte = row.find(title).unwrap();
-    UnicodeWidthStr::width(&row[..byte])
+    row[..byte].chars().count()
 }
 
 #[test]
@@ -101,6 +102,33 @@ fn only_an_overseer_auto_worker_carries_the_row_head_marker() {
             "{unmarked} row: {:?}",
             row_containing(&rows, unmarked)
         );
+    }
+}
+
+/// An agent hangs off the repo above it, so its title has to start right of the
+/// repo name. Sharing that column makes an Overseer Auto worker read as a
+/// sibling of its own repo — the `◆` sits where the indentation would be, so
+/// nothing else in the row prefix expresses containment.
+#[test]
+fn an_agent_title_starts_right_of_its_repo_name() {
+    // The widest repo row the config allows: a two-column project icon plus a
+    // reserved indicator cell both push the repo name right, leaving the
+    // narrowest gap the nesting step ever has to survive.
+    let mut widest = app_with_managed_workers();
+    widest.config.project_icon = crate::config::ProjectIcon::Emoji;
+    widest.registry.repos[0].main_status = Some(Status::Idle);
+
+    for app in [app_with_managed_workers(), widest] {
+        let rows = rendered_rows(&app);
+        let repo = title_column(&rows, "repo");
+
+        for agent in ["auto-worker", "manual-worker", "hand-made"] {
+            let title = title_column(&rows, agent);
+            assert!(
+                title > repo,
+                "{agent} title column {title} is not right of the repo name column {repo}"
+            );
+        }
     }
 }
 

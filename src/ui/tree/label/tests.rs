@@ -181,12 +181,12 @@ fn reserves_indicator_column_when_primary_is_present() {
 
 #[test]
 fn an_overseer_auto_worker_carries_the_marker_at_the_row_head() {
-    assert_eq!(agent_row_prefix(">", true, 0, None), "> ◆ ");
+    assert_eq!(agent_row_prefix(">", true, 0, None), "> ◆   ");
 }
 
 #[test]
 fn a_manual_or_unmanaged_worktree_leaves_the_marker_cell_blank() {
-    assert_eq!(agent_row_prefix(">", false, 0, None), ">   ");
+    assert_eq!(agent_row_prefix(">", false, 0, None), ">     ");
 }
 
 /// The marker spends a cell the prefix already reserved, so the title starts at
@@ -205,6 +205,6 @@ fn the_marker_does_not_move_the_title_column() {
 
 #[test]
 fn the_prefix_indents_by_depth_and_appends_the_expand_arrow() {
-    assert_eq!(agent_row_prefix(" ", true, 2, Some("▸ ")), "  ◆     ▸ ");
-    assert_eq!(agent_row_prefix(" ", false, 1, None), "      ");
+    assert_eq!(agent_row_prefix(" ", true, 2, Some("▸ ")), "  ◆       ▸ ");
+    assert_eq!(agent_row_prefix(" ", false, 1, None), "        ");
 }
