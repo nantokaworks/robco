@@ -5,14 +5,22 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{dropr, dropr::DroprTaskCandidate};
+use crate::{dropr, dropr::DroprTaskFetch, model::RepoNode};
 
 use super::super::App;
 use super::dropr_overlay::OverlayStatus;
 
 const REFRESH_STALE_AFTER: Duration = Duration::from_secs(30);
 
-type DroprTaskResult = (String, Instant, Option<Vec<DroprTaskCandidate>>);
+// A fetch that cannot finish inside the stale window has its answer thrown
+// away, so the budget it runs under has to be the shorter of the two.
+const _: () = assert!(dropr::FETCH_BUDGET.as_secs() < REFRESH_STALE_AFTER.as_secs());
+
+/// What the pane says when a reload the operator asked for never came back.
+/// Deliberately does not name the window: the constant above owns that number.
+const ABANDONED_RELOAD: &str = "a manual reload gave up before it answered; nothing was re-checked";
+
+type DroprTaskResult = (String, Instant, DroprTaskFetch);
 
 pub(in crate::ui) struct DroprTaskRefresh {
     sender: Sender<DroprTaskResult>,
@@ -65,7 +73,18 @@ fn refresh_is_fresh(started: Instant, now: Instant) -> bool {
     now.saturating_duration_since(started) < REFRESH_STALE_AFTER
 }
 
-fn expire_stale_refreshes(refresh: &mut DroprTaskRefresh, now: Instant) {
+/// Drops refreshes that outlived the stale window, and names the manual ones it
+/// dropped. A background sweep can be abandoned quietly, but an operator who
+/// pressed `r` is waiting on an answer and has to be told none is coming.
+fn expire_stale_refreshes(refresh: &mut DroprTaskRefresh, now: Instant) -> Vec<String> {
+    let abandoned = refresh
+        .in_flight
+        .iter()
+        .filter(|(workspace_id, started)| {
+            !refresh_is_fresh(**started, now) && refresh.manual.contains(*workspace_id)
+        })
+        .map(|(workspace_id, _)| workspace_id.clone())
+        .collect();
     refresh
         .in_flight
         .retain(|_, started| refresh_is_fresh(*started, now));
@@ -73,6 +92,7 @@ fn expire_stale_refreshes(refresh: &mut DroprTaskRefresh, now: Instant) {
     refresh
         .manual
         .retain(|workspace_id| in_flight.contains_key(workspace_id));
+    abandoned
 }
 
 fn track_refresh(refresh: &mut DroprTaskRefresh, workspace_id: &str, manual: bool) -> bool {
@@ -100,12 +120,21 @@ fn refresh_visible(refresh: &DroprTaskRefresh, workspace_id: &str) -> bool {
             .is_some_and(|started| refresh_is_fresh(*started, now))
 }
 
-fn apply_fetched_tasks(
-    current: &mut Vec<DroprTaskCandidate>,
-    fetched: Option<Vec<DroprTaskCandidate>>,
-) {
-    if let Some(tasks) = fetched {
-        *current = tasks;
+/// Installs a fetch result, failures included.
+///
+/// A failed fetch replaces the old rows rather than preserving them: keeping
+/// them would leave the pane showing a list nothing re-checked, with no sign
+/// that the check failed. The fetch result carries its own explanation, so the
+/// panel has something to show in their place.
+fn apply_fetched_tasks(current: &mut DroprTaskFetch, fetched: DroprTaskFetch) {
+    *current = fetched;
+}
+
+/// Records that a manual reload was abandoned, on the pane the operator is
+/// looking at. Repeated sweeps must not stack the same line.
+fn note_abandoned_reload(current: &mut DroprTaskFetch) {
+    if !current.problems.iter().any(|line| line == ABANDONED_RELOAD) {
+        current.problems.push(ABANDONED_RELOAD.to_owned());
     }
 }
 
@@ -152,12 +181,11 @@ impl App {
         let spawn_result = std::thread::Builder::new()
             .name("dropr-task-refresh".into())
             .spawn(move || {
-                let tasks = panic::catch_unwind(AssertUnwindSafe(|| {
+                let fetch = panic::catch_unwind(AssertUnwindSafe(|| {
                     dropr::fetch_repo_tasks(&worker_workspace_id)
                 }))
-                .ok()
-                .flatten();
-                let _ = sender.send((worker_workspace_id, started, tasks));
+                .unwrap_or_else(|_| DroprTaskFetch::failed("the dropr task fetch panicked"));
+                let _ = sender.send((worker_workspace_id, started, fetch));
             });
         if spawn_result.is_err()
             && self.dropr_task_refresh.in_flight.get(&workspace_id) == Some(&started)
@@ -169,19 +197,34 @@ impl App {
     }
 
     fn ingest_dropr_tasks(&mut self) {
-        expire_stale_refreshes(&mut self.dropr_task_refresh, Instant::now());
-        while let Ok((workspace_id, started, tasks)) = self.dropr_task_refresh.receiver.try_recv() {
+        for workspace_id in expire_stale_refreshes(&mut self.dropr_task_refresh, Instant::now()) {
+            for repo in Self::repos_of(&mut self.registry.repos, &workspace_id) {
+                note_abandoned_reload(&mut repo.dropr_tasks);
+            }
+        }
+        while let Ok((workspace_id, started, fetch)) = self.dropr_task_refresh.receiver.try_recv() {
             if self.dropr_task_refresh.in_flight.get(&workspace_id) != Some(&started) {
                 continue;
             }
             self.dropr_task_refresh.in_flight.remove(&workspace_id);
             self.dropr_task_refresh.manual.remove(&workspace_id);
-            for repo in &mut self.registry.repos {
-                if repo.dropr.as_ref().map(|workspace| &workspace.id) == Some(&workspace_id) {
-                    apply_fetched_tasks(&mut repo.dropr_tasks, tasks.clone());
-                }
+            for repo in Self::repos_of(&mut self.registry.repos, &workspace_id) {
+                apply_fetched_tasks(&mut repo.dropr_tasks, fetch.clone());
             }
         }
+    }
+
+    /// The repos linked to one dropr workspace. More than one repo can share a
+    /// workspace, so a fetch result lands on every match.
+    fn repos_of<'a>(
+        repos: &'a mut [RepoNode],
+        workspace_id: &'a str,
+    ) -> impl Iterator<Item = &'a mut RepoNode> {
+        repos.iter_mut().filter(move |repo| {
+            repo.dropr
+                .as_ref()
+                .is_some_and(|workspace| workspace.id == workspace_id)
+        })
     }
 }
 

@@ -4,7 +4,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    dropr::{DroprTaskCandidate, DroprWorkspace},
+    dropr::{DroprTaskFetch, DroprWorkspace},
     subagents::TaskSubagent,
 };
 
@@ -20,8 +20,10 @@ pub struct RepoNode {
     pub agents: Vec<AgentNode>,
     #[serde(skip)]
     pub dropr: Option<DroprWorkspace>,
+    /// Result of the last dropr task fetch, failures included: a pane that
+    /// cannot tell a failed fetch from an empty board misreports both.
     #[serde(skip)]
-    pub dropr_tasks: Vec<DroprTaskCandidate>,
+    pub dropr_tasks: DroprTaskFetch,
     /// Status of the repo's own main-worktree AI session, or `None` when no such
     /// session is running (the main worktree does not auto-launch one). Runtime
     /// only; refreshed each tick and never persisted.
@@ -216,7 +218,7 @@ impl Status {
     pub fn glyph(self) -> &'static str {
         match self {
             Status::Idle => "·",
-            Status::Running => "▶",
+            Status::Running => "⠿",
             Status::Waiting => "?",
             Status::Done => "✓",
             Status::Dead => "✗",
@@ -232,7 +234,7 @@ mod tests {
     #[test]
     fn status_badges_and_glyphs_are_stable() {
         assert_eq!(Status::Running.badge(), "run");
-        assert_eq!(Status::Running.glyph(), "▶");
+        assert_eq!(Status::Running.glyph(), "⠿");
         assert_eq!(Status::Waiting.glyph(), "?");
         assert_eq!(Status::Done.glyph(), "✓");
         assert_eq!(Status::Idle.glyph(), "·");

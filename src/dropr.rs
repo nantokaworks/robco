@@ -1,22 +1,19 @@
-use std::{collections::HashSet, process::Command, time::Duration};
+use std::{process::Command, time::Duration};
 
 use serde::Deserialize;
 
 mod claim;
 mod mcp;
+mod repo_tasks;
 mod workspace;
 
 pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
+pub use repo_tasks::{DroprTaskFetch, FETCH_BUDGET, TASK_FETCH_LIMIT};
 pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
 
 /// `dropr task ready --limit` caps at 20; larger values make the CLI
 /// exit with an argument error and the fetch fails for every repo.
 pub const READY_FETCH_LIMIT: usize = 20;
-
-/// How many in-progress tasks a summary fetch asks for. Held at the ready
-/// ceiling so both halves of the repository summary run out of rows at the
-/// same place and a reader can compare them.
-pub const IN_PROGRESS_FETCH_LIMIT: usize = 20;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct DroprTaskCandidate {
@@ -55,10 +52,6 @@ impl ReadyDispatchError {
     }
 }
 
-pub fn fetch_ready_tasks(workspace_id: &str, limit: usize) -> Option<Vec<DroprTaskCandidate>> {
-    fetch_ready_as(workspace_id, limit)
-}
-
 pub fn fetch_ready_dispatch_tasks_timeout(
     workspace_id: &str,
     limit: usize,
@@ -84,31 +77,14 @@ pub fn fetch_ready_dispatch_tasks_timeout(
     parse_as(&output.stdout).ok_or(ReadyDispatchError::Parse)
 }
 
-fn fetch_ready_as<T: for<'de> Deserialize<'de>>(
-    workspace_id: &str,
-    limit: usize,
-) -> Option<Vec<T>> {
-    let limit = limit.to_string();
-    fetch_as(&[
-        "task",
-        "ready",
-        "--workspace",
-        workspace_id,
-        "--limit",
-        &limit,
-        "--json",
-    ])
-}
-
-pub fn fetch_in_progress_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
-    mcp::fetch_in_progress_tasks(workspace_id)
-}
-
-pub fn fetch_repo_tasks(workspace_id: &str) -> Option<Vec<DroprTaskCandidate>> {
-    merge_repo_tasks(
-        fetch_in_progress_tasks(workspace_id),
-        fetch_ready_tasks(workspace_id, READY_FETCH_LIMIT),
-    )
+/// The outstanding tasks of one workspace, for display.
+///
+/// Deliberately not `dropr task ready`: that endpoint nominates dispatch
+/// candidates and applies its own selection, so it cannot answer "what tasks
+/// does this repository have". See [`repo_tasks`] for how the hierarchy is
+/// walked and how a query that did not answer is reported.
+pub fn fetch_repo_tasks(workspace_id: &str) -> DroprTaskFetch {
+    repo_tasks::fetch(workspace_id)
 }
 
 pub(crate) fn scribble_create_timeout(
@@ -161,38 +137,6 @@ fn checked_timeout(
             stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
         })
     }
-}
-
-fn fetch_as<T: for<'de> Deserialize<'de>>(args: &[&str]) -> Option<Vec<T>> {
-    let program = crate::config::resolve_program("dropr")?;
-    let output = Command::new(program).args(args).output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    parse_as(&output.stdout)
-}
-
-fn merge_repo_tasks(
-    in_progress: Option<Vec<DroprTaskCandidate>>,
-    ready: Option<Vec<DroprTaskCandidate>>,
-) -> Option<Vec<DroprTaskCandidate>> {
-    if in_progress.is_none() && ready.is_none() {
-        return None;
-    }
-    let mut tasks = in_progress.unwrap_or_default();
-    for task in &mut tasks {
-        if task.status.is_empty() {
-            task.status = "in_progress".to_string();
-        }
-    }
-    tasks.extend(ready.unwrap_or_default());
-    let mut seen = HashSet::new(); // keep first occurrence: in-progress copy wins over ready dup
-    tasks.retain(|task| seen.insert(task.display_id.clone()));
-    Some(tasks)
-}
-
-pub(super) fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
-    parse_as(raw)
 }
 
 fn parse_as<T: for<'de> Deserialize<'de>>(raw: &[u8]) -> Option<Vec<T>> {

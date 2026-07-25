@@ -59,7 +59,7 @@ fn management_app() -> App {
             overseer_worker("manual-agent", "manual title", ManagementMode::Manual),
         ],
         dropr: None,
-        dropr_tasks: Vec::new(),
+        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
         main_status: None,
         main_last_capture: None,
         main_last_spinner: None,

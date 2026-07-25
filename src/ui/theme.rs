@@ -112,6 +112,12 @@ impl Theme {
         Style::default().fg(self.subagent)
     }
 
+    /// Style for a panel admitting it could not answer. Shares the `dead`
+    /// colour: both say "do not read this as normal".
+    pub fn failure_style(self) -> Style {
+        Style::default().fg(self.dead)
+    }
+
     pub fn status_style(self, status: Status) -> Style {
         Style::default().fg(self.status_color(status))
     }
