@@ -149,10 +149,7 @@ to run.
 
 Merges in *different* repositories share no state and run concurrently.
 
-**Known limitation.** The lock covers the two surfaces that run the full merge sequence —
-the TUI and `robco_merge`. The Overseer daemon's own post-merge cleanup does not take it,
-so an `robco_merge` call issued at the moment the daemon is cleaning up a worker in the
-same repository can still overlap with it. Both paths are idempotent about the state they
-find (an absent worktree, an already-deleted branch), so the overlap costs a reported
-failure rather than a corrupted repository, and the daemon re-emits its cleanup on the
-next reconcile pass. Bringing the daemon under the same lock is tracked separately.
+The Overseer daemon's post-merge cleanup takes the same lock, so it cannot overlap with a
+merge either. The daemon does not wait for it: a pass covers every repository it watches,
+and one blocked on a merge would stall the rest. A cleanup that finds the lock held is
+logged as deferred and re-emitted on the next reconcile pass.

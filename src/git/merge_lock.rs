@@ -26,6 +26,45 @@ use crate::{Error, Result};
 /// tell their reader that a merge is already running than block for however
 /// long the other one takes.
 pub fn with_merge_lock<T>(repo: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    let mut lock = open(repo)?;
+    let _guard = lock.try_write().map_err(|error| busy(repo, &error))?;
+    f()
+}
+
+/// Runs `f` while holding the repository's merge lock, or returns `Ok(None)`
+/// when another process already holds it.
+///
+/// The difference from [`with_merge_lock`] is who the contention is reported
+/// to. A merge has a reader waiting on its result, so being refused is an
+/// error worth returning. The Overseer daemon has none: it is mid-pass over
+/// every repository it watches, and a merge running in one of them is an
+/// ordinary thing to find rather than a cleanup that failed. Losing the race
+/// leaves the work for the next pass, so the caller wants to *know* it lost
+/// rather than to be handed an error it would only have to recognise and
+/// discard.
+pub fn with_merge_lock_if_free<T>(
+    repo: &Path,
+    f: impl FnOnce() -> Result<T>,
+) -> Result<Option<T>> {
+    run_if_free(&mut open(repo)?, repo, f)
+}
+
+fn run_if_free<T>(
+    lock: &mut RwLock<fs::File>,
+    repo: &Path,
+    f: impl FnOnce() -> Result<T>,
+) -> Result<Option<T>> {
+    match lock.try_write() {
+        Ok(_guard) => f().map(Some),
+        // Only contention reads as "not now". Anything else is a lock the
+        // caller could not evaluate at all, which is not the same as one that
+        // is busy and must not be retried as though it were.
+        Err(error) if error.kind() == ErrorKind::WouldBlock => Ok(None),
+        Err(error) => Err(busy(repo, &error)),
+    }
+}
+
+fn open(repo: &Path) -> Result<RwLock<fs::File>> {
     let path = lock_path(repo)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -37,9 +76,7 @@ pub fn with_merge_lock<T>(repo: &Path, f: impl FnOnce() -> Result<T>) -> Result<
         .read(true)
         .write(true)
         .open(&path)?;
-    let mut lock = RwLock::new(file);
-    let _guard = lock.try_write().map_err(|error| busy(repo, &error))?;
-    f()
+    Ok(RwLock::new(file))
 }
 
 fn busy(repo: &Path, error: &std::io::Error) -> Error {
@@ -154,5 +191,51 @@ mod tests {
         );
 
         assert!(error.to_string().contains("already merging in /repo"));
+    }
+
+    /// A lock nobody holds runs the work and hands back what it returned.
+    #[test]
+    fn a_free_lock_runs_the_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut lock = lock_over(&temp.path().join("repo.lock"));
+
+        let ran = run_if_free(&mut lock, Path::new("/repo"), || Ok("done")).unwrap();
+
+        assert_eq!(ran, Some("done"));
+    }
+
+    /// The daemon's case: a cleanup that arrives while a merge is running is
+    /// told the lock was busy rather than handed an error. The work must not
+    /// run — half of it against a repository someone else is merging is worse
+    /// than none of it, and the next pass will retry.
+    #[test]
+    fn a_held_lock_reports_contention_without_running_the_work() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("repo.lock");
+        let mut held = lock_over(&path);
+        let _guard = held.write().unwrap();
+        let mut contender = lock_over(&path);
+        let mut ran = false;
+
+        let outcome = run_if_free(&mut contender, Path::new("/repo"), || {
+            ran = true;
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(outcome, None);
+        assert!(!ran, "the work ran while another holder had the lock");
+    }
+
+    fn lock_over(path: &Path) -> RwLock<fs::File> {
+        RwLock::new(
+            OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .read(true)
+                .write(true)
+                .open(path)
+                .unwrap(),
+        )
     }
 }
