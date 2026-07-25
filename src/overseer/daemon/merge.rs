@@ -1,12 +1,12 @@
-use std::{collections::HashSet, process::Command};
+use std::collections::HashSet;
 
 use serde_json::Value;
 
 use super::{
-    COMMAND_TIMEOUT,
-    merge_decision::{Halt, Outcome, log, log_gated, log_halt, manual_skip},
-    merge_recovery, merge_state,
-    merge_state::{BehindPlan, MergeState},
+    merge_apply::{merge_now, merge_state_cleared},
+    merge_decision::{Halt, Outcome, log, log_halt, manual_skip},
+    merge_recovery, merge_settle,
+    merge_settle::Barrier,
     protection,
     protection::ProtectionCache,
     pull_request::{self, Checks, base_branch, checks, head_sha},
@@ -16,18 +16,12 @@ use crate::{
     config::Config,
     overseer::{
         autonomy::{Decision, merge_envelope_decision},
-        config::ProtectionMode,
-        exec::run_timeout,
         judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
         ledger::{Ledger, LedgerEntry, LedgerPhase},
-        logging::{self, DecisionKind},
+        logging::{self, DecisionEntry, DecisionKind},
     },
     registry::Registry,
 };
-
-/// Reason recorded for a pull request skipped because another one merged into the same
-/// base during this pass.
-const REPO_ALREADY_MERGED: &str = "repo_merged_this_pass";
 
 /// Reason recorded when a check finished and did not pass — the worker's own head is red.
 const CHECKS_FAILED: &str = "checks_not_green";
@@ -41,6 +35,7 @@ pub(super) fn auto_merge_pass(
     ledger: &mut Ledger,
     cache: &mut ProtectionCache,
     judgments: &mut JudgmentQueue,
+    pulled: &HashSet<String>,
 ) -> Result<()> {
     if !config.overseer.auto_merge {
         return Ok(());
@@ -49,9 +44,22 @@ pub(super) fn auto_merge_pass(
     let consecutive_failures = ledger.counters.consecutive_failures;
     // Merges are serialised per repository: a merge advances the base and leaves every
     // other pull request of that repository behind, so their reads from earlier in this
-    // pass no longer describe a mergeable branch. Other repositories stay independent.
-    let mut merged_repos: HashSet<String> = HashSet::new();
-    for entry in ledger.entries.iter_mut() {
+    // pass no longer describe a mergeable branch, and the primary worktree does not hold
+    // the merge until the post-merge pull lands. The barrier outlives the pass because
+    // that pull runs on a later one. Other repositories stay independent.
+    let max_settle_passes = config.overseer.max_merge_settle_passes;
+    // Field-wise borrows: the barrier is read and written while `entries` is iterated.
+    let Ledger {
+        entries,
+        merge_settling,
+        counters,
+        ..
+    } = ledger;
+    for repo in merge_settle::settle(merge_settling, pulled) {
+        log_repo(&repo, merge_settle::SETTLED)?;
+    }
+    merge_settle::age(merge_settling);
+    for entry in entries.iter_mut() {
         let reconsidering = entry.phase == LedgerPhase::Escalated
             && judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref());
         if entry.phase != LedgerPhase::PrOpened && !reconsidering {
@@ -69,9 +77,19 @@ pub(super) fn auto_merge_pass(
         if !auto {
             continue;
         }
-        if merged_repos.contains(&entry.repo) {
-            log(entry, DecisionKind::Hold, REPO_ALREADY_MERGED)?;
-            continue;
+        match merge_settle::barrier(merge_settling, &entry.repo, max_settle_passes) {
+            Barrier::Open => {}
+            Barrier::Held => {
+                log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
+                continue;
+            }
+            // The pull never landed within its bound. Merging anyway is the
+            // lesser failure — a repository parked forever needs an operator
+            // either way — but it is recorded under its own reason so the log
+            // says the base was never confirmed.
+            Barrier::Lifted => {
+                log(entry, DecisionKind::Hold, merge_settle::SETTLE_CAP_REACHED)?;
+            }
         }
         let Some(url) = entry.pr_url.clone() else {
             log(entry, DecisionKind::Hold, "missing_pr_url")?;
@@ -88,8 +106,8 @@ pub(super) fn auto_merge_pass(
         )?;
         match outcome {
             Outcome::Merged => {
-                ledger.counters.consecutive_failures = 0;
-                merged_repos.insert(entry.repo.clone());
+                counters.consecutive_failures = 0;
+                merge_settle::begin(merge_settling, &entry.repo);
             }
             Outcome::Halted { halt, head } => {
                 log_halt(entry, &halt, config.overseer.protection_mode)?;
@@ -99,6 +117,19 @@ pub(super) fn auto_merge_pass(
         }
     }
     Ok(())
+}
+
+/// Records a decision about a repository rather than about one of its entries.
+///
+/// The barrier coming down belongs to the repository — the merge that raised it
+/// may have left the ledger by the time its pull lands — so there is no task id
+/// to attribute it to, and inventing one from whichever entry happens to be
+/// nearby would name a pull request that had nothing to do with it.
+fn log_repo(repo: &str, reason: &str) -> Result<()> {
+    let mut decision = DecisionEntry::new(DecisionKind::Hold, reason);
+    decision.repo = Some(repo.to_owned());
+    decision.source = Some("auto_merge".into());
+    logging::append(&decision)
 }
 
 /// Runs one pull request through the gate: read, protection, checks, merge state,
@@ -199,71 +230,6 @@ fn judge_allows(
     }
     debug_assert!(allows_merge);
     Ok(Judgment::Allow)
-}
-
-/// Acts on GitHub's own mergeability verdict. Returns `None` when the merge may proceed.
-///
-/// A branch that has merely fallen behind its base is updated and returned to the queue
-/// so its required checks re-run against the new head; it is a recoverable state, so it
-/// never marks the entry failed. Every other non-mergeable state is held under a reason
-/// naming the state itself.
-fn merge_state_cleared(
-    entry: &mut LedgerEntry,
-    url: &str,
-    value: &Value,
-    config: &Config,
-) -> Option<Halt> {
-    match merge_state::merge_state(value) {
-        MergeState::Ready => None,
-        MergeState::Held(raw) => Some(Halt::hold(merge_state::hold_reason(raw))),
-        MergeState::Behind => match merge_state::plan_update(entry, &config.overseer) {
-            BehindPlan::Update(flag) => {
-                Some(match merge_state::run_update(&entry.repo, url, flag) {
-                    Ok(()) => Halt::hold(merge_state::BRANCH_UPDATED),
-                    Err(reason) => Halt::hold(reason),
-                })
-            }
-            BehindPlan::Escalate => {
-                entry.phase = LedgerPhase::Escalated;
-                Some(Halt::escalate(merge_state::UPDATE_CAP_REACHED))
-            }
-        },
-    }
-}
-
-/// Merges the pull request, recording the merge itself once GitHub accepted it.
-///
-/// The merge is the one decision recorded here rather than by the caller: it is the
-/// only outcome that is not a failure, so it never reaches the recovery step.
-fn merge_now(
-    entry: &mut LedgerEntry,
-    url: &str,
-    merge_strategy: &str,
-    mode: ProtectionMode,
-) -> Result<std::result::Result<(), Halt>> {
-    let strategy = match merge_strategy {
-        "merge" => "--merge",
-        "rebase" => "--rebase",
-        _ => "--squash",
-    };
-    let mut merge = Command::new("gh");
-    merge
-        .current_dir(&entry.repo)
-        .args(["pr", "merge", url, strategy]);
-    Ok(match run_timeout(merge, COMMAND_TIMEOUT) {
-        Ok(output) if output.status.success() => {
-            entry.phase = LedgerPhase::Merged;
-            log_gated(
-                entry,
-                DecisionKind::Merge,
-                strategy.trim_start_matches("--"),
-                mode,
-            )?;
-            Ok(())
-        }
-        Ok(output) => Err(Halt::hold(format!("merge_exit:{}", output.status))),
-        Err(error) => Err(Halt::hold(format!("merge_error:{error}"))),
-    })
 }
 
 fn judgment_allows_merge(entry: &mut LedgerEntry, outcome: MergeJudgment) -> bool {

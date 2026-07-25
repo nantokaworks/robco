@@ -1,7 +1,9 @@
 mod discord_events;
 mod merge;
+mod merge_apply;
 mod merge_decision;
 mod merge_recovery;
+mod merge_settle;
 mod merge_state;
 mod observations;
 mod protection;
@@ -98,8 +100,14 @@ pub async fn run_daemon() -> Result<()> {
         // reviews the board the pass inherited rather than the one this pass is
         // in the middle of changing.
         review.tick(&config, &next, now)?;
-        execute_actions(&actions)?;
-        merge::auto_merge_pass(&config, &mut next, &mut protections, &mut judgments)?;
+        let pulled = execute_actions(&actions)?;
+        merge::auto_merge_pass(
+            &config,
+            &mut next,
+            &mut protections,
+            &mut judgments,
+            &pulled,
+        )?;
         dispatch_pass(&mut config, &mut next, now, &mut judgments)?;
         // Persist decisions before removing their queue item. A crash before this
         // point replays the marker without repeating actions; after it, replay is
