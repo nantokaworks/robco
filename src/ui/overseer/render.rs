@@ -22,6 +22,8 @@ pub(super) fn append_health(
     ledger: &Ledger,
     alive: bool,
     heartbeat_age: Option<Duration>,
+    daemon_version: Option<&str>,
+    version_drift: Option<&str>,
 ) {
     lines.push(flags_line(&[
         (
@@ -33,6 +35,14 @@ pub(super) fn append_health(
             "hb",
             heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
             !alive,
+        ),
+        // Reads beside the liveness it qualifies: an alive daemon still runs
+        // whatever build it started from, and this is the only place that says
+        // which one that is.
+        (
+            "version",
+            daemon_version.unwrap_or("unknown").to_string(),
+            version_drift.is_some(),
         ),
     ]));
     let dispatch_without_daemon = config.dispatch_enabled && !alive;
@@ -67,6 +77,12 @@ pub(super) fn append_health(
             circuit_open,
         ),
     ]));
+    // Ahead of the other warnings for the same reason the CLI puts it first:
+    // every flag above can read healthy while the daemon carries none of what
+    // has been merged since it started.
+    if let Some(drift) = version_drift {
+        lines.push(warning(drift));
+    }
     if dispatch_without_daemon {
         lines.push(warning(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
     }

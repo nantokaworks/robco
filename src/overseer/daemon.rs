@@ -15,7 +15,7 @@ use super::{
     config_write,
     dispatch::dispatch_pass,
     exec::{PidGuard, append_jsonl, execute_actions},
-    heartbeat_path,
+    heartbeat, heartbeat_path,
     inbox::InboxReader,
     judge::JudgmentQueue,
     ledger::{Ledger, LedgerPhase},
@@ -30,7 +30,6 @@ use super::{
 use crate::{Result, config::Config};
 use chrono::Utc;
 use std::{
-    fs,
     sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
@@ -133,7 +132,7 @@ pub async fn run_daemon() -> Result<()> {
         exceptions.acknowledge_completion()?;
         inbox.commit()?;
         ledger = next;
-        fs::write(heartbeat_path()?, now.to_rfc3339())?;
+        heartbeat::write(&heartbeat_path()?, now)?;
         if wake::wait_for_next_pass(
             &mut signals,
             started,

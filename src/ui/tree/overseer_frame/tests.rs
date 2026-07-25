@@ -13,7 +13,7 @@ fn warning_state() -> (Vec<&'static str>, App) {
     };
     let mut ledger = Ledger::default();
     ledger.counters.consecutive_failures = 2;
-    let warnings = crate::ui::overseer::health_warnings_from(&config, &ledger, false);
+    let warnings = crate::ui::overseer::health_warnings_from(&config, &ledger, false, false);
     let temp = tempfile::tempdir().unwrap();
     let app = App::new(Registry::default(), Config::default(), temp.path().into());
     (warnings, app)
@@ -153,6 +153,30 @@ fn a_live_daemon_leaves_the_header_label_bare() {
             );
         }
     }
+}
+
+#[test]
+fn a_daemon_on_another_build_is_warned_about_under_the_header() {
+    // The state the header cannot otherwise show: the daemon is alive, so it
+    // draws no glyph, while running an image that predates what was merged.
+    let (_, mut app) = warning_state();
+    app.overseer_snapshot.daemon_alive = true;
+    app.overseer_snapshot.daemon_version = Some("0.0.1".into());
+
+    let content = content_lines(&app);
+    let rendered = content
+        .lines
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>();
+
+    assert!(rendered[0].contains("⚠×"), "header row: {:?}", rendered[0]);
+    assert!(
+        rendered
+            .iter()
+            .any(|line| line.contains(crate::overseer::heartbeat::DRIFT_LABEL)),
+        "{rendered:?}"
+    );
 }
 
 #[test]

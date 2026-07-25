@@ -52,6 +52,9 @@ pub(in crate::ui) struct OverseerSnapshot {
     pub(in crate::ui) decisions: Vec<DecisionEntry>,
     pub(in crate::ui) daemon_alive: bool,
     pub(in crate::ui) heartbeat_age: Option<Duration>,
+    /// The build the running daemon started from, as recorded in the heartbeat.
+    /// `None` for a heartbeat written before the daemon recorded it.
+    pub(in crate::ui) daemon_version: Option<String>,
 }
 
 impl OverseerSnapshot {
@@ -70,6 +73,18 @@ impl OverseerSnapshot {
         } else {
             Status::Idle
         }
+    }
+
+    /// The warning for a daemon whose build is not this binary's, or `None`
+    /// when the two match.
+    ///
+    /// Gated on the daemon being up, like the CLI status warning: a dead daemon
+    /// is already reported as such, and pointing at a restart it is going to
+    /// need anyway says nothing the header does not.
+    pub(in crate::ui) fn version_drift(&self) -> Option<String> {
+        self.daemon_alive
+            .then(|| crate::overseer::heartbeat::drift(self.daemon_version.as_deref()))
+            .flatten()
     }
 
     pub(in crate::ui) fn circuit_open(&self) -> bool {
