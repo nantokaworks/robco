@@ -87,6 +87,7 @@ pub(super) fn spawn_candidate(
         retries: attempts,
         pr_url: None,
         branch_updates: 0,
+        merge_recovery: Default::default(),
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::runtime::log_candidate(
@@ -152,6 +153,7 @@ mod tests {
             retries,
             pr_url: None,
             branch_updates: 0,
+            merge_recovery: Default::default(),
         }
     }
 

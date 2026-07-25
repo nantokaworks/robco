@@ -191,6 +191,8 @@ these defaults:
     "autonomy_level": "conservative",
     "merge_strategy": "squash",
     "max_branch_updates": 3,
+    "merge_recovery_enabled": false,
+    "max_merge_recoveries": 2,
     "worker_profile": null,
     "max_workers": 3,
     "per_repo_limit": 1,
@@ -235,6 +237,8 @@ these defaults:
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | string | `"squash"` | `"merge"` maps to `--merge`, `"rebase"` to `--rebase`, and every other value to `--squash`. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
+| `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. |
+| `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
@@ -340,7 +344,7 @@ repository ever lands. The gate therefore runs `gh pr update-branch` and returns
 to the queue under
 `behind_branch_updated`. It does not merge in the same pass: the update creates a new head
 whose required checks have not run yet, and the check rollup always describes the current
-head, so the next pass holds with `checks_not_green` until they pass. Falling behind is an
+head, so the next pass holds with `checks_waiting` until they report. Falling behind is an
 expected, recoverable state and never counts toward `consecutive_failures`.
 
 The update is a merge commit from the base by default. Only when `merge_strategy` is
@@ -354,12 +358,62 @@ looping, and `decisions.jsonl` also carries the failing update itself as
 `behind_update_exit:<status>` or `behind_update_error:<error>`.
 
 Every other non-mergeable state is held under its own name, so the log says why a pull
-request is parked: `merge_state:dirty` needs a human to resolve conflicts,
+request is parked: `merge_state:dirty` needs the conflict with the base resolved,
 `merge_state:blocked` is missing an approval or a required check, `merge_state:draft` is
 not ready, and `merge_state:unknown` is GitHub still computing mergeability. A state
 GitHub adds later is held under its own lowercased name. `CLEAN` and `HAS_HOOKS` proceed;
 a pull request that reports no merge state at all proceeds too, since the rest of the gate
 has already cleared it.
+
+### Merge recovery
+
+A merge failure is not always an operator's problem. The worker that wrote the branch is
+still alive when the gate gives up — `reconcile_entry` only kills a worker's session and
+removes its worktree once the entry reaches `merged` — and most of the reasons above name
+something that worker could fix from inside its own worktree. With
+`merge_recovery_enabled`, the gate hands those failures back to it instead of parking the
+pull request until a human looks.
+
+Overseer keeps sole possession of the merge throughout. The remediation prompt asks the
+worker to fix the branch it was already assigned, push it, and report done; it restates
+the `never merge / never force push / never push to main / never create extra worktrees`
+rails, and the merge gate and merge judge remain the only path to a merge.
+
+Reasons are classified into the worker's and the operator's:
+
+- **Worker-fixable:** `merge_state:dirty`, `merge_state:blocked`, `checks_not_green`,
+  `behind_update_cap_reached`, `merge_exit:<status>`, `merge_error:<error>`,
+  `judge_veto:<reason>`, and `judge_escalate:<reason>`. The judge's reason is passed to the
+  worker verbatim, because it is the actual instruction.
+- **Operator-only:** `unprotected:*`, `missing_pr_url`, `autonomy_envelope`,
+  `repo_merged_this_pass`, `behind_branch_updated` (already the recovery), `checks_waiting`
+  (nothing has failed yet), and every probe or parse failure. **An unrecognised reason is
+  operator-only** — a failure nobody anticipated must not silently drive a worker.
+
+`checks_not_green` means a check finished and did not pass. A head whose checks have not
+finished, and a pull request that is no longer open, hold under `checks_waiting` instead,
+so a worker turn is never spent on a pull request that has not failed at anything.
+
+Each handback is charged to the entry's `merge_recovery.charged` before it runs, bounded by
+`max_merge_recoveries`, and deduplicated by the head sha it was charged against. The same
+failure on the same revision is therefore handed back once rather than once per poll
+interval; a new head resets that deduplication — the worker pushed, so the next failure is
+a genuinely new one — but never the budget, or a worker that pushes a broken fix each round
+would loop forever. A spent budget escalates with `merge_recovery_cap_reached`.
+
+A handback returns the entry to `pr_opened` so the next pass re-evaluates it normally; a
+judge veto had escalated it, and that escalation is superseded rather than left to strand
+the pull request. Manual-managed workers are never handed back to, since `worker_is_auto`
+already gates the whole merge pass. A worker that is no longer registered, or whose tmux
+session is gone, escalates under
+`merge_recovery_skipped:missing_session:<agent>` rather than being silently dropped.
+
+`decisions.jsonl` carries the whole cycle under `source: "merge_recovery"`:
+`merge_recovery_dispatched:<reason>` for each handback,
+`merge_recovery_skipped:send_failed:<error>` when the prompt did not reach the session, and
+`merge_recovery_cap_reached` when the budget runs out. Each handback also posts a scribble
+on the dropr task; a scribble that fails to land is logged and does not abort the merge
+pass. `robco overseer status` and the TUI OVERSEER frame both report the switch and its cap.
 
 ### Discord rails
 

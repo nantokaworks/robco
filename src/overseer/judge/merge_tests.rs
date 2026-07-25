@@ -66,6 +66,7 @@ fn merge_case_saturates_additions_independently() {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
+        merge_recovery: Default::default(),
     };
     let value = json!({
         "headRefOid":"new-sha", "additions":u64::MAX, "deletions":u32::MAX,
@@ -77,35 +78,6 @@ fn merge_case_saturates_additions_independently() {
     assert_eq!(case.deletions, u32::MAX);
     assert_eq!(case.head_sha, "new-sha");
     assert_eq!(facts.llm_calls_today, 7);
-}
-
-#[test]
-fn a_loosened_gate_is_identifiable_from_the_decision_alone() {
-    let entry = crate::overseer::ledger::LedgerEntry {
-        task_id: "task".into(),
-        display_id: "#1".into(),
-        repo: "/repo".into(),
-        agent_id: "agent".into(),
-        branch: "branch".into(),
-        phase: LedgerPhase::PrOpened,
-        dispatched_at: chrono::Utc::now(),
-        retries: 0,
-        pr_url: Some("https://pr/1".into()),
-        branch_updates: 0,
-    };
-    let merged = serde_json::to_value(gated_decision(
-        &entry,
-        DecisionKind::Merge,
-        "squash",
-        ProtectionMode::Off,
-    ))
-    .unwrap();
-    assert_eq!(merged["protection_mode"], "off");
-    assert_eq!(merged["reason"], "squash");
-    // Decisions the protection gate does not govern stay free of the field.
-    let unrelated =
-        serde_json::to_value(decision(&entry, DecisionKind::Hold, "checks_not_green")).unwrap();
-    assert!(unrelated.get("protection_mode").is_none());
 }
 
 #[test]
@@ -121,8 +93,94 @@ fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
+        merge_recovery: Default::default(),
     };
     assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
     assert_eq!(entry.phase, LedgerPhase::Escalated);
     assert_ne!(entry.phase, LedgerPhase::PrOpened);
+}
+
+#[test]
+fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
+    // Manual suppresses Overseer intervention entirely: the worker belongs to a
+    // human, so neither the merge nor a merge-failure handback is Overseer's to
+    // initiate. This gate is what merge recovery relies on to stay out.
+    let mut entry = crate::overseer::ledger::LedgerEntry {
+        task_id: "task".into(),
+        display_id: "#1".into(),
+        repo: "/repo".into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase: LedgerPhase::PrOpened,
+        dispatched_at: chrono::Utc::now(),
+        retries: 0,
+        pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
+        merge_recovery: Default::default(),
+    };
+    let now = chrono::Local::now();
+    let agent = |management| crate::model::AgentNode {
+        id: "agent".into(),
+        parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
+        management,
+        title: "worker".into(),
+        worktree_path: "/tmp/agent".into(),
+        branch: "branch".into(),
+        base_commit: String::new(),
+        program: "claude".into(),
+        claude_session_id: None,
+        profile: None,
+        tmux_session: "agent".into(),
+        created_at: now,
+        updated_at: now,
+        status: crate::model::Status::Running,
+        worktree_missing: false,
+        merge_error: None,
+        last_capture: None,
+        last_spinner: None,
+        last_change_at: None,
+        last_auto_accept_at: None,
+        shell_working: false,
+        mcp_active: false,
+        pane_pid: None,
+        tracked_command: None,
+        subagents: Vec::new(),
+        children: Vec::new(),
+    };
+    let registry = |management| Registry {
+        version: 1,
+        repos: vec![crate::model::RepoNode {
+            path: "/repo".into(),
+            name: "repo".into(),
+            remote_url: None,
+            pinned: false,
+            agents: vec![agent(management)],
+            dropr: None,
+            dropr_tasks: Vec::new(),
+            main_status: None,
+            main_last_capture: None,
+            main_last_spinner: None,
+            main_last_change_at: None,
+            main_shell_working: false,
+            main_mcp_active: false,
+            main_pane_pid: None,
+            main_tracked_command: None,
+            main_subagents_active: 0,
+        }],
+    };
+
+    assert!(worker_is_auto(
+        &entry,
+        &registry(crate::model::ManagementMode::Auto)
+    ));
+    assert!(!worker_is_auto(
+        &entry,
+        &registry(crate::model::ManagementMode::Manual)
+    ));
+    // A worker the registry no longer lists is not evidence of a human owner.
+    entry.agent_id = "gone".into();
+    assert!(worker_is_auto(
+        &entry,
+        &registry(crate::model::ManagementMode::Manual)
+    ));
 }

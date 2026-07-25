@@ -39,26 +39,76 @@ pub(super) fn base_branch(value: &Value) -> &str {
         .unwrap_or(DEFAULT_BASE_BRANCH)
 }
 
-/// Whether the pull request is open and every reported check succeeded.
+/// The revision the gate decided on, or an empty string when GitHub did not report one.
+///
+/// It is the deduplication key for merge recovery: a failure on a head already handed
+/// back is the same failure, and a new head is the worker's answer to the last one.
+pub(super) fn head_sha(value: &Value) -> &str {
+    value
+        .get("headRefOid")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+/// Conclusions that mean a check finished and did not pass. Anything else — a null
+/// conclusion, `PENDING`, `QUEUED`, `IN_PROGRESS` — is a check still in flight.
+const FAILED_CONCLUSIONS: [&str; 7] = [
+    "FAILURE",
+    "TIMED_OUT",
+    "CANCELLED",
+    "ACTION_REQUIRED",
+    "STARTUP_FAILURE",
+    "STALE",
+    "ERROR",
+];
+
+/// What the check rollup says about merging right now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Checks {
+    /// The pull request is open and every reported check succeeded.
+    Green,
+    /// A check finished and did not pass: the worker's own head is red, which is
+    /// something it can fix by pushing to the same branch.
+    Failed,
+    /// Not green, but nothing has failed either — the checks are still running, or
+    /// the pull request is no longer open. Neither changes when a worker pushes.
+    Waiting,
+}
+
+/// Classifies the check rollup.
 ///
 /// The rollup always describes the current head, so a branch updated onto its base
 /// reports the checks of the new head — an empty rollup while they are still being
-/// created, which holds rather than merges on the previous head's result.
-pub(super) fn checks_green(value: &Value) -> bool {
+/// created, which waits rather than merging on the previous head's result.
+///
+/// `Failed` and `Waiting` are kept apart because merge recovery spends a worker turn
+/// on the first and must not on the second: a pull request whose checks have simply
+/// not finished yet has not failed at anything.
+pub(super) fn checks(value: &Value) -> Checks {
     if value.get("state").and_then(Value::as_str) != Some("OPEN") {
-        return false;
+        return Checks::Waiting;
     }
-    let Some(checks) = value.get("statusCheckRollup").and_then(Value::as_array) else {
-        return false;
+    let Some(rollup) = value.get("statusCheckRollup").and_then(Value::as_array) else {
+        return Checks::Waiting;
     };
-    !checks.is_empty()
-        && checks.iter().all(|check| {
-            check
-                .get("conclusion")
-                .or_else(|| check.get("state"))
-                .and_then(Value::as_str)
-                == Some("SUCCESS")
-        })
+    let state = |check: &Value| {
+        check
+            .get("conclusion")
+            .or_else(|| check.get("state"))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned()
+    };
+    if rollup
+        .iter()
+        .any(|check| FAILED_CONCLUSIONS.contains(&state(check).as_str()))
+    {
+        return Checks::Failed;
+    }
+    if !rollup.is_empty() && rollup.iter().all(|check| state(check) == "SUCCESS") {
+        return Checks::Green;
+    }
+    Checks::Waiting
 }
 
 #[cfg(test)]
@@ -81,15 +131,49 @@ mod tests {
 
     #[test]
     fn any_non_success_check_holds() {
-        assert!(!checks_green(&json!({"state":"OPEN", "statusCheckRollup":[
-            {"conclusion":"SUCCESS"}, {"conclusion":"FAILURE"}
-        ]})));
-        assert!(checks_green(
-            &json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":"SUCCESS"}]})
-        ));
+        assert_eq!(
+            checks(&json!({"state":"OPEN", "statusCheckRollup":[
+                {"conclusion":"SUCCESS"}, {"conclusion":"FAILURE"}
+            ]})),
+            Checks::Failed
+        );
+        assert_eq!(
+            checks(&json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":"SUCCESS"}]})),
+            Checks::Green
+        );
         // A head whose checks have not been created yet is not green.
-        assert!(!checks_green(
-            &json!({"state":"OPEN", "statusCheckRollup":[]})
-        ));
+        assert_eq!(
+            checks(&json!({"state":"OPEN", "statusCheckRollup":[]})),
+            Checks::Waiting
+        );
+    }
+
+    #[test]
+    fn a_check_still_running_has_not_failed() {
+        // Merge recovery spends a worker turn on a red head. A head whose checks
+        // have not finished yet must not read as red, or every pull request would
+        // be handed back once before its very first check reported.
+        for in_flight in [
+            json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":null,"state":"PENDING"}]}),
+            json!({"state":"OPEN", "statusCheckRollup":[{"status":"IN_PROGRESS"}]}),
+            json!({"state":"OPEN", "statusCheckRollup":[
+                {"conclusion":"SUCCESS"}, {"conclusion":null}
+            ]}),
+        ] {
+            assert_eq!(checks(&in_flight), Checks::Waiting);
+        }
+        // A merged or closed pull request is not a worker's to push a fix to.
+        assert_eq!(
+            checks(&json!({"state":"MERGED", "statusCheckRollup":[{"conclusion":"SUCCESS"}]})),
+            Checks::Waiting
+        );
+        // Every terminal non-success conclusion is a genuine failure.
+        for conclusion in FAILED_CONCLUSIONS {
+            assert_eq!(
+                checks(&json!({"state":"OPEN", "statusCheckRollup":[{"conclusion":conclusion}]})),
+                Checks::Failed,
+                "expected {conclusion} to read as failed"
+            );
+        }
     }
 }
