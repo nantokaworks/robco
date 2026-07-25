@@ -155,8 +155,12 @@ timeout. The process is then terminated. Returned actions are parsed into a clos
 command enum; unknown or unsafe actions are rejected.
 
 The board review is the one surface that reads Overseer's own history rather than a single
-case. It runs on its own clock (`review_interval_mins`), never on every poll, and is
-disabled entirely unless `review_profile` is set. Each run builds a size-bounded digest —
+case. It runs on its own clock (`review_interval_mins`), never on every poll. Its
+deterministic stage runs whether or not a reviewer model is configured: `review_profile`
+switches on the model stage alone, and detection that depended on it would be detection
+that never ran on the default configuration — which is exactly what happened, leaving the
+two rules below with no recorded finding across the daemon's whole history. Each run
+builds a size-bounded digest —
 at most 200 recent decisions with each reason truncated, at most 50 live ledger entries
 with their age, and the dispatch counters — and applies deterministic rules to it: a
 reason repeating three times or more is reported as `repeating_failure` (a structural
@@ -174,8 +178,12 @@ merge judgement. Its result schema carries a severity and a sentence and nothing
 `warn` and `critical` findings become escalations, `info` is recorded only, and there is
 no field through which the reviewer can dispatch, merge, unblock, or write the ledger. An
 exhausted budget stops the session but not the deterministic findings, and records
-`review_budget_exhausted` so a quiet reviewer does not read as a healthy board.
-`robco overseer status` reports the judge and review counts separately.
+`review_budget_exhausted` so a quiet reviewer does not read as a healthy board. A missing
+profile stops the session too, and records nothing: no budget is charged and no session is
+spawned, because there is no model to run. `robco overseer status` reports the judge and
+review counts separately, and names the two states apart — `findings every 20m, no
+reviewer model` against `every 20m via <profile>` — so a quiet board can be read as
+"nothing was found" rather than "nothing looked".
 
 Task text, exception reasons, tmux capture, Discord messages, and other external values
 are each placed in explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a
@@ -258,7 +266,7 @@ these defaults:
 | `failure_circuit_threshold` | non-negative integer | `3` | Accumulated monitor or spawn failures that open the circuit and disable dispatch. The counter resets when a worker's PR merges or when an operator re-enables dispatch; a successful spawn alone does not reset it. |
 | `triage_enabled` | boolean | `true` | Enables exception queueing and ephemeral triage sessions. |
 | `triage_profile` | string or `null` | `null` | Profile used by triage and Discord ops; `null` uses `default_program`. |
-| `review_profile` | string or `null` | `null` | Profile used by the periodic board review, and the review's only on/off switch. `null` disables the pass entirely, including its deterministic findings. A named profile that does not exist fails the session rather than falling back. |
+| `review_profile` | string or `null` | `null` | Profile used by the periodic board review's model stage. `null` runs the pass without a model: the digest is still built and the deterministic findings still escalate, but no session is spawned and no review budget is charged. A named profile that does not exist fails the session rather than falling back. |
 | `review_interval_mins` | non-negative integer | `20` | Minimum minutes between board reviews. The last run time is persisted, so a daemon that restarts often still reviews on this cadence rather than on every start-up. |
 | `daily_review_budget` | non-negative integer | `96` | Board-review sessions per UTC date, counted separately from `daily_llm_budget`. Exhausting it stops the reviewer session, not the deterministic findings. |
 | `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage, judgment, or board-review LLM process. |

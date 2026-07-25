@@ -143,14 +143,24 @@ fn llm_line(config: &Config, judgments: &JudgmentQueue) -> Result<String> {
         "llm today: judge {judge}/{}  review {review}/{} ({})",
         config.overseer.daily_llm_budget,
         config.overseer.daily_review_budget,
-        config.overseer.review_profile.as_deref().map_or_else(
-            || "disabled".to_string(),
-            |profile| format!(
-                "every {}m via {profile}",
-                config.overseer.review_interval_mins
-            )
-        )
+        review_state(&config.overseer)
     ))
+}
+
+/// How the board review is running.
+///
+/// The pass itself always runs on its interval, and its deterministic findings
+/// with it; `review_profile` decides only whether a reviewer model reads the same
+/// digest afterwards. The line used to print `disabled` for a missing profile,
+/// which read as "the review is off" — and was, which is the bug this wording
+/// outlived. The two states are now named separately, because an operator seeing a
+/// quiet board needs to know whether nothing was found or nothing looked.
+fn review_state(config: &OverseerConfig) -> String {
+    let interval = config.review_interval_mins;
+    config.review_profile.as_deref().map_or_else(
+        || format!("findings every {interval}m, no reviewer model"),
+        |profile| format!("every {interval}m via {profile}"),
+    )
 }
 
 fn daemon_healthy(poll_interval_secs: u64) -> bool {
