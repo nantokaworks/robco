@@ -5,6 +5,7 @@ use crate::{Result, config::Config, tmux};
 pub mod autonomy;
 pub mod command;
 pub mod config;
+pub(crate) mod config_write;
 pub mod daemon;
 pub(crate) mod daily;
 pub mod discord;

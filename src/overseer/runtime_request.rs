@@ -116,6 +116,10 @@ pub(crate) fn drain_in(dir: &Path, ledger: &mut Ledger, config: &mut Config) -> 
     Ok(config_changed)
 }
 
+/// `overseer.dispatch_enabled` is the only config field a request may change:
+/// the daemon's write-back reloads the file and copies just that field back, so
+/// a variant mutating anything else would apply in memory and never persist.
+/// Extend `config_write` alongside any variant that needs to.
 pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRequest) -> bool {
     match request {
         RuntimeRequest::ResetCircuit { .. } => {

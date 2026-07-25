@@ -1,7 +1,13 @@
+mod paths;
+
 use std::{
     fs,
     path::{Path, PathBuf},
 };
+
+use paths::config_path;
+pub use paths::{config_file_path, ensure_robco_dir, state_path};
+pub(crate) use paths::{expand_tilde, home_dir, robco_dir};
 
 pub(crate) fn resolve_program(name: &str) -> Option<PathBuf> {
     crate::overseer::session::resolve_program_impl(name)
@@ -211,7 +217,10 @@ impl Default for Config {
 
 impl Config {
     pub fn load() -> Result<Self> {
-        let path = config_path()?;
+        Self::load_at(&config_path()?)
+    }
+
+    pub(crate) fn load_at(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -231,13 +240,18 @@ impl Config {
     /// Atomically persist the config via a temp file and rename, so a crash
     /// mid-write leaves the previous config intact. Writes remain last-writer-wins:
     /// rare, human-driven config edits do not warrant a durable owner queue yet,
-    /// so concurrent daemon and operator edits can still lose an update.
+    /// so a writer holding a stale snapshot still reverts a concurrent edit. Every
+    /// writer therefore reloads immediately before mutating — see
+    /// `overseer::command::settings` and `overseer::config_write`.
     pub fn save(&self) -> Result<()> {
         ensure_robco_dir()?;
+        self.save_at(&config_path()?)
+    }
+
+    pub(crate) fn save_at(&self, path: &Path) -> Result<()> {
         let raw = serde_json::to_string_pretty(self)?;
-        let path = config_path()?;
         let temp_path = path.with_extension(format!("json.{}.tmp", nanoid!()));
-        let written = fs::write(&temp_path, raw).and_then(|()| fs::rename(&temp_path, &path));
+        let written = fs::write(&temp_path, raw).and_then(|()| fs::rename(&temp_path, path));
         if let Err(error) = written {
             let _ = fs::remove_file(temp_path);
             return Err(error.into());
@@ -251,45 +265,6 @@ impl Config {
             .find(|profile| profile.name == self.default_program)
             .map(|profile| profile.program.clone())
             .unwrap_or_else(|| self.default_program.clone())
-    }
-}
-
-pub fn state_path() -> Result<PathBuf> {
-    Ok(robco_dir()?.join("state.json"))
-}
-
-pub fn ensure_robco_dir() -> Result<PathBuf> {
-    let dir = robco_dir()?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
-
-fn config_path() -> Result<PathBuf> {
-    Ok(robco_dir()?.join("config.json"))
-}
-
-pub fn config_file_path() -> Result<PathBuf> {
-    config_path()
-}
-
-pub(crate) fn robco_dir() -> Result<PathBuf> {
-    let home = home_dir().ok_or(crate::Error::HomeDir)?;
-    Ok(home.join(".robco"))
-}
-
-fn home_dir() -> Option<PathBuf> {
-    dirs::home_dir()
-}
-
-/// Expand a leading `~` component to the home directory. Paths without a `~`
-/// prefix, and paths that cannot be expanded (no home dir), are returned as-is.
-fn expand_tilde(path: &Path) -> PathBuf {
-    match path.strip_prefix("~") {
-        Ok(rest) => match home_dir() {
-            Some(home) => home.join(rest),
-            None => path.to_path_buf(),
-        },
-        Err(_) => path.to_path_buf(),
     }
 }
 
