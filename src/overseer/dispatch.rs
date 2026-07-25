@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::model::ManagementMode;
@@ -26,7 +26,7 @@ pub fn format_dispatch_limit(limit: u32) -> String {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Candidate {
     pub task_id: String,
     pub display_id: String,

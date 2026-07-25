@@ -3,7 +3,8 @@ use super::{
     completed::CompletedJudgments,
     completion,
     keys::{dispatch_key, merge_identity, merge_identity_parts, merge_key},
-    result::{DispatchAdvice, MergeAdvice, Parsed},
+    pending::PendingQueue,
+    result::{self, DispatchAdvice, MergeAdvice, Parsed},
     revisions::RevisionCache,
     snapshot::QueueSnapshot,
     spawn_session,
@@ -13,7 +14,12 @@ use crate::{
     config::Config,
     overseer::{daily::DailyCounter, logging::DecisionKind},
 };
-use std::{collections::VecDeque, path::PathBuf, sync::mpsc::TryRecvError};
+use std::{
+    collections::{HashSet, VecDeque},
+    fs,
+    path::PathBuf,
+    sync::mpsc::TryRecvError,
+};
 
 pub struct JudgmentQueue {
     pending: VecDeque<Request>,
@@ -27,6 +33,14 @@ pub struct JudgmentQueue {
     revisions_path: PathBuf,
     snapshot_path: PathBuf,
     snapshot: QueueSnapshot,
+    pending_path: PathBuf,
+    persisted: PendingQueue,
+    /// Keys restored from the durable queue at start-up, and so the only ones
+    /// whose case directory may already hold an answer this process did not
+    /// write. Each is consumed the first time its request is served — a round
+    /// this daemon asks itself is always answered by a session, never by a file
+    /// left over from an earlier one.
+    recoverable: HashSet<String>,
 }
 
 impl JudgmentQueue {
@@ -44,8 +58,17 @@ impl JudgmentQueue {
         let terminal_merges = RevisionCache::load(&revisions_path)?;
         let snapshot_path = root.join("queue_state.json");
         let snapshot = QueueSnapshot::load(&snapshot_path)?;
+        let pending_path = root.join("pending.json");
+        // Everything durable comes back pending, including whatever was active:
+        // its session process died with the daemon that started it.
+        let persisted = PendingQueue::load(&pending_path)?;
+        let recoverable = persisted
+            .requests
+            .iter()
+            .map(|request| request.key().to_owned())
+            .collect();
         Ok(Self {
-            pending: VecDeque::new(),
+            pending: persisted.requests.iter().cloned().collect(),
             active: None,
             completed: CompletedJudgments::default(),
             terminal_merges,
@@ -56,6 +79,9 @@ impl JudgmentQueue {
             revisions_path,
             snapshot_path,
             snapshot,
+            pending_path,
+            persisted,
+            recoverable,
         })
     }
 
@@ -66,7 +92,9 @@ impl JudgmentQueue {
         // left describing a judgment that is no longer running is exactly the
         // "stuck or queued?" ambiguity it exists to remove. A failed publish
         // never masks a failed pass — the pass is the more important error.
-        advanced.and(self.publish_snapshot())
+        advanced
+            .and(self.persist_pending())
+            .and(self.publish_snapshot())
     }
 
     fn advance(&mut self, config: &Config) -> Result<()> {
@@ -81,6 +109,13 @@ impl JudgmentQueue {
                         fail_safe: true,
                         ignored_fields: Vec::new(),
                     });
+                    audit::record(&self.log_path, &request, &parsed)?;
+                    self.completed.insert(request, parsed);
+                    return Ok(());
+                }
+                if self.recoverable.remove(request.key())
+                    && let Some(parsed) = self.stored_verdict(&request)
+                {
                     audit::record(&self.log_path, &request, &parsed)?;
                     self.completed.insert(request, parsed);
                     return Ok(());
@@ -194,48 +229,6 @@ impl JudgmentQueue {
         })
     }
 
-    #[cfg(test)]
-    pub(super) fn is_active(&self) -> bool {
-        self.active.is_some()
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_llm_calls_today(&mut self, count: u32) {
-        self.counter.set_today(count);
-    }
-
-    #[cfg(test)]
-    pub(super) fn cache_merge(&mut self, case: &MergeCase, advice: MergeAdvice) {
-        let request = Request::Merge {
-            key: merge_key(case),
-            case: case.clone(),
-        };
-        self.completed.insert(request, Parsed::Merge(advice));
-    }
-
-    #[cfg(test)]
-    pub(super) fn cache_dispatch(
-        &mut self,
-        approved: &[crate::overseer::dispatch::Candidate],
-        advice: DispatchAdvice,
-    ) {
-        let request = Request::Dispatch {
-            key: dispatch_key(approved),
-            approved: approved.to_vec(),
-        };
-        self.completed.insert(request, Parsed::Dispatch(advice));
-    }
-
-    #[cfg(test)]
-    pub(super) fn completed_len(&self) -> usize {
-        self.completed.len()
-    }
-
-    #[cfg(test)]
-    pub(super) fn pending_len(&self) -> usize {
-        self.pending.len()
-    }
-
     /// Returns `true` when the request was newly queued rather than already
     /// waiting or already running.
     fn enqueue_once(&mut self, request: Request) -> bool {
@@ -246,6 +239,43 @@ impl JudgmentQueue {
         }
         self.pending.push_back(request);
         true
+    }
+
+    /// A verdict the case directory already holds, if any.
+    ///
+    /// A restart orphans the session that was running but not the answer it may
+    /// already have written, and a key names the exact question that was asked —
+    /// so a `result.json` sitting in the case directory is an answer to *this*
+    /// request. Re-running the session would spend model budget on a verdict
+    /// already bought.
+    ///
+    /// Only ever consulted for a request restored from the durable queue. A
+    /// round this process asked itself must reach a session: reusing the file it
+    /// wrote a moment ago would freeze the judge's answer for as long as the
+    /// question kept recurring.
+    ///
+    /// A half-written file is not a verdict: `is_complete` is the same
+    /// whole-JSON check the session loop polls with, and anything it rejects
+    /// falls through to a fresh run. Anything it accepts goes through
+    /// `completion::normalize`, so a stored result that is complete but
+    /// unusable fails exactly as a fresh one would.
+    fn stored_verdict(&self, request: &Request) -> Option<Parsed> {
+        let raw = fs::read(self.root.join(request.key()).join("result.json")).ok()?;
+        result::is_complete(&raw).then(|| {
+            completion::normalize(
+                crate::overseer::session::SessionResult::Result(raw),
+                request,
+            )
+        })
+    }
+
+    fn persist_pending(&mut self) -> Result<()> {
+        let next = PendingQueue::capture(self.active.as_ref().map(|item| &item.0), &self.pending);
+        if next != self.persisted {
+            next.save(&self.pending_path)?;
+            self.persisted = next;
+        }
+        Ok(())
     }
 
     fn publish_snapshot(&mut self) -> Result<()> {
@@ -262,6 +292,7 @@ impl JudgmentQueue {
 }
 
 #[cfg(test)]
-pub(super) fn test_queue(root: &std::path::Path) -> JudgmentQueue {
-    JudgmentQueue::new(root.join("cases"), root.join("decisions.jsonl")).unwrap()
-}
+#[path = "queue_test_support.rs"]
+mod test_support;
+#[cfg(test)]
+pub(super) use test_support::test_queue;
