@@ -79,20 +79,48 @@ pub(super) fn reconcile(
             id,
             parent_agent_id: recovered_parent,
         });
-        let adopted = agent::adopt_worktree(
-            repo,
-            config,
-            worktree.path,
-            worktree.branch,
-            worktree.head,
-            session,
-            recovered_identity,
-        );
-        let _ = agent::ensure_agent_session(&adopted);
-        repo.agents.push(adopted);
-        added = true;
+        added |= adopt_top_level(repo, config, worktree, session, recovered_identity);
     }
     (added, previous != child_paths(repo))
+}
+
+/// Adopt `worktree` as a new top-level agent unless the identity its session
+/// advertises already belongs to a tracked row. Returns whether a row was added.
+///
+/// `known` rules out paths only, and `path_key` cannot recognise a worktree the
+/// registry already tracks once canonicalization fails for it: a renamed or
+/// removed directory falls back to its lexical spelling, which need not match
+/// how git spells the same worktree. The session at the candidate path then
+/// hands back an id the registry already holds, and adopting it would leave two
+/// rows sharing one id. Every per-agent path resolves an id to a single row
+/// (`ui::input::management`, `overseer::exec`, background-refresh merge-back),
+/// so the extra row would never receive a management change and would keep
+/// rendering whatever mode it was adopted with. Keeping the tracked row instead
+/// loses nothing: it carries the same identity and the same tmux session.
+fn adopt_top_level(
+    repo: &mut RepoNode,
+    config: &Config,
+    worktree: Worktree,
+    session: Option<String>,
+    recovered_identity: Option<agent::RecoveredIdentity>,
+) -> bool {
+    if let Some(identity) = &recovered_identity
+        && repo.agents.iter().any(|agent| agent.id == identity.id)
+    {
+        return false;
+    }
+    let adopted = agent::adopt_worktree(
+        repo,
+        config,
+        worktree.path,
+        worktree.branch,
+        worktree.head,
+        session,
+        recovered_identity,
+    );
+    let _ = agent::ensure_agent_session(&adopted);
+    repo.agents.push(adopted);
+    true
 }
 
 fn worktree_age(path: &Path) -> Option<Duration> {
