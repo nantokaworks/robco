@@ -50,6 +50,11 @@ pub(super) fn append_health(
             config.auto_merge && config.protection_mode != ProtectionMode::Required,
         ),
         (
+            "autonomy",
+            config.autonomy_level.label().into(),
+            config.auto_merge && config.autonomy_level.envelope_warning().is_some(),
+        ),
+        (
             "merge-recovery",
             merge_recovery_state(config),
             // Recovery without auto-merge is inert: nothing ever fails a merge
@@ -70,6 +75,14 @@ pub(super) fn append_health(
     }
     if circuit_open {
         lines.push(warning(crate::overseer::CIRCUIT_OPEN_HINT));
+    }
+    // Gated on auto-merge, like the red `autonomy` flag above: the envelope only
+    // decides anything while the merge pass runs, so warning about it otherwise
+    // would name a gate that is not currently in the path.
+    if config.auto_merge
+        && let Some(hint) = config.autonomy_level.envelope_warning()
+    {
+        lines.push(warning(hint));
     }
     lines.push(Line::default());
 }

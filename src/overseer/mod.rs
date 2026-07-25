@@ -58,6 +58,11 @@ pub const DISPATCH_STOPPED_HINT: &str =
 /// consecutive-failure counter.
 pub const CIRCUIT_OPEN_HINT: &str = "dispatch circuit is open after repeated worker failures — dispatch stays disabled until you reset it: press [R] here, or run `robco overseer set dispatch on` (re-enables dispatch and clears the failure counter).";
 
+/// Shown while the merge envelope runs under `full_auto`. It names the risks the
+/// widened level stops escalating, so the reader can tell a deliberately widened
+/// envelope from a gate that is failing to hold.
+pub const FULL_AUTO_ENVELOPE_HINT: &str = "autonomy is full_auto — the merge envelope no longer escalates ambiguous requirements, dependency bumps, large diffs, or prod/CI-config changes; only the hard stops (destructive, security, repeated failures, budget, external side effects) still hold.";
+
 pub fn overseer_home() -> Result<PathBuf> {
     migrate_overseer_home(&crate::config::robco_dir()?)
 }

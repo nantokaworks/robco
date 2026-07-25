@@ -134,9 +134,10 @@ fn status() -> crate::Result<String> {
 /// running.
 fn status_line(config: &OverseerConfig, active: usize, dispatched_today: u32) -> String {
     format!(
-        "dispatch={} automerge={} workers={}/{} today={}/{}",
+        "dispatch={} automerge={} autonomy={} workers={}/{} today={}/{}",
         on_off(config.dispatch_enabled),
         on_off(config.auto_merge),
+        config.autonomy_level.label(),
         active,
         config.max_workers,
         dispatched_today,
@@ -281,7 +282,10 @@ mod tests {
         let config = OverseerConfig::default();
         assert!(config.dispatch_enabled);
         let line = status_line(&config, 1, 4);
-        assert_eq!(line, "dispatch=on automerge=off workers=1/3 today=4/20");
+        assert_eq!(
+            line,
+            "dispatch=on automerge=off autonomy=conservative workers=1/3 today=4/20"
+        );
         // A dispatching daemon must never be described as switched off.
         assert!(!line.contains("overseer=off"));
     }
