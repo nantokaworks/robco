@@ -88,6 +88,13 @@ impl Theme {
         Style::default().fg(self.input)
     }
 
+    /// The character a text prompt's caret sits on. Reversed rather than
+    /// recoloured so the caret reads on any glyph, and so it costs no extra
+    /// column — inserting a caret glyph mid-string would shift the text after it.
+    pub fn caret_style(self) -> Style {
+        self.input_style().add_modifier(Modifier::REVERSED)
+    }
+
     fn status_color(self, status: Status) -> Color {
         match status {
             Status::Running => self.running,

@@ -15,7 +15,7 @@ fn prompt_renders_wrapped_with_editing_end_visible() {
         repo_path: "/repo".into(),
         agent_id: "agent".to_string(),
         branch: "feature/agent".to_string(),
-        input: prompt.clone(),
+        input: prompt.clone().into(),
     };
     let mut terminal = Terminal::new(TestBackend::new(50, 20)).unwrap();
 
@@ -47,7 +47,7 @@ fn cursor_stays_visible_in_a_short_terminal() {
         repo_path: "/repo".into(),
         agent_id: "agent".to_string(),
         branch: "feature/agent".to_string(),
-        input: "editing end".to_string(),
+        input: "editing end".into(),
     };
     let mut terminal = Terminal::new(TestBackend::new(50, 5)).unwrap();
 

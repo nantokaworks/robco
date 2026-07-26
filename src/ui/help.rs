@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 46;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 52;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -33,6 +33,12 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),
         Line::from("                 already-merged PR: clean up without merging again"),
         Line::from("  p              edit and request PR from selected running agent"),
+        Line::from(""),
+        Line::from("Text prompts"),
+        Line::from("  left/right     move the cursor within the text being typed"),
+        Line::from("  home/ctrl-a    jump to the start; end/ctrl-e jumps to the end"),
+        Line::from("  backspace/del  delete before the cursor / at the cursor"),
+        Line::from("  ctrl-w/ctrl-u  delete the previous word / back to the line start"),
         Line::from(""),
         Line::from("Indicators"),
         Line::from("  One primary per row: dead > running > waiting > TERM activity"),

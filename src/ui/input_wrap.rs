@@ -1,19 +1,31 @@
 use ratatui::text::{Line, Span};
 
-use super::theme::DEFAULT as THEME;
+use super::{text_input::TextInput, theme::DEFAULT as THEME};
 
-pub(super) fn input_lines(
+/// Wrapped prompt input plus where its caret landed once wrapping and the
+/// visible-window choice are known.
+pub(in crate::ui) struct WrappedInput {
+    pub(in crate::ui) lines: Vec<Line<'static>>,
+    /// Row within `lines`, and display column within that row, of the caret.
+    pub(in crate::ui) caret: (usize, usize),
+}
+
+pub(in crate::ui) fn input_lines(
     label: &str,
-    input: &str,
+    input: &TextInput,
     max_width: usize,
     max_lines: usize,
-) -> Vec<Line<'static>> {
+) -> WrappedInput {
     if max_width == 0 {
-        return vec![Line::default()];
+        return WrappedInput {
+            lines: vec![Line::default()],
+            caret: (0, 0),
+        };
     }
 
+    let text = input.text();
     let full_prefix = format!(" {label}: ");
-    let widest_char = input
+    let widest_char = text
         .chars()
         .map(|ch| width(&ch.to_string()))
         .max()
@@ -25,42 +37,97 @@ pub(super) fn input_lines(
     };
     let prefix_width = width(&prefix);
     let input_width = max_width - prefix_width;
-    let mut wrapped = wrap_text(input, input_width);
+    let mut wrapped = wrap_text(text, input_width);
 
-    if wrapped
-        .last()
-        .is_some_and(|line| width(line) >= input_width)
+    let cursor = input.cursor();
+    // A caret past the last character needs a cell of its own, and a last line
+    // that already fills the width has none left — so it gets a row. A caret
+    // inside the text sits on an existing character and needs no such row.
+    if cursor == input.len()
+        && wrapped
+            .last()
+            .is_some_and(|(line, _)| width(line) >= input_width)
     {
-        wrapped.push(String::new());
+        wrapped.push((String::new(), cursor));
     }
 
+    let caret_row = wrapped
+        .iter()
+        .rposition(|(_, start)| *start <= cursor)
+        .unwrap_or(0);
+    let caret_offset = cursor.saturating_sub(wrapped[caret_row].1);
+
     let wrapped_len = wrapped.len();
-    let visible_from = wrapped_len.saturating_sub(max_lines.max(1));
-    wrapped
+    // The tail is the interesting end while typing, but an edit further back
+    // pulls the window up so the caret cannot be scrolled out of sight.
+    let visible_from = wrapped_len.saturating_sub(max_lines.max(1)).min(caret_row);
+    let caret_column = prefix_width + text_width(&wrapped[caret_row].0, caret_offset);
+
+    let lines = wrapped
         .into_iter()
         .skip(visible_from)
+        .take(max_lines.max(1))
         .enumerate()
-        .map(|(index, text)| {
+        .map(|(index, (text, _))| {
             let label = if index == 0 {
                 prefix.clone()
             } else {
                 " ".repeat(prefix_width)
             };
-            let mut spans = vec![
-                Span::styled(label, THEME.dialog_label_style()),
-                Span::styled(text, THEME.input_style()),
-            ];
-            if index + visible_from + 1 == wrapped_len {
-                spans.push(Span::styled("_", THEME.accent_style()));
-            }
+            let mut spans = vec![Span::styled(label, THEME.dialog_label_style())];
+            let caret = (index + visible_from == caret_row).then_some(caret_offset);
+            spans.extend(input_spans(&text, caret));
             Line::from(spans)
         })
-        .collect()
+        .collect();
+
+    WrappedInput {
+        lines,
+        caret: (caret_row - visible_from, caret_column),
+    }
 }
 
-fn wrap_text(input: &str, max_width: usize) -> Vec<String> {
-    let mut lines = Vec::new();
+/// Render `text`, marking the caret when it falls inside this segment.
+///
+/// The caret reverses the cell it sits on rather than inserting a glyph, so the
+/// rest of the line keeps its columns. Past the last character there is nothing
+/// to reverse, so a literal `_` stands in for the cell.
+pub(in crate::ui) fn input_spans(text: &str, caret: Option<usize>) -> Vec<Span<'static>> {
+    let Some(caret) = caret else {
+        return vec![Span::styled(text.to_string(), THEME.input_style())];
+    };
+    let mut rest = text.chars();
+    let before: String = rest.by_ref().take(caret).collect();
+    let before = Span::styled(before, THEME.input_style());
+    match rest.next() {
+        Some(at) => vec![
+            before,
+            Span::styled(at.to_string(), THEME.caret_style()),
+            Span::styled(rest.collect::<String>(), THEME.input_style()),
+        ],
+        None => vec![before, Span::styled("_", THEME.accent_style())],
+    }
+}
+
+/// Display width of the first `chars` characters of `text`.
+pub(in crate::ui) fn text_width(text: &str, chars: usize) -> usize {
+    width(&text.chars().take(chars).collect::<String>())
+}
+
+/// Display width of `text`, in terminal columns rather than characters.
+pub(in crate::ui) fn display_width(text: &str) -> usize {
+    width(text)
+}
+
+/// Wrap `input` into lines no wider than `max_width`, pairing each with the
+/// character offset in `input` where it starts. Offsets count every input
+/// character, including one too wide to fit on any line, so a cursor offset
+/// always maps onto exactly one line.
+fn wrap_text(input: &str, max_width: usize) -> Vec<(String, usize)> {
+    let mut lines: Vec<(String, usize)> = Vec::new();
     let mut current = String::new();
+    let mut start = 0;
+    let mut consumed = 0;
     let mut chars = input.chars().peekable();
 
     while let Some(first) = chars.next() {
@@ -74,22 +141,25 @@ fn wrap_text(input: &str, max_width: usize) -> Vec<String> {
         }
 
         if !whitespace && !current.is_empty() && width(&current) + width(&token) > max_width {
-            lines.push(std::mem::take(&mut current));
+            lines.push((std::mem::take(&mut current), start));
+            start = consumed;
         }
 
         for ch in token.chars() {
             let ch_width = width(&ch.to_string());
             if width(&current) + ch_width > max_width && !current.is_empty() {
-                lines.push(std::mem::take(&mut current));
+                lines.push((std::mem::take(&mut current), start));
+                start = consumed;
             }
             if ch_width <= max_width {
                 current.push(ch);
             }
+            consumed += 1;
         }
     }
 
     if !current.is_empty() || lines.is_empty() {
-        lines.push(current);
+        lines.push((current, start));
     }
     lines
 }
@@ -99,65 +169,5 @@ fn width(text: &str) -> usize {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wraps_words_to_available_width() {
-        let lines = input_lines("prompt", "one two three four", 16, 10);
-
-        assert_eq!(
-            lines.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            [" prompt: one two", "          three ", "         four_"]
-        );
-        assert!(lines.iter().all(|line| line.width() <= 16));
-    }
-
-    #[test]
-    fn wraps_cjk_without_splitting_characters() {
-        let lines = input_lines("prompt", "日本語入力", 14, 10);
-
-        assert_eq!(
-            lines.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            [" prompt: 日本", "         語入", "         力_"]
-        );
-        assert!(lines.iter().all(|line| line.width() <= 14));
-    }
-
-    #[test]
-    fn tail_scroll_keeps_cursor_visible() {
-        let lines = input_lines("prompt", "one two three four five", 16, 2);
-
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0].to_string(), " prompt: four ");
-        assert_eq!(lines[1].to_string(), "         five_");
-    }
-
-    #[test]
-    fn narrow_widths_keep_lines_bounded_and_cursor_visible() {
-        for max_width in 0..=9 {
-            let lines = input_lines("prompt", "日本", max_width, 10);
-
-            assert!(lines.iter().all(|line| line.width() <= max_width));
-            if max_width > 0 {
-                assert!(lines.last().unwrap().to_string().ends_with('_'));
-            }
-        }
-    }
-
-    #[test]
-    fn preserves_whitespace_and_trailing_cursor_position() {
-        let lines = input_lines("prompt", "  one  two  ", 30, 10);
-        let rendered = lines.iter().map(ToString::to_string).collect::<Vec<_>>();
-
-        assert_eq!(rendered, [" prompt:   one  two  _"]);
-    }
-
-    #[test]
-    fn wrapping_does_not_normalize_whitespace() {
-        let wrapped = wrap_text(" one   two ", 6);
-
-        assert_eq!(wrapped.concat(), " one   two ");
-        assert!(wrapped.iter().all(|line| width(line) <= 6));
-    }
-}
+#[path = "input_wrap_tests.rs"]
+mod tests;

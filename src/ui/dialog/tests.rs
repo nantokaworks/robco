@@ -7,7 +7,9 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::{config::Config, registry::Registry};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use crate::{config::Config, registry::Registry, ui::TextInput};
 
 use super::{App, Mode, draw};
 
@@ -16,7 +18,17 @@ fn test_app() -> App {
     App::new(Registry::default(), Config::default(), temp.path().into())
 }
 
-fn assert_cursor_on_trailing_caret(mode: Mode) {
+/// `text` with the cursor walked `lefts` characters back from the end.
+fn edited(text: &str, lefts: usize) -> TextInput {
+    let mut input = TextInput::from(text);
+    for _ in 0..lefts {
+        input.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    }
+    input
+}
+
+/// Draw `mode` and return the terminal caret the dialog asked for.
+fn draw_cursor(mode: Mode) -> ((u16, u16), ratatui::buffer::Buffer) {
     let mut app = test_app();
     app.mode = mode;
     let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
@@ -26,10 +38,29 @@ fn assert_cursor_on_trailing_caret(mode: Mode) {
         .draw(|frame| cursor = draw(frame, &app, &[]))
         .unwrap();
 
-    let cursor = cursor.expect("text input mode should return a cursor");
-    assert_eq!(
-        terminal.backend().buffer().cell(cursor).unwrap().symbol(),
-        "_"
+    (
+        cursor.expect("text input mode should return a cursor"),
+        terminal.backend().buffer().clone(),
+    )
+}
+
+fn assert_cursor_on_trailing_caret(mode: Mode) {
+    let (cursor, buffer) = draw_cursor(mode);
+
+    assert_eq!(buffer.cell(cursor).unwrap().symbol(), "_");
+}
+
+/// The terminal caret must land on the character the cursor is in front of, and
+/// that cell must be the one the dialog marked — otherwise the operator sees the
+/// caret in one place and their next keystroke lands in another.
+fn assert_caret_marks(mode: Mode, expected: &str) {
+    let (cursor, buffer) = draw_cursor(mode);
+    let cell = buffer.cell(cursor).unwrap();
+
+    assert_eq!(cell.symbol(), expected);
+    assert!(
+        cell.modifier.contains(Modifier::REVERSED),
+        "caret cell is not marked"
     );
 }
 
@@ -37,22 +68,92 @@ fn assert_cursor_on_trailing_caret(mode: Mode) {
 fn prompt_agent_cursor_uses_input_row_two() {
     assert_cursor_on_trailing_caret(Mode::PromptAgent {
         repo: 0,
-        input: "worker".to_string(),
+        input: "worker".into(),
     });
 }
 
 #[test]
 fn prompt_repo_cursor_uses_input_row_zero() {
     assert_cursor_on_trailing_caret(Mode::PromptRepo {
-        input: "/repo".to_string(),
+        input: "/repo".into(),
     });
 }
 
 #[test]
 fn wrapped_prompt_cursor_uses_last_input_line() {
     assert_cursor_on_trailing_caret(Mode::PromptOverseer {
-        input: "send this instruction".to_string(),
+        input: "send this instruction".into(),
     });
+}
+
+#[test]
+fn prompt_agent_caret_tracks_a_mid_string_cursor() {
+    assert_caret_marks(
+        Mode::PromptAgent {
+            repo: 0,
+            input: edited("worker", 4),
+        },
+        "r",
+    );
+}
+
+#[test]
+fn prompt_repo_caret_tracks_a_mid_string_cursor() {
+    assert_caret_marks(
+        Mode::PromptRepo {
+            input: edited("/repo", 3),
+        },
+        "e",
+    );
+}
+
+#[test]
+fn wrapped_prompt_caret_tracks_a_mid_string_cursor() {
+    assert_caret_marks(
+        Mode::PromptOverseer {
+            input: edited("send this instruction", 11),
+        },
+        "i",
+    );
+}
+
+#[test]
+fn confirm_pr_caret_tracks_a_mid_string_cursor() {
+    assert_caret_marks(
+        Mode::ConfirmPr {
+            repo_path: "/repo".into(),
+            agent_id: "agent".to_string(),
+            branch: "feature/agent".to_string(),
+            input: edited("open a pull request", 8),
+        },
+        " ",
+    );
+}
+
+#[test]
+fn inbox_prompt_caret_tracks_a_mid_string_cursor() {
+    assert_caret_marks(
+        Mode::PromptInbox {
+            target_session: "robco-agent".to_string(),
+            label: "agent — worker".to_string(),
+            input: edited("ship it", 4),
+        },
+        "p",
+    );
+}
+
+#[test]
+fn caret_column_accounts_for_full_width_glyphs() {
+    let (cursor, _) = draw_cursor(Mode::PromptRepo {
+        input: edited("日本語", 1),
+    });
+    let (wide_start, _) = draw_cursor(Mode::PromptRepo {
+        input: edited("日本語", 3),
+    });
+
+    // Two full-width glyphs precede the cursor, so the caret advances four
+    // columns rather than the two a per-character count would give.
+    assert_eq!(cursor.0 - wide_start.0, 4);
 }
 
 #[test]

@@ -9,6 +9,37 @@ fn test_app() -> App {
 }
 
 #[test]
+fn prompt_agent_inserts_at_the_cursor_instead_of_appending() {
+    let mut app = test_app();
+    app.mode = Mode::PromptAgent {
+        repo: 0,
+        input: TextInput::from("wrker"),
+    };
+
+    for code in [KeyCode::Home, KeyCode::Right, KeyCode::Char('o')] {
+        app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))
+            .unwrap();
+    }
+
+    assert!(matches!(&app.mode, Mode::PromptAgent { input, .. } if input == "worker"));
+}
+
+#[test]
+fn prompt_repo_word_deletion_reaches_the_shared_buffer() {
+    let mut app = test_app();
+    app.mode = Mode::PromptRepo {
+        input: TextInput::from("https://example.com/repo.git main"),
+    };
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+        .unwrap();
+
+    assert!(
+        matches!(&app.mode, Mode::PromptRepo { input } if input == "https://example.com/repo.git ")
+    );
+}
+
+#[test]
 fn overseer_category_panes_show_info_then_claude() {
     assert_eq!(
         panes_for(Some(Selection::OverseerCategory(OverseerCategory::Health))),
@@ -77,7 +108,7 @@ fn confirm_pr_y_and_n_edit_and_escape_cancels() {
         repo_path: "/repo".into(),
         agent_id: "agent".to_string(),
         branch: "feature/agent".to_string(),
-        input: "prompt".to_string(),
+        input: "prompt".into(),
     };
 
     for code in [KeyCode::Char('y'), KeyCode::Char('n'), KeyCode::Backspace] {

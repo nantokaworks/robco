@@ -6,6 +6,7 @@ use super::{
     App, Mode, PreviewPane,
     confirm_pr::{ConfirmPrAction, confirm_pr_action},
     help,
+    text_input::TextInput,
 };
 
 mod confirm;
@@ -44,7 +45,7 @@ impl App {
             Mode::PromptAgent { repo, input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Enter => {
-                    let (title, prompt) = prompt_agent::parse(input);
+                    let (title, prompt) = prompt_agent::parse(input.text());
                     let repo_idx = *repo;
                     self.mode = Mode::Normal;
                     if !title.is_empty() {
@@ -82,26 +83,22 @@ impl App {
                         }
                     }
                 }
-                KeyCode::Backspace => {
-                    input.pop();
+                _ => {
+                    input.handle_key(key);
                 }
-                KeyCode::Char(ch) => input.push(ch),
-                _ => {}
             },
             Mode::PromptRepo { input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Enter => {
-                    let value = input.trim().to_string();
+                    let value = input.text().trim().to_string();
                     self.mode = Mode::Normal;
                     if !value.is_empty() {
                         self.add_repo_input(&value);
                     }
                 }
-                KeyCode::Backspace => {
-                    input.pop();
+                _ => {
+                    input.handle_key(key);
                 }
-                KeyCode::Char(ch) => input.push(ch),
-                _ => {}
             },
             Mode::PromptOverseer { input } => match overseer::prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
@@ -205,17 +202,17 @@ impl App {
                     if let Some(repo) = self.selected_repo() {
                         self.mode = Mode::PromptAgent {
                             repo,
-                            input: String::new(),
+                            input: TextInput::new(),
                         };
                     } else {
                         self.mode = Mode::PromptRepo {
-                            input: String::new(),
+                            input: TextInput::new(),
                         };
                     }
                 }
                 KeyCode::Char('a') => {
                     self.mode = Mode::PromptRepo {
-                        input: String::new(),
+                        input: TextInput::new(),
                     };
                 }
                 KeyCode::Tab => self.toggle_preview(),
