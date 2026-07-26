@@ -267,7 +267,7 @@ fn merge_progress_banner_is_scoped_to_matching_agent() {
 }
 
 #[test]
-fn merge_outcome_notice_is_scoped_to_matching_agent() {
+fn merge_failure_is_scoped_to_matching_agent() {
     let mut app = test_app();
     app.registry.repos = vec![repo("/repo", vec![agent("wanted"), agent("not-wanted")])];
     install_outcome(
@@ -280,19 +280,24 @@ fn merge_outcome_notice_is_scoped_to_matching_agent() {
             result: Err("failed detail".into()),
         },
     );
-    let notice =
-        crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 0 }));
-    assert!(notice.iter().any(|line| line.to_string() == "MERGE FAILED"));
+    let error =
+        crate::ui::merge_dialog::error_lines(&app, Some(Selection::Agent { repo: 0, agent: 0 }));
+    assert!(error.iter().any(|line| line.to_string() == "MERGE FAILED"));
+    assert!(error.iter().any(|line| line.to_string() == "failed detail"));
+    // A failure is reported by the error tab, never by the overlay that would
+    // have to be drawn over the tab bar.
     assert!(
-        notice
-            .iter()
-            .any(|line| line.to_string() == "failed detail")
-    );
-    assert!(crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Repo(0))).is_empty());
-    assert!(
-        crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 1 }),)
+        crate::ui::merge_dialog::notice_lines(&app, Some(Selection::Agent { repo: 0, agent: 0 }),)
             .is_empty()
     );
+    for other in [
+        Some(Selection::Repo(0)),
+        Some(Selection::Agent { repo: 0, agent: 1 }),
+    ] {
+        assert!(crate::ui::merge_dialog::error_lines(&app, other).is_empty());
+        assert!(crate::ui::merge_dialog::notice_lines(&app, other).is_empty());
+        assert!(!crate::ui::merge_dialog::has_error(&app, other));
+    }
     assert_eq!(
         crate::ui::merge_dialog::preview_title(&app, Some(Selection::Agent { repo: 0, agent: 0 }),)
             .unwrap()
