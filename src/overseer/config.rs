@@ -84,7 +84,7 @@ pub struct OverseerConfig {
     /// terminal entry, so without a bound the ledger grows for the life of the
     /// installation and every save rewrites all of it. `0` keeps every entry,
     /// which is exactly how the ledger behaved before the window existed. See
-    /// [`crate::overseer::daemon::retention`] for what the window refuses to
+    /// `crate::overseer::daemon::retention` for what the window refuses to
     /// drop.
     pub terminal_retention_per_repo: usize,
     pub poll_interval_secs: u64,

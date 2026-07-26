@@ -128,7 +128,7 @@ pub struct LedgerCounters {
 ///
 /// The merge gate reads this to keep a second merge out of the same repository
 /// until the post-merge `git pull --ff-only` has actually run — see
-/// [`crate::overseer::daemon::merge_settle`]. It lives in the ledger rather than
+/// `crate::overseer::daemon::merge_settle`. It lives in the ledger rather than
 /// in the pass, because the pull it waits on runs on a *later* pass.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]

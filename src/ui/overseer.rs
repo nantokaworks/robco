@@ -28,7 +28,7 @@ pub(in crate::ui) use inbox_rows::ITEM_ROW_OFFSET as INBOX_ITEM_ROW_OFFSET;
 pub(super) type WorkerManagement = (String, ManagementMode);
 
 /// Decisions a snapshot reads out of the append-only log
-/// ([`crate::ui::actions::capture_overseer`]).
+/// ([`crate::ui::actions::overseer_refresh`]).
 ///
 /// The log keeps growing past this; the UI only ever sees this many of the
 /// newest entries, which is why no decision list on screen can report how much

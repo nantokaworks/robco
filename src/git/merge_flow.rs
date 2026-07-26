@@ -8,7 +8,7 @@
 //! a banner, the MCP tool collects them into its result.
 //!
 //! The sequence races on the repository's base branch and working tree, so it
-//! runs under [`merge_lock`], which serialises it across processes.
+//! runs under [`with_merge_lock`], which serialises it across processes.
 
 use std::path::Path;
 
