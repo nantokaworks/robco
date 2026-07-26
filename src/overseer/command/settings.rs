@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::{daemon_healthy, on_off};
+use super::{on_off, status::daemon_healthy};
 use crate::{
     Result,
     cli::OverseerSetting,
