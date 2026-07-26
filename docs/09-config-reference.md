@@ -22,6 +22,7 @@ does not require any config at all.
   "subagent_indicator": true,
   "merge_strategy": "squash",
   "pr_prompt": "Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions.",
+  "language": null,
   "notify": {
     "enabled": true,
     "waiting": true,
@@ -53,6 +54,7 @@ default.
 | `subagent_indicator` | boolean | `true` | Enables passive Claude Code session reads, the `✻N` counts, and subagent details in the agent INFO pane. `false` skips the periodic `~/.claude/projects` filesystem reads and clears cached subagent activity. |
 | `merge_strategy` | enum | `"squash"` | Strategy passed to `gh pr merge` when landing an agent's branch, by the TUI and the Overseer daemon alike. See [merge_strategy](#merge_strategy). |
 | `pr_prompt` | string | `"Commit any remaining changes, push the branch, and open a pull request against main following the project's PR conventions."` | Prompt sent to the selected agent when `p` is confirmed. |
+| `language` | string or `null` | `null` | Language every LLM surface is told to write its human-readable prose in. When `null`, RobCo sends the prompts it always has. See [language](#language). |
 | `notify` | object | (all `true`) | Desktop-notification toggles per status. See [notify](#notify). |
 | `project_icon` | enum | `"none"` | Marker style for the PROJECTS tree rows. See [project_icon](#project_icon). |
 
@@ -126,6 +128,47 @@ default — rather than `"rebase"`, so a config that named neither key no longer
 rebasing while the daemon squashes. The consequence is that a config naming only the
 top-level key now applies it to the daemon as well, which is the point of the change: one
 setting, both paths.
+
+## language
+
+Names the language every LLM surface RobCo drives is told to write its prose in. Write it
+the way you would say it to a person — `"Japanese"`, `"日本語"`, and `"Brazilian Portuguese"`
+are all valid; the value is handed to the model as natural language and nothing in RobCo
+branches on it.
+
+```json
+{ "language": "Japanese" }
+```
+
+When the key is absent or `null`, RobCo sends exactly the prompts it always has.
+
+### What it covers
+
+Every long-form string an LLM writes for you to read:
+
+| Surface | Field it governs |
+|---------|------------------|
+| Overseer board review | the review `summary` and each finding's `summary`, which become Inbox rows |
+| Exception triage | the triage `reason` |
+| Dispatch judge | the dispatch `reason` |
+| Merge judge | the merge `reason`, including a veto or escalation the Inbox shows |
+| Discord ops agent | the `reply` posted back to the channel |
+| Worker dispatch and merge-recovery prompts | the prose a dispatched worker is instructed in |
+
+The instruction is appended outside every `EXTERNAL_DATA` fence, so it is never mistaken
+for the untrusted data those fences quarantine. A value that carries the fence marker is
+refused and the key behaves as if unset; values are also trimmed, stripped of control
+characters, and capped in length.
+
+### What it does not cover
+
+RobCo's own Rust strings — CLI help text, TUI labels and hints, log lines, and the
+deterministic rule strings the Overseer's gates produce — stay in English. This is
+deliberate, not an oversight: many of those strings are simultaneously machine keys. A
+halt reason such as `merge_state:dirty` is persisted into the ledger as a deduplication
+key and exact-matched by the merge-recovery classifier, so translating it would break
+classification and break deduplication the moment the language changed. Model output is
+free-form prose and carries no such contract, which is why the boundary sits there.
 
 ## notify
 

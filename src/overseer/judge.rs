@@ -78,7 +78,13 @@ pub(super) fn spawn_session(config: &Config, request: Request, root: &Path) -> S
     };
     let root = root.to_path_buf();
     let timeout = Duration::from_secs(config.overseer.triage_timeout_mins.saturating_mul(60));
-    SessionHandle::spawn(move |control| run_session(profile, timeout, request, &root, &control))
+    // Read off the live config rather than carried on `Request`: that type is
+    // serialized into the durable pending queue, so a queued question would
+    // answer in whatever language was configured when it was enqueued.
+    let language = config.language.clone();
+    SessionHandle::spawn(move |control| {
+        run_session(profile, timeout, request, &root, &control, language)
+    })
 }
 
 fn run_session(
@@ -87,6 +93,7 @@ fn run_session(
     request: Request,
     root: &Path,
     control: &SessionControl,
+    language: Option<String>,
 ) -> SessionResult {
     let case_dir = root.join(request.key());
     if let Err(error) = fs::create_dir_all(&case_dir) {
@@ -102,7 +109,8 @@ fn run_session(
     {
         return SessionResult::LaunchFailed(error.to_string());
     }
-    if let Err(error) = fs::write(case_dir.join("briefing.md"), briefing::render(&request)) {
+    let prompt = briefing::render(&request, language.as_deref());
+    if let Err(error) = fs::write(case_dir.join("briefing.md"), prompt) {
         return SessionResult::LaunchFailed(error.to_string());
     }
     let Some(profile) = profile else {

@@ -1,3 +1,4 @@
+mod language;
 mod merge_strategy;
 mod paths;
 
@@ -6,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub(crate) use language::directive as language_directive;
 pub use merge_strategy::MergeStrategy;
 use paths::config_path;
 pub use paths::{config_file_path, ensure_robco_dir, state_path};
@@ -133,6 +135,11 @@ pub struct Config {
     /// following the project's PR conventions."
     #[serde(default = "default_pr_prompt")]
     pub pr_prompt: String,
+    /// Language every LLM surface is told to write its human-readable prose in,
+    /// named the way you would say it to a person ("Japanese", "日本語",
+    /// "Brazilian Portuguese"). `None` sends the prompts robco has always sent.
+    #[serde(default)]
+    pub language: Option<String>,
     #[serde(default)]
     pub notify: NotifyConfig,
     #[serde(default)]
@@ -211,6 +218,7 @@ impl Default for Config {
             merge_strategy: MergeStrategy::default(),
             merge_strategy_notice: None,
             pr_prompt: default_pr_prompt(),
+            language: None,
             notify: NotifyConfig::default(),
             openclaw: OpenClawConfig::default(),
             project_icon: ProjectIcon::default(),

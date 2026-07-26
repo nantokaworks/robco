@@ -166,6 +166,7 @@ pub(super) fn consider(
     head_sha: &str,
     config: &crate::overseer::config::OverseerConfig,
     registry: &Registry,
+    language: Option<&str>,
 ) -> Result<()> {
     match plan(
         entry,
@@ -183,12 +184,17 @@ pub(super) fn consider(
             entry.phase = LedgerPhase::Escalated;
             log(entry, DecisionKind::Escalate, CAP_REACHED)
         }
-        RecoveryPlan::Dispatch => dispatch(entry, reason, registry),
+        RecoveryPlan::Dispatch => dispatch(entry, reason, registry, language),
     }
 }
 
 /// Delivers the remediation prompt to the worker's live session.
-fn dispatch(entry: &mut LedgerEntry, reason: &str, registry: &Registry) -> Result<()> {
+fn dispatch(
+    entry: &mut LedgerEntry,
+    reason: &str,
+    registry: &Registry,
+    language: Option<&str>,
+) -> Result<()> {
     let Some(session) = live_session(&entry.agent_id, registry) else {
         // A worker whose session is gone cannot be handed anything. Naming the
         // session keeps the escalation actionable rather than reading as a
@@ -202,6 +208,7 @@ fn dispatch(entry: &mut LedgerEntry, reason: &str, registry: &Registry) -> Resul
         &entry.task_id,
         entry.pr_url.as_deref().unwrap_or("unknown"),
         reason,
+        language,
     );
     if let Err(error) = send(&session, &prompt) {
         // The budget was charged before the attempt ran, so a session that keeps
@@ -235,31 +242,8 @@ fn live_session(agent_id: &str, registry: &Registry) -> Option<String> {
 /// Types the prompt into the session and submits it, the way triage drives a
 /// live worker through `TriageAction::RobcoAnswer`.
 fn send(session: &str, prompt: &str) -> Result<()> {
-    tmux::send_literal_text(session, &single_line(prompt))?;
+    tmux::send_literal_text(session, &tmux::single_line(prompt))?;
     tmux::send_keys(session, &["Enter"])
-}
-
-/// Collapses the prompt to one line before it is typed into a session.
-///
-/// A literal send delivers a newline as a submit, so a multi-line prompt would
-/// enter the worker's prompt one fragment at a time and act on the first line
-/// alone. The prompt is authored as prose for readability and flattened here, the
-/// same way `robco report` flattens a report before delivering it.
-fn single_line(prompt: &str) -> String {
-    let mut flattened = String::with_capacity(prompt.len());
-    let mut previous_was_control = false;
-    for character in prompt.chars() {
-        if character.is_control() {
-            if !previous_was_control {
-                flattened.push(' ');
-            }
-            previous_was_control = true;
-        } else {
-            flattened.push(character);
-            previous_was_control = false;
-        }
-    }
-    flattened.trim().to_owned()
 }
 
 /// Records the handback on the dropr task, which is the source of truth for what

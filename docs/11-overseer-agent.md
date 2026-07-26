@@ -194,7 +194,16 @@ confirmation gate as typed commands.
 ## Configuration reference
 
 Overseer configuration is the `overseer` object in `~/.robco/config.json`. Omitted fields use
-these defaults:
+these defaults.
+
+One setting outside this object changes what the Overseer writes: the top-level
+[`language`](09-config-reference.md#language) key. Every LLM surface the Overseer drives —
+board review, exception triage, the dispatch and merge judges, the Discord ops agent, and
+the prompts it hands to workers — is told to write its human-readable prose in that
+language, so the review summaries and judge reasons that land in the Inbox come back in it.
+The Overseer's own deterministic strings, including the halt reasons the merge-recovery
+classifier matches on, stay in English. With the key unset the Overseer sends the prompts it
+always has.
 
 ```json
 {

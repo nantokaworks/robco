@@ -265,9 +265,10 @@ fn the_prompt_reaches_the_session_as_one_submission() {
         "task",
         "https://pr/1",
         "merge_state:dirty",
+        None,
     );
     assert!(prompt.contains('\n'));
-    let flattened = single_line(&prompt);
+    let flattened = crate::tmux::single_line(&prompt);
     assert!(!flattened.contains('\n'));
     assert!(!flattened.contains("  "));
     // Flattening must not cost the reason or the rails.

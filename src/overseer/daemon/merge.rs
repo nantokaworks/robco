@@ -143,8 +143,10 @@ fn hold(
 ) -> Result<()> {
     match merge_hold::charge(entry, halt, head, config.overseer.max_merge_holds) {
         HoldPlan::Record => {
-            log_halt(entry, halt, config.overseer.protection_mode)?;
-            merge_recovery::consider(entry, &halt.reason, head, &config.overseer, registry)
+            let overseer = &config.overseer;
+            let language = config.language.as_deref();
+            log_halt(entry, halt, overseer.protection_mode)?;
+            merge_recovery::consider(entry, &halt.reason, head, overseer, registry, language)
         }
         HoldPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
