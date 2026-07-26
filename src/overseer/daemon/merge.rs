@@ -1,11 +1,10 @@
 use std::collections::HashSet;
 
-use serde_json::Value;
-
 use super::{
     merge_apply::{merge_now, merge_state_cleared},
     merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
     merge_hold::{self, HoldPlan},
+    merge_judgment::{Judgment, judge_allows},
     merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection,
@@ -16,8 +15,7 @@ use crate::{
     Result,
     config::Config,
     overseer::{
-        autonomy::{Decision, merge_envelope_decision},
-        judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
+        judge::JudgmentQueue,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
     },
@@ -225,69 +223,6 @@ fn evaluate(
         Ok(()) => Outcome::Merged,
         Err(halt) => halt.on(&head),
     })
-}
-
-/// What the merge judge said about a pull request the deterministic gate cleared.
-enum Judgment {
-    Allow,
-    /// The judge, or the autonomy envelope, stopped the merge under this reason.
-    Halt(Halt),
-    /// No verdict yet: the judgment is queued, so the pull request simply waits.
-    Queued,
-}
-
-/// Puts a pull request the deterministic gate cleared to the merge judge.
-fn judge_allows(
-    entry: &mut LedgerEntry,
-    url: &str,
-    value: &Value,
-    config: &Config,
-    judgments: &mut JudgmentQueue,
-    consecutive_failures: u32,
-) -> Result<Judgment> {
-    let facts = change_facts(value, consecutive_failures, judgments.llm_calls_today());
-    let case = merge_case(entry, url, value);
-    let Some(advice) =
-        judgment_after_gate(true, true, &facts, config, || judgments.merge_advice(case))
-    else {
-        if matches!(
-            merge_envelope_decision(true, true, &facts, &config.overseer),
-            Decision::Escalate(_)
-        ) {
-            return Ok(Judgment::Halt(Halt::escalate("autonomy_envelope")));
-        }
-        return Ok(Judgment::Queued);
-    };
-    let Some(advice) = advice? else {
-        return Ok(Judgment::Queued);
-    };
-    let allows_merge = judgment_allows_merge(entry, advice.outcome);
-    match advice.outcome {
-        MergeJudgment::Allow => {}
-        MergeJudgment::Veto => {
-            return Ok(Judgment::Halt(Halt::escalate(format!(
-                "judge_veto:{}",
-                advice.reason
-            ))));
-        }
-        MergeJudgment::Escalate => {
-            return Ok(Judgment::Halt(Halt::escalate(format!(
-                "judge_escalate:{}",
-                advice.reason
-            ))));
-        }
-    }
-    debug_assert!(allows_merge);
-    Ok(Judgment::Allow)
-}
-
-fn judgment_allows_merge(entry: &mut LedgerEntry, outcome: MergeJudgment) -> bool {
-    if outcome == MergeJudgment::Allow {
-        true
-    } else {
-        entry.phase = LedgerPhase::Escalated;
-        false
-    }
 }
 
 fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {

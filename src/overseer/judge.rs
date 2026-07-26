@@ -12,7 +12,9 @@ mod snapshot;
 
 pub(crate) use merge_gate::{change_facts, judgment_after_gate, merge_case};
 pub use queue::JudgmentQueue;
-pub use result::{DispatchAdvice, MergeJudgment};
+#[cfg(test)]
+pub(crate) use queue::test_queue;
+pub use result::{DispatchAdvice, MergeAdvice, MergeJudgment, MergeVerdict};
 
 use crate::config::{Config, Profile};
 use crate::overseer::dispatch::Candidate;

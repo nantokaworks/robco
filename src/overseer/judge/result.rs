@@ -29,6 +29,35 @@ pub struct MergeAdvice {
     pub ignored_fields: Vec<String>,
 }
 
+/// What the merge judge has to say about one pull request right now.
+///
+/// The three states used to collapse into `Option<MergeAdvice>`, and the two
+/// that carry no verdict are not the same thing at all: a queued judgment ends
+/// on its own, while a refusal the gate already holds never does. Reading both
+/// as "wait" is what let an escalated pull request sit for hours with no
+/// decision recorded on any pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MergeVerdict {
+    /// The judge answered.
+    Advice(MergeAdvice),
+    /// A judgment is queued or running; there is no verdict yet.
+    Queued,
+    /// The judge already refused this exact change, so it is not asked again.
+    Refused,
+}
+
+impl MergeVerdict {
+    /// The verdict itself, for tests that assert on what the judge said rather
+    /// than on which of the three states came back.
+    #[cfg(test)]
+    pub(crate) fn advice(&self) -> Option<&MergeAdvice> {
+        match self {
+            Self::Advice(advice) => Some(advice),
+            Self::Queued | Self::Refused => None,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Parsed {
     Dispatch(DispatchAdvice),

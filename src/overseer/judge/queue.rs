@@ -251,4 +251,4 @@ mod merges;
 #[path = "queue_test_support.rs"]
 mod test_support;
 #[cfg(test)]
-pub(super) use test_support::test_queue;
+pub(crate) use test_support::test_queue;

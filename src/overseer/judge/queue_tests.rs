@@ -89,7 +89,10 @@ fn a_merge_verdict_the_diff_outran_is_discarded_on_the_record() {
 
     let mut pushed = case.clone();
     pushed.files.push("src/new.rs".into());
-    assert!(queue.merge_advice(pushed).unwrap().is_none());
+    assert_eq!(
+        queue.merge_advice(pushed).unwrap(),
+        result::MergeVerdict::Queued
+    );
 
     assert_eq!(queue.completed_len(), 0);
     let discarded = logging::tail_from(&temp.path().join("decisions.jsonl"), 20)
@@ -123,8 +126,14 @@ fn a_pull_request_waiting_on_the_judge_is_recorded_once_and_then_by_its_verdict(
             unreachable!()
         };
 
-        assert!(queue.merge_advice(case.clone()).unwrap().is_none());
-        assert!(queue.merge_advice(case.clone()).unwrap().is_none());
+        assert_eq!(
+            queue.merge_advice(case.clone()).unwrap(),
+            result::MergeVerdict::Queued
+        );
+        assert_eq!(
+            queue.merge_advice(case.clone()).unwrap(),
+            result::MergeVerdict::Queued
+        );
         assert_eq!(
             reasons(&log, "judge_pending"),
             1,
@@ -138,11 +147,17 @@ fn a_pull_request_waiting_on_the_judge_is_recorded_once_and_then_by_its_verdict(
             "an active judgment must be visible to `robco overseer status`"
         );
         // A pass that finds the judgment still running must not re-log it.
-        assert!(queue.merge_advice(case.clone()).unwrap().is_none());
+        assert_eq!(
+            queue.merge_advice(case.clone()).unwrap(),
+            result::MergeVerdict::Queued
+        );
         assert_eq!(reasons(&log, "judge_pending"), 1);
 
         settle(&mut queue, &config);
-        assert_eq!(queue.merge_advice(case).unwrap().unwrap().reason, "judged");
+        assert_eq!(
+            queue.merge_advice(case).unwrap().advice().unwrap().reason,
+            "judged"
+        );
         assert_eq!(reasons(&log, "judge_pending"), 1);
         assert_eq!(
             logging::tail_from(&log, 10)

@@ -1,5 +1,6 @@
 use super::{
     MergeCase, Request, completion, judge_profile, merge_judge_profile, queue::test_queue, result,
+    result::MergeVerdict,
 };
 use crate::{
     config::{Config, Profile},
@@ -163,15 +164,13 @@ fn a_verdict_survives_a_base_update_but_not_a_changed_diff() {
 
     let mut rebased = case.clone();
     rebased.head_sha = "def456".into();
-    assert_eq!(
-        queue.merge_advice(rebased).unwrap().unwrap().reason,
-        "reviewed"
-    );
+    let verdict = queue.merge_advice(rebased).unwrap();
+    assert_eq!(verdict.advice().unwrap().reason, "reviewed");
 
     queue.cache_merge(&case, advice(result::MergeJudgment::Allow, "reviewed"));
     let mut pushed = case;
     pushed.files.push("src/new.rs".into());
-    assert!(queue.merge_advice(pushed).unwrap().is_none());
+    assert_eq!(queue.merge_advice(pushed).unwrap(), MergeVerdict::Queued);
 }
 
 /// A veto is remembered against the change it was given for, so a base update
@@ -185,8 +184,9 @@ fn a_veto_survives_a_base_update_and_is_re_asked_after_a_real_push() {
         unreachable!()
     };
     queue.cache_merge(&case, advice(result::MergeJudgment::Veto, "unsafe"));
+    let verdict = queue.merge_advice(case.clone()).unwrap();
     assert_eq!(
-        queue.merge_advice(case.clone()).unwrap().unwrap().outcome,
+        verdict.advice().unwrap().outcome,
         result::MergeJudgment::Veto
     );
     drop(queue);
@@ -195,12 +195,13 @@ fn a_veto_survives_a_base_update_and_is_re_asked_after_a_real_push() {
     assert!(queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
     let mut rebased = case.clone();
     rebased.head_sha = "new-head".into();
-    assert!(queue.merge_advice(rebased).unwrap().is_none());
+    let verdict = queue.merge_advice(rebased).unwrap();
+    assert_eq!(verdict, MergeVerdict::Refused, "the refusal already held");
     assert_eq!(queue.pending_len(), 0, "a base update must not re-ask");
 
     let mut pushed = case;
     pushed.additions += 5;
-    assert!(queue.merge_advice(pushed).unwrap().is_none());
+    assert_eq!(queue.merge_advice(pushed).unwrap(), MergeVerdict::Queued);
     assert_eq!(queue.pending_len(), 1, "a real push must re-ask");
 }
 
@@ -216,7 +217,7 @@ fn a_settled_pull_request_forgets_its_verdict_for_good() {
         unreachable!()
     };
     queue.cache_merge(&case, advice(result::MergeJudgment::Veto, "unsafe"));
-    assert!(queue.merge_advice(case.clone()).unwrap().is_some());
+    assert!(queue.merge_advice(case.clone()).unwrap().advice().is_some());
     assert!(queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
 
     queue

@@ -1,5 +1,8 @@
 use super::*;
-use crate::overseer::autonomy::ChangeFacts;
+use crate::overseer::{
+    autonomy::ChangeFacts,
+    judge::{change_facts, judgment_after_gate, merge_case},
+};
 use serde_json::json;
 
 #[test]
@@ -81,29 +84,6 @@ fn merge_case_saturates_additions_independently() {
     assert_eq!(case.deletions, u32::MAX);
     assert_eq!(case.head_sha, "new-sha");
     assert_eq!(facts.llm_calls_today, 7);
-}
-
-#[test]
-fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
-    let mut entry = crate::overseer::ledger::LedgerEntry {
-        task_id: "task".into(),
-        display_id: "#1".into(),
-        repo: "/repo".into(),
-        agent_id: "agent".into(),
-        branch: "branch".into(),
-        phase: LedgerPhase::PrOpened,
-        dispatched_at: chrono::Utc::now(),
-        settled_at: None,
-        retries: 0,
-        pr_url: Some("https://pr/1".into()),
-        branch_updates: 0,
-        merge_recovery: Default::default(),
-        merge_hold: Default::default(),
-        manual_merge_skip: None,
-    };
-    assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
-    assert_eq!(entry.phase, LedgerPhase::Escalated);
-    assert_ne!(entry.phase, LedgerPhase::PrOpened);
 }
 
 #[test]

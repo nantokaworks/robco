@@ -57,7 +57,7 @@ pub(super) fn charge(entry: &mut LedgerEntry, halt: &Halt, head: &str, max: u32)
         *hold = MergeHold {
             reason: Some(halt.reason.clone()),
             head: Some(head.to_owned()),
-            ..MergeHold::default()
+            ..hold.cleared()
         };
     }
     if hold.escalated {
@@ -76,8 +76,12 @@ pub(super) fn charge(entry: &mut LedgerEntry, halt: &Halt, head: &str, max: u32)
 /// Called when the pass got past the deterministic gate — the pull request merged,
 /// or its judgment is queued — so an entry that clears its hold and later meets a
 /// new one starts from a full budget rather than from the old condition's residue.
+///
+/// [`MergeHold::cleared`] is what decides how much of the hold survives: the
+/// judge-failure count does, because the passes this is called on are the ones
+/// spent waiting for the re-asked judgment.
 pub(super) fn cleared(entry: &mut LedgerEntry) {
-    entry.merge_hold = MergeHold::default();
+    entry.merge_hold = entry.merge_hold.cleared();
 }
 
 /// Whether this exit is one the budget is responsible for bounding.

@@ -1,4 +1,4 @@
-use super::*;
+use super::{views::StuckMerge, *};
 
 #[test]
 fn save_load_round_trip() {
@@ -169,6 +169,68 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
     };
 
     assert_eq!(ledger.manual_merge_skips(), 2);
+}
+
+/// The line an operator reads instead of `decisions.jsonl`. It names the pull
+/// requests the merge gate stopped on, and only those: an escalation from
+/// somewhere else in the daemon is not a merge they are being asked about.
+#[test]
+fn stuck_merges_name_the_pull_requests_the_merge_gate_gave_up_on() {
+    let entry = |phase, pr_url: Option<&str>, reason: Option<&str>| LedgerEntry {
+        task_id: "task-1".into(),
+        display_id: "#296".into(),
+        repo: "/one".into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase,
+        dispatched_at: Utc::now(),
+        settled_at: None,
+        retries: 0,
+        pr_url: pr_url.map(str::to_owned),
+        branch_updates: 0,
+        merge_recovery: Default::default(),
+        merge_hold: MergeHold {
+            reason: reason.map(str::to_owned),
+            ..MergeHold::default()
+        },
+        manual_merge_skip: None,
+    };
+    let ledger = Ledger {
+        entries: vec![
+            entry(
+                LedgerPhase::Escalated,
+                Some("https://pr/1"),
+                Some("judge_unavailable_cap_reached:no result.json"),
+            ),
+            // Still moving: the gate has not given up on it.
+            entry(
+                LedgerPhase::PrOpened,
+                Some("https://pr/2"),
+                Some("checks_waiting"),
+            ),
+            // Escalated by something other than the merge gate.
+            entry(LedgerPhase::Escalated, Some("https://pr/3"), None),
+            // Nothing for an operator to open.
+            entry(LedgerPhase::Escalated, None, Some("missing_pr_url")),
+        ],
+        ..Ledger::default()
+    };
+
+    let stuck = ledger.stuck_merges();
+    assert_eq!(
+        stuck,
+        vec![StuckMerge {
+            display_id: "#296".into(),
+            pr_url: "https://pr/1".into(),
+            reason: "judge_unavailable_cap_reached:no result.json".into(),
+        }]
+    );
+    // The reason travels with the pull request: the operator has to be able to
+    // tell a judge that never answered from a change the judge refused.
+    assert_eq!(
+        stuck[0].line(),
+        "stuck merge: #296 https://pr/1 (judge_unavailable_cap_reached:no result.json)"
+    );
 }
 
 #[test]

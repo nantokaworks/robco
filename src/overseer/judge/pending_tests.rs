@@ -67,7 +67,7 @@ fn a_verdict_already_on_disk_is_recovered_without_a_session() {
     assert!(!queue.is_active());
     assert_eq!(queue.llm_calls_today(), 0);
     assert_eq!(
-        queue.merge_advice(case).unwrap().unwrap().reason,
+        queue.merge_advice(case).unwrap().advice().unwrap().reason,
         "already judged"
     );
 }
@@ -95,7 +95,10 @@ fn a_case_directory_is_only_read_back_after_a_restart() {
     let case = stored_verdict(temp.path(), br#"{"outcome":"allow","reason":"stale"}"#);
 
     let mut queue = test_queue(temp.path());
-    assert!(queue.merge_advice(case).unwrap().is_none());
+    assert_eq!(
+        queue.merge_advice(case).unwrap(),
+        super::result::MergeVerdict::Queued
+    );
     queue.tick(&sleeping_config(temp.path())).unwrap();
 
     assert!(queue.is_active());

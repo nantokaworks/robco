@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
+mod views;
+
+pub use views::ActiveWorkers;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
     pub task_id: String,
@@ -101,6 +105,29 @@ pub struct MergeHold {
     /// Whether the budget has already escalated this pair, so the cap is
     /// recorded once rather than on every later pass.
     pub escalated: bool,
+    /// Times the merge judge's own session failed instead of answering for this
+    /// entry. A fail-safe verdict says nothing about the change, so the gate
+    /// asks again on the next pass; this is the count that stops a judge which
+    /// is permanently broken from being asked forever, bounded by
+    /// `overseer.max_judge_retries`. A verdict the judge actually gave resets
+    /// it.
+    pub judge_failures: u32,
+}
+
+impl MergeHold {
+    /// A hold with nothing held, keeping the count that is not part of one.
+    ///
+    /// The judge-failure count is not a hold: it bounds how often the gate
+    /// re-asks a judge whose session keeps failing, and the passes that clear a
+    /// hold — the pull request waiting on the very judgment that was re-asked —
+    /// are precisely the ones that would reset it to zero every round and leave
+    /// the re-asks unbounded.
+    pub fn cleared(&self) -> Self {
+        Self {
+            judge_failures: self.judge_failures,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -150,13 +177,6 @@ pub struct Ledger {
     pub merge_settling: BTreeMap<String, MergeSettling>,
 }
 
-/// Live workers counted globally and per repository.
-#[derive(Debug, Default, Eq, PartialEq)]
-pub struct ActiveWorkers {
-    pub count: usize,
-    pub repos: BTreeMap<String, usize>,
-}
-
 impl LedgerPhase {
     /// The phase's name as every reader spells it: the CLI status line, the
     /// OVERSEER frame, the review digest, and the serialized ledger. They must
@@ -183,54 +203,6 @@ pub fn terminal(phase: LedgerPhase) -> bool {
 }
 
 impl Ledger {
-    /// The workers occupying capacity right now. The dispatch gate and
-    /// `robco overseer status` both read this one helper, so the count that
-    /// enforces `max_workers` / `per_repo_limit` is the count the operator sees.
-    ///
-    /// Management mode is deliberately not a filter. Manual suppresses Overseer
-    /// *intervention* — the worker belongs to a human, so it is never killed,
-    /// restarted, or re-dispatched — but it still holds a worktree, a branch, a
-    /// tmux session, and CPU in its repository. Exempting it from the caps would
-    /// let a mode toggle free a slot the resources never released.
-    pub fn active_workers(&self) -> ActiveWorkers {
-        let mut repos: BTreeMap<String, usize> = BTreeMap::new();
-        let mut count = 0;
-        for entry in self.entries.iter().filter(|entry| !terminal(entry.phase)) {
-            count += 1;
-            *repos.entry(entry.repo.clone()).or_default() += 1;
-        }
-        ActiveWorkers { count, repos }
-    }
-
-    /// Live merge candidates the merge pass is declining because their worker is
-    /// manual-managed.
-    ///
-    /// Read off the marker the merge pass itself writes rather than re-derived
-    /// from the registry, so every surface reports the gate's own verdict instead
-    /// of a second opinion that can disagree with it. Terminal entries are
-    /// excluded: a pull request a human merged themselves is no longer something
-    /// Overseer is holding back.
-    pub fn manual_merge_skips(&self) -> usize {
-        self.entries
-            .iter()
-            .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
-            .count()
-    }
-
-    /// Merge failures a worker could have fixed that were left alone because
-    /// merge recovery is switched off.
-    ///
-    /// Counted across every entry the ledger still holds, terminal ones included:
-    /// an entry that escalated *because* nobody was handed its failure is the
-    /// clearest evidence the setting costs something, and dropping it from the
-    /// count would hide exactly the cases worth reading. The retention window is
-    /// what bounds how far back this reaches.
-    pub fn merge_recovery_drops(&self) -> u32 {
-        self.entries.iter().fold(0, |total, entry| {
-            total.saturating_add(entry.merge_recovery.dropped)
-        })
-    }
-
     pub fn load() -> Result<Self> {
         let path = super::ledger_path()?;
         Self::load_from(&path)

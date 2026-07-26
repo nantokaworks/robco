@@ -106,6 +106,12 @@ fn status(config: &Config) -> Result<()> {
     if manual_merges != 0 {
         println!("merge-eligible, manual: {manual_merges}");
     }
+    // Likewise an exception state, and the one the phase counts hide worst: an
+    // escalated entry is a pull request the merge gate stopped acting on, and
+    // until it was named here the only trace was a line in `decisions.jsonl`.
+    for stuck in ledger.stuck_merges() {
+        println!("{}", stuck.line());
+    }
     println!("skip list: {:?}", ledger.skip_list);
     println!("recent decisions:");
     for entry in logging::tail(10)? {

@@ -216,6 +216,7 @@ always has.
     "merge_recovery_enabled": false,
     "max_merge_recoveries": 2,
     "max_merge_holds": 30,
+    "max_judge_retries": 2,
     "worker_profile": null,
     "max_workers": 3,
     "per_repo_limit": 1,
@@ -264,6 +265,7 @@ always has.
 | `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. Switched off, each failure it would have acted on is still recorded once per revision as `merge_recovery_disabled:<reason>` and counted into `merge-recovery: off (N dropped)`. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
+| `max_judge_retries` | non-negative integer | `2` | Times the merge gate re-asks a merge judge whose own session failed instead of answering — a timeout, a launch failure, or a session that exited without `result.json`. Such a verdict is the judge's machinery breaking rather than a statement about the change, so the pull request is judged again on the next pass instead of being refused; the bound is what stops a permanently broken judge from spending a model session per pass forever. Past it the entry escalates with `judge_unavailable_cap_reached:<reason>`. A verdict the judge actually gives resets the count. `0` escalates on the first failed session. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
@@ -417,7 +419,37 @@ and escalate under whichever ran out first.
 
 An entry that gets past the deterministic gate — it merged, or only its judgment is
 outstanding — forgets what it was held on, so a condition that comes back after clearing
-starts from a full budget rather than inheriting the old one's residue.
+starts from a full budget rather than inheriting the old one's residue. The one thing it
+keeps is the judge-failure count below, which the very passes that clear a hold are what
+would otherwise reset.
+
+### When the merge judge does not answer
+
+A judgment session that dies without writing `result.json` — a timeout, a launch failure,
+an expired auth token — is normalized into a fail-safe escalate. That verdict says nothing
+about the change under review: it is the judge's own machinery failing. So it is never
+remembered against the change fingerprint, and the entry keeps its `pr_opened` phase, which
+is what puts it back in front of the gate on the next pass to be judged again. Caching one
+was how a green, mergeable pull request came to sit escalated with no decision recorded on
+any pass and no exit but a human — `merge_recovery` is reachable only from a recorded hold,
+so an entry that recorded nothing never reached it either.
+
+Each failed session is recorded as `judge_unavailable:<reason>` and charged to the entry's
+judge-failure count, which `max_judge_retries` bounds. Past the bound the entry escalates
+with `judge_unavailable_cap_reached:<reason>`, because each re-ask costs a model session and
+a judge that is not coming back belongs in front of an operator. A verdict the judge
+actually gives — allow, veto, or escalate — resets the count, since the session that
+produced it worked.
+
+A verdict the judge *did* give is remembered, and the entry that carries one keeps
+re-entering the gate every pass so a settled pull request can drop it (see below). Those
+passes now record `judge_verdict_stands` under the ordinary hold budget rather than
+returning silently: "Overseer is standing on a verdict it already gave" and "the merge pass
+never ran" produced identical logs, and only one of them ever ends on its own.
+
+Entries the gate has escalated while still holding an open pull request are listed by
+`robco overseer status` as `stuck merge: <display id> <url> (<reason>)`, so the state is
+readable without opening `decisions.jsonl`.
 
 ### A pull request that has already settled
 
@@ -476,8 +508,11 @@ Reasons are classified into the worker's and the operator's:
   `repo_merged_this_pass`, `behind_branch_updated` (already the recovery), `checks_waiting`
   (nothing has failed yet), `pr_already_merged` (the pull request landed, so there is
   nothing to fix), `pr_closed_unmerged` (only a human can reopen it), `merge_refused:*`,
-  and every probe or parse failure. **An unrecognised reason is operator-only** — a failure
-  nobody anticipated must not silently drive a worker.
+  `judge_unavailable:*` and `judge_unavailable_cap_reached:*` (the judge's own session
+  failed, which no worker can fix), `judge_verdict_stands` (the words the judge used are
+  not kept, so there is no instruction to hand over — the verdict itself was handed back
+  when it was given), and every probe or parse failure. **An unrecognised reason is
+  operator-only** — a failure nobody anticipated must not silently drive a worker.
 
 `merge_refused:rebase_refused_merge_commit` is a rebase GitHub declined because the head
 branch carries a merge commit. It is deliberately the operator's: the worker cannot clear
