@@ -5,7 +5,7 @@ mod keys;
 mod resize;
 mod session;
 
-pub use attach::{attach, send_keys, send_literal_text};
+pub use attach::{attach, send_keys, send_literal_text, single_line};
 pub use capture::{
     capture_plain, capture_scrollback, capture_text, history_size, pane_current_command, pane_pid,
 };

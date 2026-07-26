@@ -1,6 +1,13 @@
-use crate::overseer::OVERSEER_AGENT_ID;
+use crate::{config::language_directive, overseer::OVERSEER_AGENT_ID};
 
-pub fn worker_prompt(display_id: &str, task_id: &str, title: &str, repo: &str) -> String {
+pub fn worker_prompt(
+    display_id: &str,
+    task_id: &str,
+    title: &str,
+    repo: &str,
+    language: Option<&str>,
+) -> String {
+    let directive = language_directive(language);
     format!(
         r#"You are the autonomous RUN worker for assigned Dropr task {display_id} ({task_id}):
 {title}
@@ -17,7 +24,7 @@ Follow RUN discipline: implement the task, self-review the diff, run relevant te
 request whose body contains `Close Dropr: {display_id}`. Finally run `robco report --kind done`.
 The current report CLI carries lifecycle kind only; Overseer discovers the PR URL from your branch.
 
-Never merge. Never force push. Never push to main. Never create extra worktrees."#
+{directive}Never merge. Never force push. Never push to main. Never create extra worktrees."#
     )
 }
 
@@ -36,7 +43,9 @@ pub fn merge_recovery_prompt(
     task_id: &str,
     pr_url: &str,
     reason: &str,
+    language: Option<&str>,
 ) -> String {
+    let directive = language_directive(language);
     format!(
         r#"Overseer could not merge the pull request for Dropr task {display_id} ({task_id}).
 Pull request: {pr_url}
@@ -48,7 +57,7 @@ veto), re-run the relevant tests, commit with `(refs dropr:{task_id})` in the me
 push the same branch. Then run `robco report --kind done`. Overseer re-evaluates the pull
 request on its next pass and merges it once the gate is satisfied.
 
-Never merge. Never force push. Never push to main. Never create extra worktrees.
+{directive}Never merge. Never force push. Never push to main. Never create extra worktrees.
 You fix the branch; Overseer merges it."#
     )
 }
@@ -57,9 +66,17 @@ You fix the branch; Overseer merges it."#
 mod tests {
     use super::*;
 
+    fn worker(language: Option<&str>) -> String {
+        worker_prompt("#132", "abc", "Build overseer", "/repo", language)
+    }
+
+    fn recovery(language: Option<&str>) -> String {
+        merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty", language)
+    }
+
     #[test]
     fn prompt_contains_assignment_and_rails() {
-        let prompt = worker_prompt("#132", "abc", "Build overseer", "/repo");
+        let prompt = worker(None);
         assert!(prompt.contains("Close Dropr: #132"));
         assert!(prompt.contains("(refs dropr:abc)"));
         assert!(prompt.contains("Never merge"));
@@ -69,9 +86,32 @@ mod tests {
     fn prompt_hands_the_claim_over_instead_of_asking_for_one() {
         // The overseer claims at dispatch time; a worker that re-claimed would be
         // racing its own dispatcher for the lock it already benefits from.
-        let prompt = worker_prompt("#132", "abc", "Build overseer", "/repo");
+        let prompt = worker(None);
         assert!(prompt.contains("already claimed #132"));
         assert!(prompt.contains("Do NOT run `dropr task next`"));
+    }
+
+    /// The rails are the last thing either prompt says, so the directive goes in
+    /// above them rather than after — see the placement assertions below.
+    #[test]
+    fn a_configured_language_reaches_both_prompts_above_the_rails() {
+        for prompt in [worker(Some("Japanese")), recovery(Some("Japanese"))] {
+            let directive = prompt
+                .find("LANGUAGE: ")
+                .expect("the directive is rendered");
+            let rails = prompt.find("Never merge").expect("the rails survive");
+            assert!(directive < rails, "{prompt}");
+            assert!(prompt.contains("in Japanese."), "{prompt}");
+        }
+    }
+
+    /// The guarantee a config without the key rests on.
+    #[test]
+    fn an_unset_language_leaves_both_prompts_byte_identical() {
+        assert_eq!(worker(Some("   ")), worker(None));
+        assert_eq!(recovery(Some("   ")), recovery(None));
+        assert!(!worker(None).contains("LANGUAGE: "));
+        assert!(!recovery(None).contains("LANGUAGE: "));
     }
 
     #[test]
@@ -81,6 +121,7 @@ mod tests {
             "abc",
             "https://pr/1",
             "judge_veto:touches the migration registry without a rollback",
+            None,
         );
         assert!(prompt.contains("judge_veto:touches the migration registry without a rollback"));
         assert!(prompt.contains("https://pr/1"));
@@ -99,7 +140,7 @@ mod tests {
     fn recovery_prompt_never_asks_for_a_new_branch() {
         // A worker that cut a second branch would strand the pull request
         // Overseer is waiting on, so the instruction has to be explicit.
-        let prompt = merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty");
+        let prompt = recovery(None);
         assert!(prompt.contains("do not create a new branch or worktree"));
         assert!(prompt.contains("push the same branch"));
     }

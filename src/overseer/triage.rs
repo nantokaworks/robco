@@ -62,7 +62,10 @@ pub(super) fn spawn_session(config: &Config, case: &ExceptionCase, root: &Path) 
     let root = root.to_path_buf();
     let profile = triage_profile(config);
     let timeout = Duration::from_secs(config.overseer.triage_timeout_mins.saturating_mul(60));
-    SessionHandle::spawn(move |control| run_session(profile, timeout, &case, &root, &control))
+    let language = config.language.clone();
+    SessionHandle::spawn(move |control| {
+        run_session(profile, timeout, &case, &root, &control, language)
+    })
 }
 
 fn run_session(
@@ -71,6 +74,7 @@ fn run_session(
     case: &ExceptionCase,
     root: &Path,
     control: &SessionControl,
+    language: Option<String>,
 ) -> SessionResult {
     let case_dir = root.join(&case.id);
     if let Err(error) = fs::create_dir_all(&case_dir) {
@@ -85,7 +89,8 @@ fn run_session(
     let pid_path = case_dir.join("session.pid");
     terminate_stale_session(&pid_path);
     let capture = recent_capture(&case.worker_id);
-    if let Err(error) = fs::write(case_dir.join("briefing.md"), briefing(case, &capture)) {
+    let prompt = briefing(case, &capture, language.as_deref());
+    if let Err(error) = fs::write(case_dir.join("briefing.md"), prompt) {
         return SessionResult::LaunchFailed(error.to_string());
     }
     let Some(profile) = profile else {
@@ -128,6 +133,10 @@ pub(crate) fn recent_worker_capture(worker_id: &str) -> String {
 #[cfg(test)]
 #[path = "triage/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "triage/briefing_tests.rs"]
+mod briefing_tests;
 
 #[cfg(test)]
 #[path = "triage/recovery_tests.rs"]

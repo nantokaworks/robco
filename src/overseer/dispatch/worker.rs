@@ -53,7 +53,13 @@ pub(super) fn spawn_candidate(
         .find(|profile| profile.name == worker_config.default_program)
         .map(|profile| profile.autonomous_args.clone())
         .unwrap_or_default();
-    let prompt = worker_prompt(&task.display_id, &task.task_id, &task.title, &task.repo);
+    let prompt = worker_prompt(
+        &task.display_id,
+        &task.task_id,
+        &task.title,
+        &task.repo,
+        config.language.as_deref(),
+    );
     let outcome = match spawn::spawn_in_repo(
         &task.repo,
         &task.title,

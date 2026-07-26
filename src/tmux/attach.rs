@@ -88,3 +88,25 @@ pub fn send_literal_text(session: &str, text: &str) -> Result<()> {
         .output()?;
     command_unit(output, "tmux send literal text")
 }
+
+/// Collapses text to one line before it is typed into a session.
+///
+/// A literal send delivers a newline as a submit, so multi-line text would enter
+/// the agent's prompt one fragment at a time and be acted on a line at a time.
+/// Prompts are authored as prose for readability and flattened here.
+pub fn single_line(text: &str) -> String {
+    let mut flattened = String::with_capacity(text.len());
+    let mut previous_was_control = false;
+    for character in text.chars() {
+        if character.is_control() {
+            if !previous_was_control {
+                flattened.push(' ');
+            }
+            previous_was_control = true;
+        } else {
+            flattened.push(character);
+            previous_was_control = false;
+        }
+    }
+    flattened.trim().to_owned()
+}

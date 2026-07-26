@@ -219,7 +219,7 @@ fn spawn_session(
             return SessionHandle::spawn(move |_| SessionResult::LaunchFailed(error.to_string()));
         }
     };
-    let prompt = briefing::render(digest, findings);
+    let prompt = briefing::render(digest, findings, config.language.as_deref());
     SessionHandle::spawn(move |control| {
         run_session(profile, timeout, &case, &prompt, &case_dir, &control)
     })

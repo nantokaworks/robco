@@ -165,6 +165,34 @@ fn pr_prompt_defaults_when_missing_from_config() {
     assert_eq!(config.pr_prompt, DEFAULT_PR_PROMPT);
 }
 
+/// A config written before the key existed has to keep loading, and has to load
+/// as "not configured" rather than as some default language.
+#[test]
+fn language_defaults_to_unset_when_missing_from_config() {
+    let value = serde_json::to_value(Config::default()).unwrap();
+    let mut object = value.as_object().unwrap().clone();
+    object.remove("language");
+    let config: Config = serde_json::from_value(object.into()).unwrap();
+    assert_eq!(config.language, None);
+}
+
+/// The key is written and read through the file, so a value set in the TUI's
+/// `$EDITOR` pass survives the save the daemon reloads from.
+#[test]
+fn a_configured_language_survives_a_save_and_load_round_trip() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.json");
+    let config = Config {
+        language: Some("日本語".into()),
+        ..Config::default()
+    };
+    config.save_at(&path).unwrap();
+    assert_eq!(
+        Config::load_at(&path).unwrap().language,
+        Some("日本語".into())
+    );
+}
+
 #[test]
 fn project_icon_defaults_and_maps_markers() {
     assert_eq!(ProjectIcon::default(), ProjectIcon::None);
