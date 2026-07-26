@@ -1,9 +1,11 @@
-use ratatui::{layout::Rect, text::Line};
+use ratatui::layout::Rect;
 
-pub(super) fn caret_position(area: Rect, line: &Line<'_>, row: usize, scroll: u16) -> (u16, u16) {
-    let line_width = u16::try_from(line.width().saturating_sub(1)).unwrap_or(u16::MAX);
+/// Terminal position of the text caret for a dialog whose content row is `row`
+/// and whose caret sits `column` display columns into that row.
+pub(super) fn caret_position(area: Rect, column: usize, row: usize, scroll: u16) -> (u16, u16) {
+    let column = u16::try_from(column).unwrap_or(u16::MAX);
     let row = u16::try_from(row).unwrap_or(u16::MAX);
-    let x = area.x.saturating_add(1).saturating_add(line_width);
+    let x = area.x.saturating_add(1).saturating_add(column);
     let y = area
         .y
         .saturating_add(1)
@@ -20,16 +22,15 @@ mod tests {
     #[test]
     fn caret_uses_display_width_and_scroll_offset() {
         let area = Rect::new(3, 5, 30, 8);
-        let line = Line::from(" prompt: 日本_");
 
-        assert_eq!(caret_position(area, &line, 4, 2), (17, 8));
+        // " prompt: 日本" is 13 display columns wide.
+        assert_eq!(caret_position(area, 13, 4, 2), (17, 8));
     }
 
     #[test]
     fn caret_is_clamped_to_popup_area() {
         let area = Rect::new(3, 5, 5, 3);
-        let line = Line::from(" input beyond popup_");
 
-        assert_eq!(caret_position(area, &line, 20, 0), (6, 6));
+        assert_eq!(caret_position(area, 19, 20, 0), (6, 6));
     }
 }

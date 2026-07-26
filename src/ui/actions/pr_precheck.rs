@@ -30,7 +30,7 @@ impl App {
             repo_path: repo_path.clone(),
             agent_id: agent_id.clone(),
             branch: branch.clone(),
-            input: self.config.pr_prompt.clone(),
+            input: self.config.pr_prompt.clone().into(),
         };
         self.pr_precheck_job = Some(PrPrecheckJob {
             repo_path: repo_path.clone(),

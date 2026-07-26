@@ -53,8 +53,11 @@ pub(crate) mod spinner;
 mod summary;
 #[cfg(test)]
 mod tests;
+mod text_input;
 mod theme;
 mod tree;
+
+use text_input::TextInput;
 
 pub use event_loop::run;
 
@@ -65,18 +68,18 @@ enum Mode {
     },
     PromptAgent {
         repo: usize,
-        input: String,
+        input: TextInput,
     },
     PromptRepo {
-        input: String,
+        input: TextInput,
     },
     PromptOverseer {
-        input: String,
+        input: TextInput,
     },
     PromptInbox {
         target_session: String,
         label: String,
-        input: String,
+        input: TextInput,
     },
     ConfirmKill {
         repo: usize,
@@ -109,7 +112,7 @@ enum Mode {
         repo_path: PathBuf,
         agent_id: String,
         branch: String,
-        input: String,
+        input: TextInput,
     },
     ConfirmDeleteBranch {
         repo: usize,

@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::{Result, model::Selection};
 
-use super::super::{App, Mode, PreviewPane};
+use super::super::{App, Mode, PreviewPane, text_input::TextInput};
 
 pub(super) enum PromptAction {
     Stay,
@@ -10,20 +10,15 @@ pub(super) enum PromptAction {
     Submit(String),
 }
 
-pub(super) fn prompt_action(input: &mut String, key: KeyEvent) -> PromptAction {
+pub(super) fn prompt_action(input: &mut TextInput, key: KeyEvent) -> PromptAction {
     match key.code {
         KeyCode::Esc => PromptAction::Cancel,
-        KeyCode::Enter if input.trim().is_empty() => PromptAction::Stay,
-        KeyCode::Enter => PromptAction::Submit(input.trim().to_string()),
-        KeyCode::Backspace => {
-            input.pop();
+        KeyCode::Enter if input.text().trim().is_empty() => PromptAction::Stay,
+        KeyCode::Enter => PromptAction::Submit(input.text().trim().to_string()),
+        _ => {
+            input.handle_key(key);
             PromptAction::Stay
         }
-        KeyCode::Char(ch) => {
-            input.push(ch);
-            PromptAction::Stay
-        }
-        _ => PromptAction::Stay,
     }
 }
 
@@ -55,7 +50,7 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         Some(Selection::OverseerCategory(category)) => {
             if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
                 app.mode = Mode::PromptOverseer {
-                    input: String::new(),
+                    input: TextInput::new(),
                 };
                 return true;
             }
@@ -152,7 +147,7 @@ impl App {
         self.mode = Mode::PromptInbox {
             target_session,
             label,
-            input: String::new(),
+            input: TextInput::new(),
         };
     }
 

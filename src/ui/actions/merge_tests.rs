@@ -11,7 +11,7 @@ use crate::{
     config::Config,
     model::{AgentNode, RepoNode, Selection, Status},
     registry::Registry,
-    ui::Mode,
+    ui::{Mode, TextInput},
 };
 
 fn agent(id: &str) -> AgentNode {
@@ -232,7 +232,7 @@ fn ctrl_c_force_quits_from_prompt_while_merging() {
     install_job(&mut app, "/repo", "wanted");
     app.mode = Mode::PromptAgent {
         repo: 0,
-        input: String::new(),
+        input: TextInput::new(),
     };
 
     assert!(
@@ -242,7 +242,7 @@ fn ctrl_c_force_quits_from_prompt_while_merging() {
     let Mode::PromptAgent { input, .. } = &app.mode else {
         panic!("prompt mode changed");
     };
-    assert!(input.is_empty());
+    assert!(input.text().is_empty());
 }
 
 #[test]

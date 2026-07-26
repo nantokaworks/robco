@@ -7,12 +7,24 @@ use crate::{config::Config, model::OverseerCategory, registry::Registry};
 
 #[test]
 fn enter_submits_trimmed_instruction() {
-    let mut input = "  review task  ".to_string();
+    let mut input = TextInput::from("  review task  ");
     let action = prompt_action(
         &mut input,
         KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
     );
     assert!(matches!(action, PromptAction::Submit(text) if text == "review task"));
+}
+
+#[test]
+fn editing_keys_reach_the_shared_buffer_instead_of_appending() {
+    let mut input = TextInput::from("review task");
+
+    for code in [KeyCode::Home, KeyCode::Delete, KeyCode::Char('p')] {
+        let action = prompt_action(&mut input, KeyEvent::new(code, KeyModifiers::NONE));
+        assert!(matches!(action, PromptAction::Stay));
+    }
+
+    assert_eq!(input, *"peview task");
 }
 
 #[test]
@@ -144,7 +156,7 @@ fn enter_opens_the_answer_prompt_for_an_actionable_row() {
         } => {
             assert_eq!(target_session, "robco-agent-1");
             assert_eq!(label, "agent-1 — worker");
-            assert!(input.is_empty());
+            assert!(input.text().is_empty());
         }
         _ => panic!("enter did not open the answer prompt"),
     }
