@@ -9,6 +9,22 @@ fn naming_slug_caps_at_word_boundary() {
 }
 
 #[test]
+fn naming_slug_keeps_the_source_and_number_when_capping() {
+    // The number is what must survive the cap. Capping cuts at the last hyphen
+    // inside the budget, and the leading `dropr-<n>-` sits well inside it.
+    assert_eq!(
+        cap_name_slug("dropr-297-Lead-auto-created-worktree-branch-and-session-names"),
+        "dropr-297-Lead-auto-created"
+    );
+    // A title carrying no hyphen of its own still cannot eat the prefix: the
+    // hyphen after the number is the boundary the cap falls back to.
+    assert_eq!(
+        cap_name_slug("dropr-297-Leadautocreatedworktreebranchnames"),
+        "dropr-297"
+    );
+}
+
+#[test]
 fn naming_slug_trims_trailing_hyphen() {
     assert_eq!(cap_name_slug("short-title-"), "short-title");
 }

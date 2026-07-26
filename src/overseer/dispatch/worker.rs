@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use super::{Candidate, claim};
+use super::{Candidate, claim, naming, naming::TaskSource};
 use crate::overseer::{
     OVERSEER_AGENT_ID,
     ledger::{Ledger, LedgerEntry, LedgerPhase},
@@ -126,21 +126,11 @@ fn record_attempt(ledger: &mut Ledger, task_id: &str, display_id: &str) -> u32 {
     attempts
 }
 
-/// tmux-safe session name for the worker, or `None` when the display id is
-/// empty and there is nothing to name the session after.
+/// Name for the worker's worktree, branch, and session. Candidates reach
+/// dispatch through the dropr poller, so their numbers come from dropr's
+/// display ids.
 fn name_slug(task: &Candidate) -> Option<String> {
-    let display_id = task
-        .display_id
-        .trim()
-        .trim_start_matches('#')
-        .strip_prefix("task-")
-        .unwrap_or_else(|| task.display_id.trim().trim_start_matches('#'));
-    (!display_id.is_empty()).then(|| {
-        format!(
-            "task-{display_id}-{}",
-            crate::tmux::sanitize_target_part(&task.title)
-        )
-    })
+    naming::name_slug(TaskSource::Dropr, &task.display_id, &task.title)
 }
 
 #[cfg(test)]
@@ -196,6 +186,29 @@ mod tests {
         );
         assert_eq!(plan.decisions[0].reason, "max_retries");
         assert!(!plan.decisions[0].dispatch);
+    }
+
+    fn candidate(display_id: &str, title: &str) -> Candidate {
+        Candidate {
+            task_id: "23O9SkXUps3lOIHuXvj4Z".into(),
+            display_id: display_id.into(),
+            title: title.into(),
+            repo: "/repo".into(),
+            author: "allowed".into(),
+            priority: "medium".into(),
+            workspace: "workspace-1".into(),
+        }
+    }
+
+    #[test]
+    fn a_candidate_is_named_from_its_dropr_number() {
+        // Shape coverage lives with the slug itself in `naming`; what matters
+        // here is that a dispatched candidate is numbered from dropr.
+        assert_eq!(
+            name_slug(&candidate("#295", "Add a top-level language config")).as_deref(),
+            Some("dropr-295-Add-a-top-level-language-config")
+        );
+        assert_eq!(name_slug(&candidate("", "Add a config")), None);
     }
 
     #[test]
