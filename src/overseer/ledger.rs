@@ -8,8 +8,6 @@ use crate::Result;
 
 mod views;
 
-pub use views::ActiveWorkers;
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
     pub task_id: String,
@@ -175,6 +173,17 @@ pub struct Ledger {
     /// Repositories waiting on a post-merge fast-forward, keyed by repository
     /// path. Defaulted so ledgers written before the field existed still load.
     pub merge_settling: BTreeMap<String, MergeSettling>,
+}
+
+/// Live workers counted globally and per repository.
+///
+/// Defined here rather than beside the query that builds it in [`views`]: the
+/// one caller that names the type is behind `cfg(target_os = "macos")`, so a
+/// re-export out of `views` is an unused import on every other platform.
+#[derive(Debug, Default, Eq, PartialEq)]
+pub struct ActiveWorkers {
+    pub count: usize,
+    pub repos: BTreeMap<String, usize>,
 }
 
 impl LedgerPhase {

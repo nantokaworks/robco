@@ -8,14 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{Ledger, LedgerPhase, terminal};
-
-/// Live workers counted globally and per repository.
-#[derive(Debug, Default, Eq, PartialEq)]
-pub struct ActiveWorkers {
-    pub count: usize,
-    pub repos: BTreeMap<String, usize>,
-}
+use super::{ActiveWorkers, Ledger, LedgerPhase, terminal};
 
 /// A pull request the merge gate escalated and no longer acts on.
 ///
