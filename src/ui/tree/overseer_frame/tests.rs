@@ -32,6 +32,7 @@ fn inbox_app() -> App {
         target_session: None,
         target_id: "task-1".into(),
         label: "task-1".into(),
+        detail: "needs user".into(),
         at: chrono::Utc::now(),
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
@@ -99,14 +100,41 @@ fn the_selected_inbox_item_is_the_row_the_frame_scrolls_to() {
         selected.trim_start().starts_with("> [ESC]"),
         "selected row: {selected:?}"
     );
-    // The rows above it: the `inbox (N)` header, and the category row that owns
-    // both — neither of which the cursor is on.
-    assert!(content.lines[row - 1].to_string().contains("inbox (1)"));
+    // The category expands straight into item rows: the row above the first
+    // item is the category itself, with no second `inbox (N)` level between
+    // them. A stale row offset here would scroll the frame to the wrong row.
+    let category = content.lines[row - 1].to_string();
     assert!(
-        content.lines[row - 2]
-            .to_string()
-            .contains(OverseerCategory::Inbox.label())
+        category.contains(OverseerCategory::Inbox.label()),
+        "row above the first item: {category:?}"
     );
+    // The count the nested row used to carry is on the category row already, so
+    // removing that level lost no information.
+    // The lone item is display-only, so none of the one listed is actionable.
+    assert!(category.contains("0/1 actionable"), "{category:?}");
+    assert!(
+        !content
+            .lines
+            .iter()
+            .any(|line| line.to_string().contains("inbox (")),
+        "the duplicated inbox count row is back"
+    );
+}
+
+#[test]
+fn an_empty_inbox_still_renders_a_visible_empty_state() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+    let category = content
+        .lines
+        .iter()
+        .position(|line| line.to_string().contains(OverseerCategory::Inbox.label()))
+        .expect("no Inbox category row");
+
+    assert_eq!(content.lines[category + 1].to_string().trim(), "none");
 }
 
 #[test]

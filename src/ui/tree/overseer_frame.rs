@@ -95,12 +95,12 @@ fn build_content_with_warnings(
             );
             // Inbox items are rows, not read-only detail: when the cursor is on
             // one, it — not the category above it — is what the frame scrolls to
-            // keep on screen. The detail builder draws the marker itself.
+            // keep on screen. The detail builder draws the marker itself, and
+            // emits nothing ahead of the items, so item `n` is detail row `n`.
             if let Some(Selection::OverseerInbox(index)) = selected
                 && category == OverseerCategory::Inbox
             {
-                let row = first_detail + crate::ui::overseer::INBOX_ITEM_ROW_OFFSET + index;
-                selected_row = u16::try_from(row).unwrap_or(u16::MAX);
+                selected_row = u16::try_from(first_detail + index).unwrap_or(u16::MAX);
             }
         }
     }

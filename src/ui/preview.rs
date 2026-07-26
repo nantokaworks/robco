@@ -50,10 +50,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         (PreviewPane::Claude, Some(Selection::OverseerCategory(_))) => {
             overseer::control_preview(app)
         }
-        // An item row previews the list it belongs to, with the same marker the
-        // left frame draws on it.
-        (_, Some(Selection::OverseerInbox(_))) => {
-            super::overseer::category_preview(app, crate::model::OverseerCategory::Inbox)
+        // An item row previews itself, not the list it belongs to: the other
+        // items are already on screen in the left frame. `panes_for` gives this
+        // selection a single Info tab, so the catch-all pane is that one tab.
+        (_, Some(Selection::OverseerInbox(index))) => {
+            super::overseer::inbox_item_preview(app, index)
         }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];

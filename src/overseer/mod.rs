@@ -9,6 +9,7 @@ pub(crate) mod config_write;
 pub mod daemon;
 pub(crate) mod daily;
 pub mod discord;
+pub mod dismissals;
 pub mod dispatch;
 pub mod exec;
 pub mod heartbeat;
@@ -20,6 +21,7 @@ pub mod monitor;
 pub mod review;
 pub mod runtime_request;
 pub(crate) mod session;
+pub(crate) mod statefile;
 pub mod templates;
 pub mod triage;
 pub(crate) mod wake;
@@ -109,6 +111,12 @@ pub fn runtime_requests_dir() -> Result<PathBuf> {
 
 pub fn inbox_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("inbox.jsonl"))
+}
+
+/// Inbox rows the operator has cleared. Suppression only — the decisions and
+/// ledger entries the rows are derived from are never touched.
+pub fn inbox_dismissals_path() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("inbox_dismissals.json"))
 }
 
 pub fn pidfile_path() -> Result<PathBuf> {

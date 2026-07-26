@@ -2,7 +2,7 @@ use std::{fs, time::Instant, time::SystemTime};
 
 use crate::{
     config::Config,
-    overseer::{ledger::Ledger, logging},
+    overseer::{dismissals::Dismissals, ledger::Ledger, logging},
     registry::Registry,
 };
 
@@ -14,7 +14,7 @@ use crate::ui::{
 use super::{background_refresh::StatusResult, background_support::merge_status};
 
 pub(super) struct OverseerResult {
-    pub(super) inbox: Vec<inbox::InboxItem>,
+    pub(super) inbox: inbox::Inbox,
     pub(super) snapshot: OverseerSnapshot,
 }
 
@@ -22,7 +22,12 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
     let ledger = Ledger::load().unwrap_or_default();
     let decisions = logging::tail(DECISION_SNAPSHOT_LIMIT).unwrap_or_default();
     let reports = inbox::question_reports(registry);
-    let inbox = inbox::aggregate(&ledger, &decisions, &reports);
+    let inbox = inbox::aggregate(
+        &ledger,
+        &decisions,
+        &reports,
+        &Dismissals::load().unwrap_or_default(),
+    );
     let heartbeat = crate::overseer::heartbeat_path().ok();
     let heartbeat_age = heartbeat
         .as_ref()
@@ -83,7 +88,8 @@ impl App {
         // escalation pushed into that slot — and `y` would approve that worker.
         let selected_identity = self.selected_item().map(|sel| self.item_key(sel));
         self.overseer_snapshot = result.snapshot;
-        self.overseer_inbox = result.inbox;
+        self.overseer_inbox = result.inbox.items;
+        self.overseer_inbox_targets = result.inbox.targets;
         self.restore_selection(selected_identity);
     }
 
@@ -140,7 +146,7 @@ mod tests {
 
         fn refresh(app: &mut App, decisions: &[DecisionEntry]) {
             app.apply_overseer(OverseerResult {
-                inbox: inbox::aggregate(&Ledger::default(), decisions, &[]),
+                inbox: inbox::aggregate(&Ledger::default(), decisions, &[], &Dismissals::default()),
                 snapshot: OverseerSnapshot::default(),
             });
         }
@@ -176,7 +182,10 @@ mod tests {
             repos: Vec::new(),
             overseer_visible: true,
             overseer: OverseerResult {
-                inbox: Vec::new(),
+                inbox: inbox::Inbox {
+                    items: Vec::new(),
+                    targets: std::collections::HashSet::new(),
+                },
                 snapshot,
             },
         }

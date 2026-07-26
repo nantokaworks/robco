@@ -165,6 +165,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
                 hint_line("y reset   n/esc cancel"),
             ],
         ),
+        Mode::ConfirmInboxDismissAll { count } => (
+            "clear the overseer inbox?",
+            vec![
+                Line::from(format!("hide all {count} listed item(s)")),
+                Line::from("decisions.jsonl and ledger.json are not modified;"),
+                Line::from("a newer escalation for the same target is listed again"),
+                hint_line("y clear   n/esc cancel"),
+            ],
+        ),
         Mode::ErrorDialog {
             title,
             lines,

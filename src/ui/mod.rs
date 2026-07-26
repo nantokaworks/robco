@@ -36,7 +36,7 @@ mod dialog;
 mod error_dialog;
 mod event_loop;
 mod help;
-mod inbox;
+pub(crate) mod inbox;
 mod input;
 mod input_wrap;
 mod layout;
@@ -134,6 +134,12 @@ enum Mode {
     /// failure counter. Reachable only while the overseer panel is visible and
     /// the circuit is open.
     ConfirmOverseerReset,
+    /// Clear every listed Inbox row. Holds the count the dialog was opened with
+    /// so the prompt states what it is about to do; the rows themselves are read
+    /// again on confirmation.
+    ConfirmInboxDismissAll {
+        count: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -233,6 +239,10 @@ pub struct App {
     /// [`Selection::OverseerInbox`] entries into this list; it carries no cursor
     /// of its own.
     overseer_inbox: Vec<inbox::InboxItem>,
+    /// Identity of every item the last aggregation derived, including the ones a
+    /// dismissal is hiding. Pruning the dismissal list is done against this, not
+    /// against `overseer_inbox` — see [`inbox::Inbox::targets`].
+    overseer_inbox_targets: HashSet<(String, String)>,
     /// Overseer state (ledger, decisions, daemon liveness) captured off-thread by
     /// the background status worker. The overseer frame and previews render from
     /// this instead of reading disk on every draw.
@@ -279,6 +289,7 @@ impl App {
             background_refresh: BackgroundRefresh::new(),
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),
+            overseer_inbox_targets: HashSet::new(),
             overseer_snapshot: overseer::OverseerSnapshot::default(),
         };
         if app.prune_unmanaged_agents() {

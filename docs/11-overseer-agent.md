@@ -725,22 +725,54 @@ category row summarises it as `N/M actionable` — how many of the listed items 
 tmux session to answer into.
 
 Expanding the category (`l`, `→`, or `Enter` on the category row) turns each item into a
-row of its own. Those rows are ordinary tree rows: `j` / `k` move onto them, they carry the
-tree's own selection marker, and `h` folds them back under the category. There is no second
-cursor and no key that only works while a particular preview tab is showing — an item lives
-in the left frame, so what the right pane happens to display never decides what acting on it
-does.
+row of its own — one level, with no repeated count row between the category and its items,
+because the category row's own `N/M actionable` summary already carries the count. Those
+rows are ordinary tree rows: `j` / `k` move onto them, they carry the tree's own selection
+marker, and `h` folds them back under the category. There is no second cursor and no key
+that only works while a particular preview tab is showing — an item lives in the left
+frame, so what the right pane happens to display never decides what acting on it does.
 
-Two keys act on the selected item:
+Selecting an item previews *that item*: its kind, target, session, timestamp, and its
+reason in full. The sidebar trims the row label to the frame width, so the pane is where
+the whole escalation is readable. It deliberately does not re-list the other items — they
+are already on screen a few columns to the left.
+
+Four keys act on the selected item:
 
 - `Enter` opens the answer prompt. Submitting sends the text, then `Enter`, to that item's
   tmux session — the same thing an operator would type after attaching.
 - `y` approves it, sending `y` + `Enter` to the same session.
+- `d` dismisses it.
+- `D` clears the whole Inbox, behind a confirmation. It is also bound on the Inbox category
+  row itself.
 
 An item whose worker is dead or branch-only has no session to answer into. It is still
 listed — the escalation is real and the operator still needs to see it — but it renders as
-`display-only`, and both keys say so rather than appearing to send something. `Enter` on
-such a row never falls through to attaching a session.
+`display-only`, and both `Enter` and `y` say so rather than appearing to send something.
+`Enter` on such a row never falls through to attaching a session.
+
+### Dismissing Inbox items
+
+The Inbox is derived, not stored: it is rebuilt from the decision log, the ledger, and the
+registry on every refresh. Dismissing therefore cannot delete a record, and does not try
+to — it writes a suppression to `~/.robco/overseer/inbox_dismissals.json` that the
+aggregation applies as a filter. `decisions.jsonl` and `ledger.json` are never touched.
+
+A suppression records the item's `(kind, target_id)` identity plus the timestamp the row
+carried when it was dismissed, and hides only items at or before that timestamp. A *newer*
+escalation for the same target is listed again — otherwise clearing one stale alert would
+silently mute that task forever, which is the failure mode the whole design exists to
+avoid. Entries whose target no longer appears in any source are pruned on the next write,
+so the file does not grow one row per escalation the Overseer has ever raised.
+
+This is what the ledger-sourced rows needed. A ledger entry parked at `phase=escalated`
+never ages out on its own, unlike a decision-sourced row, which falls out of the Inbox once
+enough newer decisions accumulate. Before dismissal existed, the only way to clear one was
+to stop the daemon and hand-edit `ledger.json`.
+
+`robco overseer clear-inbox` is the scriptable equivalent of `D`: it aggregates the same
+three sources and suppresses everything they currently produce, so the Inbox can be cleared
+with the TUI closed.
 
 The list is re-aggregated on every refresh and sorted newest-first, so a newly arrived
 escalation shifts the rows below it. The cursor is re-anchored by the item's own identity

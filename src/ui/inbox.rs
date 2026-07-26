@@ -3,10 +3,12 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 
 use crate::{
+    Result,
     model::Status,
     overseer::{
+        dismissals::Dismissals,
         ledger::{Ledger, LedgerPhase},
-        logging::{DecisionEntry, DecisionKind},
+        logging::{self, DecisionEntry, DecisionKind},
     },
     registry::Registry,
     status::{self, WatchStatusState},
@@ -21,11 +23,20 @@ pub(crate) enum InboxKind {
 impl InboxKind {
     /// Short tag at the head of an inbox row. It doubles as the kind half of an
     /// item's stable identity, so the row the cursor sits on survives a refresh
-    /// that re-sorts the list.
+    /// that re-sorts the list — and so a dismissal recorded against one kind
+    /// cannot hide the other kind's row for the same target.
     pub(crate) fn code(self) -> &'static str {
         match self {
             Self::Escalation => "ESC",
             Self::Question => "?",
+        }
+    }
+
+    /// Spelled-out kind for the preview pane, which has the width for it.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Escalation => "escalation",
+            Self::Question => "question",
         }
     }
 }
@@ -36,7 +47,30 @@ pub(crate) struct InboxItem {
     pub target_session: Option<String>,
     pub target_id: String,
     pub label: String,
+    /// The item's reason in full. `label` is written to fit a sidebar row and
+    /// gets trimmed to the frame width; this is what the preview pane shows so
+    /// the operator can read the whole escalation before acting on it.
+    pub detail: String,
     pub at: DateTime<Utc>,
+}
+
+impl InboxItem {
+    /// The `(kind, target_id)` pair the aggregation dedupes on and dismissals
+    /// are recorded against.
+    pub(crate) fn identity(&self) -> (String, String) {
+        (self.kind.code().to_string(), self.target_id.clone())
+    }
+}
+
+/// One aggregation of the Inbox.
+pub(crate) struct Inbox {
+    /// What the operator sees: newest first, dismissed alerts removed.
+    pub items: Vec<InboxItem>,
+    /// The identity of every item the sources produced this pass, dismissed or
+    /// not. Pruning the dismissal list needs this unfiltered set — pruning
+    /// against `items` would delete the entries doing the hiding, and every
+    /// dismissed row would come straight back.
+    pub targets: HashSet<(String, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,7 +87,8 @@ pub(crate) fn aggregate(
     ledger: &Ledger,
     decisions: &[DecisionEntry],
     reports: &[AgentQuestionReport],
-) -> Vec<InboxItem> {
+    dismissals: &Dismissals,
+) -> Inbox {
     let agents = reports
         .iter()
         .map(|report| (report.agent_id.as_str(), report))
@@ -92,6 +127,7 @@ pub(crate) fn aggregate(
             target_session: session,
             target_id: target_id.to_string(),
             label: format!("{target_id} — {}", decision.reason),
+            detail: decision.reason.clone(),
             at: decision.at,
         });
     }
@@ -109,6 +145,12 @@ pub(crate) fn aggregate(
             target_session: session,
             target_id: entry.display_id.clone(),
             label: format!("{} — {} / {}", entry.display_id, entry.repo, entry.agent_id),
+            // The ledger records no reason, so name what the row actually is:
+            // an entry parked at `escalated`, which nothing ages out.
+            detail: format!(
+                "ledger entry parked at phase=escalated — repo {}, agent {}, branch {}",
+                entry.repo, entry.agent_id, entry.branch
+            ),
             at: entry.dispatched_at,
         });
     }
@@ -121,6 +163,10 @@ pub(crate) fn aggregate(
             target_session: Some(report.tmux_session.clone()),
             target_id: report.agent_id.clone(),
             label: format!("{} — {}", report.agent_id, report.title),
+            detail: format!(
+                "worker is waiting on a confirmation prompt: {}",
+                report.title
+            ),
             at: report.at,
         });
     }
@@ -128,7 +174,22 @@ pub(crate) fn aggregate(
     items.sort_by_key(|item| std::cmp::Reverse(item.at));
     let mut seen = HashSet::new();
     items.retain(|item| seen.insert((item.kind, item.target_id.clone())));
-    items
+    let targets = items.iter().map(InboxItem::identity).collect();
+    // The suppression filter is the last step, so `targets` still names every
+    // identity the sources produced.
+    items.retain(|item| !dismissals.suppresses(item.kind.code(), &item.target_id, item.at));
+    Inbox { items, targets }
+}
+
+/// Aggregate the Inbox straight off disk, the way the TUI's background refresh
+/// does. Used by `robco overseer clear-inbox`, which has no App to read from.
+pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
+    Ok(aggregate(
+        &Ledger::load()?,
+        &logging::tail(super::overseer::DECISION_SNAPSHOT_LIMIT)?,
+        &question_reports(registry),
+        &Dismissals::load()?,
+    ))
 }
 
 pub(crate) fn question_reports(registry: &Registry) -> Vec<AgentQuestionReport> {
@@ -163,103 +224,5 @@ pub(crate) fn question_reports(registry: &Registry) -> Vec<AgentQuestionReport> 
 }
 
 #[cfg(test)]
-mod tests {
-    use chrono::TimeZone;
-
-    use super::*;
-    use crate::overseer::ledger::LedgerEntry;
-
-    fn at(second: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, second).unwrap()
-    }
-
-    fn report(awaiting_confirmation: bool) -> AgentQuestionReport {
-        AgentQuestionReport {
-            agent_id: "agent-1".into(),
-            title: "worker".into(),
-            tmux_session: "robco-agent-1".into(),
-            status: Status::Waiting,
-            awaiting_confirmation,
-            at: at(3),
-        }
-    }
-
-    fn report_with_status(status: Status) -> AgentQuestionReport {
-        AgentQuestionReport {
-            status,
-            ..report(false)
-        }
-    }
-
-    fn escalated_ledger() -> Ledger {
-        Ledger {
-            entries: vec![LedgerEntry {
-                task_id: "task-1".into(),
-                display_id: "#159".into(),
-                repo: "robco".into(),
-                agent_id: "agent-1".into(),
-                branch: "task-159".into(),
-                phase: LedgerPhase::Escalated,
-                dispatched_at: at(1),
-                settled_at: None,
-                retries: 0,
-                pr_url: None,
-                branch_updates: 0,
-                merge_recovery: Default::default(),
-                merge_hold: Default::default(),
-                manual_merge_skip: None,
-            }],
-            ..Ledger::default()
-        }
-    }
-
-    #[test]
-    fn question_and_live_escalation_are_answerable() {
-        let mut decision = DecisionEntry::new(DecisionKind::Escalate, "needs user");
-        decision.at = at(2);
-        decision.task = Some("task-1".into());
-        let items = aggregate(&escalated_ledger(), &[decision], &[report(true)]);
-
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0].kind, InboxKind::Question);
-        assert_eq!(items[0].target_session.as_deref(), Some("robco-agent-1"));
-        assert_eq!(items[1].kind, InboxKind::Escalation);
-        assert_eq!(items[1].target_session.as_deref(), Some("robco-agent-1"));
-        assert!(items[1].label.contains("needs user"));
-    }
-
-    #[test]
-    fn excludes_waiting_agents_without_confirmation_prompt() {
-        assert!(aggregate(&Ledger::default(), &[], &[report(false)]).is_empty());
-    }
-
-    #[test]
-    fn global_and_stale_escalations_are_display_only() {
-        let global = DecisionEntry::new(DecisionKind::Escalate, "global alert");
-        let stale = aggregate(&escalated_ledger(), &[], &[]);
-        let global = aggregate(&Ledger::default(), &[global], &[]);
-
-        assert_eq!(stale.len(), 1);
-        assert_eq!(stale[0].target_session, None);
-        assert_eq!(global.len(), 1);
-        assert_eq!(global[0].target_session, None);
-        assert_eq!(global[0].target_id, "overseer");
-    }
-
-    #[test]
-    fn escalation_requires_a_live_target_session() {
-        for status in [Status::Dead, Status::BranchOnly] {
-            let items = aggregate(&escalated_ledger(), &[], &[report_with_status(status)]);
-            assert_eq!(items.len(), 1);
-            assert_eq!(items[0].target_session, None);
-        }
-
-        let items = aggregate(
-            &escalated_ledger(),
-            &[],
-            &[report_with_status(Status::Running)],
-        );
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].target_session.as_deref(), Some("robco-agent-1"));
-    }
-}
+#[path = "inbox_tests.rs"]
+mod tests;
