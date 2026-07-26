@@ -68,6 +68,17 @@ fn parses_overseer_set() {
 }
 
 #[test]
+fn parses_overseer_clear_inbox() {
+    // The scriptable equivalent of the TUI's `D`, so the operator can clear a
+    // stale inbox without the TUI running.
+    let args = Args::try_parse_from(["robco", "overseer", "clear-inbox"]).unwrap();
+    let Some(Command::Overseer(args)) = args.command else {
+        panic!("expected overseer")
+    };
+    assert!(matches!(args.command, OverseerCommand::ClearInbox));
+}
+
+#[test]
 fn parses_overseer_daily_limit() {
     let args = Args::try_parse_from(["robco", "overseer", "daily-limit", "42"]).unwrap();
     let Some(Command::Overseer(args)) = args.command else {

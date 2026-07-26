@@ -63,6 +63,7 @@ fn inbox_app(target_session: Option<&str>) -> App {
         target_session: target_session.map(ToString::to_string),
         target_id: "agent-1".into(),
         label: "agent-1 — worker".into(),
+        detail: "worker is waiting on a confirmation prompt: worker".into(),
         at: chrono::Utc::now(),
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);

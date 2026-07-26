@@ -25,10 +25,12 @@ use crate::{
 };
 
 mod escalation;
+mod inbox;
 mod service;
 mod settings;
 
 pub(crate) use escalation::escalate_workers;
+use inbox::clear_inbox;
 use service::install_service;
 #[cfg(target_os = "macos")]
 pub(crate) use service::write_service_plist;
@@ -49,6 +51,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Protection(args) => protection_mode(args.mode),
         OverseerCommand::Autonomy(args) => autonomy_level(args.level),
         OverseerCommand::Panic => panic_stop(),
+        OverseerCommand::ClearInbox => clear_inbox(),
         OverseerCommand::InstallService => install_service(),
     }
 }

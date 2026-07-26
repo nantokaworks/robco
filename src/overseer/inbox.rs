@@ -5,9 +5,9 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use fd_lock::RwLock;
 use serde::{Deserialize, Serialize};
 
+use super::statefile::{atomic_replace, with_lock};
 use crate::Result;
 
 const ROTATION_THRESHOLD: u64 = 1024 * 1024;
@@ -199,37 +199,6 @@ fn load_offset(path: &Path) -> Result<u64> {
 
 fn persist_offset(path: &Path, offset: u64) -> Result<()> {
     atomic_replace(path, offset.to_string().as_bytes())
-}
-
-fn atomic_replace(path: &Path, contents: &[u8]) -> Result<()> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(parent)?;
-    let mut temp_name = path.as_os_str().to_owned();
-    temp_name.push(".tmp");
-    let temp_path = PathBuf::from(temp_name);
-    let result = (|| -> std::io::Result<()> {
-        let mut temp = File::create(&temp_path)?;
-        temp.write_all(contents)?;
-        temp.sync_all()?;
-        fs::rename(&temp_path, path)?;
-        File::open(parent)?.sync_all()
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(temp_path);
-    }
-    result.map_err(Into::into)
-}
-
-fn with_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
-    let lock_file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(path.with_extension("lock"))?;
-    let mut lock = RwLock::new(lock_file);
-    let _guard = lock.write()?;
-    operation()
 }
 
 #[cfg(test)]

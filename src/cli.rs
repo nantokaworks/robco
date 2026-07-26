@@ -95,6 +95,10 @@ pub enum OverseerCommand {
     Autonomy(OverseerAutonomyArgs),
     /// Disable dispatch and terminate all Overseer workers.
     Panic,
+    /// Hide every currently listed Inbox item. Suppression only: the decision
+    /// log and the ledger are left alone, and a newer escalation for the same
+    /// target is listed again.
+    ClearInbox,
     /// Write a launchd service plist and load or reload it after confirmation.
     InstallService,
 }

@@ -52,11 +52,18 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         return true;
     }
     match app.selected_item() {
-        Some(Selection::OverseerCategory(_)) => {
+        Some(Selection::OverseerCategory(category)) => {
             if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
                 app.mode = Mode::PromptOverseer {
                     input: String::new(),
                 };
+                return true;
+            }
+            // Clear-all is offered from the category row whether or not it is
+            // expanded: the row's own summary already says how many items the
+            // operator is about to clear.
+            if code == KeyCode::Char('D') && category == crate::model::OverseerCategory::Inbox {
+                app.confirm_dismiss_inbox();
                 return true;
             }
             false
@@ -91,6 +98,17 @@ fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
         // memory from opening a clone prompt, and says where answering went.
         KeyCode::Char('a') => {
             app.show_message("press enter to answer the selected inbox item");
+            true
+        }
+        // Dismissing one row is undoable by hand (delete the entry) and hides a
+        // single alert, so it acts immediately. Clearing the list is not, so `D`
+        // goes through the same confirmation the other bulk overseer actions do.
+        KeyCode::Char('d') => {
+            app.dismiss_inbox_item(index);
+            true
+        }
+        KeyCode::Char('D') => {
+            app.confirm_dismiss_inbox();
             true
         }
         _ => false,

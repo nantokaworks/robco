@@ -9,6 +9,7 @@ use super::{
 };
 
 mod confirm;
+mod inbox_dismiss;
 // `dialog` phrases the bulk-toggle confirmation from the same helper the
 // resulting message uses, so the prompt and the outcome cannot drift apart.
 pub(in crate::ui) mod management;
@@ -249,6 +250,7 @@ impl App {
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
+            | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => unreachable!("handled above"),
         }
 

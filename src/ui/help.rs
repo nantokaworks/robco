@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 43;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 46;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -25,6 +25,9 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  l              expand OVERSEER > Inbox to reach its item rows"),
         Line::from("  enter          on an item row: answer the waiting worker"),
         Line::from("  y              on an item row: approve it (sends y + enter)"),
+        Line::from("  d              on an item row: dismiss it (hides the row only)"),
+        Line::from("  D              on an item or Inbox row: clear the inbox (confirms)"),
+        Line::from("                 also: robco overseer clear-inbox"),
         Line::from("Repo"),
         Line::from("  a              clone <git-url> [branch], or add local repo path"),
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),

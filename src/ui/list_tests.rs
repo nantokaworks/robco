@@ -39,6 +39,7 @@ fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
         target_session: Some("robco-agent-1".into()),
         target_id: target_id.into(),
         label: format!("{target_id} — escalated"),
+        detail: format!("{target_id} escalated"),
         at: chrono::Utc::now(),
     }
 }
