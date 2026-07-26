@@ -17,3 +17,30 @@ concurrency:
 jobs:
   validate:
     uses: nantokaworks/.github/.github/workflows/basic-checks.yml@main
+
+  # The shared workflow above inspects commit messages and PR bodies only; it runs no
+  # toolchain. The Rust checks live here rather than there because the shared workflow is
+  # consumed by repositories that are not Rust projects. These are the same three commands
+  # the `check` stage of scripts/release.sh runs, so a branch that is green here does not
+  # fail the release pipeline on formatting or lint.
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install rustfmt and clippy
+        run: rustup component add rustfmt clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --locked

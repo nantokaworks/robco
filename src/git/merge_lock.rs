@@ -42,10 +42,7 @@ pub fn with_merge_lock<T>(repo: &Path, f: impl FnOnce() -> Result<T>) -> Result<
 /// leaves the work for the next pass, so the caller wants to *know* it lost
 /// rather than to be handed an error it would only have to recognise and
 /// discard.
-pub fn with_merge_lock_if_free<T>(
-    repo: &Path,
-    f: impl FnOnce() -> Result<T>,
-) -> Result<Option<T>> {
+pub fn with_merge_lock_if_free<T>(repo: &Path, f: impl FnOnce() -> Result<T>) -> Result<Option<T>> {
     run_if_free(&mut open(repo)?, repo, f)
 }
 

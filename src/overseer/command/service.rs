@@ -1,5 +1,11 @@
+//! Everything below `install_service` is launchd, and launchd is macOS. The
+//! consumers in `setup::wizard::steps_service` are gated the same way, so on
+//! any other target these items would compile only to sit unused.
+
+#[cfg(target_os = "macos")]
 use std::{fs, process::Command, time::Duration};
 
+#[cfg(target_os = "macos")]
 use super::super::{exec::run_timeout, overseer_home};
 use crate::Result;
 
@@ -7,6 +13,7 @@ pub(crate) fn install_service() -> Result<()> {
     crate::setup::wizard::steps_service::install_service()
 }
 
+#[cfg(target_os = "macos")]
 fn remove_legacy_service() -> Result<()> {
     let home = dirs::home_dir().ok_or(crate::Error::HomeDir)?;
     let legacy_plist = home.join("Library/LaunchAgents/com.robco.chief.plist");
@@ -41,10 +48,12 @@ fn remove_legacy_service() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn legacy_service_is_absent(status: Option<i32>, stderr: &[u8]) -> bool {
     status == Some(3) && String::from_utf8_lossy(stderr).contains("No such process")
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn write_service_plist() -> Result<std::path::PathBuf> {
     remove_legacy_service()?;
     let home = dirs::home_dir().ok_or(crate::Error::HomeDir)?;
@@ -78,6 +87,7 @@ pub(crate) fn write_service_plist() -> Result<std::path::PathBuf> {
 /// (`/usr/bin:/bin:/usr/sbin:/sbin`) that hides the tools the daemon shells
 /// out to (dropr, tmux, git, the agent CLI). Start from the install-time
 /// PATH and ensure the common tool dirs and system dirs are present.
+#[cfg(target_os = "macos")]
 fn service_path_env(current: Option<&str>, home: &std::path::Path) -> String {
     let mut path = current.unwrap_or("").to_string();
     let required = [
@@ -100,6 +110,7 @@ fn service_path_env(current: Option<&str>, home: &std::path::Path) -> String {
     path
 }
 
+#[cfg(target_os = "macos")]
 fn xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -107,7 +118,7 @@ fn xml(value: &str) -> String {
         .replace('>', "&gt;")
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::{legacy_service_is_absent, service_path_env};
     use std::path::Path;

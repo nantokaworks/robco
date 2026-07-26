@@ -30,11 +30,14 @@ mod settings;
 
 pub(crate) use escalation::escalate_workers;
 use service::install_service;
+#[cfg(target_os = "macos")]
 pub(crate) use service::write_service_plist;
 pub(crate) use settings::set_runtime;
 use settings::{autonomy_level, daily_limit, protection_mode, protection_warning, set};
 
-pub(crate) use super::ledger::{ActiveWorkers, terminal};
+#[cfg(target_os = "macos")]
+pub(crate) use super::ledger::ActiveWorkers;
+pub(crate) use super::ledger::terminal;
 
 pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
     match args.command {
@@ -307,6 +310,9 @@ fn merge_recovery_state(config: &OverseerConfig, drops: u32) -> String {
     }
     format!("off ({drops} dropped)")
 }
+/// Read by the macOS service wizard only; the launchd bootstrap step is the
+/// single caller.
+#[cfg(target_os = "macos")]
 pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
     let ledger: Ledger = serde_json::from_str(&raw)?;
