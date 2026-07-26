@@ -88,17 +88,17 @@ fn title_column(rows: &[String], title: &str) -> usize {
 }
 
 #[test]
-fn only_an_overseer_auto_worker_carries_the_row_head_marker() {
+fn only_an_overseer_auto_worker_carries_the_indented_marker() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     assert!(
-        row_containing(&rows, "auto-worker").starts_with("  ▶ "),
+        row_containing(&rows, "auto-worker").starts_with("    ▶ "),
         "auto worker row: {:?}",
         row_containing(&rows, "auto-worker")
     );
     for unmarked in ["manual-worker", "hand-made"] {
         assert!(
-            row_containing(&rows, unmarked).starts_with("    "),
+            row_containing(&rows, unmarked).starts_with("      "),
             "{unmarked} row: {:?}",
             row_containing(&rows, unmarked)
         );
@@ -106,9 +106,9 @@ fn only_an_overseer_auto_worker_carries_the_row_head_marker() {
 }
 
 /// An agent hangs off the repo above it, so its title has to start right of the
-/// repo name. Sharing that column makes an Overseer Auto worker read as a
-/// sibling of its own repo — the `▶` sits where the indentation would be, so
-/// nothing else in the row prefix expresses containment.
+/// repo name. The `▶` no longer expresses that containment — it sits inside the
+/// row's indentation and travels with it — so the nesting step left of the
+/// identity-tree indent is what has to survive the widest repo row.
 #[test]
 fn an_agent_title_starts_right_of_its_repo_name() {
     // The widest repo row the config allows: a two-column project icon plus a

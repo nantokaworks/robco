@@ -14,27 +14,29 @@ const END_PAUSE: Duration = Duration::from_millis(1_000);
 
 /// Marks an agent row as an Overseer worker under automatic dispatch. The play
 /// glyph carries that meaning directly: the row is driven, not hand-started. It
-/// sits at the row head so a column of agents can be scanned at a glance; Manual
-/// workers and unmanaged worktrees render blank there (the OVERSEER pane still
-/// reports the difference).
+/// sits right of the row's own indentation, so it travels with the tree hierarchy
+/// and reads as an attribute of the indented agent rather than as a sibling of
+/// the repo above it; Manual workers and unmanaged worktrees render blank there
+/// (the OVERSEER pane still reports the difference).
 const OVERSEER_AUTO_MARKER: &str = "▶";
 
 /// One nesting step, applied to every agent row so its title starts right of
 /// the repo name above it and the row reads as a child of that repo. The marker
-/// cell sits left of this, at the row head, and does not buy the containment
-/// back — it occupies the cell that would otherwise have read as indentation.
+/// cell sits right of this and of the identity-tree indent, so it is indented
+/// along with the row instead of occupying a fixed column pinned to the row's
+/// left edge.
 ///
 /// Rows that must track the agent title column carry this too: the child-worktree
 /// row and the empty-repo filler in the parent module.
 pub(super) const AGENT_INDENT: &str = "  ";
 
-/// The prefix of an agent row: cursor, Overseer marker cell, the nesting step
-/// under the repo, the identity-tree indent, then the expand arrow for a row
-/// that has child worktrees.
+/// The prefix of an agent row: cursor, the nesting step under the repo, the
+/// identity-tree indent, the Overseer marker cell, then the expand arrow for a
+/// row that has child worktrees.
 ///
-/// The marker spends one of the three cells that already separated the cursor
-/// from the indent, so the title column sits at the same offset whether or not
-/// a row carries it.
+/// The prefix reserves the marker cell either way — an unmarked row renders it
+/// blank — so neither the title column nor the expand arrow's own column moves
+/// whether or not a row carries the marker.
 pub(super) fn agent_row_prefix(
     cursor: &str,
     overseer_auto: bool,
@@ -47,7 +49,7 @@ pub(super) fn agent_row_prefix(
         " "
     };
     format!(
-        "{cursor} {marker} {AGENT_INDENT}{}{}",
+        "{cursor} {AGENT_INDENT}{}{marker} {}",
         "  ".repeat(depth),
         child_marker.unwrap_or("")
     )

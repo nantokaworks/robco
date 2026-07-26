@@ -789,11 +789,11 @@ persisted as `Manual`, and the first `g` overwrites that stale mode when it enro
 There is no confirmation prompt — every step is non-destructive and two more presses
 undo it.
 
-The tree reports this axis with an accent-coloured `▶` at the **row head**, in the cell
-between the selection cursor and the identity-tree indent, so a column of agents can be
-scanned at a glance. Only Auto workers are marked: a Manual worker and an unmanaged
-worktree both render blank there, and the difference between them is read from the OVERSEER
-info pane rather than from the tree.
+The tree reports this axis with an accent-coloured `▶` in the cell **immediately left of the
+row's title**, right of that row's indentation, so the marker is indented with the tree
+hierarchy and belongs to the agent rather than to a fixed row-head column. Only Auto workers
+are marked: a Manual worker and an unmanaged worktree both render blank there, and the
+difference between them is read from the OVERSEER info pane rather than from the tree.
 
 Adoption derives the mode from the parent it recovers, not from a fixed default. A worker
 whose live session still carries `ROBCO_PARENT_AGENT_ID=overseer` is re-adopted as an
