@@ -17,3 +17,45 @@ concurrency:
 jobs:
   validate:
     uses: nantokaworks/.github/.github/workflows/basic-checks.yml@main
+
+  # The reusable `validate` workflow above is shared across the organisation and
+  # runs no Rust toolchain, so formatting, lint, and test regressions used to
+  # surface only when scripts/release.sh ran its `check` stage locally. This job
+  # runs that same stage in CI. macOS is deliberate: the release `check` stage
+  # runs there, and the crate carries `cfg(target_os = "macos")` branches whose
+  # non-macOS counterparts nobody builds by hand.
+  cargo:
+    name: Cargo
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The runner image ships a Rust toolchain, but not necessarily a stable
+      # recent enough for this crate's edition, and not necessarily with the
+      # rustfmt and clippy components installed.
+      - name: Install the stable toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # The three commands below mirror the `check` stage of scripts/release.sh,
+      # in the same order. Keep the two lists in step: a command that runs at
+      # release time but not here is a regression CI cannot catch.
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: cargo test
+        run: cargo test --locked
+
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
