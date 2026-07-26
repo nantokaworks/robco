@@ -35,7 +35,7 @@ pub(crate) fn process_alive(pid: u32) -> bool {
 /// The return value is what lifts the merge gate's per-repository barrier: the
 /// pull runs here, on a later pass than the merge that needs it, so without it
 /// the gate would have to assume the base caught up rather than know it. See
-/// [`crate::overseer::daemon::merge_settle`].
+/// `crate::overseer::daemon::merge_settle`.
 pub(crate) fn execute_actions(actions: &[Action]) -> Result<HashSet<String>> {
     let mut cleanup_blocked = HashSet::new();
     let mut pulled = HashSet::new();
