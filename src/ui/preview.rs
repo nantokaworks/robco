@@ -1,8 +1,7 @@
 use ratatui::{
     Frame,
-    layout::Rect,
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, Padding, Paragraph, Wrap},
+    widgets::{Block, Borders, Padding, Paragraph, Wrap},
 };
 
 use crate::{
@@ -17,15 +16,20 @@ use crate::{
 
 mod branch_only;
 mod labels;
+mod notice;
 mod overseer;
 #[cfg(test)]
 mod render_tests;
-mod tabs;
+pub(in crate::ui) mod tabs;
 use labels::ai_label;
+use notice::render_merge_notice;
 use tabs::preview_tabs_line;
 /// Inner padding between the preview border and its content, applied to every
 /// tab. `scrollback::inner_dims` subtracts it when sizing mirrored tmux sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
+/// Height of the preview block's top border, which doubles as the tab bar.
+/// Overlays drawn inside the preview start below it so the tabs stay visible.
+const TAB_BAR_ROWS: u16 = 1;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let registry = &app.registry;
@@ -85,6 +89,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             &app.overseer_snapshot.ledger,
             panes.preview.width.saturating_sub(4),
         ),
+        // Rendered as a tab rather than an overlay so reading the failure never
+        // costs the operator sight of the tab bar.
+        (PreviewPane::Error, Some(Selection::Agent { repo, agent })) => {
+            let repo = &registry.repos[repo];
+            let agent = &repo.agents[agent];
+            let title = format!("{} / {}", repo.name, agent.title);
+            (title, merge_dialog::error_lines(app, selection).into())
+        }
         (PreviewPane::Info, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
@@ -235,7 +247,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         scroll
     };
     let mut block = Block::default()
-        .title_top(preview_tabs_line(pane, selection, &ai_label))
+        .title_top(preview_tabs_line(
+            pane,
+            &app.preview_panes(selection),
+            &ai_label,
+        ))
         .title_top(Line::from(title).right_aligned())
         .borders(Borders::ALL)
         .padding(Padding::uniform(PREVIEW_PADDING));
@@ -258,41 +274,4 @@ fn loading_diff() -> Text<'static> {
         THEME.muted_style(),
     ))]
     .into()
-}
-
-pub(in crate::ui) fn render_merge_notice(
-    frame: &mut Frame<'_>,
-    app: &App,
-    selection: Option<Selection>,
-    area: Rect,
-) {
-    let notice = merge_dialog::notice_lines(app, selection);
-    if notice.is_empty() {
-        return;
-    }
-    let inner_width = area.width.saturating_sub(2).max(1);
-    let rows: u16 = notice
-        .iter()
-        .map(|line| {
-            let w = line.width() as u16;
-            (w / inner_width + u16::from(!w.is_multiple_of(inner_width))).max(1)
-        })
-        .fold(0u16, |acc, r| acc.saturating_add(r));
-    let height = rows.saturating_add(2).min(area.height);
-    let popup = Rect {
-        x: area.x,
-        y: area.y,
-        width: area.width,
-        height,
-    };
-    frame.render_widget(Clear, popup);
-    let block = Block::default()
-        .title(" merge ")
-        .borders(Borders::ALL)
-        .border_style(THEME.accent_style());
-    let para = Paragraph::new(notice)
-        .block(block)
-        .style(THEME.accent_style())
-        .wrap(Wrap { trim: false });
-    frame.render_widget(para, popup);
 }

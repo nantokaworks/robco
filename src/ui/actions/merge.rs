@@ -29,12 +29,12 @@ pub(in crate::ui) struct MergeOutcome {
 }
 
 impl App {
-    /// Clear the lingering merge outcome banner of the selected repository.
-    /// Outcomes are per repository and each banner only renders while its own
-    /// agent is selected, so dismissal is scoped the same way — an `esc` aimed
-    /// at one repository never discards another repository's result. No-op
-    /// (returns false) while the selected repository's merge is still running,
-    /// so an in-progress merge cannot be dismissed.
+    /// Clear the lingering merge outcome of the selected repository. Outcomes are
+    /// per repository and each one only surfaces while its own agent is selected,
+    /// so dismissal is scoped the same way — an `esc` aimed at one repository
+    /// never discards another repository's result. No-op (returns false) while
+    /// the selected repository's merge is still running, so an in-progress merge
+    /// cannot be dismissed.
     pub(in crate::ui) fn dismiss_merge_outcome(&mut self) -> bool {
         let Some(repo_path) = self
             .selected_repo()
@@ -46,7 +46,13 @@ impl App {
         if self.merge_jobs.contains_key(&repo_path) {
             return false;
         }
-        self.merge_outcomes.remove(&repo_path).is_some()
+        if self.merge_outcomes.remove(&repo_path).is_none() {
+            return false;
+        }
+        // A dismissed failure takes its tab with it, so the active pane may now
+        // point at a tab the bar no longer draws.
+        self.restore_preview();
+        true
     }
 
     pub(in crate::ui) fn start_merge(&mut self, repo: usize, agent_idx: usize) {
@@ -95,7 +101,10 @@ impl App {
             return;
         }
 
+        // Retrying from the error tab clears the failure that put the tab there,
+        // so the active pane needs the same fallback dismissal gets.
         self.merge_outcomes.remove(&repo_path);
+        self.restore_preview();
         self.merge_jobs.insert(
             repo_path,
             MergeJob {

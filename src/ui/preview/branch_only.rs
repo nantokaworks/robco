@@ -34,7 +34,11 @@ pub(super) fn render(
         )),
     ];
     let mut block = Block::default()
-        .title_top(preview_tabs_line(active, selection, ai_label))
+        .title_top(preview_tabs_line(
+            active,
+            &app.preview_panes(selection),
+            ai_label,
+        ))
         .title_top(Line::from(title).right_aligned())
         .borders(Borders::ALL)
         .padding(Padding::uniform(PREVIEW_PADDING));

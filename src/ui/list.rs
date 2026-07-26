@@ -5,7 +5,7 @@ use crate::{
     overseer,
 };
 
-use super::{App, default_pane, panes_for};
+use super::{App, default_pane};
 
 impl App {
     pub(crate) fn effective_roots(&self) -> impl Iterator<Item = &std::path::Path> {
@@ -57,10 +57,11 @@ impl App {
 
     /// Set the active preview pane from the remembered tab for the current
     /// selection, falling back to that selection's default tab. Guards against a
-    /// stale pane that is not valid for the current selection type.
+    /// stale pane that is not valid for the current selection type — including
+    /// the error tab once its failure has been dismissed.
     pub(in crate::ui) fn restore_preview(&mut self) {
         let selection = self.selected_item();
-        let panes = panes_for(selection);
+        let panes = self.preview_panes(selection);
         let remembered = selection
             .map(|sel| self.item_key(sel))
             .and_then(|key| self.preview_tabs.get(&key).copied())
@@ -124,7 +125,7 @@ impl App {
         let Some(selection) = self.selected_item() else {
             return;
         };
-        let panes = panes_for(Some(selection));
+        let panes = self.preview_panes(Some(selection));
         if panes.is_empty() {
             return;
         }

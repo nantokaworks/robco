@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use crate::model::Selection;
 
-use super::{App, spinner, theme::DEFAULT as THEME};
+use super::{App, actions::merge::MergeOutcome, spinner, theme::DEFAULT as THEME};
 
 fn selected_agent(app: &App, selection: Option<Selection>) -> Option<(&std::path::Path, &str)> {
     if let Some(Selection::Agent { repo, agent }) = selection {
@@ -14,6 +14,22 @@ fn selected_agent(app: &App, selection: Option<Selection>) -> Option<(&std::path
     }
 }
 
+/// The selected agent's merge failure, while it is still unacknowledged. This is
+/// what puts the error tab in the preview tab bar; a successful outcome and an
+/// in-flight merge are transient and stay on the overlay instead.
+fn unacknowledged_failure(app: &App, selection: Option<Selection>) -> Option<&MergeOutcome> {
+    let (repo_path, agent_id) = selected_agent(app, selection)?;
+    app.merge_outcome(repo_path)
+        .filter(|outcome| outcome.agent_id == agent_id && outcome.result.is_err())
+}
+
+pub(in crate::ui) fn has_error(app: &App, selection: Option<Selection>) -> bool {
+    unacknowledged_failure(app, selection).is_some()
+}
+
+/// Overlay content: the merge that is running right now, or one that finished
+/// cleanly. Failures deliberately do not appear here — they own a preview tab so
+/// nothing has to be drawn over the tab bar to report them.
 pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Vec<Line<'static>> {
     let Some((repo_path, agent_id)) = selected_agent(app, selection) else {
         return Vec::new();
@@ -34,19 +50,46 @@ pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Ve
 
     let Some(outcome) = app
         .merge_outcome(repo_path)
-        .filter(|outcome| outcome.agent_id == agent_id)
+        .filter(|outcome| outcome.agent_id == agent_id && outcome.result.is_ok())
     else {
         return Vec::new();
     };
-    let mut notice = vec![
-        Line::from(Span::styled(
-            if outcome.result.is_ok() {
-                "MERGE COMPLETE"
-            } else {
-                "MERGE FAILED"
-            },
-            THEME.accent_style(),
-        )),
+    let mut notice = vec![Line::from(Span::styled(
+        "MERGE COMPLETE",
+        THEME.accent_style(),
+    ))];
+    notice.extend(outcome_details(outcome));
+    notice.push(Line::from(Span::styled("esc dismiss", THEME.hint_style())));
+    notice
+}
+
+/// Content of the error preview tab: everything the failure overlay used to say,
+/// rendered inside the pane so the tab bar above it stays readable.
+pub(in crate::ui) fn error_lines(app: &App, selection: Option<Selection>) -> Vec<Line<'static>> {
+    let Some(outcome) = unacknowledged_failure(app, selection) else {
+        return Vec::new();
+    };
+    let mut lines = vec![Line::from(Span::styled(
+        "MERGE FAILED",
+        THEME.merge_failed_style(true),
+    ))];
+    lines.extend(outcome_details(outcome));
+    if let Err(detail) = &outcome.result {
+        lines.push(Line::from(""));
+        lines.extend(detail.lines().map(|line| {
+            Line::from(Span::styled(
+                line.to_string(),
+                THEME.merge_failed_style(false),
+            ))
+        }));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled("esc dismiss", THEME.hint_style())));
+    lines
+}
+
+fn outcome_details(outcome: &MergeOutcome) -> Vec<Line<'static>> {
+    vec![
         Line::from(vec![
             Span::styled("branch: ", THEME.muted_style()),
             Span::raw(outcome.branch.clone()),
@@ -59,12 +102,7 @@ pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Ve
             Span::styled("repository: ", THEME.muted_style()),
             Span::raw(outcome.repo_path.display().to_string()),
         ]),
-    ];
-    if let Err(detail) = &outcome.result {
-        notice.extend(detail.lines().map(|line| Line::from(line.to_string())));
-    }
-    notice.push(Line::from(Span::styled("esc dismiss", THEME.hint_style())));
-    notice
+    ]
 }
 
 pub(in crate::ui) fn preview_title(
