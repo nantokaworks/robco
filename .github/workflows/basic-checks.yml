@@ -23,9 +23,20 @@ jobs:
   # consumed by repositories that are not Rust projects. These are the same three commands
   # the `check` stage of scripts/release.sh runs, so a branch that is green here does not
   # fail the release pipeline on formatting or lint.
+  #
+  # Both platforms are checked. macOS is where the launchd service path lives — plist
+  # writing, domain settling, probing, and the modules gated `#[cfg(target_os = "macos")]`
+  # around them — none of which a Linux runner compiles at all. Linux is not redundant
+  # either: the release pipeline cross-builds the two `*-unknown-linux-gnu` targets, and
+  # the Linux leg is what catches dead code left behind those same gates.
   rust:
-    name: Rust
-    runs-on: ubuntu-latest
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not hide the other platform's result.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
