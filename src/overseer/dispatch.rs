@@ -10,6 +10,7 @@ use order::order_candidates;
 
 mod claim;
 mod entries;
+pub(crate) mod naming;
 mod order;
 mod route;
 mod runtime;

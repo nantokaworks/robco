@@ -103,6 +103,12 @@ that hands it the claim Overseer already holds on its assigned dropr task, and r
 it to verify that claim rather than take one, report lifecycle changes, commit and push
 its branch, and open (but not merge) a pull request.
 
+All three names are built from one slug that leads with the task's source and number —
+dropr task `#295` becomes `dropr-295-<title>`, capped at 32 characters on a hyphen
+boundary. Leading with the source keeps the origin of the number readable and leaves the
+numbering space open for a second task source later. Existing workers keep the names they
+were created with; the shape applies to newly dispatched ones.
+
 Overseer selects `worker_profile` when configured, otherwise `default_program`, and passes
 that profile's `autonomous_args`. With the built-in profiles these are the client's
 unattended permission flags. A non-empty autonomous argument list also activates two

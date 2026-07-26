@@ -3,6 +3,7 @@ use crate::{
     Result,
     overseer::{
         OVERSEER_AGENT_ID,
+        dispatch::naming::{TaskSource, name_slug},
         exec::{COMMAND_TIMEOUT, run_timeout},
         logging,
     },
@@ -44,20 +45,11 @@ pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Res
             if let Some(prompt) = prompt {
                 command.args(["--prompt", prompt]);
             }
-            let display_id = case
-                .display_id
-                .trim()
-                .trim_start_matches('#')
-                .strip_prefix("task-")
-                .unwrap_or_else(|| case.display_id.trim().trim_start_matches('#'));
-            if !display_id.is_empty() {
-                command.args([
-                    "--name-slug",
-                    &format!(
-                        "task-{display_id}-{}",
-                        crate::tmux::sanitize_target_part(title)
-                    ),
-                ]);
+            // Triage spawns a worker for an exception case, and the case carries
+            // the same dropr display id dispatch works from, so it names the
+            // worker exactly as dispatch would.
+            if let Some(slug) = name_slug(TaskSource::Dropr, &case.display_id, title) {
+                command.args(["--name-slug", &slug]);
             }
             let output = run_timeout(command, COMMAND_TIMEOUT)?;
             if output.status.success() {
