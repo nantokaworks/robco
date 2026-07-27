@@ -9,6 +9,7 @@ use crate::{
         dismissals::Dismissals,
         ledger::{Ledger, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
+        remedy::{self, Remedy},
     },
     registry::Registry,
     status::{self, WatchStatusState},
@@ -54,11 +55,40 @@ pub(crate) struct InboxItem {
     pub at: DateTime<Utc>,
 }
 
+/// Every ledger-sourced row's `detail` starts with this, so [`InboxItem::remedy`]
+/// can tell it apart from a decision-sourced row without a field of its own —
+/// adding one would force an edit to every literal `InboxItem { .. }` the test
+/// suite builds by hand.
+pub(crate) const LEDGER_PARKED_MARKER: &str = "ledger entry parked at phase=escalated";
+
 impl InboxItem {
     /// The `(kind, target_id)` pair the aggregation dedupes on and dismissals
     /// are recorded against.
     pub(crate) fn identity(&self) -> (String, String) {
         (self.kind.code().to_string(), self.target_id.clone())
+    }
+
+    /// What the operator should do about this row.
+    ///
+    /// `Question` and the ledger-parked shape of `Escalation` carry no reason
+    /// string to resolve — the fact of the row *is* the remedy — so they route
+    /// straight to a fixed constant. A decision-sourced `Escalation` carries
+    /// its reason verbatim in `detail`, resolved against a live session.
+    pub(crate) fn remedy(&self) -> Remedy {
+        match self.kind {
+            InboxKind::Question => remedy::WORKER_QUESTION,
+            InboxKind::Escalation if self.detail.starts_with(LEDGER_PARKED_MARKER) => {
+                remedy::LEDGER_PARKED
+            }
+            InboxKind::Escalation => remedy::resolve(&self.detail, self.target_session.is_some()),
+        }
+    }
+
+    /// Whether the `N/M actionable` count on the Inbox category row should
+    /// count this row — derived fresh each call rather than cached, so it can
+    /// never drift from what [`remedy`](Self::remedy) itself would say.
+    pub(crate) fn actionable(&self) -> bool {
+        self.remedy().actionable()
     }
 }
 
@@ -146,9 +176,12 @@ pub(crate) fn aggregate(
             target_id: entry.display_id.clone(),
             label: format!("{} — {} / {}", entry.display_id, entry.repo, entry.agent_id),
             // The ledger records no reason, so name what the row actually is:
-            // an entry parked at `escalated`, which nothing ages out.
+            // an entry parked at `escalated`, which nothing ages out. The
+            // leading `LEDGER_PARKED_MARKER` is what `InboxItem::remedy` reads
+            // to route this row to `remedy::LEDGER_PARKED` instead of trying
+            // to resolve the descriptive text that follows as a reason.
             detail: format!(
-                "ledger entry parked at phase=escalated — repo {}, agent {}, branch {}",
+                "{LEDGER_PARKED_MARKER} — repo {}, agent {}, branch {}",
                 entry.repo, entry.agent_id, entry.branch
             ),
             at: entry.dispatched_at,
