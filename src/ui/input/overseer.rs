@@ -25,9 +25,9 @@ pub(super) fn prompt_action(input: &mut TextInput, key: KeyEvent) -> PromptActio
 pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
     // Stop is an overseer-wide action, so it is reachable from any row while
     // the overseer panel is active — including worker rows (Selection::Agent),
-    // not just the OVERSEER header / category rows. This keeps the always-on
-    // [S] STOP footer hint honest. The ConfirmOverseerPanic dialog still gates
-    // the destructive step, and it works from any preview tab.
+    // not just the OVERSEER header / category rows. The ConfirmOverseerPanic
+    // dialog still gates the destructive step, and it works from any preview
+    // tab.
     if code == KeyCode::Char('S') {
         if app.overseer_visible {
             app.mode = Mode::ConfirmOverseerPanic;
