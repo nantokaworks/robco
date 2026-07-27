@@ -148,18 +148,34 @@ impl App {
         })
     }
 
+    /// Registry indices of repos listed directly under a discovery root, in the
+    /// order the operator arranged them.
+    pub(in crate::ui) fn local_repos(&self) -> Vec<usize> {
+        self.in_saved_order(
+            self.registry
+                .repos
+                .iter()
+                .enumerate()
+                .filter(|(_, repo)| self.repo_is_local(repo))
+                .map(|(idx, _)| idx)
+                .collect(),
+        )
+    }
+
     /// Registry indices of off-launch-dir repos that still have agents or were
-    /// pinned by manual registration.
+    /// pinned by manual registration, in the order the operator arranged them.
     pub(in crate::ui) fn other_location_repos(&self) -> Vec<usize> {
-        self.registry
-            .repos
-            .iter()
-            .enumerate()
-            .filter(|(_, repo)| {
-                !self.repo_is_local(repo) && (!repo.agents.is_empty() || repo.pinned)
-            })
-            .map(|(idx, _)| idx)
-            .collect()
+        self.in_saved_order(
+            self.registry
+                .repos
+                .iter()
+                .enumerate()
+                .filter(|(_, repo)| {
+                    !self.repo_is_local(repo) && (!repo.agents.is_empty() || repo.pinned)
+                })
+                .map(|(idx, _)| idx)
+                .collect(),
+        )
     }
 
     /// Flattened tree rows in display order: local repos first, then — when any
@@ -180,10 +196,8 @@ impl App {
                 }
             }
         }
-        for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
-            if self.repo_is_local(repo) {
-                self.push_repo_rows(&mut visible, repo_idx, repo);
-            }
+        for repo_idx in self.local_repos() {
+            self.push_repo_rows(&mut visible, repo_idx, &self.registry.repos[repo_idx]);
         }
 
         let others = self.other_location_repos();

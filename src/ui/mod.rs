@@ -46,12 +46,15 @@ mod merge_dialog;
 mod overseer;
 mod preview;
 mod registry_write;
+mod reorder;
 mod repo_description;
 mod scrollback;
 #[cfg(test)]
 mod sidebar_frame_tests;
 pub(crate) mod spinner;
 mod summary;
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 mod text_input;

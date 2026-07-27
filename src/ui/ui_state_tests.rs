@@ -1,93 +1,16 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
 use crate::{
     config::Config,
-    model::{AgentNode, ManagementMode, OverseerCategory, RepoNode, Selection},
+    model::{OverseerCategory, Selection},
     registry::Registry,
-    ui::{App, actions::discovery::path_key},
+    ui::{
+        App,
+        actions::discovery::path_key,
+        test_support::{registry_under, registry_with_agent},
+    },
 };
-
-fn repo(path: PathBuf, agents: Vec<AgentNode>) -> RepoNode {
-    RepoNode {
-        name: path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("repo")
-            .to_string(),
-        path,
-        remote_url: None,
-        pinned: false,
-        agents,
-        dropr: None,
-        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
-        main_status: None,
-        main_last_capture: None,
-        main_last_spinner: None,
-        main_last_change_at: None,
-        main_shell_working: false,
-        main_mcp_active: false,
-        main_pane_pid: None,
-        main_tracked_command: None,
-        main_subagents_active: 0,
-    }
-}
-
-fn agent(id: &str, worktree_path: PathBuf) -> AgentNode {
-    let now = chrono::Local::now();
-    AgentNode {
-        id: id.to_string(),
-        parent_agent_id: None,
-        management: ManagementMode::Manual,
-        title: id.to_string(),
-        worktree_path,
-        branch: format!("robco/{id}"),
-        base_commit: String::new(),
-        program: "claude".to_string(),
-        claude_session_id: None,
-        profile: None,
-        tmux_session: format!("robco_{id}"),
-        created_at: now,
-        updated_at: now,
-        status: crate::model::Status::default(),
-        worktree_missing: false,
-        merge_error: None,
-        last_capture: None,
-        last_spinner: None,
-        last_change_at: None,
-        last_auto_accept_at: None,
-        shell_working: false,
-        mcp_active: false,
-        pane_pid: None,
-        tracked_command: None,
-        subagents: Vec::new(),
-        children: Vec::new(),
-    }
-}
-
-/// Repos under `dir` so they read as local rows of the launch directory rather
-/// than landing in the collapsible "other locations" section.
-fn registry_under(dir: &Path, names: &[&str]) -> Registry {
-    Registry {
-        version: 1,
-        repos: names
-            .iter()
-            .map(|name| repo(dir.join(name), Vec::new()))
-            .collect(),
-    }
-}
-
-/// `alpha` with one agent whose worktree sits under `dir`. `Registry` is not
-/// `Clone`, so a restart test builds the same shape twice through here.
-fn registry_with_agent(dir: &Path) -> Registry {
-    Registry {
-        version: 1,
-        repos: vec![repo(
-            dir.join("alpha"),
-            vec![agent("one", dir.join("worktrees/one"))],
-        )],
-    }
-}
 
 /// An app whose UI state is a real file under `dir`, so a second app built the
 /// same way sees exactly what a restart would.
