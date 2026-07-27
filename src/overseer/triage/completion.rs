@@ -112,6 +112,10 @@ fn normalize(result: SessionResult, case: &ExceptionCase) -> Completion {
         }
         SessionResult::TimedOut => escalation("triage session timed out".into()),
         SessionResult::Missing => escalation("triage session exited without result.json".into()),
+        SessionResult::AuthFailed(detail) => escalation(format!(
+            "{}: {detail}",
+            crate::overseer::session::auth::REASON
+        )),
         SessionResult::LaunchFailed(error) => escalation(format!("triage session failed: {error}")),
     }
 }

@@ -158,6 +158,20 @@ pub fn judge_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("judge"))
 }
 
+/// Case directory for the start-up credential probe. Its own directory rather
+/// than a judge case so a probe never looks like a judgment in the retained
+/// case history.
+pub fn preflight_dir() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("preflight"))
+}
+
+/// Last verdict on whether a daemon-spawned session can authenticate. Written
+/// by the start-up probe and by any session refused on credentials; read by
+/// `robco overseer status`.
+pub fn session_health_path() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("session_health.json"))
+}
+
 pub fn review_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("review"))
 }

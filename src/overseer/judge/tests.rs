@@ -1,9 +1,7 @@
-use super::{
-    MergeCase, Request, completion, judge_profile, merge_judge_profile, queue::test_queue, result,
-};
+use super::{MergeCase, Request, judge_profile, merge_judge_profile, queue::test_queue, result};
 use crate::{
     config::{Config, Profile},
-    overseer::{dispatch::Candidate, session::SessionResult},
+    overseer::dispatch::Candidate,
 };
 use std::time::{Duration, Instant};
 
@@ -19,7 +17,7 @@ pub(super) fn candidate(id: &str) -> Candidate {
     }
 }
 
-fn dispatch_request() -> Request {
+pub(super) fn dispatch_request() -> Request {
     Request::Dispatch {
         key: "dispatch-test".into(),
         approved: vec![candidate("a"), candidate("b")],
@@ -40,43 +38,6 @@ pub(super) fn merge_request() -> Request {
             additions: 2,
             deletions: 1,
         },
-    }
-}
-
-#[test]
-fn every_dispatch_session_failure_keeps_deterministic_order() {
-    let failures = [
-        SessionResult::TimedOut,
-        SessionResult::Missing,
-        SessionResult::LaunchFailed("no executable".into()),
-        SessionResult::Result(b"not json".to_vec()),
-        SessionResult::Result(br#"{"candidate_ids":["unknown"],"reason":"x"}"#.to_vec()),
-    ];
-    for failure in failures {
-        let result::Parsed::Dispatch(advice) = completion::normalize(failure, &dispatch_request())
-        else {
-            panic!("wrong advice type");
-        };
-        assert_eq!(advice.candidate_ids, ["a", "b"]);
-        assert!(advice.fail_safe);
-    }
-}
-
-#[test]
-fn every_merge_session_failure_escalates() {
-    let failures = [
-        SessionResult::TimedOut,
-        SessionResult::Missing,
-        SessionResult::LaunchFailed("no executable".into()),
-        SessionResult::Result(b"not json".to_vec()),
-        SessionResult::Result(br#"{"outcome":"force","reason":"x"}"#.to_vec()),
-    ];
-    for failure in failures {
-        let result::Parsed::Merge(advice) = completion::normalize(failure, &merge_request()) else {
-            panic!("wrong advice type");
-        };
-        assert_eq!(advice.outcome, result::MergeJudgment::Escalate);
-        assert!(advice.fail_safe);
     }
 }
 
@@ -124,6 +85,7 @@ fn model_is_forwarded_to_spawned_command() {
         profile: &profile,
         case_dir: &case_dir,
         timeout: Duration::from_secs(1),
+        env: &Default::default(),
     };
     let _ = session.run(&|_| false);
     let captured = std::fs::read_to_string(args).unwrap();

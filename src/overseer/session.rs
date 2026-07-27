@@ -1,6 +1,6 @@
-use crate::config::{Config, Profile};
+use crate::config::Profile;
 use std::{
-    fs,
+    fs::{self, File},
     path::Path,
     process::{Child, Command, Stdio},
     sync::{
@@ -15,8 +15,24 @@ use std::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 
+/// Where a session's stderr is captured. Kept beside `briefing.md` and
+/// `result.json` so a case directory holds everything about one session, which
+/// is where an operator looks after a verdict they did not expect.
+const LOG_FILE: &str = "session.log";
+
+#[path = "session/auth.rs"]
+pub(crate) mod auth;
+#[path = "session/env.rs"]
+pub(crate) mod env;
+#[path = "session/health.rs"]
+pub(crate) mod health;
+#[path = "session/preflight.rs"]
+pub(crate) mod preflight;
+#[path = "session/profile.rs"]
+mod profile;
 #[path = "session/resolver.rs"]
 mod resolver;
+pub(crate) use profile::session_profile;
 pub(crate) use resolver::resolve_program_impl;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -24,6 +40,11 @@ pub(crate) enum SessionResult {
     Result(Vec<u8>),
     TimedOut,
     Missing,
+    /// The provider refused the session's credential. Separated from `Missing`
+    /// because the two demand opposite responses: a missing result is a
+    /// question the model failed to answer, while this one says no question was
+    /// ever asked and no verdict should be read into the silence.
+    AuthFailed(String),
     LaunchFailed(String),
 }
 
@@ -78,6 +99,11 @@ pub(crate) struct EphemeralSession<'a> {
     pub profile: &'a Profile,
     pub case_dir: &'a Path,
     pub timeout: Duration,
+    /// The credential channel the spawned process runs under. A daemon-spawned
+    /// session cannot reach the interactive login session's secret store, so
+    /// this is how a non-interactive credential gets to it — see
+    /// [`env::SessionEnv`] for the resolution order.
+    pub env: &'a env::SessionEnv,
 }
 
 impl EphemeralSession<'_> {
@@ -103,6 +129,7 @@ impl EphemeralSession<'_> {
                 self.profile.program
             ));
         };
+        let log_path = self.case_dir.join(LOG_FILE);
         let mut command = Command::new(program);
         command.args(&self.profile.autonomous_args);
         if let Some(model) = &self.profile.model {
@@ -113,7 +140,13 @@ impl EphemeralSession<'_> {
             .current_dir(self.case_dir)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(match File::create(&log_path) {
+                // A case directory that cannot hold a log is not a reason to
+                // skip the session; it only costs the failure classification.
+                Ok(file) => Stdio::from(file),
+                Err(_) => Stdio::null(),
+            });
+        self.env.apply(&mut command);
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(error) => return SessionResult::LaunchFailed(error.to_string()),
@@ -130,7 +163,22 @@ impl EphemeralSession<'_> {
         if let Some(path) = pid_path {
             let _ = fs::remove_file(path);
         }
-        result
+        self.classify(result, &log_path)
+    }
+
+    /// Re-read a resultless session as an authentication failure when its log
+    /// says so, and record the finding. Only the resultless outcomes are
+    /// reclassified: a session that answered has already authenticated, and a
+    /// launch that never started has no log to read.
+    fn classify(&self, result: SessionResult, log_path: &Path) -> SessionResult {
+        if !matches!(result, SessionResult::Missing | SessionResult::TimedOut) {
+            return result;
+        }
+        let Some(detail) = auth::failure_detail(log_path) else {
+            return result;
+        };
+        health::SessionHealth::record_auth_failure(&detail, self.env.credential());
+        SessionResult::AuthFailed(detail)
     }
 
     fn poll(
@@ -171,44 +219,6 @@ impl EphemeralSession<'_> {
             thread::sleep(POLL_INTERVAL);
         }
     }
-}
-
-/// Resolves the profile an ephemeral judgment or review session runs under.
-///
-/// `selected` is the surface's own profile setting. When it is set the profile
-/// must exist — a named profile that is missing is a configuration error, not a
-/// reason to fall back to the default client. When it is unset the default
-/// program stands in, so a daemon with no profiles configured still has a
-/// session to run. A profile that names a `backend` borrows that backend's
-/// program, which is how one client can drive another's binary.
-pub(crate) fn session_profile(config: &Config, selected: Option<&String>) -> Option<Profile> {
-    let name = selected.unwrap_or(&config.default_program);
-    config
-        .profiles
-        .iter()
-        .find(|profile| &profile.name == name)
-        .cloned()
-        .or_else(|| {
-            selected.is_none().then(|| Profile {
-                name: name.clone(),
-                program: config.default_program_command(),
-                autonomous_args: Vec::new(),
-                model: None,
-                backend: None,
-            })
-        })
-        .map(|mut profile| {
-            if let Some(backend) = profile.backend.as_deref()
-                && let Some(program) = config
-                    .profiles
-                    .iter()
-                    .find(|candidate| candidate.name == backend)
-                    .map(|candidate| candidate.program.clone())
-            {
-                profile.program = program;
-            }
-            profile
-        })
 }
 
 pub(crate) fn terminate_stale_session(pid_path: &Path) {

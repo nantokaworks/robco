@@ -24,7 +24,7 @@ use super::{
     monitor::{Action, FailureOrigin, ObservationError, ObservationSnapshot, reconcile},
     pidfile_path,
     review::ReviewPass,
-    runtime_request, snapshots_path,
+    runtime_request, session, snapshots_path,
     triage::ExceptionQueue,
     wake::{self, Signals},
 };
@@ -45,6 +45,12 @@ pub async fn run_daemon() -> Result<()> {
     // unattended — the log is where an operator finds out its strategy moved.
     if let Some(notice) = &config.merge_strategy_notice {
         logging::log_message(None, notice)?;
+    }
+    // Before the first pass, and never inside one: a daemon whose spawned
+    // sessions cannot authenticate answers every judgment with a fail-safe, and
+    // the operator's only signal used to be pull requests quietly piling up.
+    if let Err(error) = session::preflight::run(&config) {
+        logging::log_message(None, &format!("session preflight failed: {error}"))?;
     }
     let (ledger_request_tx, ledger_request_rx) = mpsc::channel();
     let mut discord = None;

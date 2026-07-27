@@ -17,8 +17,8 @@ pub use result::{DispatchAdvice, MergeJudgment};
 use crate::config::{Config, Profile};
 use crate::overseer::dispatch::Candidate;
 use crate::overseer::session::{
-    EphemeralSession, SessionControl, SessionHandle, SessionResult, session_profile,
-    terminate_stale_session,
+    EphemeralSession, SessionControl, SessionHandle, SessionResult, env::SessionEnv,
+    session_profile, terminate_stale_session,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, time::Duration};
@@ -82,11 +82,16 @@ pub(super) fn spawn_session(config: &Config, request: Request, root: &Path) -> S
     // serialized into the durable pending queue, so a queued question would
     // answer in whatever language was configured when it was enqueued.
     let language = config.language.clone();
+    // Resolved here, on the daemon's live config, rather than inside the
+    // session thread: the channel is configuration, and a session that read it
+    // later could run under a value the operator has since replaced.
+    let env = SessionEnv::resolve(config);
     SessionHandle::spawn(move |control| {
-        run_session(profile, timeout, request, &root, &control, language)
+        run_session(profile, timeout, request, &root, &control, language, &env)
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_session(
     profile: Option<Profile>,
     timeout: Duration,
@@ -94,6 +99,7 @@ fn run_session(
     root: &Path,
     control: &SessionControl,
     language: Option<String>,
+    env: &SessionEnv,
 ) -> SessionResult {
     let case_dir = root.join(request.key());
     if let Err(error) = fs::create_dir_all(&case_dir) {
@@ -122,6 +128,7 @@ fn run_session(
         profile: &profile,
         case_dir: &case_dir,
         timeout,
+        env,
     }
     .run_controlled(&result::is_complete, control, Some(&pid_path))
 }
@@ -134,6 +141,9 @@ pub(crate) fn merge_judge_profile(config: &Config) -> Option<Profile> {
     session_profile(config, config.overseer.merge_judge_profile.as_ref())
 }
 
+#[cfg(test)]
+#[path = "judge/completion_tests.rs"]
+mod completion_tests;
 #[cfg(test)]
 #[path = "judge/tests.rs"]
 mod tests;
