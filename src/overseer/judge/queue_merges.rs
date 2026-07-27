@@ -25,12 +25,22 @@ impl JudgmentQueue {
         self.completed
             .discard_superseded_merges(&self.log_path, &identity, &key)?;
         if let Some(Parsed::Merge(advice)) = self.completed.take(&key) {
-            if advice.outcome == MergeJudgment::Allow {
-                self.terminal_merges
-                    .clear(&self.revisions_path, &identity)?;
-            } else {
-                self.terminal_merges
-                    .remember(&self.revisions_path, identity, key.clone())?;
+            match (advice.fail_safe, advice.outcome) {
+                // A fail-safe verdict is the judge session itself failing, not
+                // a judgment about the change — caching it as terminal would
+                // park the pull request on an answer that was never about the
+                // diff. Leaving nothing remembered is what lets the next pass
+                // re-ask the judge instead; `merge_judge_fail_safe` bounds how
+                // many times it may.
+                (true, _) => {}
+                (false, MergeJudgment::Allow) => {
+                    self.terminal_merges
+                        .clear(&self.revisions_path, &identity)?;
+                }
+                (false, _) => {
+                    self.terminal_merges
+                        .remember(&self.revisions_path, identity, key.clone())?;
+                }
             }
             return Ok(Some(advice));
         }

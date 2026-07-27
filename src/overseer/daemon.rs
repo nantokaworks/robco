@@ -4,6 +4,7 @@ mod merge;
 mod merge_apply;
 mod merge_decision;
 mod merge_hold;
+mod merge_judge_fail_safe;
 mod merge_recovery;
 mod merge_settle;
 mod merge_state;

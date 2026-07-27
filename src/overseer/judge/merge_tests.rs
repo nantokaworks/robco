@@ -70,6 +70,7 @@ fn merge_case_saturates_additions_independently() {
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
     };
     let value = json!({
         "headRefOid":"new-sha", "additions":u64::MAX, "deletions":u32::MAX,
@@ -100,6 +101,7 @@ fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
     };
     assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
     assert_eq!(entry.phase, LedgerPhase::Escalated);
@@ -126,6 +128,7 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
     };
     let now = chrono::Local::now();
     let agent = |management| crate::model::AgentNode {
