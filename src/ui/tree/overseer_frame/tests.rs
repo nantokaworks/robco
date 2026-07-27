@@ -249,6 +249,137 @@ fn a_bare_header_hands_its_reserved_columns_back_to_the_label() {
     assert_eq!(content.lines[0].to_string(), "OVERSEER");
 }
 
+/// Column each category label starts at, measured in columns rather than bytes
+/// because the expand arrow ahead of it is three bytes wide.
+fn label_columns(app: &App) -> Vec<(&'static str, usize)> {
+    let content = build_content_with_warnings(app, Some(23), &[]);
+    OverseerCategory::ALL
+        .into_iter()
+        .map(|category| {
+            let label = category.label();
+            let row = content
+                .lines
+                .iter()
+                .map(ToString::to_string)
+                .find(|line| line.contains(label))
+                .unwrap_or_else(|| panic!("no {label} category row"));
+            let at = row.find(label).expect("no label");
+            (label, unicode_width::UnicodeWidthStr::width(&row[..at]))
+        })
+        .collect()
+}
+
+#[test]
+fn only_the_inbox_category_carries_an_expand_arrow() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+
+    for category in OverseerCategory::ALL {
+        let row = content
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .find(|line| line.contains(category.label()))
+            .expect("no category row");
+        let has_arrow = row.contains('▸') || row.contains('▾');
+        assert_eq!(
+            has_arrow,
+            category.has_children(),
+            "{} row: {row:?}",
+            category.label()
+        );
+    }
+}
+
+#[test]
+fn every_category_label_starts_at_the_same_column() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+
+    // The arrow cell is reserved on every row and left blank on the leaves, so
+    // losing three arrows must not outdent three labels past the fourth.
+    let collapsed = label_columns(&app);
+    assert!(
+        collapsed
+            .iter()
+            .all(|(_, column)| *column == DETAIL_INDENT.len()),
+        "{collapsed:?}"
+    );
+
+    // And expanding the one category that can expand does not move any of them.
+    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+    assert_eq!(label_columns(&app), collapsed);
+}
+
+#[test]
+fn a_leaf_category_cannot_be_expanded_by_any_key() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+
+    for category in OverseerCategory::ALL
+        .into_iter()
+        .filter(|c| !c.has_children())
+    {
+        app.selected = category.index();
+        assert_eq!(
+            app.selected_item(),
+            Some(Selection::OverseerCategory(category))
+        );
+        // Captured with the cursor already on the row, so the only difference a
+        // key could make is the one under test.
+        let before = build_content_with_warnings(&app, Some(23), &[])
+            .lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        for key in [
+            crossterm::event::KeyCode::Right,
+            crossterm::event::KeyCode::Char('l'),
+            crossterm::event::KeyCode::Enter,
+        ] {
+            app.handle_key(crossterm::event::KeyEvent::new(
+                key,
+                crossterm::event::KeyModifiers::NONE,
+            ))
+            .unwrap();
+            assert!(
+                !app.overseer_category_expanded(category),
+                "{} expanded on {key:?}",
+                category.label()
+            );
+            let after = build_content_with_warnings(&app, Some(23), &[])
+                .lines
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            assert_eq!(after, before, "{} changed on {key:?}", category.label());
+        }
+    }
+}
+
+#[test]
+fn a_leaf_categorys_detail_is_still_reachable_in_the_preview() {
+    // The sidebar stopped rendering it; `category_detail` is intentionally kept
+    // because the Info preview is now its only consumer.
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+
+    for category in OverseerCategory::ALL
+        .into_iter()
+        .filter(|c| !c.has_children())
+    {
+        let (title, detail) = crate::ui::overseer::category_preview(&app, category);
+        assert_eq!(title, format!("OVERSEER / {}", category.label()));
+        assert!(
+            !detail.lines.is_empty(),
+            "{} preview is empty",
+            category.label()
+        );
+    }
+}
+
 #[test]
 fn warning_rows_are_included_in_selected_category_scroll_position() {
     let (warnings, mut app) = warning_state();

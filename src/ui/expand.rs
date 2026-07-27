@@ -60,8 +60,7 @@ impl App {
         // Persisted after the prune above, so the saved set never carries a key
         // for an agent the registry no longer has.
         let keys = self.expanded_children.iter().cloned().collect();
-        self.ui_state
-            .update(|state| state.expanded_children = keys);
+        self.ui_state.update(|state| state.expanded_children = keys);
         self.clamp_selection();
     }
 
@@ -79,11 +78,18 @@ impl App {
         self.clamp_selection();
     }
 
+    /// A category with no children has nothing to expand, so this is a no-op
+    /// for one rather than flipping state nothing reads. Keeping the guard here
+    /// means every caller — the arrow keys, `Enter`, the inbox auto-expand —
+    /// inherits it instead of each testing the category itself.
     pub(in crate::ui) fn set_overseer_category_expanded(
         &mut self,
         category: OverseerCategory,
         expanded: bool,
     ) {
+        if !category.has_children() {
+            return;
+        }
         self.overseer_expanded[category.index()] = expanded;
         // Labels rather than indices: the file has to survive a change to the
         // category list, and an index would silently re-point instead.

@@ -175,8 +175,7 @@ impl App {
                 visible.push(Selection::OverseerCategory(category));
                 // The Inbox is the one category whose detail is acted on rather
                 // than read, so its items are rows of their own under it.
-                if category == OverseerCategory::Inbox && self.overseer_category_expanded(category)
-                {
+                if category.has_children() && self.overseer_category_expanded(category) {
                     visible.extend((0..self.overseer_inbox.len()).map(Selection::OverseerInbox));
                 }
             }

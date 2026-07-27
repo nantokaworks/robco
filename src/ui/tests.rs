@@ -64,15 +64,18 @@ fn overseer_expand_collapse_keys_update_tree() {
         Some(Selection::OverseerCategory(OverseerCategory::Health))
     );
 
+    // Inbox is the one category the keys still act on; the read-only three are
+    // covered by `overseer_frame::tests::a_leaf_category_cannot_be_expanded_by_any_key`.
+    app.selected = OverseerCategory::Inbox.index();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
-    assert!(app.overseer_category_expanded(OverseerCategory::Health));
+    assert!(app.overseer_category_expanded(OverseerCategory::Inbox));
     app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
         .unwrap();
-    assert!(!app.overseer_category_expanded(OverseerCategory::Health));
+    assert!(!app.overseer_category_expanded(OverseerCategory::Inbox));
     app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
         .unwrap();
-    assert!(app.overseer_category_expanded(OverseerCategory::Health));
+    assert!(app.overseer_category_expanded(OverseerCategory::Inbox));
 }
 
 #[test]
