@@ -80,6 +80,43 @@ fn an_in_memory_store_never_writes_a_file() {
 }
 
 #[test]
+fn an_edit_that_changes_nothing_does_not_rewrite_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ui-state.json");
+    let mut store = UiStateStore::at(path.clone());
+    store.update(|state| state.other_collapsed = true);
+    assert!(path.is_file());
+
+    // Deleting the file makes a rewrite observable without depending on mtime
+    // granularity: a write would put it straight back.
+    fs::remove_file(&path).unwrap();
+    store.update(|state| state.other_collapsed = true);
+    store.update(|state| state.orphans_collapsed = false);
+    assert!(!path.exists(), "an unchanged edit rewrote the file");
+
+    // A real change still lands.
+    store.update(|state| state.other_collapsed = false);
+    assert!(path.is_file());
+}
+
+#[test]
+fn re_collapsing_an_already_collapsed_section_does_not_rewrite_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ui-state.json");
+    let mut app = app_at(temp.path(), registry_under(temp.path(), &["alpha"]));
+    app.set_other_collapsed(true);
+    assert!(path.is_file());
+
+    // `h` on an already-collapsed header re-asserts the same flag; holding the
+    // key down must not turn into one file write per repeat.
+    fs::remove_file(&path).unwrap();
+    for _ in 0..5 {
+        app.set_other_collapsed(true);
+    }
+    assert!(!path.exists(), "a repeated collapse rewrote the file");
+}
+
+#[test]
 fn expand_and_collapse_flags_survive_a_restart() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));

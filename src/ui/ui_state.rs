@@ -101,12 +101,26 @@ impl UiStateStore {
         &self.state
     }
 
-    /// Mutate the state and write it back. Persisting is best-effort: a toggle
-    /// is a discrete user action so a straight write per change is cheap, and a
-    /// write that fails costs a layout tweak — not worth interrupting the
-    /// operator over.
+    /// Mutate the state and write it back, unless the edit left it unchanged.
+    ///
+    /// A toggle is a discrete user action, so a straight write per real change
+    /// is cheap and needs no debounce. An edit that changes nothing is not a
+    /// user action at all, though, and several callers produce them routinely:
+    /// `h` on an already-collapsed header re-asserts the same flag on every
+    /// keypress, and the setters that rewrite a whole set recompute an
+    /// identical one whenever the toggled entry was not in it. Comparing here
+    /// rather than in each caller keeps the guard in one place — the store is
+    /// what knows whether the file would actually differ.
+    ///
+    /// Persisting is best-effort either way: a write that fails costs a layout
+    /// tweak, which is not worth interrupting the operator over.
     pub(in crate::ui) fn update(&mut self, edit: impl FnOnce(&mut UiState)) {
-        edit(&mut self.state);
+        let mut next = self.state.clone();
+        edit(&mut next);
+        if next == self.state {
+            return;
+        }
+        self.state = next;
         if let Some(path) = &self.path {
             let _ = write_at(path, &self.state);
         }
