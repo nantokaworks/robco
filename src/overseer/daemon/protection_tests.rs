@@ -153,15 +153,97 @@ fn positive_cache_expires_and_is_scoped_to_branch_and_mode() {
     let mut cache = ProtectionCache::default();
     let now = Instant::now();
     let key = cache_key("/repo", "main", ProtectionMode::Required);
-    cache.remember_verified(key.clone(), now);
-    assert!(cache.verified(&key, now + PROTECTION_CACHE_TTL / 2));
-    assert!(!cache.verified(&key, now + PROTECTION_CACHE_TTL));
+    cache.remember(key.clone(), CacheState::Verified, now);
+    assert_eq!(
+        cache.remembered(&key, now + PROTECTION_CACHE_TTL / 2),
+        Some(CacheState::Verified)
+    );
+    assert_eq!(cache.remembered(&key, now + PROTECTION_CACHE_TTL), None);
     // A different base branch or a loosened mode is a different question.
-    assert!(!cache.verified(
-        &cache_key("/repo", "release", ProtectionMode::Required),
-        now
-    ));
-    assert!(!cache.verified(&cache_key("/repo", "main", ProtectionMode::Relaxed), now));
+    assert_eq!(
+        cache.remembered(
+            &cache_key("/repo", "release", ProtectionMode::Required),
+            now
+        ),
+        None
+    );
+    assert_eq!(
+        cache.remembered(&cache_key("/repo", "main", ProtectionMode::Relaxed), now),
+        None
+    );
+}
+
+#[test]
+fn plan_unsupported_cache_outlives_the_positive_ttl() {
+    let mut cache = ProtectionCache::default();
+    let now = Instant::now();
+    let key = cache_key("/repo", "main", ProtectionMode::Required);
+    cache.remember(key.clone(), CacheState::PlanUnsupported, now);
+    // Still cached well past the positive-verification TTL...
+    assert_eq!(
+        cache.remembered(&key, now + PROTECTION_CACHE_TTL * 2),
+        Some(CacheState::PlanUnsupported)
+    );
+    // ...but not forever: a plan upgrade is still noticed eventually.
+    assert_eq!(
+        cache.remembered(&key, now + PLAN_UNSUPPORTED_CACHE_TTL),
+        None
+    );
+}
+
+#[test]
+fn classify_prefers_real_facts_over_a_plan_refusal() {
+    // One probe answered with real (if insufficient) facts; the other 403'd. The
+    // real answer is the more specific, more actionable one.
+    let facts = ruleset_facts(&pull_request_only_ruleset_response());
+    assert_eq!(
+        classify(facts, ProtectionMode::Required, true, true),
+        Some(NO_REQUIRED_STATUS_CHECKS)
+    );
+}
+
+#[test]
+fn classify_reports_plan_unsupported_only_when_no_probe_answered() {
+    let facts = ProtectionFacts::default();
+    assert_eq!(
+        classify(facts, ProtectionMode::Required, false, true),
+        Some(PLAN_UNSUPPORTED)
+    );
+}
+
+#[test]
+fn classify_falls_back_to_probe_unavailable_without_a_plan_refusal_either() {
+    let facts = ProtectionFacts::default();
+    assert_eq!(
+        classify(facts, ProtectionMode::Required, false, false),
+        Some(PROBE_UNAVAILABLE)
+    );
+}
+
+#[test]
+fn classify_is_satisfied_when_the_facts_meet_the_mode() {
+    let facts = ruleset_facts(&ruleset_response());
+    assert_eq!(classify(facts, ProtectionMode::Required, true, false), None);
+}
+
+#[test]
+fn http_status_is_read_from_ghs_failure_summary() {
+    assert_eq!(
+        http_status_from_stderr(
+            b"gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)\n"
+        ),
+        Some(403)
+    );
+    assert_eq!(
+        http_status_from_stderr(b"gh: Not Found (HTTP 404)\n"),
+        Some(404)
+    );
+}
+
+#[test]
+fn http_status_is_none_for_output_with_no_status_marker() {
+    assert_eq!(http_status_from_stderr(b"connection reset by peer\n"), None);
+    assert_eq!(http_status_from_stderr(b""), None);
 }
 
 #[test]

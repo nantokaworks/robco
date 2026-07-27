@@ -218,6 +218,7 @@ always has.
     "dispatch_enabled": true,
     "auto_merge": false,
     "protection_mode": "required",
+    "allow_unverifiable_protection": false,
     "autonomy_level": "conservative",
     "max_branch_updates": 3,
     "merge_recovery_enabled": false,
@@ -268,6 +269,7 @@ always has.
 | `dispatch_enabled` | boolean | `true` | Allows new dispatches. The circuit breaker and panic command persist this as `false`. |
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
 | `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
+| `allow_unverifiable_protection` | boolean | `false` | Lets auto-merge proceed on a repository whose GitHub plan cannot answer the protection probe at all (`unprotected:plan_unsupported`), instead of holding it forever. Security-relevant: a plan-limited `403` is indistinguishable from a repository whose owner never configured protection, so enabling this accepts merges onto a base branch Overseer could never confirm is protected. It has no effect on a repository whose plan can actually answer the probe — those are still held on their real facts. |
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
@@ -465,6 +467,16 @@ Command failures, non-zero exits, and malformed JSON are not cached, so later po
 retry them; a branch that answered no probe at all is held as
 `unprotected:probe_unavailable` rather than treated as unprotected. A protected branch is
 still held until the PR is open and every reported check is successful.
+
+A repository whose GitHub plan does not include branch protection at all answers a probe
+with `403` — a private repository without GitHub Pro, for example — and neither probe
+ever supplies a usable fact. That is a permanent fact about the plan, not a transient
+probe failure, so it is held as its own reason, `unprotected:plan_unsupported`, and
+cached for an hour rather than five minutes: retrying every poll would keep spending two
+`gh api` calls a minute to reconfirm something that only changes when an operator
+upgrades the plan. Set [`allow_unverifiable_protection`](#overseer-fields) to let
+auto-merge proceed on such a repository anyway; it does not loosen verification on any
+repository whose plan can actually answer the probe.
 
 `relaxed` accepts a base branch that merely forces changes through pull requests, for
 operators whose CI is not wired into required checks. `off` skips the probe entirely and

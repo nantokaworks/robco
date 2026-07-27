@@ -46,6 +46,18 @@ pub struct OverseerConfig {
     pub dispatch_enabled: bool,
     pub auto_merge: bool,
     pub protection_mode: ProtectionMode,
+    /// Lets the auto-merge gate proceed on a repository whose GitHub plan does not
+    /// expose branch protection at all (every probe answers `403`), rather than
+    /// holding it under `unprotected:plan_unsupported` forever. Off by default: this
+    /// is a security-relevant relaxation, not a convenience knob — enabling it means
+    /// Overseer will merge onto a base branch it could never confirm is protected,
+    /// indistinguishable from one whose owner simply never configured protection at
+    /// all, because GitHub's plan-limited 403 does not say which. It does not affect
+    /// any repository whose plan can actually answer the probe: those keep being
+    /// held on their real facts exactly as before. Global rather than per-repository
+    /// because the condition it targets — a probe that cannot possibly answer — only
+    /// ever arises on a plan-limited repository in the first place.
+    pub allow_unverifiable_protection: bool,
     pub autonomy_level: AutonomyLevel,
     pub daily_llm_budget: u32,
     /// Retired: the merge strategy is the top-level `merge_strategy`, which the
@@ -147,6 +159,7 @@ impl Default for OverseerConfig {
             dispatch_enabled: true,
             auto_merge: false,
             protection_mode: ProtectionMode::Required,
+            allow_unverifiable_protection: false,
             autonomy_level: AutonomyLevel::Conservative,
             daily_llm_budget: 200,
             legacy_merge_strategy: None,
