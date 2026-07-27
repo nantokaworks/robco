@@ -40,8 +40,8 @@ use crate::{
         ledger::Ledger,
         logging::{self, DecisionEntry, DecisionKind},
         session::{
-            EphemeralSession, SessionControl, SessionHandle, SessionResult, env::SessionEnv,
-            session_profile, terminate_stale_session,
+            BRIEFING_PROMPT, EphemeralSession, SessionControl, SessionHandle, SessionResult,
+            env::SessionEnv, session_profile, terminate_stale_session,
         },
     },
 };
@@ -254,6 +254,7 @@ fn run_session(
         case_dir,
         timeout,
         env,
+        prompt: BRIEFING_PROMPT,
     }
     .run_controlled(&result::is_complete, control, Some(&pid_path))
 }
