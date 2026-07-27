@@ -98,6 +98,17 @@ pub struct OverseerConfig {
     /// judge must still converge instead of spending model budget in a loop,
     /// which is what this bounds. `0` escalates on the first fail-safe verdict.
     pub max_merge_judge_fail_safes: u32,
+    /// Reconsiderations one entry the hold cap escalated may be given, each a
+    /// full pass back through the gate to check whether the condition it held
+    /// on has cleared — an operator flipping a setting, or a probe that
+    /// answers now instead of timing out. Unlike `max_merge_holds`, this is not
+    /// keyed on the reason staying the same: it exists precisely because a
+    /// pre-judge condition (protection, checks, merge state) is never cached
+    /// anywhere the gate can watch for a change on its own, so it must be
+    /// re-tried instead. Bounded so a condition that never clears still stops
+    /// being reconsidered rather than polling forever. `0` never reconsiders a
+    /// hold-cap escalation.
+    pub max_merge_hold_rechecks: u32,
     pub worker_profile: Option<String>,
     pub max_workers: usize,
     pub per_repo_limit: usize,
@@ -169,6 +180,7 @@ impl Default for OverseerConfig {
             max_merge_recoveries: 2,
             max_merge_holds: 30,
             max_merge_judge_fail_safes: 3,
+            max_merge_hold_rechecks: 10,
             worker_profile: None,
             max_workers: 3,
             per_repo_limit: 1,

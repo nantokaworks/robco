@@ -71,6 +71,8 @@ mod tests {
             merge_hold: Default::default(),
             manual_merge_skip: None,
             merge_judge_fail_safes: 0,
+            merge_hold_cap_escalated: false,
+            merge_hold_rechecks: 0,
         };
         let mut decision = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
         decision.pr_url.clone_from(&entry.pr_url);

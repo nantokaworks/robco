@@ -59,6 +59,16 @@ pub struct LedgerEntry {
     /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub merge_judge_fail_safes: u32,
+    /// Whether this entry sits in `Escalated` because the merge-hold budget ran
+    /// out. Kept apart from `merge_hold`, which resets on the reconsideration
+    /// pass this flag grants. Cleared on merge.
+    #[serde(default)]
+    pub merge_hold_cap_escalated: bool,
+    /// Reconsiderations given to an entry the hold cap escalated. Bounded by
+    /// `overseer.max_merge_hold_rechecks` so a stuck condition still stops
+    /// being reconsidered instead of polling forever.
+    #[serde(default)]
+    pub merge_hold_rechecks: u32,
 }
 
 /// What the merge gate remembers about handing this pull request's failures back

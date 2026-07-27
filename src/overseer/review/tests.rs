@@ -76,6 +76,8 @@ pub(super) fn live_entry(
         merge_hold: Default::default(),
         manual_merge_skip: None,
         merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
     }
 }
 

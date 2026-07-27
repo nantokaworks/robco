@@ -67,6 +67,8 @@ fn newly_merged_task_resets_failure_counter() {
         merge_hold: Default::default(),
         manual_merge_skip: None,
         merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
     };
     let mut previous = Ledger {
         entries: vec![entry(LedgerPhase::Working)],
