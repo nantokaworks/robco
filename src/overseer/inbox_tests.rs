@@ -5,9 +5,6 @@ fn report(kind: ReportKind) -> InboxReport {
         at: "2026-07-16T00:00:00Z".parse().unwrap(),
         agent_id: "worker-1".into(),
         kind,
-        task_id: Some("130".into()),
-        pr_url: None,
-        reason: None,
     }
 }
 
