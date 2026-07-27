@@ -185,7 +185,7 @@ fn category_line(
     // Every category row reserves the arrow cell and a leaf leaves it blank, so
     // all four labels line up on one column and the arrow reads as an
     // affordance rather than as an indent. `label::agent_row_prefix` reserves
-    // the Overseer-auto marker the same way; this follows that precedent rather
+    // the management marker the same way; this follows that precedent rather
     // than inventing a second convention.
     let arrow = if !category.has_children() {
         " "

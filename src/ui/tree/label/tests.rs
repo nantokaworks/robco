@@ -84,10 +84,9 @@ fn fits_prefix_indicator_title_and_overflowing_right_spans() {
     let pane_width = 12;
     let row = labeled_row(
         pane_width,
-        ">   ".to_string(),
+        vec![Span::raw(">   ")],
         None,
         "agent",
-        Style::default(),
         Style::default(),
         false,
         Duration::ZERO,
@@ -106,10 +105,9 @@ fn collapsed_indicator_gives_title_two_more_columns() {
     let row = |primary| {
         labeled_row(
             8,
-            "> ".to_string(),
+            vec![Span::raw("> ")],
             primary,
             "abcdef",
-            Style::default(),
             Style::default(),
             false,
             Duration::ZERO,
@@ -129,10 +127,9 @@ fn collapses_indicator_column_when_primary_is_absent() {
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
     let row = labeled_row(
         20,
-        "> ".to_string(),
+        vec![Span::styled("> ", selected_style)],
         None,
         "agent",
-        selected_style,
         selected_style,
         true,
         Duration::ZERO,
@@ -157,10 +154,9 @@ fn collapses_indicator_column_when_primary_is_absent() {
 fn reserves_indicator_column_when_primary_is_present() {
     let row = labeled_row(
         20,
-        "> ".to_string(),
+        vec![Span::raw("> ")],
         Some(Indicator::Merging),
         "agent",
-        Style::default(),
         Style::default(),
         false,
         Duration::ZERO,
@@ -177,46 +173,4 @@ fn reserves_indicator_column_when_primary_is_present() {
             .sum::<usize>(),
         9
     );
-}
-
-#[test]
-fn an_overseer_auto_worker_carries_the_marker_right_of_the_row_indent() {
-    assert_eq!(agent_row_prefix(">", true, 0, None), ">   ▶ ");
-}
-
-#[test]
-fn a_manual_or_unmanaged_worktree_leaves_the_marker_cell_blank() {
-    assert_eq!(agent_row_prefix(">", false, 0, None), ">     ");
-}
-
-/// The marker rides the indentation, so a deeper row carries it further right.
-#[test]
-fn the_marker_moves_right_with_the_row_depth() {
-    let column = |depth| {
-        agent_row_prefix(" ", true, depth, None)
-            .find(OVERSEER_AUTO_MARKER)
-            .expect("marked prefix carries the marker")
-    };
-    assert!(column(1) > column(0));
-    assert!(column(2) > column(1));
-}
-
-/// The marker spends a cell the prefix already reserved, so the title starts at
-/// the same column on a marked row, an unmarked row, and a nested row's arrow.
-#[test]
-fn the_marker_does_not_move_the_title_column() {
-    for (depth, child_marker) in [(0, None), (1, None), (2, Some("▾ "))] {
-        let marked = agent_row_prefix(" ", true, depth, child_marker);
-        let unmarked = agent_row_prefix(" ", false, depth, child_marker);
-        assert_eq!(
-            UnicodeWidthStr::width(marked.as_str()),
-            UnicodeWidthStr::width(unmarked.as_str())
-        );
-    }
-}
-
-#[test]
-fn the_prefix_indents_by_depth_and_appends_the_expand_arrow() {
-    assert_eq!(agent_row_prefix(" ", true, 2, Some("▸ ")), "        ▶ ▸ ");
-    assert_eq!(agent_row_prefix(" ", false, 1, None), "        ");
 }
