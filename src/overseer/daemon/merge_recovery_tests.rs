@@ -300,5 +300,46 @@ fn every_recorded_reason_names_the_merge_recovery_step() {
         disabled("merge_state:dirty"),
         "merge_recovery_disabled:merge_state:dirty"
     );
+    assert_eq!(
+        undelivered("judge_veto:no rollback"),
+        "merge_recovery_undelivered:judge_veto:no rollback"
+    );
     assert_eq!(CAP_REACHED, "merge_recovery_cap_reached");
+}
+
+/// The exact bug this module exists to catch: `send` reports success (tmux's
+/// `send-keys` exits 0 either way — it types keys into a pane, it does not
+/// know whether the receiving program acted on them), but the session never
+/// shows it started a turn. The charge `plan` took on the way in must not
+/// survive that outcome, and the dedup key must clear so the same head is a
+/// candidate again on the next pass instead of being permanently marked as
+/// already handled.
+#[test]
+fn an_unconfirmed_delivery_refunds_the_charge_and_clears_the_dedupe_key() {
+    let mut entry = entry();
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-1", true, 2),
+        RecoveryPlan::Dispatch
+    );
+    assert_eq!(entry.merge_recovery.charged, 1);
+    assert_eq!(entry.merge_recovery.head.as_deref(), Some("sha-1"));
+
+    refund(&mut entry);
+
+    assert_eq!(entry.merge_recovery.charged, 0);
+    assert_eq!(entry.merge_recovery.head, None);
+    // Un-charged and un-deduped: the same head is a fresh candidate again.
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-1", true, 2),
+        RecoveryPlan::Dispatch
+    );
+    assert_eq!(entry.merge_recovery.charged, 1);
+}
+
+#[test]
+fn refund_never_underflows_a_charge_that_was_never_taken() {
+    let mut entry = entry();
+    refund(&mut entry);
+    assert_eq!(entry.merge_recovery.charged, 0);
+    assert_eq!(entry.merge_recovery.head, None);
 }

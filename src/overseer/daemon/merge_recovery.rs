@@ -15,6 +15,7 @@
 //! Overseer keeps sole possession of the merge throughout: the worker fixes and
 //! pushes, and the next merge pass re-evaluates the pull request normally.
 
+use super::merge_delivery::{confirm_delivered, send};
 use crate::{
     Result,
     overseer::{
@@ -126,6 +127,14 @@ fn disabled(reason: &str) -> String {
     format!("merge_recovery_disabled:{reason}")
 }
 
+/// Reason recorded when `send` reported success but the target session never
+/// showed it started a turn — the paste-swallowed-`Enter` failure mode this
+/// module exists to catch. Carries the failure verbatim like `dispatched`, so
+/// the operator can see what the worker was never actually told.
+fn undelivered(reason: &str) -> String {
+    format!("merge_recovery_undelivered:{reason}")
+}
+
 /// Acts on a recorded merge failure: hands it back, escalates it, or leaves it.
 pub(super) fn consider(
     entry: &mut LedgerEntry,
@@ -186,6 +195,17 @@ fn dispatch(
             &skipped(&format!("send_failed:{error}")),
         );
     }
+    if !confirm_delivered(&session) {
+        // tmux reported success, but nothing confirms the worker actually
+        // received the prompt — the exact gap that let a handback sit unsent in
+        // an input box while the decision log read as though it had landed.
+        // The attempt is un-charged so the next pass gets to retry it instead of
+        // quietly losing budget to an instruction nobody was told about, and
+        // `PrOpened` is deliberately not set: the worker was not handed
+        // anything, so the phase the merge pass reads must not change.
+        refund(entry);
+        return log(entry, DecisionKind::Hold, &undelivered(reason));
+    }
     // The worker now owns the failure, so the entry returns to the phase the
     // merge pass reads. A judge veto had already escalated it; that escalation
     // is superseded rather than left to strand the pull request.
@@ -193,6 +213,15 @@ fn dispatch(
     log(entry, DecisionKind::Hold, &dispatched(reason))?;
     note_on_task(entry, reason);
     Ok(())
+}
+
+/// Un-charges a dispatch attempt whose delivery could not be confirmed, and
+/// clears the dedup key so the same head is a candidate again on the next
+/// pass — a handback nobody received must not spend the budget it exists to
+/// protect, nor must it look like this revision was already handled.
+fn refund(entry: &mut LedgerEntry) {
+    entry.merge_recovery.charged = entry.merge_recovery.charged.saturating_sub(1);
+    entry.merge_recovery.head = None;
 }
 
 /// The worker's tmux session, when it is both registered and still running.
@@ -204,13 +233,6 @@ fn live_session(agent_id: &str, registry: &Registry) -> Option<String> {
         .find(|agent| agent.id == agent_id)
         .map(|agent| agent.tmux_session.clone())?;
     tmux::has_session(&session).ok()?.then_some(session)
-}
-
-/// Types the prompt into the session and submits it, the way triage drives a
-/// live worker through `TriageAction::RobcoAnswer`.
-fn send(session: &str, prompt: &str) -> Result<()> {
-    tmux::send_literal_text(session, &tmux::single_line(prompt))?;
-    tmux::send_keys(session, &["Enter"])
 }
 
 /// Records the handback on the dropr task, which is the source of truth for what
