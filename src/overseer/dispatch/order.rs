@@ -6,16 +6,17 @@
 //! gate can decide by itself, and left a judge-less daemon dispatching
 //! arbitrarily.
 //!
-//! The order is: highest priority first, then oldest task first. It is applied
-//! *before* the capacity gates in [`super::apply_candidate_gates`], so priority
-//! decides who wins the last worker slot rather than merely who spawns first;
-//! and it is the same list a judge round receives, so a judge reorders a
-//! defined baseline instead of an arbitrary one.
+//! The order is: highest priority first, then highest `priority_score` first,
+//! then oldest task first. It is applied *before* the capacity gates in
+//! [`super::apply_candidate_gates`], so priority decides who wins the last
+//! worker slot rather than merely who spawns first; and it is the same list a
+//! judge round receives, so a judge reorders a defined baseline instead of an
+//! arbitrary one.
 
 use super::Candidate;
 
 /// Sort key for one candidate. Lower sorts earlier.
-type OrderKey = (u8, u8, u64, String);
+type OrderKey = (u8, u32, u8, u64, String);
 
 /// Returns the candidates in dispatch order. See the module comment.
 pub(crate) fn order_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
@@ -28,10 +29,12 @@ fn order_key(candidate: &Candidate) -> OrderKey {
     let (numbered, age) = age_key(&candidate.display_id);
     (
         priority_rank(&candidate.priority),
+        reversed_score(&candidate.priority, candidate.priority_score),
         numbered,
         age,
-        // Total order: two tasks may share a priority and an unparsable display
-        // id, and a sort that still depends on input order is not deterministic.
+        // Total order: two tasks may share a priority, a score, and an
+        // unparsable display id, and a sort that still depends on input order
+        // is not deterministic.
         candidate.task_id.clone(),
     )
 }
@@ -45,6 +48,32 @@ fn priority_rank(priority: &str) -> u8 {
         "low" => 2,
         _ => 3,
     }
+}
+
+/// dropr's own bucket defaults for `priority_score`, mirrored so a candidate
+/// that carries no score of its own resolves to the same value dropr would
+/// have reported for it. An unrecognised priority (see [`priority_rank`],
+/// which already sorts it last on the bucket axis) has no dropr default; `0`
+/// is a placeholder that never matters once the bucket axis has ranked it.
+fn bucket_default_score(priority: &str) -> u32 {
+    match priority.trim().to_ascii_lowercase().as_str() {
+        "high" => 300,
+        "medium" => 200,
+        "low" => 100,
+        _ => 0,
+    }
+}
+
+/// The score component of [`OrderKey`], inverted so ascending sort still reads
+/// as "most urgent first": a higher `priority_score` must produce a *lower*
+/// key. A missing score, or one that does not fit a `u32` (negative, or
+/// larger than `u32::MAX`), falls back to [`bucket_default_score`] rather than
+/// sorting the candidate ahead of or behind every scored peer in its bucket.
+fn reversed_score(priority: &str, score: Option<i64>) -> u32 {
+    let effective = score
+        .and_then(|score| u32::try_from(score).ok())
+        .unwrap_or_else(|| bucket_default_score(priority));
+    u32::MAX - effective
 }
 
 /// Age proxy taken from the dropr display id.
@@ -79,6 +108,14 @@ mod tests {
             author: "allowed".into(),
             priority: priority.into(),
             workspace: "workspace-1".into(),
+            priority_score: None,
+        }
+    }
+
+    fn scored(display_id: &str, priority: &str, score: i64) -> Candidate {
+        Candidate {
+            priority_score: Some(score),
+            ..candidate(display_id, priority)
         }
     }
 
@@ -139,5 +176,44 @@ mod tests {
         let mut reversed = forward.to_vec();
         reversed.reverse();
         assert_eq!(ordered_ids(&forward), ordered_ids(&reversed));
+    }
+
+    #[test]
+    fn a_higher_score_dispatches_first_within_the_same_bucket() {
+        let candidates = [
+            scored("#1", "medium", 100),
+            scored("#2", "medium", 250),
+            scored("#3", "medium", 180),
+        ];
+        assert_eq!(ordered_ids(&candidates), ["#2", "#3", "#1"]);
+    }
+
+    #[test]
+    fn a_scoreless_candidate_sorts_at_its_bucket_default() {
+        let candidates = [
+            scored("#1", "medium", 250), // above the medium default of 200
+            candidate("#2", "medium"),   // no score: falls back to 200
+            scored("#3", "medium", 150), // below the medium default
+        ];
+        assert_eq!(ordered_ids(&candidates), ["#1", "#2", "#3"]);
+    }
+
+    #[test]
+    fn the_bucket_still_outranks_any_score() {
+        let candidates = [scored("#1", "medium", 999), scored("#2", "high", 1)];
+        assert_eq!(ordered_ids(&candidates), ["#2", "#1"]);
+    }
+
+    #[test]
+    fn an_unparsable_score_falls_back_to_the_bucket_default() {
+        let candidates = [
+            scored("#1", "medium", -5),
+            scored("#2", "medium", i64::MAX),
+            candidate("#3", "medium"),
+        ];
+        // A negative score and one that overflows `u32` are both unparsable,
+        // so they land exactly where the scoreless candidate does: the bucket
+        // default. The tie is then broken by age, oldest first.
+        assert_eq!(ordered_ids(&candidates), ["#1", "#2", "#3"]);
     }
 }

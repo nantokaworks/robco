@@ -27,6 +27,12 @@ pub struct DroprTaskCandidate {
     pub priority: String,
     #[serde(default)]
     pub status: String,
+    /// dropr's numeric refinement of `priority`, ordering candidates within a
+    /// bucket. `None` when the source omitted it or it did not parse as an
+    /// integer — `dropr task ready --json` does not emit this field today, so
+    /// every candidate from that feed carries `None` until the CLI grows it.
+    #[serde(default)]
+    pub priority_score: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

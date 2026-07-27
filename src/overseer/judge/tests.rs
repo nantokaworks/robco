@@ -14,6 +14,7 @@ pub(super) fn candidate(id: &str) -> Candidate {
         author: "owner".into(),
         priority: "medium".into(),
         workspace: "workspace-1".into(),
+        priority_score: None,
     }
 }
 

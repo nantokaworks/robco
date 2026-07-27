@@ -7,6 +7,7 @@ fn task(display_id: &str) -> DroprTaskCandidate {
         title: display_id.to_owned(),
         priority: String::new(),
         status: "open".to_owned(),
+        priority_score: None,
     }
 }
 
