@@ -25,28 +25,59 @@ use crate::{
 
 const PROTECTION_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 
+/// TTL for a plan-level refusal — cached far longer than a verified probe. The
+/// condition changes only when an operator upgrades the repository's GitHub plan, a
+/// deliberate action rather than something that flips within minutes, so retrying
+/// every five minutes would still spend two `gh api` calls for no reason.
+const PLAN_UNSUPPORTED_CACHE_TTL: Duration = Duration::from_secs(60 * 60);
+
 /// Reason a branch failed the gate, appended to the `unprotected` hold decision so an
 /// operator can see which condition is missing without reading source.
 pub(super) const NO_PULL_REQUEST_RULE: &str = "no_pull_request_rule";
 pub(super) const NO_REQUIRED_STATUS_CHECKS: &str = "no_required_status_checks";
 pub(super) const PROBE_UNAVAILABLE: &str = "probe_unavailable";
 pub(super) const UNKNOWN_REMOTE: &str = "unknown_remote";
+/// The repository's GitHub plan does not expose branch protection at all — every
+/// probe answered `403`, not a timeout or a transient failure. Unlike
+/// `PROBE_UNAVAILABLE`, this is cached: retrying it every pass would keep spending
+/// `gh api` calls to reconfirm a fact that will not change until the plan does. See
+/// `crate::overseer::config::OverseerConfig::allow_unverifiable_protection` for the
+/// operator's route past it.
+pub(super) const PLAN_UNSUPPORTED: &str = "plan_unsupported";
 
-/// Memoises verified (repository, branch, mode) triples. Loosening the mode or moving to
-/// another base branch is a different question, so it re-probes rather than reusing an
-/// answer given for a stricter one.
+/// What a (repository, branch, mode) triple was last found to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CacheState {
+    /// The facts satisfied the mode.
+    Verified,
+    /// Every probe answered `403 plan-level`; see `PLAN_UNSUPPORTED`.
+    PlanUnsupported,
+}
+
+impl CacheState {
+    fn ttl(self) -> Duration {
+        match self {
+            Self::Verified => PROTECTION_CACHE_TTL,
+            Self::PlanUnsupported => PLAN_UNSUPPORTED_CACHE_TTL,
+        }
+    }
+}
+
+/// Memoises the last classification of (repository, branch, mode) triples. Loosening
+/// the mode or moving to another base branch is a different question, so it re-probes
+/// rather than reusing an answer given for a stricter one.
 #[derive(Default)]
-pub(super) struct ProtectionCache(HashMap<String, Instant>);
+pub(super) struct ProtectionCache(HashMap<String, (CacheState, Instant)>);
 
 impl ProtectionCache {
-    fn verified(&self, key: &str, now: Instant) -> bool {
-        self.0
-            .get(key)
-            .is_some_and(|verified| now.saturating_duration_since(*verified) < PROTECTION_CACHE_TTL)
+    fn remembered(&self, key: &str, now: Instant) -> Option<CacheState> {
+        self.0.get(key).and_then(|(state, at)| {
+            (now.saturating_duration_since(*at) < state.ttl()).then_some(*state)
+        })
     }
 
-    fn remember_verified(&mut self, key: String, now: Instant) {
-        self.0.insert(key, now);
+    fn remember(&mut self, key: String, state: CacheState, now: Instant) {
+        self.0.insert(key, (state, now));
     }
 }
 
@@ -140,41 +171,72 @@ pub(super) fn unmet_condition(
     }
     let now = Instant::now();
     let key = cache_key(&entry.repo, branch, mode);
-    if cache.verified(&key, now) {
-        return None;
+    match cache.remembered(&key, now) {
+        Some(CacheState::Verified) => return None,
+        Some(CacheState::PlanUnsupported) => return Some(PLAN_UNSUPPORTED),
+        None => {}
     }
     let Some(name) = github_slug(entry, registry) else {
         return Some(UNKNOWN_REMOTE);
     };
     let mut facts = ProtectionFacts::default();
     let mut probed = false;
-    if let Some(value) = api(
+    let mut plan_unsupported = false;
+    match api(
         &entry.repo,
         &format!("repos/{name}/rules/branches/{branch}"),
     ) {
-        probed = true;
-        facts = facts.union(ruleset_facts(&value));
+        Probe::Answered(value) => {
+            probed = true;
+            facts = facts.union(ruleset_facts(&value));
+        }
+        Probe::PlanUnsupported => plan_unsupported = true,
+        Probe::Unavailable => {}
     }
     // The rules endpoint never reports classic protection, so a branch the rulesets do
     // not already cover still needs the classic probe before it can be refused.
-    if facts.unmet(mode).is_some()
-        && let Some(value) = api(
+    if facts.unmet(mode).is_some() {
+        match api(
             &entry.repo,
             &format!("repos/{name}/branches/{branch}/protection"),
-        )
-    {
-        probed = true;
-        facts = facts.union(classic_facts(&value));
+        ) {
+            Probe::Answered(value) => {
+                probed = true;
+                facts = facts.union(classic_facts(&value));
+            }
+            Probe::PlanUnsupported => plan_unsupported = true,
+            Probe::Unavailable => {}
+        }
     }
-    match facts.unmet(mode) {
+    match classify(facts, mode, probed, plan_unsupported) {
         None => {
-            cache.remember_verified(key, now);
+            cache.remember(key, CacheState::Verified, now);
             None
         }
-        // A branch that answered no probe at all is unknown, not unprotected; keep it
-        // uncached so the next pass retries.
-        Some(_) if !probed => Some(PROBE_UNAVAILABLE),
-        Some(reason) => Some(reason),
+        Some(PLAN_UNSUPPORTED) => {
+            cache.remember(key, CacheState::PlanUnsupported, now);
+            Some(PLAN_UNSUPPORTED)
+        }
+        some => some,
+    }
+}
+
+/// Turns the branch's protection facts, together with what the probes themselves
+/// reported, into the gate's answer. A branch that answered with real (if
+/// insufficient) facts is told the specific rule it is missing; one whose plan cannot
+/// serve the answer at all is told that permanently; a probe that merely failed to
+/// answer is told to retry.
+fn classify(
+    facts: ProtectionFacts,
+    mode: ProtectionMode,
+    probed: bool,
+    plan_unsupported: bool,
+) -> Option<&'static str> {
+    match facts.unmet(mode) {
+        None => None,
+        Some(reason) if probed => Some(reason),
+        Some(_) if plan_unsupported => Some(PLAN_UNSUPPORTED),
+        Some(_) => Some(PROBE_UNAVAILABLE),
     }
 }
 
@@ -188,13 +250,45 @@ fn github_slug(entry: &LedgerEntry, registry: &Registry) -> Option<String> {
         .and_then(|key| key.strip_prefix("github:").map(str::to_owned))
 }
 
-fn api(repo: &str, endpoint: &str) -> Option<Value> {
+/// What a single `gh api` probe reported.
+enum Probe {
+    /// The endpoint answered with a body.
+    Answered(Value),
+    /// The endpoint refused with `403`, GitHub's shape for "this repository's plan
+    /// does not include this feature" on the branch-protection endpoints — distinct
+    /// from a scoped-permission or rate-limit refusal, which return other statuses.
+    PlanUnsupported,
+    /// The probe did not answer at all: a timeout, a network failure, or a status
+    /// this probe does not interpret. Left for the caller to retry uncached.
+    Unavailable,
+}
+
+fn api(repo: &str, endpoint: &str) -> Probe {
     let mut command = Command::new("gh");
     command.current_dir(repo).args(["api", endpoint]);
-    run_timeout(command, COMMAND_TIMEOUT)
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| serde_json::from_slice(&output.stdout).ok())
+    let Ok(output) = run_timeout(command, COMMAND_TIMEOUT) else {
+        return Probe::Unavailable;
+    };
+    if output.status.success() {
+        return serde_json::from_slice(&output.stdout)
+            .map(Probe::Answered)
+            .unwrap_or(Probe::Unavailable);
+    }
+    match http_status_from_stderr(&output.stderr) {
+        Some(403) => Probe::PlanUnsupported,
+        _ => Probe::Unavailable,
+    }
+}
+
+/// Picks the status code out of `gh api`'s failure summary, e.g. `gh: Upgrade to
+/// GitHub Pro or make this repository public to enable this feature. (HTTP 403)`.
+/// `gh` writes this line to stderr on every non-2xx response; on failure it is the
+/// only place the status code survives (`--include` would carry it on stdout too,
+/// but at the cost of parsing headers back out of every successful response).
+fn http_status_from_stderr(stderr: &[u8]) -> Option<u16> {
+    let text = std::str::from_utf8(stderr).ok()?;
+    let after_marker = text.rsplit_once("(HTTP ")?.1;
+    after_marker.split(')').next()?.trim().parse().ok()
 }
 
 #[cfg(test)]
