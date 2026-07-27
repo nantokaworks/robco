@@ -126,8 +126,24 @@ fn default_management_mode() -> ManagementMode {
     ManagementMode::Auto
 }
 
-/// Agent indices and identity-tree depths in display order.
-pub fn agent_order(agents: &[AgentNode]) -> Vec<(usize, usize)> {
+/// One agent's position in the identity tree's display order: its flat
+/// index, its nesting depth, whether it is the last child among its
+/// siblings, and — for each ancestor level above it, root first — whether
+/// that ancestor still has a later sibling below. The tree connector needs
+/// the last field to know, per row, whether to draw a continuing `│` guide
+/// or leave that column blank while it descends through this row's subtree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentRow {
+    pub index: usize,
+    pub depth: usize,
+    pub is_last: bool,
+    pub ancestor_continues: Vec<bool>,
+}
+
+/// Agent rows in display order, each carrying the sibling bookkeeping the
+/// tree connector needs. `agent_order` is a depth-only view of the same
+/// traversal for callers that don't render connectors.
+pub fn agent_rows(agents: &[AgentNode]) -> Vec<AgentRow> {
     use std::collections::{HashMap, HashSet};
 
     let by_id: HashMap<&str, usize> = agents
@@ -135,7 +151,7 @@ pub fn agent_order(agents: &[AgentNode]) -> Vec<(usize, usize)> {
         .enumerate()
         .map(|(index, agent)| (agent.id.as_str(), index))
         .collect();
-    let mut children = vec![Vec::new(); agents.len()];
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); agents.len()];
     for (index, agent) in agents.iter().enumerate() {
         if let Some(parent) = agent
             .parent_agent_id
@@ -146,44 +162,94 @@ pub fn agent_order(agents: &[AgentNode]) -> Vec<(usize, usize)> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn visit(
         index: usize,
         depth: usize,
+        is_last: bool,
+        ancestor_continues: &[bool],
         children: &[Vec<usize>],
         visited: &mut HashSet<usize>,
-        ordered: &mut Vec<(usize, usize)>,
+        ordered: &mut Vec<AgentRow>,
     ) {
         if !visited.insert(index) {
             return;
         }
-        ordered.push((index, depth));
-        for &child in &children[index] {
-            visit(child, depth + 1, children, visited, ordered);
+        ordered.push(AgentRow {
+            index,
+            depth,
+            is_last,
+            ancestor_continues: ancestor_continues.to_vec(),
+        });
+        let kids = &children[index];
+        let mut deeper = ancestor_continues.to_vec();
+        deeper.push(!is_last);
+        let last_child = kids.len().saturating_sub(1);
+        for (position, &child) in kids.iter().enumerate() {
+            visit(
+                child,
+                depth + 1,
+                position == last_child,
+                &deeper,
+                children,
+                visited,
+                ordered,
+            );
         }
     }
 
     let mut visited = HashSet::new();
     let mut ordered = Vec::with_capacity(agents.len());
-    for (index, agent) in agents.iter().enumerate() {
-        let known_parent = agent
-            .parent_agent_id
-            .as_deref()
-            .is_some_and(|id| by_id.contains_key(id));
-        if !known_parent {
-            visit(index, 0, &children, &mut visited, &mut ordered);
-        }
+    let roots: Vec<usize> = (0..agents.len())
+        .filter(|&index| {
+            !agents[index]
+                .parent_agent_id
+                .as_deref()
+                .is_some_and(|id| by_id.contains_key(id))
+        })
+        .collect();
+    let last_root = roots.len().saturating_sub(1);
+    for (position, &index) in roots.iter().enumerate() {
+        visit(
+            index,
+            0,
+            position == last_root,
+            &[],
+            &children,
+            &mut visited,
+            &mut ordered,
+        );
     }
+    // Orphans left by a cycle where every member claims a parent: none of them
+    // qualified as a root above, so nothing would visit them without this pass.
     for index in 0..agents.len() {
-        visit(index, 0, &children, &mut visited, &mut ordered);
+        if !visited.contains(&index) {
+            visit(index, 0, true, &[], &children, &mut visited, &mut ordered);
+        }
     }
     ordered
 }
 
-pub fn agent_depth(agents: &[AgentNode], index: usize) -> usize {
-    agent_order(agents)
+/// The single row for one agent index, for call sites that already know
+/// which agent they're rendering rather than walking the full order.
+pub fn agent_row(agents: &[AgentNode], index: usize) -> AgentRow {
+    agent_rows(agents)
         .into_iter()
-        .find_map(|(candidate, depth)| (candidate == index).then_some(depth))
-        .unwrap_or(0)
+        .find(|row| row.index == index)
+        .unwrap_or(AgentRow {
+            index,
+            depth: 0,
+            is_last: true,
+            ancestor_continues: Vec::new(),
+        })
+}
+
+/// Agent indices and identity-tree depths in display order.
+pub fn agent_order(agents: &[AgentNode]) -> Vec<(usize, usize)> {
+    agent_rows(agents)
+        .into_iter()
+        .map(|row| (row.index, row.depth))
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -295,6 +361,95 @@ mod tests {
 
         let self_parent = vec![agent("self", Some("self")), agent("child", Some("self"))];
         assert_eq!(agent_order(&self_parent), vec![(0, 0), (1, 1)]);
+    }
+
+    #[test]
+    fn agent_rows_mark_last_siblings_and_ancestor_guides() {
+        fn agent(id: &str, parent: Option<&str>) -> AgentNode {
+            let now = Local::now();
+            AgentNode {
+                id: id.into(),
+                parent_agent_id: parent.map(str::to_string),
+                management: ManagementMode::Manual,
+                title: id.into(),
+                worktree_path: PathBuf::from(id),
+                branch: id.into(),
+                base_commit: String::new(),
+                program: String::new(),
+                claude_session_id: None,
+                profile: None,
+                tmux_session: id.into(),
+                created_at: now,
+                updated_at: now,
+                status: Status::Idle,
+                worktree_missing: false,
+                merge_error: None,
+                last_capture: None,
+                last_spinner: None,
+                last_change_at: None,
+                last_auto_accept_at: None,
+                shell_working: false,
+                mcp_active: false,
+                pane_pid: None,
+                tracked_command: None,
+                subagents: Vec::new(),
+                children: Vec::new(),
+            }
+        }
+
+        // "parent" has a later root sibling "other", so its own row is not
+        // last and carries no ancestors; "child" is parent's only child, so
+        // it is last, but its ancestor ("parent") still has a later sibling,
+        // so the guide over "child"'s row must continue.
+        let agents = vec![
+            agent("parent", None),
+            agent("other", None),
+            agent("child", Some("parent")),
+        ];
+        let rows = agent_rows(&agents);
+        assert_eq!(
+            rows,
+            vec![
+                AgentRow {
+                    index: 0,
+                    depth: 0,
+                    is_last: false,
+                    ancestor_continues: vec![],
+                },
+                AgentRow {
+                    index: 2,
+                    depth: 1,
+                    is_last: true,
+                    ancestor_continues: vec![true],
+                },
+                AgentRow {
+                    index: 1,
+                    depth: 0,
+                    is_last: true,
+                    ancestor_continues: vec![],
+                },
+            ]
+        );
+
+        // A deeper tree: "root" is the sole root (last), "mid-a" has a later
+        // sibling "mid-b" (not last), and "leaf" hangs off "mid-a" alone
+        // (last). "leaf"'s guide must be blank over "root"'s column (root has
+        // no later sibling) but continue over "mid-a"'s column (mid-a does).
+        let deeper = vec![
+            agent("root", None),
+            agent("mid-a", Some("root")),
+            agent("mid-b", Some("root")),
+            agent("leaf", Some("mid-a")),
+        ];
+        let rows = agent_rows(&deeper);
+        let leaf = rows.iter().find(|row| row.index == 3).unwrap();
+        assert_eq!(leaf.depth, 2);
+        assert!(leaf.is_last);
+        assert_eq!(leaf.ancestor_continues, vec![false, true]);
+        let mid_a = rows.iter().find(|row| row.index == 1).unwrap();
+        assert!(!mid_a.is_last);
+        let mid_b = rows.iter().find(|row| row.index == 2).unwrap();
+        assert!(mid_b.is_last);
     }
 
     #[test]
