@@ -215,6 +215,41 @@ pub(in crate::ui) fn bulk_action(target: ManagementMode) -> &'static str {
     }
 }
 
+/// `G` on a repo row: distinct from `g`'s per-worker cycle above, this flips
+/// whether the Overseer looks at the repo at all (`RepoNode::management`),
+/// independent of every worker's own `management`. Workers already running
+/// are left alone either way — only future dispatch and auto-merge passes
+/// honour the new state.
+pub(super) fn toggle_repo_overseer(app: &mut App) -> Result<()> {
+    let Some(Selection::Repo(repo)) = app.selected_item() else {
+        app.show_message("G: select a repo to toggle overseer management");
+        return Ok(());
+    };
+    let repo_path = app.registry.repos[repo].path.clone();
+    let mut target = ManagementMode::Auto;
+    app.locked_registry_update(|registry| {
+        let Some(repo) = registry
+            .repos
+            .iter_mut()
+            .find(|repo| repo.path == repo_path)
+        else {
+            return;
+        };
+        repo.management = match repo.management {
+            ManagementMode::Auto => ManagementMode::Manual,
+            ManagementMode::Manual => ManagementMode::Auto,
+        };
+        target = repo.management;
+    })?;
+    app.show_message(match target {
+        ManagementMode::Auto => "overseer management: repo back under auto",
+        ManagementMode::Manual => {
+            "overseer management: repo opted out (running workers keep going)"
+        }
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 #[path = "management_tests.rs"]
 mod tests;

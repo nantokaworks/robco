@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 53;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 57;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -20,6 +20,8 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  x              remove selected agent worktree or pinned repo"),
         Line::from("  g              cycle selected worktree: unmanaged -> Auto -> Manual"),
         Line::from("                 on a repo row: any Auto -> all Manual, else all Auto"),
+        Line::from("  G              on a repo row: toggle Overseer opt-out for the whole repo"),
+        Line::from("                 (opted out: no dispatch/merge; running workers untouched)"),
         Line::from("  S              stop overseer (dispatch off + kill workers)"),
         Line::from("  R              reset dispatch circuit (when open)"),
         Line::from("Overseer inbox"),
@@ -51,6 +53,8 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  ⟳ manual dropr reload (r key)"),
         Line::from("  ✓ done   · idle   ⎇ branch only (static fallback)"),
         Line::from("  ● overseer Auto   ○ overseer Manual   blank unmanaged (rides indent)"),
+        Line::from("  Repo row always shows its own ●/○; agent rows blank unless they differ"),
+        Line::from("  Opted-out repo (○): name and its agent rows render dimmed"),
         Line::from("  Collapsed repos: N ⠿ is running; status glyphs/N ⌦ are child counts"),
         Line::from("  Child rows: * uncommitted changes   ⌁ tmux session"),
         Line::from("General"),

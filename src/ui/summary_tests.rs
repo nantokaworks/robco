@@ -7,6 +7,7 @@ fn repo(dropr: Option<DroprWorkspace>, dropr_tasks: DroprTaskFetch) -> RepoNode 
         name: "repo".into(),
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents: Vec::new(),
         dropr,
         dropr_tasks,

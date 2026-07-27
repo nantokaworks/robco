@@ -1,6 +1,42 @@
 use super::*;
 use crate::overseer::autonomy::AutonomyLevel;
 
+fn repo(name: &str, management: ManagementMode) -> crate::model::RepoNode {
+    let mut repo = crate::discover::repo_node(format!("/tmp/{name}").into(), false);
+    repo.name = name.to_string();
+    repo.management = management;
+    repo
+}
+
+#[test]
+fn repos_line_reports_every_repo_watched_when_none_opted_out() {
+    let registry = Registry {
+        version: 1,
+        repos: vec![
+            repo("one", ManagementMode::Auto),
+            repo("two", ManagementMode::Auto),
+        ],
+    };
+    assert_eq!(repos_line(&registry), "repos: 2 watched, 0 opted out");
+}
+
+#[test]
+fn repos_line_names_the_repos_that_opted_out() {
+    // Naming them, not just counting them, is what lets an operator spot a repo
+    // they forgot was switched off without opening the TUI.
+    let registry = Registry {
+        version: 1,
+        repos: vec![
+            repo("watched", ManagementMode::Auto),
+            repo("manual-repo", ManagementMode::Manual),
+        ],
+    };
+    assert_eq!(
+        repos_line(&registry),
+        "repos: 1 watched, 1 opted out: manual-repo"
+    );
+}
+
 #[test]
 fn toggle_line_reports_no_switch_the_daemon_ignores() {
     let config = OverseerConfig::default();

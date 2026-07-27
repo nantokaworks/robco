@@ -87,17 +87,20 @@ fn title_column(rows: &[String], title: &str) -> usize {
     row[..byte].chars().count()
 }
 
-/// Filled for an Overseer worker under Auto, hollow for one under Manual, blank
-/// for a worktree the Overseer does not manage — three states, three
-/// renderings, none of them a triangle competing with the expand handles.
+/// The repo in `app_with_managed_workers` carries no `management` field, so it
+/// serde-defaults to Auto. An agent row's own marker is blanked whenever it
+/// matches that repo state (`ManagementMarker::unless_matching`) — the repo
+/// row already said it — so only `manual-worker`, which diverges, keeps its
+/// hollow glyph; `auto-worker` inherits blank and `hand-made` (never the
+/// Overseer's) was always blank.
 #[test]
 fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     for (title, expected) in [
-        ("auto-worker", "    ● "),
-        ("manual-worker", "    ○ "),
-        ("hand-made", "      "),
+        ("auto-worker", "        "),
+        ("manual-worker", "      ○ "),
+        ("hand-made", "        "),
     ] {
         assert!(
             row_containing(&rows, title).starts_with(expected),
@@ -105,6 +108,43 @@ fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
             row_containing(&rows, title)
         );
     }
+}
+
+/// Once the repo itself is switched to Manual (the `G` toggle), the repo row's
+/// own state no longer says "Auto" for `auto-worker` — so that worker's own
+/// marker starts diverging from its repo and reappears, while `manual-worker`
+/// now matches the repo and goes blank instead.
+#[test]
+fn an_agent_marker_reappears_when_it_stops_matching_its_repo() {
+    let mut app = app_with_managed_workers();
+    app.registry.repos[0].management = crate::model::ManagementMode::Manual;
+    let rows = rendered_rows(&app);
+
+    for (title, expected) in [
+        ("auto-worker", "      ● "),
+        ("manual-worker", "        "),
+        ("hand-made", "        "),
+    ] {
+        assert!(
+            row_containing(&rows, title).starts_with(expected),
+            "{title} row does not start with {expected:?}: {:?}",
+            row_containing(&rows, title)
+        );
+    }
+}
+
+/// The repo row itself always shows its own marker, unconditionally — it is
+/// the one row that never blanks out, since it is the state every agent row
+/// is compared against.
+#[test]
+fn the_repo_row_always_shows_its_own_marker() {
+    let auto = rendered_rows(&app_with_managed_workers());
+    assert!(row_containing(&auto, "repo").contains('●'));
+
+    let mut manual = app_with_managed_workers();
+    manual.registry.repos[0].management = crate::model::ManagementMode::Manual;
+    let manual_rows = rendered_rows(&manual);
+    assert!(row_containing(&manual_rows, "repo").contains('○'));
 }
 
 /// An agent hangs off the repo above it, so its title has to start right of the

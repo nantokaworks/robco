@@ -16,6 +16,14 @@ pub struct RepoNode {
     /// Persisted manual registration; keeps an agent-less repo listed.
     #[serde(default)]
     pub pinned: bool,
+    /// Whether the Overseer treats this repo as its own to dispatch into and
+    /// auto-merge for at all — the same vocabulary as `AgentNode::management`,
+    /// reused at repo scope so the tree can show an agent row's marker only
+    /// when it diverges from its repo's. Serde-defaulted to `Auto` so an
+    /// existing `~/.robco/state.json` keeps today's behaviour until an
+    /// operator opts a repo out.
+    #[serde(default = "default_management_mode")]
+    pub management: ManagementMode,
     #[serde(default)]
     pub agents: Vec<AgentNode>,
     #[serde(skip)]

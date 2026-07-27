@@ -30,9 +30,12 @@ fn prefix(cursor: &str, management: ManagementMarker, depth: usize, child: Optio
 /// separate steps.
 #[test]
 fn the_three_management_states_render_three_distinct_markers() {
-    assert_eq!(prefix(">", ManagementMarker::Auto, 0, None), ">   ● ");
-    assert_eq!(prefix(">", ManagementMarker::Manual, 0, None), ">   ○ ");
-    assert_eq!(prefix(">", ManagementMarker::Unmanaged, 0, None), ">     ");
+    assert_eq!(prefix(">", ManagementMarker::Auto, 0, None), ">     ● ");
+    assert_eq!(prefix(">", ManagementMarker::Manual, 0, None), ">     ○ ");
+    assert_eq!(
+        prefix(">", ManagementMarker::Unmanaged, 0, None),
+        ">       "
+    );
 }
 
 /// Ownership and mode are read together: a worktree adopted from
@@ -97,10 +100,10 @@ const ALL: [ManagementMarker; 3] = [
 #[test]
 fn the_prefix_indents_by_depth_and_appends_the_expand_arrow() {
     let marked = prefix(" ", ManagementMarker::Auto, 2, Some("▸ "));
-    assert_eq!(marked, "        ● ▸ ");
+    assert_eq!(marked, "          ● ▸ ");
     assert_eq!(
         prefix(" ", ManagementMarker::Unmanaged, 1, None),
-        "        "
+        "          "
     );
 }
 

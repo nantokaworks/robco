@@ -54,6 +54,7 @@ pub(in crate::ui) fn repo(path: PathBuf, agents: Vec<AgentNode>) -> RepoNode {
         path,
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

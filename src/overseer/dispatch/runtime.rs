@@ -154,6 +154,18 @@ fn gather_candidates() -> Result<Vec<Candidate>> {
     }
     let mut candidates = Vec::new();
     for repo in &registry.repos {
+        if repo.management == crate::model::ManagementMode::Manual {
+            // An operator working a repo by hand opted it out; recording this
+            // as its own skip reason (rather than falling through to
+            // `workspace_unmatched`) is what keeps an idle Overseer
+            // diagnosable from `decisions.jsonl` alone.
+            log_repo_skip(
+                &repo.path.to_string_lossy(),
+                "overseer_unmanaged",
+                logging::append,
+            )?;
+            continue;
+        }
         let Some(remote) = &repo.remote_url else {
             continue;
         };

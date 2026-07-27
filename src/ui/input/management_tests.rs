@@ -50,6 +50,7 @@ fn repo(agents: Vec<AgentNode>) -> RepoNode {
         path: "/tmp/robco".into(),
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

@@ -54,6 +54,7 @@ fn management_app() -> App {
         name: "repo".into(),
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents: vec![
             overseer_worker("auto-agent", "auto title", ManagementMode::Auto),
             overseer_worker("manual-agent", "manual title", ManagementMode::Manual),

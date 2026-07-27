@@ -5,7 +5,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{Selection, Status};
+use crate::model::{ManagementMode, Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
@@ -16,6 +16,7 @@ mod hints;
 mod indicator;
 mod label;
 pub(in crate::ui) mod overseer_frame;
+mod repo_row;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
@@ -41,113 +42,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         match *item {
             Selection::OverseerCategory(_) | Selection::OverseerInbox(_) => continue,
             Selection::Repo(repo_idx) => {
-                let repo = &app.registry.repos[repo_idx];
-                let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
-                let prefix = app.config.project_icon.marker(expanded);
-                let mut right = vec![Span::styled(
-                    format!(" {}", repo.agents.len()),
-                    if selected { style } else { THEME.hint_style() },
-                )];
-                if !app.repo_is_local(repo) {
-                    right.push(Span::styled(
-                        format!("  {}", short_path(&repo.path)),
-                        if selected { style } else { THEME.muted_style() },
-                    ));
-                }
-                let dropr_refresh = repo
-                    .dropr
-                    .as_ref()
-                    .is_some_and(|workspace| app.dropr_refresh_in_flight(&workspace.id));
-                let mut indicator_state = IndicatorState::with_status(repo.main_status);
-                indicator_state.shell_active = repo.main_shell_working;
-                indicator_state.mcp_active = repo.main_mcp_active;
-                indicator_state.subagents_active = repo.main_subagents_active;
-                indicator_state.dropr_refresh = dropr_refresh;
-                let primary = select(indicator_state);
-                right.extend(indicator::supplementary_spans(
-                    primary,
-                    select_supplementary(indicator_state),
+                lines.extend(repo_row::build(
+                    app,
+                    repo_idx,
                     selected,
-                    "  ",
-                ));
-                if !expanded && !repo.agents.is_empty() {
-                    let status_counts = [
-                        Status::Running,
-                        Status::Waiting,
-                        Status::Done,
-                        Status::Idle,
-                        Status::Dead,
-                        Status::BranchOnly,
-                    ]
-                    .map(|status| {
-                        (
-                            status,
-                            repo.agents
-                                .iter()
-                                .filter(|agent| agent.status == status)
-                                .count(),
-                        )
-                    });
-                    let status_style = |status| {
-                        if selected {
-                            THEME.selected_status_style(status)
-                        } else {
-                            THEME.status_style(status)
-                        }
-                    };
-                    let mut first = true;
-                    for (status, count) in status_counts {
-                        if count == 0 {
-                            continue;
-                        }
-                        right.push(Span::styled(if first { "  " } else { " · " }, style));
-                        right.push(Span::styled(
-                            format!("{count} {}", status.glyph()),
-                            status_style(status),
-                        ));
-                        first = false;
-                    }
-                    let missing_count = repo
-                        .agents
-                        .iter()
-                        .filter(|agent| agent.worktree_missing)
-                        .count();
-                    if missing_count > 0 {
-                        right.push(Span::styled(if first { "  " } else { " · " }, style));
-                        right.push(Span::styled(
-                            format!("{missing_count} ⌦"),
-                            THEME.worktree_missing_style(selected),
-                        ));
-                    }
-                    let merge_failed_count = repo
-                        .agents
-                        .iter()
-                        .filter(|agent| agent.merge_error.is_some())
-                        .count();
-                    if merge_failed_count > 0 {
-                        right.push(Span::styled(if first { "  " } else { " · " }, style));
-                        right.push(Span::styled(
-                            format!("{merge_failed_count} merge-failed"),
-                            THEME.merge_failed_style(selected),
-                        ));
-                    }
-                }
-                lines.push(label::labeled_row(
-                    projects_width,
-                    vec![Span::styled(format!("{marker} {prefix} "), style)],
-                    primary,
-                    &repo.name,
+                    marker,
                     style,
-                    selected,
-                    app.started.elapsed(),
-                    right,
+                    projects_width,
                 ));
-                if expanded && repo.agents.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        format!("    {}(no agents)", label::AGENT_INDENT),
-                        THEME.muted_style(),
-                    )));
-                }
             }
             Selection::Agent {
                 repo: repo_idx,
@@ -156,10 +58,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let repo = &app.registry.repos[repo_idx];
                 let depth = crate::model::agent_depth(&repo.agents, agent_idx);
                 let agent = &repo.agents[agent_idx];
+                let repo_unmanaged = repo.management == ManagementMode::Manual;
                 let agent_style = if selected {
                     style
                 } else if agent.status == Status::BranchOnly {
                     THEME.status_style(Status::BranchOnly)
+                } else if repo_unmanaged {
+                    THEME.muted_style()
                 } else {
                     style
                 };
@@ -193,9 +98,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         "▸ "
                     }
                 });
+                // Blank out a marker that only repeats what the repo row above
+                // already shows, so the ones that remain are the agents whose
+                // management actually diverges from their repo's.
+                let agent_marker =
+                    label::ManagementMarker::of(agent.parent_agent_id.as_deref(), agent.management)
+                        .unless_matching(label::ManagementMarker::of_repo(repo.management));
                 let prefix = label::agent_row_prefix(
                     marker,
-                    label::ManagementMarker::of(agent.parent_agent_id.as_deref(), agent.management),
+                    agent_marker,
                     depth,
                     child_marker,
                     THEME.tree_structure_style(selected),

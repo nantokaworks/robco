@@ -990,6 +990,40 @@ un-enrolls; detaching stays a per-worktree decision.
 Only worktrees under `config.worktree_root` reach the tree at all — one created
 elsewhere is never adopted, so no key can bring it under Overseer management.
 
+### Repo-level Overseer opt-out
+
+`g` cycles individual worktrees; it says nothing about whether the Overseer looks at a
+repo at all. `G` on a repo row is the separate, coarser toggle: it flips `RepoNode`'s own
+`management` field between Auto and Manual, reusing the same `ManagementMode` vocabulary
+as every worker's own field rather than inventing a third enum, so a repo and a worker
+inside it can be compared directly.
+
+A repo switched to Manual is dropped from `gather_candidates` before its dropr workspace
+is even looked up, recording an `overseer_unmanaged` skip per pass — its own reason,
+distinct from `workspace_unmatched`, so an idle Overseer stays diagnosable from
+`decisions.jsonl` alone. Auto-merge honours the same decision: `worker_is_auto` now
+requires the entry's repo to be Auto *and* its worker to be Auto, so a Manual repo's pull
+requests take the existing per-worker `manual` skip path in `auto_merge_pass` — recorded
+once per pull request, exactly like a Manual worker's. The two gates were already at risk
+of disagreeing about a worker inside a repo the operator opted out of by hand; this closes
+that gap rather than adding a second way for them to.
+
+Switching a repo to Manual does not touch workers already running under it — no worktree
+is removed, no tmux session is killed, and existing ledger entries are left to reach their
+own terminal phase (or sit on the same Manual skip a per-worker toggle would produce, if
+one is still open). Only future dispatch and auto-merge passes read the new state. Use the
+existing kill or detach actions to affect a worker directly.
+
+The repo row carries its own marker unconditionally — unlike a worker row's, it never
+blanks out, since it is the state every worker row underneath is compared against. A
+worker row's own marker is shown only when it *diverges* from its repo's: a worker left at
+Auto under an Auto repo repeats what the repo row already said and renders blank, while a
+worker explicitly set to Manual under an Auto repo (or vice versa after `G`) keeps its own
+glyph. A Manual repo's name and every worker row under it render dimmed, so the opted-out
+state reads at a glance without hunting for the marker cell. `robco overseer status`
+reports a `repos: N watched, M opted out: <names>` line so the same state is visible
+without opening the TUI.
+
 The triage queue is atomically persisted. At startup pending cases are loaded; an
 unreadable queue is moved aside as `queue.json.corrupt`, logged, and restarted empty.
 Each normalized triage completion is first written to `outcome.json`. If Overseer crashes
