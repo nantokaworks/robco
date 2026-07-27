@@ -7,7 +7,9 @@ const WIDTH: u16 = 60;
 const HEIGHT: u16 = 12;
 
 /// One repo carrying an Overseer Auto worker, an Overseer Manual worker, and a
-/// hand-made worktree nobody manages.
+/// hand-made worktree nobody manages. Titles are kept short (single digits of
+/// the 24-column sidebar minimum's budget after the box-drawing connector) so
+/// these tests exercise marker/column placement rather than title truncation.
 fn app_with_managed_workers() -> App {
     let temp = tempfile::tempdir().unwrap();
     let config = Config::default();
@@ -33,8 +35,8 @@ fn app_with_managed_workers() -> App {
         "name": "repo",
         "remote_url": null,
         "agents": [
-            agent("auto-id", "auto-worker", overseer, "auto"),
-            agent("manual-id", "manual-worker", overseer, "manual"),
+            agent("auto-id", "auto-agt", overseer, "auto"),
+            agent("manual-id", "man-agt", overseer, "manual"),
             agent("plain-id", "hand-made", None, "manual"),
         ],
     }))
@@ -90,17 +92,18 @@ fn title_column(rows: &[String], title: &str) -> usize {
 /// The repo in `app_with_managed_workers` carries no `management` field, so it
 /// serde-defaults to Auto. An agent row's own marker is blanked whenever it
 /// matches that repo state (`ManagementMarker::unless_matching`) — the repo
-/// row already said it — so only `manual-worker`, which diverges, keeps its
-/// hollow glyph; `auto-worker` inherits blank and `hand-made` (never the
-/// Overseer's) was always blank.
+/// row already said it — so only `man-agt`, which diverges, keeps its hollow
+/// glyph; `auto-agt` inherits blank and `hand-made` (never the Overseer's)
+/// was always blank. `auto-agt` and `man-agt` are not the repo's last agent,
+/// so both draw the `├` connector; `hand-made` is last and draws `└`.
 #[test]
 fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     for (title, expected) in [
-        ("auto-worker", "        "),
-        ("manual-worker", "      ○ "),
-        ("hand-made", "        "),
+        ("auto-agt", "      ├──   "),
+        ("man-agt", "      ├── ○ "),
+        ("hand-made", "      └──   "),
     ] {
         assert!(
             row_containing(&rows, title).starts_with(expected),
@@ -111,9 +114,9 @@ fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
 }
 
 /// Once the repo itself is switched to Manual (the `G` toggle), the repo row's
-/// own state no longer says "Auto" for `auto-worker` — so that worker's own
-/// marker starts diverging from its repo and reappears, while `manual-worker`
-/// now matches the repo and goes blank instead.
+/// own state no longer says "Auto" for `auto-agt` — so that worker's own
+/// marker starts diverging from its repo and reappears, while `man-agt` now
+/// matches the repo and goes blank instead.
 #[test]
 fn an_agent_marker_reappears_when_it_stops_matching_its_repo() {
     let mut app = app_with_managed_workers();
@@ -121,9 +124,9 @@ fn an_agent_marker_reappears_when_it_stops_matching_its_repo() {
     let rows = rendered_rows(&app);
 
     for (title, expected) in [
-        ("auto-worker", "      ● "),
-        ("manual-worker", "        "),
-        ("hand-made", "        "),
+        ("auto-agt", "      ├── ● "),
+        ("man-agt", "      ├──   "),
+        ("hand-made", "      └──   "),
     ] {
         assert!(
             row_containing(&rows, title).starts_with(expected),
@@ -164,7 +167,7 @@ fn an_agent_title_starts_right_of_its_repo_name() {
         let rows = rendered_rows(&app);
         let repo = title_column(&rows, "repo");
 
-        for agent in ["auto-worker", "manual-worker", "hand-made"] {
+        for agent in ["auto-agt", "man-agt", "hand-made"] {
             let title = title_column(&rows, agent);
             assert!(
                 title > repo,
@@ -179,11 +182,11 @@ fn the_marker_does_not_shift_the_title_column() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     assert_eq!(
-        title_column(&rows, "auto-worker"),
-        title_column(&rows, "manual-worker")
+        title_column(&rows, "auto-agt"),
+        title_column(&rows, "man-agt")
     );
     assert_eq!(
-        title_column(&rows, "auto-worker"),
+        title_column(&rows, "auto-agt"),
         title_column(&rows, "hand-made")
     );
 }
@@ -198,4 +201,60 @@ fn the_trailing_management_glyphs_are_gone() {
             .any(|row| row.contains('Ⓐ') || row.contains('Ⓜ')),
         "rows still carry a trailing management glyph: {rows:?}"
     );
+}
+
+/// A subagent one level deep, with a root-level later sibling of its own
+/// parent: the guide over the parent's column must keep drawing `│` while the
+/// subagent's own connector still reads `└` (it is its parent's only child).
+/// This is the last-sibling-at-every-depth case #308 exists to cover — not
+/// just the subagent's own branch, but every ancestor's guide above it.
+#[test]
+fn nested_agent_rows_draw_ancestor_guides() {
+    let temp = tempfile::tempdir().unwrap();
+    let config = Config::default();
+    let agent = |id: &str, title: &str, parent: Option<&str>| {
+        serde_json::json!({
+            "id": id,
+            "parent_agent_id": parent,
+            "management": "manual",
+            "title": title,
+            "worktree_path": config.worktree_root.join(title),
+            "branch": title,
+            "base_commit": "",
+            "program": "claude",
+            "tmux_session": format!("robco_repo_{title}"),
+            "created_at": "2026-01-01T00:00:00+09:00",
+            "updated_at": "2026-01-01T00:00:00+09:00",
+        })
+    };
+    let repo = serde_json::from_value(serde_json::json!({
+        "path": temp.path().join("repo"),
+        "name": "repo",
+        "remote_url": null,
+        "management": "manual",
+        "agents": [
+            agent("root-a", "r-a", None),
+            agent("root-b", "r-b", None),
+            agent("nested-a", "n-a", Some("root-a")),
+        ],
+    }))
+    .unwrap();
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo],
+    };
+    let mut app = App::new(registry, config, temp.path().into());
+    app.orphans = Vec::new();
+    app.overseer_visible = false;
+
+    let rows = rendered_rows(&app);
+    // root-a has a later root sibling (root-b), so its own branch is `├` and
+    // the guide it leaves behind for its descendants continues.
+    assert!(row_containing(&rows, "r-a").starts_with("      ├──   "));
+    // nested-a is root-a's only child (its own branch is `└`), but the guide
+    // over root-a's column must still show `│`, not blank.
+    assert!(row_containing(&rows, "n-a").starts_with("      │ └──   "));
+    // root-b is the last root-level agent, so its branch is `└` and nothing
+    // precedes it.
+    assert!(row_containing(&rows, "r-b").starts_with("      └──   "));
 }

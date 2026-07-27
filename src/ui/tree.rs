@@ -56,7 +56,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 agent: agent_idx,
             } => {
                 let repo = &app.registry.repos[repo_idx];
-                let depth = crate::model::agent_depth(&repo.agents, agent_idx);
+                let row = crate::model::agent_row(&repo.agents, agent_idx);
                 let agent = &repo.agents[agent_idx];
                 let repo_unmanaged = repo.management == ManagementMode::Manual;
                 let agent_style = if selected {
@@ -91,13 +91,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     .children
                     .iter()
                     .any(|child| super::actions::children::child_is_visible(agent, child));
-                let child_marker = has_children.then(|| {
-                    if app.agent_children_expanded(repo_idx, agent_idx) {
-                        "▾ "
-                    } else {
-                        "▸ "
-                    }
-                });
+                let handle = if !has_children {
+                    label::TreeHandle::Leaf
+                } else if app.agent_children_expanded(repo_idx, agent_idx) {
+                    label::TreeHandle::Expanded
+                } else {
+                    label::TreeHandle::Collapsed
+                };
                 // Blank out a marker that only repeats what the repo row above
                 // already shows, so the ones that remain are the agents whose
                 // management actually diverges from their repo's.
@@ -107,8 +107,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let prefix = label::agent_row_prefix(
                     marker,
                     agent_marker,
-                    depth,
-                    child_marker,
+                    &row.ancestor_continues,
+                    row.is_last,
+                    handle,
                     THEME.tree_structure_style(selected),
                     THEME.management_marker_style(selected),
                 );
@@ -123,10 +124,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     right,
                 ));
             }
-            Selection::ChildWorktree { repo, agent, child } => {
+            Selection::ChildWorktree {
+                repo,
+                agent: agent_idx,
+                child: child_idx,
+            } => {
                 let repo = &app.registry.repos[repo];
-                let depth = crate::model::agent_depth(&repo.agents, agent);
-                let child = &repo.agents[agent].children[child];
+                let row = crate::model::agent_row(&repo.agents, agent_idx);
+                let agent = &repo.agents[agent_idx];
+                let child = &agent.children[child_idx];
                 let label = child.branch.as_deref().unwrap_or_else(|| {
                     child
                         .path
@@ -135,14 +141,23 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         .unwrap_or("worktree")
                 });
                 let child_style = if selected { style } else { THEME.hint_style() };
+                // The child-worktree list hangs one level below the agent, so
+                // its own guide column reads whether the agent has a later
+                // sibling; "last" is computed among the *visible* siblings the
+                // same filter the row loop above uses, not the raw list.
+                let mut ancestor_continues = row.ancestor_continues.clone();
+                ancestor_continues.push(!row.is_last);
+                let child_is_last = !agent.children[child_idx + 1..]
+                    .iter()
+                    .any(|sibling| super::actions::children::child_is_visible(agent, sibling));
                 // Same layering as the agent row: connector dim, branch name content.
-                let connector = format!(
-                    "{marker}     {}{}└ ",
-                    label::AGENT_INDENT,
-                    "  ".repeat(depth)
-                );
                 let mut spans = vec![
-                    Span::styled(connector, THEME.tree_structure_style(selected)),
+                    label::leaf_row_prefix(
+                        marker,
+                        &ancestor_continues,
+                        child_is_last,
+                        THEME.tree_structure_style(selected),
+                    ),
                     Span::styled(label.to_string(), child_style),
                 ];
                 if child.clean == Some(false) {

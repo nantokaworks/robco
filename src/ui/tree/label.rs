@@ -11,9 +11,12 @@ use crate::overseer::is_overseer_child;
 
 use super::indicator::{self, Indicator};
 
-const START_PAUSE: Duration = Duration::from_millis(1_000);
-const STEP: Duration = Duration::from_millis(300);
-const END_PAUSE: Duration = Duration::from_millis(1_000);
+mod connector;
+use connector::tree_prefix;
+pub(super) use connector::{TreeHandle, leaf_row_prefix};
+
+mod marquee;
+use marquee::display;
 
 /// What the Overseer does with an agent row, drawn as one round glyph left of
 /// the row's title.
@@ -110,45 +113,39 @@ pub(super) fn repo_management_glyph(management: ManagementMode, style: Style) ->
 pub(super) const AGENT_INDENT: &str = "    ";
 
 /// The prefix of an agent row: cursor, the nesting step under the repo, the
-/// identity-tree indent, the management marker cell, then the expand arrow for
-/// a row that has child worktrees.
+/// ancestor guide columns, this row's own connector fused with its expand
+/// handle, then the management marker cell.
 ///
 /// Returned as spans rather than one string because the prefix carries two
 /// different kinds of information and they must not be drawn at the same
-/// weight. `structure` covers the indentation and the expand arrow — where the
-/// row sits; `marker` covers the management glyph — what the Overseer does with
-/// it. Rendering both through one style is what let the old play glyph blur
-/// into the expand arrow beside it.
+/// weight. `structure` covers the indentation, guides, and connector — where
+/// the row sits; `marker` covers the management glyph — what the Overseer does
+/// with it. Rendering both through one style is what let the old play glyph
+/// blur into the expand arrow beside it.
 ///
 /// The prefix reserves the marker cell either way — an unmanaged row renders it
-/// blank — so neither the title column nor the expand arrow's own column moves
+/// blank — so neither the title column nor the connector's own column moves
 /// whether or not a row carries a marker.
 pub(super) fn agent_row_prefix(
     cursor: &str,
     management: ManagementMarker,
-    depth: usize,
-    child_marker: Option<&str>,
+    ancestor_continues: &[bool],
+    is_last: bool,
+    handle: TreeHandle,
     structure: Style,
     marker: Style,
 ) -> Vec<Span<'static>> {
     vec![
         Span::styled(
-            format!("{cursor} {AGENT_INDENT}{}", "  ".repeat(depth)),
+            format!(
+                "{} ",
+                tree_prefix(cursor, ancestor_continues, is_last, handle)
+            ),
             structure,
         ),
         Span::styled(management.glyph(), marker),
-        Span::styled(format!(" {}", child_marker.unwrap_or("")), structure),
+        Span::styled(" ", structure),
     ]
-}
-
-pub(super) fn display(title: &str, available: usize, selected: bool, elapsed: Duration) -> String {
-    if UnicodeWidthStr::width(title) <= available {
-        title.to_string()
-    } else if selected {
-        marquee(title, available, elapsed)
-    } else {
-        truncate(title, available)
-    }
 }
 
 fn available_width<'a>(
@@ -224,60 +221,6 @@ pub(super) fn labeled_row(
     spans.push(Span::styled(title, title_style));
     spans.extend(right);
     Line::from(spans)
-}
-
-fn truncate(title: &str, available: usize) -> String {
-    if UnicodeWidthStr::width(title) <= available {
-        return title.to_string();
-    }
-    if available == 0 {
-        return String::new();
-    }
-
-    let content_width = available - 1;
-    let mut result = prefix_within(title, content_width).to_string();
-    result.push('…');
-    result
-}
-
-fn marquee(title: &str, available: usize, elapsed: Duration) -> String {
-    if available == 0 {
-        return String::new();
-    }
-    let offset = marquee_offset(UnicodeWidthStr::width(title), available, elapsed);
-    let start = byte_at_or_after_width(title, offset);
-    prefix_within(&title[start..], available).to_string()
-}
-
-fn marquee_offset(title_width: usize, available: usize, elapsed: Duration) -> usize {
-    let max_offset = title_width.saturating_sub(available);
-    if max_offset == 0 {
-        return 0;
-    }
-    let travel = STEP * u32::try_from(max_offset).unwrap_or(u32::MAX);
-    let cycle = START_PAUSE + travel + END_PAUSE;
-    let position = elapsed.as_millis() % cycle.as_millis();
-    let start_ms = START_PAUSE.as_millis();
-    if position <= start_ms {
-        0
-    } else if position >= (START_PAUSE + travel).as_millis() {
-        max_offset
-    } else {
-        usize::try_from((position - start_ms) / STEP.as_millis())
-            .unwrap_or(max_offset)
-            .min(max_offset)
-    }
-}
-
-fn byte_at_or_after_width(value: &str, target: usize) -> usize {
-    let mut width = 0;
-    for (index, character) in value.char_indices() {
-        if width >= target {
-            return index;
-        }
-        width += UnicodeWidthChar::width(character).unwrap_or(0);
-    }
-    value.len()
 }
 
 fn prefix_within(value: &str, max_width: usize) -> &str {
