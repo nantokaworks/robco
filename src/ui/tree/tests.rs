@@ -87,28 +87,30 @@ fn title_column(rows: &[String], title: &str) -> usize {
     row[..byte].chars().count()
 }
 
+/// Filled for an Overseer worker under Auto, hollow for one under Manual, blank
+/// for a worktree the Overseer does not manage — three states, three
+/// renderings, none of them a triangle competing with the expand handles.
 #[test]
-fn only_an_overseer_auto_worker_carries_the_indented_marker() {
+fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
     let rows = rendered_rows(&app_with_managed_workers());
 
-    assert!(
-        row_containing(&rows, "auto-worker").starts_with("    ▶ "),
-        "auto worker row: {:?}",
-        row_containing(&rows, "auto-worker")
-    );
-    for unmarked in ["manual-worker", "hand-made"] {
+    for (title, expected) in [
+        ("auto-worker", "    ● "),
+        ("manual-worker", "    ○ "),
+        ("hand-made", "      "),
+    ] {
         assert!(
-            row_containing(&rows, unmarked).starts_with("      "),
-            "{unmarked} row: {:?}",
-            row_containing(&rows, unmarked)
+            row_containing(&rows, title).starts_with(expected),
+            "{title} row does not start with {expected:?}: {:?}",
+            row_containing(&rows, title)
         );
     }
 }
 
 /// An agent hangs off the repo above it, so its title has to start right of the
-/// repo name. The `▶` no longer expresses that containment — it sits inside the
-/// row's indentation and travels with it — so the nesting step left of the
-/// identity-tree indent is what has to survive the widest repo row.
+/// repo name. The management marker no longer expresses that containment — it
+/// sits inside the row's indentation and travels with it — so the nesting step
+/// left of the identity-tree indent is what has to survive the widest repo row.
 #[test]
 fn an_agent_title_starts_right_of_its_repo_name() {
     // The widest repo row the config allows: a two-column project icon plus a

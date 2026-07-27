@@ -76,6 +76,29 @@ impl Theme {
         self.selection_style().add_modifier(Modifier::BOLD)
     }
 
+    /// The tree's structural prefix: indentation, expand handles, connectors.
+    /// Drawn dimmer than the row it decorates so the state marker sitting in
+    /// the same prefix reads as the part carrying meaning. A selected row keeps
+    /// the selection bar solid instead.
+    pub fn tree_structure_style(self, selected: bool) -> Style {
+        if selected {
+            self.selection_style()
+        } else {
+            self.muted_style()
+        }
+    }
+
+    /// The Overseer management marker. Accented and bold against the dim
+    /// structure beside it, so the marker and the expand handle differ in
+    /// weight as well as in shape.
+    pub fn management_marker_style(self, selected: bool) -> Style {
+        if selected {
+            self.selection_style().add_modifier(Modifier::BOLD)
+        } else {
+            self.accent_bold_style()
+        }
+    }
+
     pub fn dialog_border_style(self) -> Style {
         Style::default().fg(self.dialog_border)
     }

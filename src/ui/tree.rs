@@ -5,7 +5,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{ManagementMode, Selection, Status};
+use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
@@ -134,10 +134,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 }
                 lines.push(label::labeled_row(
                     projects_width,
-                    format!("{marker} {prefix} "),
+                    vec![Span::styled(format!("{marker} {prefix} "), style)],
                     primary,
                     &repo.name,
-                    style,
                     style,
                     selected,
                     app.started.elapsed(),
@@ -194,16 +193,19 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         "▸ "
                     }
                 });
-                let overseer_auto =
-                    crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref())
-                        && agent.management == ManagementMode::Auto;
-                let prefix = label::agent_row_prefix(marker, overseer_auto, depth, child_marker);
+                let prefix = label::agent_row_prefix(
+                    marker,
+                    label::ManagementMarker::of(agent.parent_agent_id.as_deref(), agent.management),
+                    depth,
+                    child_marker,
+                    THEME.tree_structure_style(selected),
+                    THEME.management_marker_style(selected),
+                );
                 lines.push(label::labeled_row(
                     projects_width,
                     prefix,
                     primary,
                     &agent.title,
-                    style,
                     agent_style,
                     selected,
                     app.started.elapsed(),
@@ -222,14 +224,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         .unwrap_or("worktree")
                 });
                 let child_style = if selected { style } else { THEME.hint_style() };
-                let mut spans = vec![Span::styled(
-                    format!(
-                        "{marker}     {}{}└ {label}",
-                        label::AGENT_INDENT,
-                        "  ".repeat(depth)
-                    ),
-                    child_style,
-                )];
+                // Same layering as the agent row: connector dim, branch name content.
+                let connector = format!(
+                    "{marker}     {}{}└ ",
+                    label::AGENT_INDENT,
+                    "  ".repeat(depth)
+                );
+                let mut spans = vec![
+                    Span::styled(connector, THEME.tree_structure_style(selected)),
+                    Span::styled(label.to_string(), child_style),
+                ];
                 if child.clean == Some(false) {
                     spans.push(Span::styled(" *", child_style));
                 }
