@@ -7,7 +7,9 @@ use crate::{
     overseer::{
         ledger::Ledger,
         logging,
-        session::{EphemeralSession, SessionHandle, SessionResult, auth, env::SessionEnv},
+        session::{
+            BRIEFING_PROMPT, EphemeralSession, SessionHandle, SessionResult, auth, env::SessionEnv,
+        },
         triage::{recent_worker_capture, triage_profile},
     },
 };
@@ -61,6 +63,7 @@ fn spawn_session(
             case_dir: &case_dir,
             timeout,
             env: &env,
+            prompt: BRIEFING_PROMPT,
         }
         .run_controlled(
             &ops_result::is_complete,

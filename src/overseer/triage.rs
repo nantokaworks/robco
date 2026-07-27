@@ -12,8 +12,8 @@ use super::{
     ledger::LedgerEntry,
     monitor::Observations,
     session::{
-        EphemeralSession, SessionControl, SessionHandle, SessionResult, env::SessionEnv,
-        terminate_stale_session,
+        BRIEFING_PROMPT, EphemeralSession, SessionControl, SessionHandle, SessionResult,
+        env::SessionEnv, terminate_stale_session,
     },
 };
 use crate::config::{Config, Profile};
@@ -105,6 +105,7 @@ fn run_session(
         case_dir: &case_dir,
         timeout,
         env,
+        prompt: BRIEFING_PROMPT,
     };
     session.run_controlled(&result::is_complete, control, Some(&pid_path))
 }

@@ -85,6 +85,7 @@ fn timeout_escalates() {
         case_dir: temp.path(),
         timeout: Duration::from_millis(75),
         env: &Default::default(),
+        prompt: BRIEFING_PROMPT,
     }
     .run(&result::is_complete);
     assert_eq!(result, SessionResult::TimedOut);
@@ -203,6 +204,7 @@ fn partial_result_write_is_polled_until_json_is_complete() {
         case_dir: temp.path(),
         timeout: Duration::from_secs(2),
         env: &Default::default(),
+        prompt: BRIEFING_PROMPT,
     }
     .run(&result::is_complete);
     let SessionResult::Result(raw) = result else {

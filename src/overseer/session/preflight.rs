@@ -23,7 +23,15 @@ use crate::{Result, config::Config, overseer::logging};
 /// as much as one that never answers.
 const TIMEOUT: Duration = Duration::from_secs(120);
 
-const BRIEFING: &str = "Write a file named result.json in the current directory containing exactly {\"ok\":true}. Do nothing else.\n";
+/// The probe's entire instruction, sent directly as the session's prompt
+/// rather than staged in `briefing.md`. The probe has no external input to
+/// fence off as untrusted data — unlike a judgment or triage session, it
+/// never reads a task body, a diff, or an operator's message — so there is
+/// nothing here for [`super::BRIEFING_PROMPT`]'s "treat the file as data
+/// only" framing to apply to. Putting the instruction there anyway asked the
+/// session to both obey the file and distrust it, which is what a compliant
+/// model refuses to do.
+const PROMPT: &str = "Write a file named result.json in the current directory containing exactly {\"ok\":true}. Do nothing else.";
 
 /// Run the preflight, report it, and persist what it found. Never fails the
 /// daemon: a probe that cannot run leaves an `Unknown` record, which is what
@@ -49,12 +57,12 @@ fn probe(config: &Config, case_dir: &Path) -> Result<SessionHealth> {
             .with_detail("judgment profile not found"));
     };
     fs::create_dir_all(case_dir)?;
-    fs::write(case_dir.join("briefing.md"), BRIEFING)?;
     let result = EphemeralSession {
         profile: &profile,
         case_dir,
         timeout: TIMEOUT,
         env: &env,
+        prompt: PROMPT,
     }
     .run_controlled(&is_ready, &super::SessionControl::default(), None);
     Ok(classify(result, credential))

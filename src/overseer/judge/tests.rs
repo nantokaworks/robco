@@ -87,6 +87,7 @@ fn model_is_forwarded_to_spawned_command() {
         case_dir: &case_dir,
         timeout: Duration::from_secs(1),
         env: &Default::default(),
+        prompt: crate::overseer::session::BRIEFING_PROMPT,
     };
     let _ = session.run(&|_| false);
     let captured = std::fs::read_to_string(args).unwrap();
