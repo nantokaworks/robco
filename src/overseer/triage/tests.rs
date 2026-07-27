@@ -1,7 +1,7 @@
 use super::*;
-use crate::Result;
 use crate::overseer::{
     ledger::{Ledger, LedgerPhase},
+    logging::{self, DecisionKind},
     monitor::{Action, FailureOrigin},
     session::executable_script,
     triage::{
@@ -47,7 +47,7 @@ fn ledger() -> Ledger {
     }
 }
 
-fn no_scribble(_: &str, _: &str) -> Result<()> {
+fn no_scribble(_: &str, _: &str) -> crate::dropr::WriteResult {
     Ok(())
 }
 
@@ -122,6 +122,39 @@ fn malformed_result_escalates_and_records_when_the_entry_settled() {
     // A repeat escalation of the same entry must not move the timestamp.
     escalate(&mut ledger);
     assert_eq!(ledger.entries[0].settled_at, settled);
+}
+
+/// The note is the only explanation an operator reading dropr gets for an
+/// escalation, so losing it has to reach the alert digest — and the digest
+/// reads `Escalate` while ignoring `Hold`. This failure used to be a `Hold`
+/// line phrased inside another decision's reason, which nothing surfaced.
+#[test]
+fn an_escalation_note_that_did_not_land_escalates_on_its_own() {
+    let temp = tempfile::tempdir().unwrap();
+    let log_path = temp.path().join("decisions.jsonl");
+    let mut ledger = ledger();
+    apply_session_result_with(
+        SessionResult::TimedOut,
+        &mut ledger,
+        &case(),
+        &log_path,
+        &|_, _| Err(crate::dropr::WriteError::Refused("Method not found".into())),
+    )
+    .unwrap();
+
+    let escalations = logging::tail_from(&log_path, 10)
+        .unwrap()
+        .into_iter()
+        .filter(|entry| entry.kind == DecisionKind::Escalate)
+        .map(|entry| entry.reason)
+        .collect::<Vec<_>>();
+    assert!(
+        escalations
+            .iter()
+            .any(|reason| reason
+                == "escalation note not recorded in dropr: refused: Method not found"),
+        "the lost note did not escalate: {escalations:?}"
+    );
 }
 
 #[test]

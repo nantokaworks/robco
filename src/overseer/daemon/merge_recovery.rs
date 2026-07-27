@@ -262,9 +262,13 @@ fn note_on_task(entry: &LedgerEntry, reason: &str) {
     if let Err(error) =
         crate::dropr::scribble_create_timeout(&entry.task_id, &content, COMMAND_TIMEOUT)
     {
-        let _ = logging::log_message(
-            Some(&entry.task_id),
-            &format!("merge recovery scribble failed: {error}"),
+        // A note that did not land leaves the handback recorded nowhere an
+        // operator looks, so it escalates on its own instead of riding inside
+        // another decision's reason where the alert digest never reads it.
+        let _ = log(
+            entry,
+            DecisionKind::Escalate,
+            &format!("handback note not recorded in dropr: {error}"),
         );
     }
 }
