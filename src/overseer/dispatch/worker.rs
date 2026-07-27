@@ -97,6 +97,7 @@ pub(super) fn spawn_candidate(
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::runtime::log_candidate(
@@ -156,6 +157,7 @@ mod tests {
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
             manual_merge_skip: None,
+            merge_judge_fail_safes: 0,
         }
     }
 

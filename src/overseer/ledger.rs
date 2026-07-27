@@ -49,6 +49,16 @@ pub struct LedgerEntry {
     /// the field existed still load.
     #[serde(default)]
     pub manual_merge_skip: Option<String>,
+    /// Fail-safe merge verdicts this pull request has received — the judge
+    /// session itself failed rather than saying anything about the change.
+    /// Bounded by `overseer.max_merge_judge_fail_safes`, so a judge that never
+    /// recovers still escalates instead of re-asking forever. Kept apart from
+    /// `merge_hold`: that budget resets on the ordinary `Pending` pass between
+    /// one fail-safe verdict and the next, which would otherwise never let this
+    /// one accumulate. Reset once the judge answers with a real verdict.
+    /// Defaulted so ledgers written before the field existed still load.
+    #[serde(default)]
+    pub merge_judge_fail_safes: u32,
 }
 
 /// What the merge gate remembers about handing this pull request's failures back

@@ -191,6 +191,37 @@ fn a_settled_pull_request_forgets_its_verdict_for_good() {
     assert!(!queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)));
 }
 
+/// A fail-safe verdict is the judge session itself failing, not a judgment
+/// about the change — caching it as terminal would park a mergeable pull
+/// request on an answer that was never about the diff. Unlike a real veto, it
+/// must not survive even at the exact same revision: the next pass re-asks the
+/// judge, bounded by `merge_judge_fail_safe` rather than by this cache.
+#[test]
+fn a_fail_safe_verdict_is_never_cached_as_terminal() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+    let mut fail_safe = advice(
+        result::MergeJudgment::Escalate,
+        "judgment fail-safe: session exited without result.json",
+    );
+    fail_safe.fail_safe = true;
+    queue.cache_merge(&case, fail_safe);
+
+    assert!(queue.merge_advice(case.clone()).unwrap().unwrap().fail_safe);
+    assert!(
+        !queue.has_terminal_merge(&case.task_id, Some(&case.pr_url)),
+        "a fail-safe verdict must not park the pull request the way a real veto does"
+    );
+
+    // Nothing was cached, so the very same revision is re-asked rather than
+    // silently answered from the terminal-verdict path a real veto would take.
+    assert!(queue.merge_advice(case).unwrap().is_none());
+    assert_eq!(queue.pending_len(), 1, "the same revision must be re-asked");
+}
+
 #[test]
 fn daily_counter_survives_queue_reload() {
     let temp = tempfile::tempdir().unwrap();

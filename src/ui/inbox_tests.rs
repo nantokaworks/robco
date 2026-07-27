@@ -51,6 +51,7 @@ fn escalated_ledger() -> Ledger {
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
             manual_merge_skip: None,
+            merge_judge_fail_safes: 0,
         }],
         ..Ledger::default()
     }

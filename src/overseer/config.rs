@@ -79,6 +79,13 @@ pub struct OverseerConfig {
     /// past the 5-15 minutes a healthy check run takes, and still well inside an
     /// hour. `0` escalates on the first held pass.
     pub max_merge_holds: u32,
+    /// Fail-safe merge verdicts (the judge session itself failed rather than
+    /// saying anything about the change) one pull request may receive before it
+    /// escalates for real. A fail-safe verdict is not cached as a terminal
+    /// judgment, so the next pass re-asks the judge — but a permanently broken
+    /// judge must still converge instead of spending model budget in a loop,
+    /// which is what this bounds. `0` escalates on the first fail-safe verdict.
+    pub max_merge_judge_fail_safes: u32,
     pub worker_profile: Option<String>,
     pub max_workers: usize,
     pub per_repo_limit: usize,
@@ -148,6 +155,7 @@ impl Default for OverseerConfig {
             merge_recovery_enabled: false,
             max_merge_recoveries: 2,
             max_merge_holds: 30,
+            max_merge_judge_fail_safes: 3,
             worker_profile: None,
             max_workers: 3,
             per_repo_limit: 1,

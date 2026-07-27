@@ -6,7 +6,7 @@ use super::{
     merge_apply::{merge_now, merge_state_cleared},
     merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
     merge_hold::{self, HoldPlan},
-    merge_recovery, merge_settle,
+    merge_judge_fail_safe, merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection,
     protection::ProtectionCache,
@@ -261,6 +261,9 @@ fn judge_allows(
     let Some(advice) = advice? else {
         return Ok(Judgment::Queued);
     };
+    if merge_judge_fail_safe::handle(entry, &advice, &config.overseer)? {
+        return Ok(Judgment::Queued);
+    }
     let allows_merge = judgment_allows_merge(entry, advice.outcome);
     match advice.outcome {
         MergeJudgment::Allow => {}
