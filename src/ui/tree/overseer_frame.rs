@@ -15,11 +15,12 @@ use crate::ui::{App, theme::DEFAULT as THEME};
 /// status glyph and a category's summary both sit one of these off their label.
 const GAP: &str = "  ";
 
-/// Indent of an expanded category's detail rows. It matches the column
-/// `category_line` puts the category label at, so detail text reads as sitting
-/// under its label instead of being outdented past it. On a 24-column sidebar
-/// every column spent here is a column of content lost, so the frame nests in
-/// one step and stops.
+/// Indent of the Inbox item rows — the only detail the frame still nests, now
+/// that the read-only categories have stopped expanding. It matches the column
+/// `category_line` puts every category label at, so the items read as sitting
+/// under the Inbox label instead of being outdented past it. On a 24-column
+/// sidebar every column spent here is a column of content lost, so the frame
+/// nests in one step and stops.
 const DETAIL_INDENT: &str = "    ";
 
 pub(in crate::ui) struct FrameContent {
@@ -86,7 +87,10 @@ fn build_content_with_warnings(
             summary,
             *warn,
         ));
-        if app.overseer_category_expanded(category) {
+        // Only a category with rows of its own expands here. The other three
+        // keep their one-line summary; their detail stays reachable, unchanged,
+        // in the Info preview tab via `overseer::category_preview`.
+        if category.has_children() && app.overseer_category_expanded(category) {
             let first_detail = lines.len();
             lines.extend(
                 crate::ui::overseer::category_detail(app, category)
@@ -178,7 +182,14 @@ fn category_line(
     summary: &str,
     warn: bool,
 ) -> Line<'static> {
-    let arrow = if app.overseer_category_expanded(category) {
+    // Every category row reserves the arrow cell and a leaf leaves it blank, so
+    // all four labels line up on one column and the arrow reads as an
+    // affordance rather than as an indent. `label::agent_row_prefix` reserves
+    // the Overseer-auto marker the same way; this follows that precedent rather
+    // than inventing a second convention.
+    let arrow = if !category.has_children() {
+        " "
+    } else if app.overseer_category_expanded(category) {
         "▾"
     } else {
         "▸"
@@ -201,9 +212,10 @@ fn category_line(
     ])
 }
 
-/// Nests a category's detail rows directly under its label, which
-/// [`category_line`] puts at column 4. The detail rows carry no indent of their
-/// own, so this is the frame's single indent origin for them.
+/// Nests the Inbox item rows directly under its label, which [`category_line`]
+/// puts at column 4 — the same column every category label sits at, arrow or
+/// not. The item rows carry no indent of their own, so this is the frame's
+/// single indent origin for them.
 fn indent_detail(line: Line<'static>) -> Line<'static> {
     let mut spans = Vec::with_capacity(line.spans.len() + 1);
     spans.push(Span::styled(DETAIL_INDENT, THEME.muted_style()));

@@ -356,6 +356,19 @@ impl OverseerCategory {
             Self::Decisions => 3,
         }
     }
+
+    /// Whether the category expands into rows of its own. Inbox alone does: its
+    /// items are selection targets the operator answers, approves, or dismisses
+    /// from the sidebar. The other three expand into read-only text the Info
+    /// preview already shows in full, so an arrow there would buy duplicated
+    /// content at the cost of a nesting level the 24-column sidebar cannot
+    /// afford.
+    ///
+    /// The single source of truth for the render, the input handling, and the
+    /// persisted expansion state — none of them re-spell `matches!(_, Inbox)`.
+    pub fn has_children(self) -> bool {
+        matches!(self, Self::Inbox)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

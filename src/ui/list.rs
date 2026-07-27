@@ -148,18 +148,34 @@ impl App {
         })
     }
 
+    /// Registry indices of repos listed directly under a discovery root, in the
+    /// order the operator arranged them.
+    pub(in crate::ui) fn local_repos(&self) -> Vec<usize> {
+        self.in_saved_order(
+            self.registry
+                .repos
+                .iter()
+                .enumerate()
+                .filter(|(_, repo)| self.repo_is_local(repo))
+                .map(|(idx, _)| idx)
+                .collect(),
+        )
+    }
+
     /// Registry indices of off-launch-dir repos that still have agents or were
-    /// pinned by manual registration.
+    /// pinned by manual registration, in the order the operator arranged them.
     pub(in crate::ui) fn other_location_repos(&self) -> Vec<usize> {
-        self.registry
-            .repos
-            .iter()
-            .enumerate()
-            .filter(|(_, repo)| {
-                !self.repo_is_local(repo) && (!repo.agents.is_empty() || repo.pinned)
-            })
-            .map(|(idx, _)| idx)
-            .collect()
+        self.in_saved_order(
+            self.registry
+                .repos
+                .iter()
+                .enumerate()
+                .filter(|(_, repo)| {
+                    !self.repo_is_local(repo) && (!repo.agents.is_empty() || repo.pinned)
+                })
+                .map(|(idx, _)| idx)
+                .collect(),
+        )
     }
 
     /// Flattened tree rows in display order: local repos first, then — when any
@@ -175,16 +191,13 @@ impl App {
                 visible.push(Selection::OverseerCategory(category));
                 // The Inbox is the one category whose detail is acted on rather
                 // than read, so its items are rows of their own under it.
-                if category == OverseerCategory::Inbox && self.overseer_category_expanded(category)
-                {
+                if category.has_children() && self.overseer_category_expanded(category) {
                     visible.extend((0..self.overseer_inbox.len()).map(Selection::OverseerInbox));
                 }
             }
         }
-        for (repo_idx, repo) in self.registry.repos.iter().enumerate() {
-            if self.repo_is_local(repo) {
-                self.push_repo_rows(&mut visible, repo_idx, repo);
-            }
+        for repo_idx in self.local_repos() {
+            self.push_repo_rows(&mut visible, repo_idx, &self.registry.repos[repo_idx]);
         }
 
         let others = self.other_location_repos();
@@ -234,30 +247,6 @@ impl App {
                 }
             }
         }
-    }
-
-    pub(in crate::ui) fn set_other_collapsed(&mut self, collapsed: bool) {
-        self.other_collapsed = collapsed;
-        self.clamp_selection();
-    }
-
-    pub(in crate::ui) fn set_overseer_category_expanded(
-        &mut self,
-        category: OverseerCategory,
-        expanded: bool,
-    ) {
-        self.overseer_expanded[category.index()] = expanded;
-        self.clamp_selection();
-    }
-
-    pub(in crate::ui) fn toggle_overseer_category(&mut self, category: OverseerCategory) {
-        let expanded = !self.overseer_category_expanded(category);
-        self.set_overseer_category_expanded(category, expanded);
-    }
-
-    pub(in crate::ui) fn set_orphans_collapsed(&mut self, collapsed: bool) {
-        self.orphans_collapsed = collapsed;
-        self.clamp_selection();
     }
 
     pub(in crate::ui) fn set_overseer_visibility(&mut self, visible: bool) {

@@ -2,13 +2,14 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 52;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 53;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
         Line::from("Navigation"),
         Line::from("  j/k or arrows  move selection; OVERSEER rows open local control info"),
         Line::from("  h/l            collapse or expand repo or OVERSEER category"),
+        Line::from("  shift-up/down  on a repo row: move it among its sibling repos"),
         Line::from("  tab/shift-tab  cycle claude / diff / terminal view"),
         Line::from(""),
         Line::from("Sessions"),

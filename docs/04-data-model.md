@@ -79,6 +79,35 @@ Notes:
 - A persisted agent whose tmux session no longer exists is shown as `Dead` and can be
   cleaned up or restarted.
 
+## UI state — `~/.robco/ui-state.json`
+
+The sidebar layout the operator arranged: expand/collapse flags and the PROJECTS order.
+See [06-ui.md](06-ui.md#sidebar-layout) for what each one does on screen.
+
+```json
+{
+  "collapsed_repos": ["/Users/ich/abyss/nex"],
+  "expanded_children": ["/Users/ich/.robco/worktrees/nex_feature-x_ab12cd"],
+  "other_collapsed": false,
+  "orphans_collapsed": false,
+  "expanded_overseer_categories": ["Inbox"],
+  "project_order": ["/Users/ich/abyss/nex", "/Users/ich/abyss/other"]
+}
+```
+
+Notes:
+
+- Deliberately **not** part of `state.json`, which discovery rewrites on every refresh, and
+  not part of `config.json`, which holds settings the operator edits by hand.
+- Every entry is keyed by canonical path — a repo path or an agent worktree path — never by
+  index, so a registry the next scan reorders cannot land a flag on the wrong row. A key
+  that no longer matches anything is ignored and pruned on the next write.
+- `collapsed_repos` records the exception rather than the rule, so a repo the file has never
+  seen starts expanded, matching how a fresh scan treats it.
+- Cosmetic state only: a missing, unreadable, or corrupt file degrades to defaults instead
+  of blocking startup, and a failed write costs a layout tweak and nothing else. Writes are
+  atomic (temp file + rename) and last-writer-wins; a single TUI owns the file.
+
 ## Config — `~/.robco/config.json`
 
 ```json

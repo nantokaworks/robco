@@ -188,6 +188,15 @@ impl App {
                         return Ok(true);
                     }
                 }
+                // Matched ahead of the plain arrow arms below: those dispatch on
+                // `key.code` alone, so without this a shift-modified arrow would
+                // fall into them and move the cursor instead of the row.
+                KeyCode::Up if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.move_selected_repo(-1);
+                }
+                KeyCode::Down if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                    self.move_selected_repo(1);
+                }
                 KeyCode::Down | KeyCode::Char('j') => {
                     self.move_selection_down();
                 }
