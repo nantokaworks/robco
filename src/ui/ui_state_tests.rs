@@ -1,0 +1,252 @@
+use std::path::{Path, PathBuf};
+
+use super::*;
+use crate::{
+    config::Config,
+    model::{AgentNode, ManagementMode, OverseerCategory, RepoNode, Selection},
+    registry::Registry,
+    ui::{App, actions::discovery::path_key},
+};
+
+fn repo(path: PathBuf, agents: Vec<AgentNode>) -> RepoNode {
+    RepoNode {
+        name: path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("repo")
+            .to_string(),
+        path,
+        remote_url: None,
+        pinned: false,
+        agents,
+        dropr: None,
+        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
+        main_status: None,
+        main_last_capture: None,
+        main_last_spinner: None,
+        main_last_change_at: None,
+        main_shell_working: false,
+        main_mcp_active: false,
+        main_pane_pid: None,
+        main_tracked_command: None,
+        main_subagents_active: 0,
+    }
+}
+
+fn agent(id: &str, worktree_path: PathBuf) -> AgentNode {
+    let now = chrono::Local::now();
+    AgentNode {
+        id: id.to_string(),
+        parent_agent_id: None,
+        management: ManagementMode::Manual,
+        title: id.to_string(),
+        worktree_path,
+        branch: format!("robco/{id}"),
+        base_commit: String::new(),
+        program: "claude".to_string(),
+        claude_session_id: None,
+        profile: None,
+        tmux_session: format!("robco_{id}"),
+        created_at: now,
+        updated_at: now,
+        status: crate::model::Status::default(),
+        worktree_missing: false,
+        merge_error: None,
+        last_capture: None,
+        last_spinner: None,
+        last_change_at: None,
+        last_auto_accept_at: None,
+        shell_working: false,
+        mcp_active: false,
+        pane_pid: None,
+        tracked_command: None,
+        subagents: Vec::new(),
+        children: Vec::new(),
+    }
+}
+
+/// Repos under `dir` so they read as local rows of the launch directory rather
+/// than landing in the collapsible "other locations" section.
+fn registry_under(dir: &Path, names: &[&str]) -> Registry {
+    Registry {
+        version: 1,
+        repos: names
+            .iter()
+            .map(|name| repo(dir.join(name), Vec::new()))
+            .collect(),
+    }
+}
+
+/// `alpha` with one agent whose worktree sits under `dir`. `Registry` is not
+/// `Clone`, so a restart test builds the same shape twice through here.
+fn registry_with_agent(dir: &Path) -> Registry {
+    Registry {
+        version: 1,
+        repos: vec![repo(
+            dir.join("alpha"),
+            vec![agent("one", dir.join("worktrees/one"))],
+        )],
+    }
+}
+
+/// An app whose UI state is a real file under `dir`, so a second app built the
+/// same way sees exactly what a restart would.
+fn app_at(dir: &Path, registry: Registry) -> App {
+    // The worktree root has to match where the fixture agents live, or the
+    // startup prune drops them as unmanaged before any assertion sees them.
+    let config = Config {
+        worktree_root: dir.join("worktrees"),
+        ..Config::default()
+    };
+    App::new_with_ui_state(
+        registry,
+        config,
+        dir.to_path_buf(),
+        UiStateStore::at(dir.join("ui-state.json")),
+    )
+}
+
+#[test]
+fn a_saved_layout_round_trips_through_the_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ui-state.json");
+
+    let mut store = UiStateStore::at(path.clone());
+    store.update(|state| {
+        state.collapsed_repos.insert("/repos/alpha".into());
+        state.expanded_children.insert("/worktrees/one".into());
+        state.other_collapsed = true;
+        state.orphans_collapsed = true;
+        state
+            .expanded_overseer_categories
+            .insert(OverseerCategory::Inbox.label().to_string());
+        state.project_order = vec!["/repos/beta".into(), "/repos/alpha".into()];
+    });
+    let written = store.state().clone();
+
+    assert_eq!(UiStateStore::at(path).state(), &written);
+}
+
+#[test]
+fn a_missing_file_reads_as_defaults() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = UiStateStore::at(temp.path().join("absent.json"));
+    assert_eq!(store.state(), &UiState::default());
+}
+
+#[test]
+fn a_corrupt_file_reads_as_defaults_and_is_left_in_place() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ui-state.json");
+    fs::write(&path, "{ this is not json").unwrap();
+
+    assert_eq!(UiStateStore::at(path.clone()).state(), &UiState::default());
+    // Startup must never be blocked by this file, and reading it must not
+    // destroy whatever the operator (or another tool) left there.
+    assert_eq!(fs::read_to_string(&path).unwrap(), "{ this is not json");
+}
+
+#[test]
+fn an_in_memory_store_never_writes_a_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut store = UiStateStore::in_memory(UiState::default());
+    store.update(|state| state.other_collapsed = true);
+
+    assert!(store.state().other_collapsed);
+    assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn expand_and_collapse_flags_survive_a_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));
+    app.set_repo_expanded(1, false);
+    app.set_other_collapsed(true);
+    app.set_orphans_collapsed(true);
+    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+
+    let restarted = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));
+    assert_eq!(restarted.expanded, vec![true, false]);
+    assert!(restarted.other_collapsed);
+    assert!(restarted.orphans_collapsed);
+    assert!(restarted.overseer_category_expanded(OverseerCategory::Inbox));
+    assert!(!restarted.overseer_category_expanded(OverseerCategory::Health));
+}
+
+#[test]
+fn a_collapse_is_restored_onto_the_same_repo_after_the_registry_reorders() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = app_at(temp.path(), registry_under(temp.path(), &["alpha", "zeta"]));
+    app.set_repo_expanded(1, false);
+
+    // A rescan that inserts a repo ahead of the collapsed one: a positional
+    // restore would land the flag on `gamma` instead of on `zeta`.
+    let restarted = app_at(
+        temp.path(),
+        registry_under(temp.path(), &["alpha", "gamma", "zeta"]),
+    );
+    assert_eq!(restarted.expanded, vec![true, true, false]);
+}
+
+#[test]
+fn a_repo_that_left_the_registry_is_pruned_from_the_saved_collapse_set() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));
+    app.set_repo_expanded(0, false);
+    app.set_repo_expanded(1, false);
+
+    // `beta` is gone by the time the next toggle rewrites the set, so its key
+    // must not survive to re-collapse a row that returns under the same path.
+    let mut app = app_at(temp.path(), registry_under(temp.path(), &["alpha"]));
+    app.set_repo_expanded(0, true);
+
+    let saved = UiStateStore::at(temp.path().join("ui-state.json"));
+    assert!(
+        saved.state().collapsed_repos.is_empty(),
+        "{:?}",
+        saved.state().collapsed_repos
+    );
+}
+
+#[test]
+fn an_agent_child_expansion_survives_a_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let worktree = temp.path().join("worktrees/one");
+
+    let mut app = app_at(temp.path(), registry_with_agent(temp.path()));
+    app.set_agent_children_expanded(0, 0, true);
+    assert_eq!(
+        UiStateStore::at(temp.path().join("ui-state.json"))
+            .state()
+            .expanded_children
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![path_key(&worktree)]
+    );
+
+    let restarted = app_at(temp.path(), registry_with_agent(temp.path()));
+    assert!(restarted.agent_children_expanded(0, 0));
+}
+
+#[test]
+fn a_restored_collapse_hides_the_repos_agent_rows() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = app_at(temp.path(), registry_with_agent(temp.path()));
+    assert!(
+        app.visible()
+            .iter()
+            .any(|row| matches!(row, Selection::Agent { .. }))
+    );
+    app.set_repo_expanded(0, false);
+
+    // The restored flag has to reach `visible()`, not just the field: that is
+    // what the operator sees on the next launch.
+    let restarted = app_at(temp.path(), registry_with_agent(temp.path()));
+    assert!(
+        !restarted
+            .visible()
+            .iter()
+            .any(|row| matches!(row, Selection::Agent { .. }))
+    );
+}

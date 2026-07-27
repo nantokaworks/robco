@@ -236,30 +236,6 @@ impl App {
         }
     }
 
-    pub(in crate::ui) fn set_other_collapsed(&mut self, collapsed: bool) {
-        self.other_collapsed = collapsed;
-        self.clamp_selection();
-    }
-
-    pub(in crate::ui) fn set_overseer_category_expanded(
-        &mut self,
-        category: OverseerCategory,
-        expanded: bool,
-    ) {
-        self.overseer_expanded[category.index()] = expanded;
-        self.clamp_selection();
-    }
-
-    pub(in crate::ui) fn toggle_overseer_category(&mut self, category: OverseerCategory) {
-        let expanded = !self.overseer_category_expanded(category);
-        self.set_overseer_category_expanded(category, expanded);
-    }
-
-    pub(in crate::ui) fn set_orphans_collapsed(&mut self, collapsed: bool) {
-        self.orphans_collapsed = collapsed;
-        self.clamp_selection();
-    }
-
     pub(in crate::ui) fn set_overseer_visibility(&mut self, visible: bool) {
         if self.overseer_visible == visible {
             return;

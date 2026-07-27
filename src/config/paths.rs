@@ -21,6 +21,13 @@ pub(crate) fn config_path() -> Result<PathBuf> {
     Ok(robco_dir()?.join("config.json"))
 }
 
+/// Home of the sidebar layout the operator arranged. Deliberately its own file:
+/// `state.json` is rewritten by every discovery refresh and `config.json` holds
+/// settings the operator edits by hand, so neither can own UI state.
+pub(crate) fn ui_state_path() -> Result<PathBuf> {
+    Ok(robco_dir()?.join("ui-state.json"))
+}
+
 pub fn config_file_path() -> Result<PathBuf> {
     config_path()
 }

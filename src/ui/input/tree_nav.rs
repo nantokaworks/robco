@@ -3,7 +3,7 @@ use crate::model::Selection;
 use super::super::App;
 
 impl App {
-    fn agent_children_key(&self, repo: usize, agent: usize) -> String {
+    pub(in crate::ui) fn agent_children_key(&self, repo: usize, agent: usize) -> String {
         crate::ui::actions::discovery::path_key(
             &self.registry.repos[repo].agents[agent].worktree_path,
         )
@@ -15,6 +15,8 @@ impl App {
     }
 
     pub(in crate::ui) fn prune_expanded_children(&mut self) {
+        // Callers persist afterwards where the prune is part of a user-driven
+        // toggle; see `crate::ui::expand`.
         let live = self
             .registry
             .repos
@@ -25,32 +27,12 @@ impl App {
         self.expanded_children.retain(|key| live.contains(key));
     }
 
-    pub(in crate::ui) fn set_agent_children_expanded(
-        &mut self,
-        repo: usize,
-        agent: usize,
-        expanded: bool,
-    ) {
-        self.prune_expanded_children();
-        let key = self.agent_children_key(repo, agent);
-        if expanded {
-            self.expanded_children.insert(key);
-        } else {
-            self.expanded_children.remove(&key);
-        }
-        self.clamp_selection();
-    }
-
     pub(super) fn expand_selected_tree_item(&mut self) {
         match self.selected_item() {
             Some(Selection::OverseerCategory(category)) => {
                 self.set_overseer_category_expanded(category, true);
             }
-            Some(Selection::Repo(repo)) => {
-                if let Some(expanded) = self.expanded.get_mut(repo) {
-                    *expanded = true;
-                }
-            }
+            Some(Selection::Repo(repo)) => self.set_repo_expanded(repo, true),
             Some(Selection::Agent { repo, agent }) => {
                 self.set_agent_children_expanded(repo, agent, true);
             }
@@ -70,11 +52,7 @@ impl App {
             Some(Selection::OverseerInbox(_)) => {
                 self.set_overseer_category_expanded(crate::model::OverseerCategory::Inbox, false);
             }
-            Some(Selection::Repo(repo)) => {
-                if let Some(expanded) = self.expanded.get_mut(repo) {
-                    *expanded = false;
-                }
-            }
+            Some(Selection::Repo(repo)) => self.set_repo_expanded(repo, false),
             Some(Selection::Agent { repo, agent }) => {
                 self.set_agent_children_expanded(repo, agent, false);
             }

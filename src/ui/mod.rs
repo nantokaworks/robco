@@ -14,7 +14,7 @@ use crossterm::{
 use crate::{
     Result,
     config::Config,
-    model::{ManagementMode, OverseerCategory, Selection},
+    model::{ManagementMode, Selection},
     registry::Registry,
 };
 
@@ -35,6 +35,7 @@ mod confirm_pr_tests;
 mod dialog;
 mod error_dialog;
 mod event_loop;
+mod expand;
 mod help;
 pub(crate) mod inbox;
 mod input;
@@ -56,8 +57,10 @@ mod tests;
 mod text_input;
 mod theme;
 mod tree;
+mod ui_state;
 
 use text_input::TextInput;
+use ui_state::UiStateStore;
 
 pub use event_loop::run;
 
@@ -250,12 +253,20 @@ pub struct App {
     /// the background status worker. The overseer frame and previews render from
     /// this instead of reading disk on every draw.
     overseer_snapshot: overseer::OverseerSnapshot,
+    /// Sidebar layout the operator arranged, and its file. Every expand /
+    /// collapse setter writes through this, so the layout survives a restart.
+    ui_state: UiStateStore,
 }
 
 impl App {
     #[cfg(test)]
     pub fn new(registry: Registry, config: Config, launch_dir: PathBuf) -> Self {
-        Self::new_with_ephemeral(registry, config, Some(launch_dir))
+        Self::build(
+            registry,
+            config,
+            Some(launch_dir),
+            UiStateStore::in_memory(ui_state::UiState::default()),
+        )
     }
 
     pub fn new_with_ephemeral(
@@ -263,7 +274,33 @@ impl App {
         config: Config,
         ephemeral_root: Option<PathBuf>,
     ) -> Self {
-        let expanded = vec![true; registry.repos.len()];
+        Self::build(registry, config, ephemeral_root, UiStateStore::load())
+    }
+
+    /// An app restored from a specific saved layout, for exercising what a
+    /// restart sees without touching the operator's real state file.
+    #[cfg(test)]
+    pub(in crate::ui) fn new_with_ui_state(
+        registry: Registry,
+        config: Config,
+        launch_dir: PathBuf,
+        ui_state: UiStateStore,
+    ) -> Self {
+        Self::build(registry, config, Some(launch_dir), ui_state)
+    }
+
+    fn build(
+        registry: Registry,
+        config: Config,
+        ephemeral_root: Option<PathBuf>,
+        ui_state: UiStateStore,
+    ) -> Self {
+        let saved = ui_state.state();
+        let expanded = saved.repo_expanded(&registry.repos);
+        let expanded_children = saved.expanded_children.iter().cloned().collect();
+        let overseer_expanded = saved.overseer_expanded();
+        let other_collapsed = saved.other_collapsed;
+        let orphans_collapsed = saved.orphans_collapsed;
         let overseer_visible = list::overseer_is_visible();
         let mut app = Self {
             registry,
@@ -271,12 +308,12 @@ impl App {
             ephemeral_root,
             selected: 0,
             expanded,
-            expanded_children: HashSet::new(),
+            expanded_children,
             overseer_visible,
-            overseer_expanded: [false; 4],
-            other_collapsed: false,
+            overseer_expanded,
+            other_collapsed,
             orphans: Vec::new(),
-            orphans_collapsed: false,
+            orphans_collapsed,
             preview: PreviewPane::Info,
             preview_tabs: HashMap::new(),
             preview_scroll: 0,
@@ -294,6 +331,7 @@ impl App {
             overseer_inbox: Vec::new(),
             overseer_inbox_targets: HashSet::new(),
             overseer_snapshot: overseer::OverseerSnapshot::default(),
+            ui_state,
         };
         if app.prune_unmanaged_agents() {
             // Re-run the prune against the on-disk registry rather than writing
@@ -313,10 +351,6 @@ impl App {
         app.refresh_orphans();
         app.restore_preview();
         app
-    }
-
-    pub(in crate::ui) fn overseer_category_expanded(&self, category: OverseerCategory) -> bool {
-        self.overseer_expanded[category.index()]
     }
 
     pub(in crate::ui) fn overseer_frame_height(&self) -> u16 {

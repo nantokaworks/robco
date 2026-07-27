@@ -1,6 +1,7 @@
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, layout::Rect, style::Modifier};
 
 use super::*;
+use crate::model::OverseerCategory;
 
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 40;

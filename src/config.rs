@@ -11,7 +11,7 @@ pub(crate) use language::directive as language_directive;
 pub use merge_strategy::MergeStrategy;
 use paths::config_path;
 pub use paths::{config_file_path, ensure_robco_dir, state_path};
-pub(crate) use paths::{expand_tilde, home_dir, robco_dir};
+pub(crate) use paths::{expand_tilde, home_dir, robco_dir, ui_state_path};
 
 pub(crate) fn resolve_program(name: &str) -> Option<PathBuf> {
     crate::overseer::session::resolve_program_impl(name)
