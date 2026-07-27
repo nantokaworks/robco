@@ -12,7 +12,8 @@ use super::{
     ledger::LedgerEntry,
     monitor::Observations,
     session::{
-        EphemeralSession, SessionControl, SessionHandle, SessionResult, terminate_stale_session,
+        EphemeralSession, SessionControl, SessionHandle, SessionResult, env::SessionEnv,
+        terminate_stale_session,
     },
 };
 use crate::config::{Config, Profile};
@@ -63,11 +64,13 @@ pub(super) fn spawn_session(config: &Config, case: &ExceptionCase, root: &Path) 
     let profile = triage_profile(config);
     let timeout = Duration::from_secs(config.overseer.triage_timeout_mins.saturating_mul(60));
     let language = config.language.clone();
+    let env = SessionEnv::resolve(config);
     SessionHandle::spawn(move |control| {
-        run_session(profile, timeout, &case, &root, &control, language)
+        run_session(profile, timeout, &case, &root, &control, language, &env)
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_session(
     profile: Option<Profile>,
     timeout: Duration,
@@ -75,6 +78,7 @@ fn run_session(
     root: &Path,
     control: &SessionControl,
     language: Option<String>,
+    env: &SessionEnv,
 ) -> SessionResult {
     let case_dir = root.join(&case.id);
     if let Err(error) = fs::create_dir_all(&case_dir) {
@@ -100,6 +104,7 @@ fn run_session(
         profile: &profile,
         case_dir: &case_dir,
         timeout,
+        env,
     };
     session.run_controlled(&result::is_complete, control, Some(&pid_path))
 }

@@ -7,7 +7,7 @@ use crate::{
     overseer::{
         ledger::Ledger,
         logging,
-        session::{EphemeralSession, SessionHandle, SessionResult},
+        session::{EphemeralSession, SessionHandle, SessionResult, auth, env::SessionEnv},
         triage::{recent_worker_capture, triage_profile},
     },
 };
@@ -33,7 +33,8 @@ impl SessionSpawner for SystemSessionSpawner {
             .root
             .join(format!("{}-{}", chrono::Utc::now().timestamp(), nanoid!(8)));
         let language = config.language.clone();
-        let handle = spawn_session(request, case_dir, profile, timeout, move |request| {
+        let env = SessionEnv::resolve(&config);
+        let handle = spawn_session(request, case_dir, profile, timeout, env, move |request| {
             briefing(request, language.as_deref())
         });
         Ok(Box::new(SystemPending(handle)))
@@ -45,6 +46,7 @@ fn spawn_session(
     case_dir: PathBuf,
     profile: crate::config::Profile,
     timeout: Duration,
+    env: SessionEnv,
     build_briefing: impl FnOnce(&SessionRequest) -> String + Send + 'static,
 ) -> SessionHandle {
     SessionHandle::spawn(move |control| {
@@ -58,6 +60,7 @@ fn spawn_session(
             profile: &profile,
             case_dir: &case_dir,
             timeout,
+            env: &env,
         }
         .run_controlled(
             &ops_result::is_complete,
@@ -75,6 +78,9 @@ impl PendingSession for SystemPending {
             Ok(SessionResult::Result(raw)) => Some(Ok(raw)),
             Ok(SessionResult::TimedOut) => Some(Err("session timed out".into())),
             Ok(SessionResult::Missing) => Some(Err("session exited without result.json".into())),
+            Ok(SessionResult::AuthFailed(detail)) => {
+                Some(Err(format!("{}: {detail}", auth::REASON)))
+            }
             Ok(SessionResult::LaunchFailed(error)) => Some(Err(error)),
             Err(TryRecvError::Empty) => None,
             Err(TryRecvError::Disconnected) => Some(Err("session thread disconnected".into())),
@@ -213,6 +219,7 @@ mod tests {
             temp.path().join("case"),
             profile,
             Duration::from_secs(1),
+            SessionEnv::default(),
             move |_| {
                 blocked.recv().unwrap();
                 "briefing".into()

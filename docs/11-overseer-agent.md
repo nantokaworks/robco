@@ -115,7 +115,8 @@ unattended permission flags. A non-empty autonomous argument list also activates
 spawn-time protections:
 
 - Environment names matching `worker_env_blocklist` are set to empty in the worker's
-  tmux environment.
+  tmux environment, except the names the session credential channel resolves — see
+  [Session credentials](#session-credentials).
 - Claude workers receive local Stop and Notification hooks for `turn-done` and
   `waiting`; Codex workers receive a local `notify` command for `turn-done`.
 
@@ -238,6 +239,9 @@ always has.
     "daily_review_budget": 96,
     "triage_timeout_mins": 15,
     "worker_env_blocklist": ["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"],
+    "session_env": {},
+    "session_env_file": null,
+    "session_preflight": true,
     "dispatch_task_authors": [],
     "discord": {
       "enabled": false,
@@ -285,7 +289,10 @@ always has.
 | `review_interval_mins` | non-negative integer | `20` | Minimum minutes between board reviews. The last run time is persisted, so a daemon that restarts often still reviews on this cadence rather than on every start-up. |
 | `daily_review_budget` | non-negative integer | `96` | Board-review sessions per UTC date, counted separately from `daily_llm_budget`. Exhausting it stops the reviewer session, not the deterministic findings. |
 | `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage, judgment, or board-review LLM process. |
-| `worker_env_blocklist` | array of strings | `["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]` | Case-sensitive `*` globs for environment names neutralized in autonomous workers. |
+| `worker_env_blocklist` | array of strings | `["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]` | Case-sensitive `*` globs for environment names neutralized in autonomous workers. Names the session credential channel resolves are exempt — see [Session credentials](#session-credentials). |
+| `session_env` | object of string → string | `{}` | Environment applied to every session the daemon spawns and to every agent robco launches (dispatched workers and TUI-created agents alike). Highest layer of the credential channel; also written into the launchd plist by the installer. See [Session credentials](#session-credentials). |
+| `session_env_file` | string (path) or `null` | `null` | `KEY=VALUE` file read below `session_env`. `null` reads `~/.robco/env`. A leading `~` is expanded. Read at spawn time, so a rotated token needs no reinstall. |
+| `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco overseer status`. |
 | `dispatch_task_authors` | array of strings | `[]` | Exact allowlist for ready-task authors. Empty permits every author. |
 | `discord` | object | see below | Discord gateway, command, and notification settings. |
 
@@ -316,6 +323,114 @@ For backward compatibility, an existing profile that omits `autonomous_args` get
 empty array. Because worker hook injection and environment neutralization are currently
 activated by a non-empty argument list, custom Overseer worker profiles should provide the
 appropriate unattended argument explicitly.
+
+## Session credentials
+
+The Overseer spawns two different kinds of process, and until recently only one of them
+could authenticate.
+
+- **Workers** are launched into the tmux server, which belongs to the user's login session.
+  They inherit that session's environment and its keychain access.
+- **Ephemeral sessions** — exception triage, the dispatch and merge judges, the board
+  reviewer, the Discord ops agent — are spawned as direct children of the daemon. Under the
+  installed launchd service the daemon has no login session behind it, so those children
+  cannot reach the macOS keychain item the Claude CLI keeps its OAuth credential in. Every
+  such session failed in ~25 ms with `Failed to authenticate: OAuth session expired and
+  could not be refreshed`, wrote no `result.json`, and the merge judge turned the silence
+  into a fail-safe escalation.
+
+A service daemon is not supposed to borrow an interactive login session's secret store. The
+answer is the same one systemd (`Environment=` / `EnvironmentFile=`), the AWS CLI (`AWS_*`
+before `~/.aws/credentials`), and `gh` (`GH_TOKEN` before `hosts.yml`) give: an explicit,
+non-interactive channel with a documented resolution order.
+
+### Resolution order
+
+First hit wins, per variable name:
+
+| # | Source | Notes |
+|---|--------|-------|
+| 1 | `overseer.session_env` in `~/.robco/config.json` | Explicit assignments. Also what the launchd installer materialises. |
+| 2 | The env file — `overseer.session_env_file`, or `~/.robco/env` | `KEY=VALUE` lines; `#` comments, blank lines, a leading `export `, and one layer of matching quotes are all handled. |
+| 3 | Whatever the daemon process inherited | Not an assignment — plain inheritance. A name nobody configured keeps the daemon's value. |
+
+Layers 1 and 2 are applied to the spawned process; layer 3 is what happens to everything
+else. Nothing here reads the keychain, by design: an agent cannot unlock the login session's
+keychain, which is the failure the channel exists to route around.
+
+### Setting it up
+
+```sh
+claude setup-token                       # prints a long-lived OAuth token
+printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOKEN" > ~/.robco/env
+chmod 600 ~/.robco/env
+robco overseer install-service           # rewrites the plist
+launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
+robco overseer status                    # check the `session auth:` line
+```
+
+`ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are recognised the same way; the three names are
+what the health surface knows how to report, and any other name in the channel is still
+passed through to the session.
+
+### What the installer writes, and what it does not
+
+`robco overseer install-service` writes `overseer.session_env` into the plist's
+`EnvironmentVariables` dictionary, beside `PATH`, and then chmods the plist to `600`. It
+does **not** copy the env file in. That split is deliberate:
+
+- The plist is the only way to give the *daemon process itself* a variable, since a launchd
+  agent inherits nothing — that is why `PATH` has always had to be materialised there.
+- The env file is read by the daemon at spawn time, so rotating a token is one file write.
+  Copying it into the plist would make every rotation a reinstall-and-reload, and would put
+  a second copy of the secret in a second file.
+
+The service is **not** wrapped in a login shell. Doing so would make the daemon's
+environment depend on whatever the operator's shell profile happens to export, which is the
+implicit inheritance this channel replaces.
+
+### `worker_env_blocklist` interaction
+
+`worker_env_blocklist` blanks environment names in autonomous workers, and its defaults
+(`*_TOKEN`, `*_API_KEY`) match exactly the names a session credential goes by. **Every name
+the channel resolves — from `session_env` or from the env file — is exempt from the
+blocklist, and is set in the worker's tmux environment.** Names the channel does not carry
+are still blanked exactly as before.
+
+The decision turns on what the blocklist is for. It strips *ambient* credentials: names the
+daemon happens to be carrying that an autonomous worker never asked for and cannot be
+trusted with. The channel is the opposite — an operator writing down what robco's own
+processes are supposed to run under — so the explicit declaration wins over the wildcard
+default.
+
+Not exempting it would break the recommended headless install in a way that is hard to see:
+a worker dispatched by a launchd-owned daemon has the same problem the ephemeral sessions
+do, and the one credential the operator configured for it would be blanked on the way in.
+Both layers of the channel are operator-authored configuration, so the exemption covers both
+rather than drawing a line between the config map and the file.
+
+The consequence to be aware of: the env file is not a general-purpose secret store. Anything
+in it reaches dispatched workers. Put only what the agents are meant to run under there.
+
+### Health
+
+With `session_preflight` on (the default) the daemon spawns one probe session at start-up
+and records the verdict in `~/.robco/overseer/session_health.json`. Any live session that is
+refused on credentials overwrites the same record. `robco overseer status` prints it:
+
+```
+session auth: ok (CLAUDE_CODE_OAUTH_TOKEN via session env file, checked 3m ago)
+session auth: failed (no credential configured, checked 0m ago) — Failed to authenticate: OAuth session expired and could not be refreshed
+```
+
+A failed state also prints a warning naming the recovery. Each session's stderr is captured
+to `session.log` in its case directory, which is where the detail comes from.
+
+A judgment refused on credentials is recorded with the reason `session_auth_failed:` instead
+of the generic `judgment fail-safe:` wording, so `~/.robco/overseer/decisions.jsonl` can be
+grepped for the cause. It is still a fail-safe verdict — the pull request is escalated, not
+merged — because a session that never ran has produced no opinion worth acting on.
 
 ## Security model
 
@@ -649,9 +764,16 @@ robco overseer install-service
 ```
 
 This writes `~/Library/LaunchAgents/com.robco.overseer.plist` with `RunAtLoad` and
-`KeepAlive`, but does not load it. If Discord is enabled, first make the already-exported
-token available to the user's launchd environment, then load the service using the
-exact path printed by the install command:
+`KeepAlive`, but does not load it. The plist carries `PATH` and the configured
+`overseer.session_env`, and is written mode `600`; a launchd agent inherits nothing else,
+so anything the daemon needs in its environment has to be there. Configure the credential
+its sessions run under **before** installing — see
+[Session credentials](#session-credentials) — or the judge, triage, and review sessions
+will fail to authenticate even though an interactive `claude` on the same machine works.
+
+If Discord is enabled, first make the already-exported token available to the user's
+launchd environment, then load the service using the exact path printed by the install
+command:
 
 ```sh
 launchctl setenv ROBCO_DISCORD_TOKEN "$ROBCO_DISCORD_TOKEN"
@@ -683,7 +805,9 @@ installed KeepAlive service, unload it to stop it without an immediate relaunch:
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
 ```
 
-Daemon stdout and stderr go to `~/.robco/overseer/overseer.log` under launchd.
+Daemon stdout and stderr go to `~/.robco/overseer/overseer.log` under launchd. Each spawned
+session's stderr goes to `session.log` in its own case directory under
+`~/.robco/overseer/{judge,triage,review,preflight}/`.
 
 ## Failure and recovery semantics
 
