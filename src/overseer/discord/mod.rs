@@ -14,6 +14,7 @@ mod ops_state;
 
 use crate::overseer::config::DiscordConfig;
 use std::{
+    path::Path,
     sync::{
         Arc, RwLock,
         atomic::{AtomicBool, Ordering},
@@ -45,13 +46,14 @@ impl Drop for BotGuard {
 
 pub fn start(
     config: DiscordConfig,
+    env_file: Option<&Path>,
     ledger_requests: std::sync::mpsc::Sender<ledger_requests::LedgerRequest>,
 ) -> Result<BotGuard, String> {
     if rustls::crypto::CryptoProvider::get_default().is_none() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     }
-    let token = std::env::var(&config.token_env)
-        .map_err(|_| format!("token environment variable {} is not set", config.token_env))?;
+    let token = resolve_token(&config.token_env, env_file, |name| std::env::var(name).ok())
+        .ok_or_else(|| format!("token environment variable {} is not set", config.token_env))?;
     let channel = config
         .channel_id
         .as_deref()
@@ -127,5 +129,71 @@ fn wait_backoff(duration: Duration, stop: &AtomicBool) {
     let deadline = std::time::Instant::now() + duration;
     while !stop.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
         thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// Resolve the bot token: the process environment wins, exactly as it did
+/// before the env file could carry this credential too; the file is
+/// consulted only when the name is absent or blank there. `inherited` is
+/// injected so the precedence is testable without touching a real process
+/// environment.
+fn resolve_token(
+    token_env: &str,
+    env_file: Option<&Path>,
+    inherited: impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    inherited(token_env)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            env_file
+                .and_then(|path| crate::overseer::session::env::lookup_var(path, token_env))
+                .filter(|value| !value.trim().is_empty())
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_environment_wins_over_the_env_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("env");
+        std::fs::write(&file, "ROBCO_DISCORD_TOKEN=from-file\n").unwrap();
+
+        let token = resolve_token("ROBCO_DISCORD_TOKEN", Some(&file), |_| {
+            Some("from-process".to_string())
+        });
+
+        assert_eq!(token.as_deref(), Some("from-process"));
+    }
+
+    #[test]
+    fn the_env_file_is_used_when_the_process_does_not_carry_the_token() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("env");
+        std::fs::write(&file, "ROBCO_DISCORD_TOKEN=from-file\n").unwrap();
+
+        let token = resolve_token("ROBCO_DISCORD_TOKEN", Some(&file), |_| None);
+
+        assert_eq!(token.as_deref(), Some("from-file"));
+    }
+
+    #[test]
+    fn a_blank_process_value_falls_through_to_the_env_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("env");
+        std::fs::write(&file, "ROBCO_DISCORD_TOKEN=from-file\n").unwrap();
+
+        let token = resolve_token("ROBCO_DISCORD_TOKEN", Some(&file), |_| {
+            Some("  ".to_string())
+        });
+
+        assert_eq!(token.as_deref(), Some("from-file"));
+    }
+
+    #[test]
+    fn neither_source_carrying_the_token_is_reported_as_absent() {
+        assert_eq!(resolve_token("ROBCO_DISCORD_TOKEN", None, |_| None), None);
     }
 }

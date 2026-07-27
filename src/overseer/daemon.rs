@@ -58,7 +58,7 @@ pub async fn run_daemon() -> Result<()> {
     }
     let (ledger_request_tx, ledger_request_rx) = mpsc::channel();
     let mut discord = None;
-    sync_discord(&mut discord, &config.overseer.discord, &ledger_request_tx);
+    sync_discord(&mut discord, &config, &ledger_request_tx);
     let mut ledger = Ledger::load()?;
     observations::adopt_registry_children(&mut ledger)?;
     ledger.save()?;
@@ -77,7 +77,7 @@ pub async fn run_daemon() -> Result<()> {
         } else {
             logging::log_message(None, "config reload failed; retaining previous config")?;
         }
-        sync_discord(&mut discord, &config.overseer.discord, &ledger_request_tx);
+        sync_discord(&mut discord, &config, &ledger_request_tx);
         apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
         match runtime_request::drain(&mut ledger, &mut config) {
             Ok(config_changed) => {
@@ -171,15 +171,21 @@ fn persist_drained_config(dispatch_enabled: bool) -> Result<()> {
 
 fn sync_discord(
     guard: &mut Option<super::discord::BotGuard>,
-    config: &super::config::DiscordConfig,
+    config: &Config,
     ledger_requests: &Sender<super::discord::ledger_requests::LedgerRequest>,
 ) {
-    if !config.enabled {
+    let discord_config = &config.overseer.discord;
+    if !discord_config.enabled {
         *guard = None;
     } else if let Some(guard) = guard {
-        guard.update_config(config.clone());
+        guard.update_config(discord_config.clone());
     } else {
-        match super::discord::start(config.clone(), ledger_requests.clone()) {
+        let env_file = super::session::env::env_file_path(config);
+        match super::discord::start(
+            discord_config.clone(),
+            env_file.as_deref(),
+            ledger_requests.clone(),
+        ) {
             Ok(started) => *guard = Some(started),
             Err(error) => eprintln!("overseer: Discord bot disabled: {error}"),
         }

@@ -37,6 +37,25 @@ fn select_and_number_retry_invalid_values() {
 }
 
 #[test]
+fn secret_text_reads_the_answer_without_a_default() {
+    let mut input = Cursor::new(b"typed-secret\n");
+    let mut output = Vec::new();
+    assert_eq!(
+        prompt::secret_text(&mut input, &mut output, "token").unwrap(),
+        "typed-secret"
+    );
+
+    let mut empty = Cursor::new(b"\n");
+    assert_eq!(
+        prompt::secret_text(&mut empty, &mut Vec::new(), "token").unwrap(),
+        ""
+    );
+
+    let mut eof = Cursor::new(Vec::<u8>::new());
+    assert!(prompt::secret_text(&mut eof, &mut Vec::new(), "token").is_err());
+}
+
+#[test]
 fn validated_text_retries_and_eof_is_an_error() {
     let mut input = Cursor::new(b"bad\n123\n");
     let mut output = Vec::new();

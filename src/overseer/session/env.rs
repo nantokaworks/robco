@@ -114,6 +114,17 @@ impl SessionEnv {
             }
             vars.insert(name.to_string(), (value.clone(), EnvSource::Config));
         }
+        // The Discord bot token may live in this same env file (see `write_var`
+        // / `lookup_var` below), but this channel is what spawned workers and
+        // ephemeral sessions resolve their environment from, and a worker never
+        // needs — or should hold — a credential that can post to the ops
+        // channel. Excluding it here, rather than at each of this channel's
+        // consumers, keeps the exclusion from depending on every future
+        // consumer remembering to apply it.
+        let discord_token_env = config.overseer.discord.token_env.trim();
+        if !discord_token_env.is_empty() {
+            vars.remove(discord_token_env);
+        }
         Self { vars }
     }
 
@@ -170,28 +181,95 @@ impl SessionEnv {
 /// `~/.robco/env`. A configured path that cannot be resolved yields `None`
 /// rather than falling back, so a typo is a missing file and not a silent read
 /// of a different one.
-fn env_file_path(config: &Config) -> Option<PathBuf> {
+pub(crate) fn env_file_path(config: &Config) -> Option<PathBuf> {
     match &config.overseer.session_env_file {
         Some(path) => Some(expand_tilde(path)),
         None => robco_dir().ok().map(|dir| dir.join(DEFAULT_ENV_FILE)),
     }
 }
 
+/// Read a single assignment out of the env file, for a caller — the Discord
+/// gateway — that needs one named credential rather than the whole
+/// spawned-session channel [`SessionEnv`] resolves. A missing file or a name
+/// the file does not carry both read as `None`.
+pub(crate) fn lookup_var(path: &Path, name: &str) -> Option<String> {
+    let raw = fs::read_to_string(path).ok()?;
+    parse_env_file(&raw)
+        .into_iter()
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value)
+}
+
+/// Write `name=value` into the env file at `path`, creating it at mode `600`
+/// if it does not exist yet. An existing matching assignment is replaced in
+/// place; every other line — comments, blank lines, unrelated credentials —
+/// is left byte-identical. Matching uses the same recognition as
+/// [`parse_env_file`], so a commented-out or malformed line is never
+/// mistaken for the assignment being replaced.
+pub(crate) fn write_var(path: &Path, name: &str, value: &str) -> crate::Result<()> {
+    let existing = fs::read_to_string(path).unwrap_or_default();
+    let mut lines: Vec<&str> = if existing.is_empty() {
+        Vec::new()
+    } else {
+        existing.lines().collect()
+    };
+    let assignment = format!("{name}={value}");
+    let position = lines
+        .iter()
+        .position(|line| assignment_name(line).is_some_and(|existing_name| existing_name == name));
+    match position {
+        Some(index) => lines[index] = &assignment,
+        None => lines.push(&assignment),
+    }
+    let mut contents = lines.join("\n");
+    contents.push('\n');
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, contents)?;
+    set_mode_600(path)?;
+    Ok(())
+}
+
+/// The name an env-file line assigns to. Blank lines, comments, and lines
+/// with no `=` yield `None`.
+fn assignment_name(line: &str) -> Option<&str> {
+    split_assignment(line).map(|(name, _)| name)
+}
+
+#[cfg(unix)]
+fn set_mode_600(path: &Path) -> crate::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_mode_600(_path: &Path) -> crate::Result<()> {
+    Ok(())
+}
+
+/// Split a single env-file line into `(name, raw_value)`, tolerating a
+/// leading `export ` so a file can be `source`d by a shell too. Blank lines,
+/// `#` comments, and lines with no `=` yield `None`.
+fn split_assignment(line: &str) -> Option<(&str, &str)> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+    let trimmed = trimmed.strip_prefix("export ").unwrap_or(trimmed);
+    let (name, value) = trimmed.split_once('=')?;
+    let name = name.trim();
+    (!name.is_empty() && name.chars().all(is_env_name_char)).then_some((name, value.trim()))
+}
+
 /// Parse `KEY=VALUE` lines the way every `EnvironmentFile=` consumer does:
-/// blank lines and `#` comments are skipped, a leading `export ` is tolerated
-/// so a file can be `source`d by a shell too, and one layer of matching quotes
-/// is stripped from the value.
+/// blank lines and `#` comments are skipped, a leading `export ` is
+/// tolerated, and one layer of matching quotes is stripped from the value.
 fn parse_env_file(raw: &str) -> Vec<(String, String)> {
     raw.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter_map(|line| {
-            let line = line.strip_prefix("export ").unwrap_or(line);
-            let (name, value) = line.split_once('=')?;
-            let name = name.trim();
-            (!name.is_empty() && name.chars().all(is_env_name_char))
-                .then(|| (name.to_string(), unquote(value.trim()).to_string()))
-        })
+        .filter_map(split_assignment)
+        .map(|(name, value)| (name.to_string(), unquote(value).to_string()))
         .collect()
 }
 

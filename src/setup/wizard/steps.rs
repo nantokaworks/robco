@@ -1,9 +1,10 @@
 use std::io::{BufRead, Write};
 
 use crate::{
-    Result,
+    Error, Result,
     cli::InstallTarget,
     config::{Config, Profile},
+    overseer::session::env as session_env,
     setup::install_targets,
 };
 
@@ -134,6 +135,9 @@ pub(crate) fn discord<R: BufRead, W: Write>(
     output: &mut W,
     config: &mut Config,
 ) -> Result<()> {
+    // Resolved before the mutable borrow below: the env file the token value
+    // lands in is a sibling of `overseer.discord`, not part of it.
+    let env_file = session_env::env_file_path(config);
     let discord = &mut config.overseer.discord;
     discord.enabled = prompt::confirm(input, output, "Configure Discord?", discord.enabled)?;
     if !discord.enabled {
@@ -164,7 +168,18 @@ pub(crate) fn discord<R: BufRead, W: Write>(
         "use an environment variable name, not a token value",
         env_name,
     )?;
-    Ok(())
+    let token_env = discord.token_env.clone();
+    let token = prompt::secret_text(
+        input,
+        output,
+        "Discord bot token (leave blank to keep the current value)",
+    )?;
+    if token.is_empty() {
+        return Ok(());
+    }
+    let path = env_file
+        .ok_or_else(|| Error::Wizard("cannot resolve the session env file location".into()))?;
+    session_env::write_var(&path, &token_env, &token)
 }
 
 pub(crate) fn digits(value: &str) -> bool {

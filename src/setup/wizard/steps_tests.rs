@@ -59,9 +59,49 @@ fn discord_validators_reject_secrets_and_bad_ids() {
 fn discord_answers_are_applied_after_retries() {
     let mut config = Config::default();
     let mut input =
-        Cursor::new(b"y\nbad\n123\n\n1, nope\n10,20\nsecret-value!\nMY_DISCORD_TOKEN\n");
+        Cursor::new(b"y\nbad\n123\n\n1, nope\n10,20\nsecret-value!\nMY_DISCORD_TOKEN\n\n");
     steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
     assert_eq!(config.overseer.discord.channel_id.as_deref(), Some("123"));
     assert_eq!(config.overseer.discord.allowed_user_ids, ["10", "20"]);
     assert_eq!(config.overseer.discord.token_env, "MY_DISCORD_TOKEN");
+}
+
+/// A per-test temp file, kept out of the process-wide fake home
+/// (`config::paths::test_home`) so concurrent tests never race on one path.
+fn isolated_env_file(config: &mut Config) -> (tempfile::TempDir, std::path::PathBuf) {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("env");
+    config.overseer.session_env_file = Some(path.clone());
+    (temp, path)
+}
+
+#[test]
+fn discord_blank_token_answer_leaves_the_env_file_untouched() {
+    let mut config = Config::default();
+    let (_temp, env_file) = isolated_env_file(&mut config);
+    std::fs::write(&env_file, "UNRELATED=kept\n").unwrap();
+    let mut input = Cursor::new(b"y\n123\n10,20\nMY_DISCORD_TOKEN\n\n");
+
+    steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&env_file).unwrap(),
+        "UNRELATED=kept\n"
+    );
+}
+
+#[test]
+fn discord_typed_token_is_written_to_the_session_env_file() {
+    let mut config = Config::default();
+    let (_temp, env_file) = isolated_env_file(&mut config);
+    let mut input = Cursor::new(b"y\n123\n10,20\nMY_DISCORD_TOKEN\nthe-bot-token\n");
+
+    steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&env_file).unwrap(),
+        "MY_DISCORD_TOKEN=the-bot-token\n"
+    );
+    let saved = serde_json::to_string(&config).unwrap();
+    assert!(!saved.contains("the-bot-token"));
 }
