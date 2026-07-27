@@ -27,11 +27,6 @@ pub(super) fn apply_inbox(
         .collect();
     reports.sort_by_key(|report| report.at);
     for report in reports {
-        if let Some(task_id) = &report.task_id
-            && task_id != &entry.task_id
-        {
-            entry.task_id.clone_from(task_id);
-        }
         match report.kind.as_str() {
             "claimed" if entry.phase == LedgerPhase::Dispatched => {
                 entry.phase = LedgerPhase::Claimed
@@ -41,15 +36,7 @@ pub(super) fn apply_inbox(
             {
                 entry.phase = LedgerPhase::Working
             }
-            "done" if report.pr_url.is_some() && !terminal(entry.phase) => {
-                entry.phase = LedgerPhase::PrOpened;
-                entry.pr_url.clone_from(&report.pr_url);
-            }
-            "blocked" if !terminal(entry.phase) => escalate(
-                entry,
-                report.reason.as_deref().unwrap_or("worker blocked"),
-                actions,
-            ),
+            "blocked" if !terminal(entry.phase) => escalate(entry, "worker blocked", actions),
             "claimed" | "turn-done" | "waiting" | "done" => {}
             kind => actions.push(Action::LogDecision {
                 task_id: Some(entry.task_id.clone()),
@@ -170,5 +157,6 @@ fn escalate(entry: &mut LedgerEntry, reason: &str, actions: &mut Vec<Action>) {
         message: reason.into(),
     });
 }
-#[rustfmt::skip]
-fn matches_entry(report: &InboxObservation, entry: &LedgerEntry) -> bool { report.agent_id == entry.agent_id || report.task_id.as_deref() == Some(entry.task_id.as_str()) }
+fn matches_entry(report: &InboxObservation, entry: &LedgerEntry) -> bool {
+    report.agent_id == entry.agent_id
+}

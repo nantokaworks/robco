@@ -64,9 +64,6 @@ pub struct InboxObservation {
     pub at: DateTime<Utc>,
     pub agent_id: String,
     pub kind: String,
-    pub task_id: Option<String>,
-    pub pr_url: Option<String>,
-    pub reason: Option<String>,
 }
 impl From<InboxReport> for InboxObservation {
     fn from(report: InboxReport) -> Self {
@@ -77,9 +74,6 @@ impl From<InboxReport> for InboxObservation {
                 .ok()
                 .and_then(|value| value.as_str().map(str::to_owned))
                 .unwrap_or_else(|| "unknown".into()),
-            task_id: report.task_id,
-            pr_url: report.pr_url,
-            reason: report.reason,
         }
     }
 }
