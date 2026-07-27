@@ -14,6 +14,7 @@ use crate::{
     overseer::{
         config::OverseerConfig, exec::process_alive, heartbeat, heartbeat_path,
         judge::JudgmentQueue, ledger::Ledger, logging, review::ReviewPass,
+        session::health::SessionHealth,
     },
 };
 
@@ -54,6 +55,8 @@ pub(super) fn status(config: &Config) -> Result<()> {
         config.overseer.per_repo_limit
     );
     println!("{}", llm_line(config, &judgments)?);
+    let session_health = SessionHealth::load()?;
+    println!("{}", session_auth_line(session_health.as_ref()));
     // Read straight after the LLM budget: a judge that spent nothing today is
     // either idle or queued behind one long judgment, and only this line says
     // which.
@@ -85,6 +88,11 @@ pub(super) fn status(config: &Config) -> Result<()> {
     if healthy && let Some(warning) = heartbeat::drift(daemon_version.as_deref()) {
         println!("warning: {warning}");
     }
+    // Ahead of the toggle warnings: every gate below is reached by a session,
+    // so a credential the daemon cannot use makes all of them moot.
+    if let Some(warning) = session_health.as_ref().and_then(SessionHealth::warning) {
+        println!("warning: {warning}");
+    }
     if config.overseer.dispatch_enabled && !healthy {
         println!("warning: {}", crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT);
     }
@@ -102,6 +110,18 @@ pub(super) fn status(config: &Config) -> Result<()> {
         println!("warning: {warning}");
     }
     Ok(())
+}
+
+/// Whether a session the daemon spawns can authenticate.
+///
+/// Reported unconditionally, including when no probe has ever run: an absent
+/// record is itself the answer an operator needs after installing the service,
+/// and a line that appears only on failure cannot be checked before the failure.
+fn session_auth_line(health: Option<&SessionHealth>) -> String {
+    health.map_or_else(
+        || "session auth: unknown (no preflight recorded)".to_string(),
+        SessionHealth::summary,
+    )
 }
 
 /// Today's LLM spend, per surface.

@@ -107,3 +107,25 @@ fn daemon_line_survives_a_heartbeat_from_before_version_recording() {
         "daemon: down/stale pid=- heartbeat=missing version=unknown"
     );
 }
+
+#[test]
+fn session_auth_is_reported_even_before_a_probe_has_run() {
+    // An absent record is the state a freshly installed service is in, and it is
+    // exactly when an operator wants to look — a line that only appears on
+    // failure cannot be checked ahead of one.
+    assert_eq!(
+        session_auth_line(None),
+        "session auth: unknown (no preflight recorded)"
+    );
+}
+
+#[test]
+fn a_recorded_probe_is_reported_verbatim() {
+    use crate::overseer::session::health::{SessionHealth, SessionHealthState};
+
+    let health = SessionHealth::new(SessionHealthState::AuthFailed, None)
+        .with_detail("Failed to authenticate");
+
+    assert_eq!(session_auth_line(Some(&health)), health.summary());
+    assert!(session_auth_line(Some(&health)).starts_with("session auth: failed"));
+}

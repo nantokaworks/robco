@@ -1,3 +1,5 @@
+use std::{collections::BTreeMap, path::PathBuf};
+
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +110,26 @@ pub struct OverseerConfig {
     pub daily_review_budget: u32,
     pub triage_timeout_mins: u64,
     pub worker_env_blocklist: Vec<String>,
+    /// Environment handed to every session the daemon spawns, and the highest
+    /// layer of the credential channel documented in
+    /// `crate::overseer::session::env`. A launchd agent has no access to the
+    /// interactive login session's keychain, so this — or the env file below —
+    /// is how a `claude setup-token` credential reaches a judge, triage, or
+    /// review session at all.
+    ///
+    /// Names set here are exempt from `worker_env_blocklist`: the blocklist
+    /// blanks *ambient* names a worker never asked for, while an entry here is
+    /// an operator naming what the sessions need.
+    pub session_env: BTreeMap<String, String>,
+    /// `KEY=VALUE` file read below `session_env` and above the daemon's own
+    /// environment. `None` reads `~/.robco/env`. Kept separate from the config
+    /// so a rotated token is one file write rather than a config edit, and so
+    /// the secret can live in a file with its own permissions.
+    pub session_env_file: Option<PathBuf>,
+    /// Whether the daemon spawns one probe session at start-up to confirm the
+    /// credential channel actually authenticates. Default-on: the failure it
+    /// catches is otherwise only visible as merge judgments escalating.
+    pub session_preflight: bool,
     pub dispatch_task_authors: Vec<String>,
     pub discord: DiscordConfig,
 }
@@ -150,6 +172,9 @@ impl Default for OverseerConfig {
             daily_review_budget: 96,
             triage_timeout_mins: 15,
             worker_env_blocklist: default_worker_blocklist(),
+            session_env: BTreeMap::new(),
+            session_env_file: None,
+            session_preflight: true,
             dispatch_task_authors: Vec::new(),
             discord: DiscordConfig::default(),
         }

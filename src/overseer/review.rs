@@ -40,8 +40,8 @@ use crate::{
         ledger::Ledger,
         logging::{self, DecisionEntry, DecisionKind},
         session::{
-            EphemeralSession, SessionControl, SessionHandle, SessionResult, session_profile,
-            terminate_stale_session,
+            EphemeralSession, SessionControl, SessionHandle, SessionResult, env::SessionEnv,
+            session_profile, terminate_stale_session,
         },
     },
 };
@@ -220,11 +220,13 @@ fn spawn_session(
         }
     };
     let prompt = briefing::render(digest, findings, config.language.as_deref());
+    let env = SessionEnv::resolve(config);
     SessionHandle::spawn(move |control| {
-        run_session(profile, timeout, &case, &prompt, &case_dir, &control)
+        run_session(profile, timeout, &case, &prompt, &case_dir, &control, &env)
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_session(
     profile: Option<Profile>,
     timeout: Duration,
@@ -232,6 +234,7 @@ fn run_session(
     prompt: &str,
     case_dir: &Path,
     control: &SessionControl,
+    env: &SessionEnv,
 ) -> SessionResult {
     if let Err(error) = fs::create_dir_all(case_dir) {
         return SessionResult::LaunchFailed(error.to_string());
@@ -250,6 +253,7 @@ fn run_session(
         profile: &profile,
         case_dir,
         timeout,
+        env,
     }
     .run_controlled(&result::is_complete, control, Some(&pid_path))
 }
@@ -266,6 +270,9 @@ fn failed(result: SessionResult) -> String {
     match result {
         SessionResult::TimedOut => "session timed out".into(),
         SessionResult::Missing => "session exited without result.json".into(),
+        SessionResult::AuthFailed(detail) => {
+            format!("{}: {detail}", crate::overseer::session::auth::REASON)
+        }
         SessionResult::LaunchFailed(error) => format!("session failed: {error}"),
         SessionResult::Result(_) => unreachable!("a result is not a failure"),
     }
