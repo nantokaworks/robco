@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 
-use serde_json::Value;
-
 use super::{
     merge_apply::{merge_now, merge_state_cleared},
     merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
     merge_hold::{self, HoldPlan},
-    merge_judge_fail_safe, merge_recovery, merge_settle,
+    merge_hold_recheck,
+    merge_judge_gate::{Judgment, judge_allows},
+    merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection,
     protection::ProtectionCache,
@@ -16,8 +16,7 @@ use crate::{
     Result,
     config::Config,
     overseer::{
-        autonomy::{Decision, merge_envelope_decision},
-        judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
+        judge::JudgmentQueue,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
     },
@@ -64,9 +63,16 @@ pub(super) fn auto_merge_pass(
         log_repo(&repo, merge_settle::SETTLED)?;
     }
     merge_settle::age(merge_settling);
+    let max_rechecks = config.overseer.max_merge_hold_rechecks;
     for entry in entries.iter_mut() {
+        // Read, never charged here: the budget pays for a pass that re-read the
+        // gate and found it still holding, and this pass has not reached the gate
+        // yet. Charging on the way in spends it on outcomes the budget is not for
+        // — most of all on a pass that clears the gate and only waits on a
+        // judgment, which arrives once and is not a condition to re-check.
+        let recheck = merge_hold_recheck::due(entry, max_rechecks);
         let reconsidering = entry.phase == LedgerPhase::Escalated
-            && judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref());
+            && (judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref()) || recheck);
         if entry.phase != LedgerPhase::PrOpened && !reconsidering {
             continue;
         }
@@ -116,13 +122,33 @@ pub(super) fn auto_merge_pass(
             Outcome::Merged => {
                 counters.consecutive_failures = 0;
                 merge_hold::cleared(entry);
+                merge_hold_recheck::settle(entry);
                 merge_settle::begin(merge_settling, &entry.repo);
             }
-            Outcome::Halted { halt, head } => hold(entry, &halt, &head, config, &registry)?,
+            // The one outcome the recheck budget is for: this pass re-read the
+            // gate and the gate still holds, so the look it was granted is spent.
+            Outcome::Halted { halt, head } => {
+                if recheck && merge_hold_recheck::charge(entry, max_rechecks) {
+                    // Recorded on the pass that spends the last look, so the log
+                    // says once — and only once — that nothing will reconsider
+                    // this entry again. Without it the operator cannot tell an
+                    // entry still being re-checked from one given up on.
+                    log(
+                        entry,
+                        DecisionKind::Escalate,
+                        &merge_hold_recheck::exhausted(&halt.reason),
+                    )?;
+                }
+                hold(entry, &halt, &head, config, &registry)?;
+            }
             // The deterministic gate cleared and only the judgment is outstanding,
             // so whatever this entry was last held on is no longer what is holding
             // it. Forgetting it here is what keeps a condition that came back after
-            // clearing from inheriting the old condition's spent budget.
+            // clearing from inheriting the old condition's spent budget. The
+            // recheck budget is deliberately not charged: the gate is no longer
+            // what holds this entry, and a judgment round trip can outlast the
+            // whole budget on a busy queue — spending it here would strand the
+            // entry exactly the way this module exists to prevent.
             Outcome::Pending => merge_hold::cleared(entry),
         }
     }
@@ -150,6 +176,7 @@ fn hold(
         }
         HoldPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
+            merge_hold_recheck::escalated(entry);
             log(
                 entry,
                 DecisionKind::Escalate,
@@ -234,72 +261,6 @@ fn evaluate(
 /// found wanting, which this setting has no business overriding.
 fn protection_gate_overridden(unmet: &str, allow_unverifiable_protection: bool) -> bool {
     unmet == protection::PLAN_UNSUPPORTED && allow_unverifiable_protection
-}
-
-/// What the merge judge said about a pull request the deterministic gate cleared.
-enum Judgment {
-    Allow,
-    /// The judge, or the autonomy envelope, stopped the merge under this reason.
-    Halt(Halt),
-    /// No verdict yet: the judgment is queued, so the pull request simply waits.
-    Queued,
-}
-
-/// Puts a pull request the deterministic gate cleared to the merge judge.
-fn judge_allows(
-    entry: &mut LedgerEntry,
-    url: &str,
-    value: &Value,
-    config: &Config,
-    judgments: &mut JudgmentQueue,
-    consecutive_failures: u32,
-) -> Result<Judgment> {
-    let facts = change_facts(value, consecutive_failures, judgments.llm_calls_today());
-    let case = merge_case(entry, url, value);
-    let Some(advice) =
-        judgment_after_gate(true, true, &facts, config, || judgments.merge_advice(case))
-    else {
-        if matches!(
-            merge_envelope_decision(true, true, &facts, &config.overseer),
-            Decision::Escalate(_)
-        ) {
-            return Ok(Judgment::Halt(Halt::escalate("autonomy_envelope")));
-        }
-        return Ok(Judgment::Queued);
-    };
-    let Some(advice) = advice? else {
-        return Ok(Judgment::Queued);
-    };
-    if merge_judge_fail_safe::handle(entry, &advice, &config.overseer)? {
-        return Ok(Judgment::Queued);
-    }
-    let allows_merge = judgment_allows_merge(entry, advice.outcome);
-    match advice.outcome {
-        MergeJudgment::Allow => {}
-        MergeJudgment::Veto => {
-            return Ok(Judgment::Halt(Halt::escalate(format!(
-                "judge_veto:{}",
-                advice.reason
-            ))));
-        }
-        MergeJudgment::Escalate => {
-            return Ok(Judgment::Halt(Halt::escalate(format!(
-                "judge_escalate:{}",
-                advice.reason
-            ))));
-        }
-    }
-    debug_assert!(allows_merge);
-    Ok(Judgment::Allow)
-}
-
-fn judgment_allows_merge(entry: &mut LedgerEntry, outcome: MergeJudgment) -> bool {
-    if outcome == MergeJudgment::Allow {
-        true
-    } else {
-        entry.phase = LedgerPhase::Escalated;
-        false
-    }
 }
 
 /// A repo the Overseer does not manage should not have its pull requests merged

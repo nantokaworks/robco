@@ -1,5 +1,6 @@
 use super::*;
 use crate::overseer::autonomy::ChangeFacts;
+use crate::overseer::judge::{change_facts, judgment_after_gate, merge_case};
 use serde_json::json;
 
 #[test]
@@ -71,6 +72,8 @@ fn merge_case_saturates_additions_independently() {
         merge_hold: Default::default(),
         manual_merge_skip: None,
         merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
     };
     let value = json!({
         "headRefOid":"new-sha", "additions":u64::MAX, "deletions":u32::MAX,
@@ -82,30 +85,6 @@ fn merge_case_saturates_additions_independently() {
     assert_eq!(case.deletions, u32::MAX);
     assert_eq!(case.head_sha, "new-sha");
     assert_eq!(facts.llm_calls_today, 7);
-}
-
-#[test]
-fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
-    let mut entry = crate::overseer::ledger::LedgerEntry {
-        task_id: "task".into(),
-        display_id: "#1".into(),
-        repo: "/repo".into(),
-        agent_id: "agent".into(),
-        branch: "branch".into(),
-        phase: LedgerPhase::PrOpened,
-        dispatched_at: chrono::Utc::now(),
-        settled_at: None,
-        retries: 0,
-        pr_url: Some("https://pr/1".into()),
-        branch_updates: 0,
-        merge_recovery: Default::default(),
-        merge_hold: Default::default(),
-        manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
-    };
-    assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
-    assert_eq!(entry.phase, LedgerPhase::Escalated);
-    assert_ne!(entry.phase, LedgerPhase::PrOpened);
 }
 
 #[test]
@@ -129,6 +108,8 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
         merge_hold: Default::default(),
         manual_merge_skip: None,
         merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
     };
     let now = chrono::Local::now();
     let agent = |management| crate::model::AgentNode {
@@ -236,6 +217,8 @@ fn a_repo_opted_out_of_the_overseer_blocks_auto_merge_for_every_worker_in_it() {
         merge_hold: Default::default(),
         manual_merge_skip: None,
         merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
     };
     let now = chrono::Local::now();
     let agent = crate::model::AgentNode {
