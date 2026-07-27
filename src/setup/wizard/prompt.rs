@@ -1,4 +1,4 @@
-use std::io::{BufRead, Write};
+use std::io::{BufRead, IsTerminal, Write};
 
 use crate::{Error, Result};
 
@@ -47,6 +47,85 @@ where
             return Ok(answer);
         }
         writeln!(output, "▌ robco ▸ NG ··············· {invalid}")?;
+    }
+}
+
+/// Prompt for a value that must not be echoed to the terminal — a secret
+/// typed directly into the wizard rather than exported beforehand. Reads
+/// through the same generic `BufRead` as every other prompt; the no-echo
+/// toggle only touches the process's real stdin and only when it is a TTY,
+/// so a `Cursor`-backed test harness degrades to a normal, echoed read.
+pub(crate) fn secret_text<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    label: &str,
+) -> Result<String> {
+    write!(output, "▌ robco ▸ {label}: ")?;
+    output.flush()?;
+    let echo_guard = EchoGuard::disable();
+    let mut line = String::new();
+    let read = input.read_line(&mut line);
+    drop(echo_guard);
+    writeln!(output)?;
+    if read? == 0 {
+        return Err(Error::Wizard(
+            "input ended while waiting for an answer".into(),
+        ));
+    }
+    Ok(line.trim().to_string())
+}
+
+#[cfg(unix)]
+struct EchoGuard {
+    original: Option<libc::termios>,
+}
+
+#[cfg(unix)]
+impl EchoGuard {
+    fn disable() -> Self {
+        if !std::io::stdin().is_terminal() {
+            return Self { original: None };
+        }
+        // SAFETY: `STDIN_FILENO` names the process's own stdin, and `term` is
+        // fully initialised by `tcgetattr` before any field of it is read.
+        let original = unsafe {
+            let mut term: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(libc::STDIN_FILENO, &mut term) != 0 {
+                return Self { original: None };
+            }
+            term
+        };
+        let mut disabled = original;
+        disabled.c_lflag &= !(libc::ECHO | libc::ECHONL);
+        // SAFETY: `disabled` was derived from a successful `tcgetattr` above.
+        unsafe {
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &disabled);
+        }
+        Self {
+            original: Some(original),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for EchoGuard {
+    fn drop(&mut self) {
+        if let Some(original) = self.original {
+            // SAFETY: `original` was captured by a successful `tcgetattr` in `disable`.
+            unsafe {
+                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &original);
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+struct EchoGuard;
+
+#[cfg(not(unix))]
+impl EchoGuard {
+    fn disable() -> Self {
+        Self
     }
 }
 

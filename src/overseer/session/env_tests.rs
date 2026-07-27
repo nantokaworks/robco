@@ -141,6 +141,97 @@ fn env_file_path_prefers_the_configured_location() {
 }
 
 #[test]
+fn discord_token_is_excluded_even_when_present_in_the_env_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("env");
+    fs::write(&file, "ROBCO_DISCORD_TOKEN=secret\nOTHER=kept\n").unwrap();
+    let mut config = Config::default();
+    config.overseer.discord.token_env = "ROBCO_DISCORD_TOKEN".into();
+
+    let env = SessionEnv::resolve_at(&config, Some(&file));
+
+    assert_eq!(env.pairs(), vec![("OTHER".to_string(), "kept".to_string())]);
+    assert!(!env.names().any(|name| name == "ROBCO_DISCORD_TOKEN"));
+}
+
+#[test]
+fn discord_token_configured_via_session_env_map_is_also_excluded() {
+    let mut config = config_with(&[("ROBCO_DISCORD_TOKEN", "secret"), ("KEPT", "value")]);
+    config.overseer.discord.token_env = "ROBCO_DISCORD_TOKEN".into();
+
+    let env = SessionEnv::resolve_at(&config, None);
+
+    assert_eq!(env.pairs(), vec![("KEPT".to_string(), "value".to_string())]);
+}
+
+#[test]
+#[cfg(unix)]
+fn write_var_creates_the_file_at_mode_600() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("env");
+
+    write_var(&file, "ROBCO_DISCORD_TOKEN", "secret").unwrap();
+
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "ROBCO_DISCORD_TOKEN=secret\n"
+    );
+    let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+}
+
+#[test]
+fn write_var_replaces_only_the_matching_line() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("env");
+    fs::write(
+        &file,
+        "# a comment\nCLAUDE_CODE_OAUTH_TOKEN=keep-me\nROBCO_DISCORD_TOKEN=old\n",
+    )
+    .unwrap();
+
+    write_var(&file, "ROBCO_DISCORD_TOKEN", "new").unwrap();
+
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "# a comment\nCLAUDE_CODE_OAUTH_TOKEN=keep-me\nROBCO_DISCORD_TOKEN=new\n"
+    );
+}
+
+#[test]
+fn write_var_appends_when_no_existing_assignment_matches() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("env");
+    fs::write(&file, "OTHER=kept\n").unwrap();
+
+    write_var(&file, "ROBCO_DISCORD_TOKEN", "new").unwrap();
+
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "OTHER=kept\nROBCO_DISCORD_TOKEN=new\n"
+    );
+}
+
+#[test]
+fn lookup_var_finds_a_named_assignment() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("env");
+    fs::write(&file, "OTHER=kept\nROBCO_DISCORD_TOKEN=secret\n").unwrap();
+
+    assert_eq!(
+        lookup_var(&file, "ROBCO_DISCORD_TOKEN"),
+        Some("secret".to_string())
+    );
+    assert_eq!(lookup_var(&file, "MISSING"), None);
+    assert_eq!(
+        lookup_var(&temp.path().join("absent"), "ROBCO_DISCORD_TOKEN"),
+        None
+    );
+}
+
+#[test]
 fn apply_sets_every_assignment_on_the_command() {
     let env = SessionEnv::resolve_at(&config_with(&[("ROBCO_TEST_ENV", "applied")]), None);
     let mut command = Command::new("/bin/sh");

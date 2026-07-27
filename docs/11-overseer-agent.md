@@ -416,6 +416,14 @@ rather than drawing a line between the config map and the file.
 The consequence to be aware of: the env file is not a general-purpose secret store. Anything
 in it reaches dispatched workers. Put only what the agents are meant to run under there.
 
+One name is exempt from that consequence rather than from the blocklist:
+`overseer.discord.token_env`. The channel excludes it outright, from both the config map and
+the env file, so a token that can post to the ops channel never reaches a worker's tmux
+environment or an ephemeral session — even though the wizard writes it into the same file
+every other credential in this channel lives in. The Discord gateway resolves that name on
+its own (see
+[Discord application](#discord-application)); this channel is not involved.
+
 ### Health
 
 With `session_preflight` on (the default) the daemon spawns one probe session at start-up
@@ -716,8 +724,12 @@ It probes `git`, `tmux`, `gh`, and `dropr`; offers MCP registration; walks throu
 Overseer worker, triage, capacity, Discord, and macOS launchd settings; then writes
 `~/.robco/config.json` once at the end. Existing values are prompt defaults, so a
 second run that accepts every default leaves the configuration unchanged. Discord bot
-tokens are never stored: the wizard records only `token_env` and, with explicit
-confirmation on macOS, can copy that variable's current value into launchd.
+tokens are never stored in `config.json`: the wizard records only `token_env` there. A
+token typed at the following prompt — terminal echo disabled, blank to leave the
+existing value alone — is written straight to the session env file instead; see
+[Session credentials](#session-credentials). On macOS, the wizard can additionally
+copy an already-exported token's current value into launchd, with explicit
+confirmation.
 
 This is a behavior change for bare `robco install`, which now requires a TTY and starts
 the wizard. Automation and MCP-only setup must use `robco install --target
@@ -780,14 +792,20 @@ installed service) to clear it; nothing restarts it automatically on drift.
    History.
 4. Enable Developer Mode in Discord, then copy the operations channel id and each
    operator's user id into `channel_id` and `allowed_user_ids`.
-5. Put only the environment variable name in `token_env`. Export the token separately:
+5. Set `token_env` to the environment variable name the bot token is known by, then
+   supply the token value itself. `robco install` prompts for both: the wizard's
+   Discord step asks for `token_env` and then, with terminal echo disabled while you
+   type, the token value. A blank answer to the token prompt leaves whatever is
+   already resolvable untouched. The typed value is written to the session env file
+   (`overseer.session_env_file`, or `~/.robco/env`) at mode `600` — never into
+   `config.json` — so it reaches the gateway the same way a `claude setup-token`
+   credential reaches a judge or triage session; see
+   [Session credentials](#session-credentials). Exporting the variable yourself
+   before running the wizard, or writing it into the env file by hand, both still
+   work exactly as before.
 
-   ```sh
-   export ROBCO_DISCORD_TOKEN='replace-with-the-bot-token'
-   ```
-
-The token is read from the daemon's environment when the Discord thread starts; it is
-never stored in `config.json`.
+The gateway reads the token from its own process environment first, falling back to
+the env file when the name is absent there; it is never stored in `config.json`.
 
 ### launchd service on macOS
 
@@ -805,16 +823,27 @@ its sessions run under **before** installing — see
 [Session credentials](#session-credentials) — or the judge, triage, and review sessions
 will fail to authenticate even though an interactive `claude` on the same machine works.
 
-If Discord is enabled, first make the already-exported token available to the user's
-launchd environment, then load the service using the exact path printed by the install
-command:
+If Discord is enabled and the token lives in the session env file — because the wizard
+wrote it there, or because it was added by hand — no further step is needed: the daemon
+reads that file directly, regardless of how it was launched. Load the service using the
+exact path printed by the install command:
+
+```sh
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
+```
+
+An operator who instead exports the token into their own shell can still copy it into
+launchd's environment, which continues to work exactly as before and takes precedence
+over the env file:
 
 ```sh
 launchctl setenv ROBCO_DISCORD_TOKEN "$ROBCO_DISCORD_TOKEN"
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
 ```
 
-Replace `ROBCO_DISCORD_TOKEN` in that command if `token_env` uses another name.
+Replace `ROBCO_DISCORD_TOKEN` in that command if `token_env` uses another name. Unlike
+the env file, `launchctl setenv` does not survive logout or reboot, so it needs
+re-running each session unless the env file also carries the token as a fallback.
 
 `robco install` takes the other side of that trade: its launchd step defaults to writing
 *and* loading the service, so an operator recovering a dead daemon reaches a running
@@ -823,8 +852,7 @@ exits 0 without producing a loaded service fails the run instead of reporting su
 and a wizard that ends with dispatch enabled while the service is still down closes with
 an explicit warning naming the recovery commands. `install-service` stays non-executing
 because it is the scripted, copy-the-command path: it is invoked from runbooks and
-non-interactive setups where loading the service is a separate, deliberate step (and,
-with Discord enabled, must follow the `launchctl setenv` above).
+non-interactive setups where loading the service is a separate, deliberate step.
 
 Inspect it at any time with:
 
