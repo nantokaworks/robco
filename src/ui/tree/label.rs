@@ -66,6 +66,31 @@ impl ManagementMarker {
             Self::Unmanaged => " ",
         }
     }
+
+    /// The repo row's own marker: unlike an agent row, a repo has no
+    /// `parent_agent_id` ownership question, so its two states map directly
+    /// onto `RepoNode::management`.
+    pub(super) fn of_repo(management: ManagementMode) -> Self {
+        match management {
+            ManagementMode::Auto => Self::Auto,
+            ManagementMode::Manual => Self::Manual,
+        }
+    }
+
+    /// Blanks a marker that only repeats its repo's own state, so an agent
+    /// row's marker cell is reserved for the cases where it actually says
+    /// something the repo row does not already say. The visibility of the
+    /// indicator is the point: a marker on every row reads as wallpaper.
+    pub(super) fn unless_matching(self, repo: Self) -> Self {
+        if self == repo { Self::Unmanaged } else { self }
+    }
+}
+
+/// The repo row's own management glyph, shown unconditionally (unlike an
+/// agent row's, which blanks out via [`ManagementMarker::unless_matching`]
+/// when it only repeats this).
+pub(super) fn repo_management_glyph(management: ManagementMode, style: Style) -> Span<'static> {
+    Span::styled(ManagementMarker::of_repo(management).glyph(), style)
 }
 
 /// One nesting step, applied to every agent row so its title starts right of
@@ -74,9 +99,15 @@ impl ManagementMarker {
 /// along with the row instead of occupying a fixed column pinned to the row's
 /// left edge.
 ///
+/// Four columns wide, not two: the repo row now carries its own management
+/// marker cell (glyph + separating space) ahead of its name, so the nesting
+/// step has to clear that in addition to the plain two-column indent it always
+/// covered, or a depth-0 agent row's own marker would land under the repo
+/// row's title instead of right of it.
+///
 /// Rows that must track the agent title column carry this too: the child-worktree
 /// row and the empty-repo filler in the parent module.
-pub(super) const AGENT_INDENT: &str = "  ";
+pub(super) const AGENT_INDENT: &str = "    ";
 
 /// The prefix of an agent row: cursor, the nesting step under the repo, the
 /// identity-tree indent, the management marker cell, then the expand arrow for

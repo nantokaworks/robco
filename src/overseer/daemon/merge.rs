@@ -293,13 +293,22 @@ fn judgment_allows_merge(entry: &mut LedgerEntry, outcome: MergeJudgment) -> boo
     }
 }
 
+/// A repo the Overseer does not manage should not have its pull requests merged
+/// automatically either — the same silent-divergence risk `manual_skip` already
+/// guards against per-worker, now checked per-repo before the per-worker read.
 fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {
-    registry
+    let repo_auto = registry
         .repos
         .iter()
-        .flat_map(|repo| &repo.agents)
-        .find(|agent| agent.id == entry.agent_id)
-        .is_none_or(|agent| agent.management == crate::model::ManagementMode::Auto)
+        .find(|repo| repo.path.to_string_lossy() == entry.repo)
+        .is_none_or(|repo| repo.management == crate::model::ManagementMode::Auto);
+    repo_auto
+        && registry
+            .repos
+            .iter()
+            .flat_map(|repo| &repo.agents)
+            .find(|agent| agent.id == entry.agent_id)
+            .is_none_or(|agent| agent.management == crate::model::ManagementMode::Auto)
 }
 
 #[cfg(test)]

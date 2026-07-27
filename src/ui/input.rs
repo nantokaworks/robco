@@ -239,6 +239,7 @@ impl App {
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('g') => management::cycle_selected(self)?,
+                KeyCode::Char('G') => management::toggle_repo_overseer(self)?,
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),

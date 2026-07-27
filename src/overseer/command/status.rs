@@ -11,11 +11,13 @@ use super::{on_off, read_pid, settings::protection_warning};
 use crate::{
     Result,
     config::Config,
+    model::ManagementMode,
     overseer::{
         config::OverseerConfig, exec::process_alive, heartbeat, heartbeat_path,
         judge::JudgmentQueue, ledger::Ledger, logging, review::ReviewPass,
         session::health::SessionHealth,
     },
+    registry::Registry,
 };
 
 pub(super) fn status(config: &Config) -> Result<()> {
@@ -62,6 +64,7 @@ pub(super) fn status(config: &Config) -> Result<()> {
     // which.
     println!("{}", judgments.snapshot().summary());
     println!("workers by repo: {:?}", active.repos);
+    println!("{}", repos_line(&Registry::load()?));
     println!("phases: {phases:?}");
     // Only when there is something to report: the line names an exception state,
     // and a pull request Overseer is deliberately leaving to its owner is the
@@ -186,6 +189,28 @@ pub(super) fn daemon_healthy(poll_interval_secs: u64) -> bool {
             .is_some_and(|age| {
                 age <= Duration::from_secs(poll_interval_secs.saturating_mul(2).max(5))
             })
+}
+
+/// Which registered repos the Overseer actually looks at (`#306`). Dispatch and
+/// auto-merge already gate on `RepoNode::management` in the passes themselves;
+/// this line is the one place that state is visible without opening the TUI or
+/// digging through `decisions.jsonl` for a `overseer_unmanaged` skip.
+fn repos_line(registry: &Registry) -> String {
+    let opted_out: Vec<&str> = registry
+        .repos
+        .iter()
+        .filter(|repo| repo.management == ManagementMode::Manual)
+        .map(|repo| repo.name.as_str())
+        .collect();
+    if opted_out.is_empty() {
+        return format!("repos: {} watched, 0 opted out", registry.repos.len());
+    }
+    format!(
+        "repos: {} watched, {} opted out: {}",
+        registry.repos.len() - opted_out.len(),
+        opted_out.len(),
+        opted_out.join(", ")
+    )
 }
 
 /// Render the toggle summary line of `robco overseer status`.

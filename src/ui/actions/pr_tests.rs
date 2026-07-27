@@ -46,6 +46,7 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         name: path.to_string(),
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

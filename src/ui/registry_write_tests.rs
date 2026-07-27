@@ -9,6 +9,7 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         name: path.rsplit('/').next().unwrap_or("repo").to_string(),
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

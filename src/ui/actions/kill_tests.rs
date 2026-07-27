@@ -90,6 +90,7 @@ fn test_repo(path: std::path::PathBuf, agent: AgentNode) -> RepoNode {
         name: "repo".into(),
         remote_url: None,
         pinned: false,
+        management: crate::model::ManagementMode::Auto,
         agents: vec![agent],
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),
