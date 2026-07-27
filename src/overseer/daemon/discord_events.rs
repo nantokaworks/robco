@@ -27,10 +27,11 @@ pub(super) fn record(
         .iter()
         .filter(|report| report.kind == "blocked")
     {
-        let Some(entry) = next.entries.iter().find(|entry| {
-            entry.agent_id == report.agent_id
-                || report.task_id.as_deref() == Some(entry.task_id.as_str())
-        }) else {
+        let Some(entry) = next
+            .entries
+            .iter()
+            .find(|entry| entry.agent_id == report.agent_id)
+        else {
             continue;
         };
         event(entry, DecisionKind::Escalate, "worker_blocked")?;

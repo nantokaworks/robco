@@ -17,12 +17,6 @@ pub struct InboxReport {
     pub at: DateTime<Utc>,
     pub agent_id: String,
     pub kind: ReportKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub task_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pr_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
 }
 
 impl InboxReport {
@@ -31,9 +25,6 @@ impl InboxReport {
             at: Utc::now(),
             agent_id,
             kind: ReportKind::parse(kind)?,
-            task_id: None,
-            pr_url: None,
-            reason: None,
         })
     }
 }
