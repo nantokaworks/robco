@@ -104,6 +104,66 @@ fn a_live_auto_worker_suppresses_redispatch() {
 }
 
 #[test]
+fn an_open_pull_request_names_a_specific_skip_reason() {
+    // The loop that opened the failure circuit a second time: a worker finished,
+    // pushed its branch, and opened a pull request, then its session ended. The
+    // ledger entry stayed at `pr_opened` — non-terminal, so `active_worker`
+    // would already hold it — but re-dispatching is not "wait for the worker",
+    // it is "the operator's move is on the pull request", and the reason must
+    // say so rather than reuse the generic label.
+    let mut ledger = Ledger::default();
+    let mut opened = entry(LedgerPhase::PrOpened);
+    opened.task_id = "task-1".into();
+    opened.display_id = "#1".into();
+    opened.agent_id = "auto-agent".into();
+    opened.repo = "/elsewhere".into();
+    opened.pr_url = Some("https://github.com/example/repo/pull/717".into());
+    ledger.entries.push(opened);
+    let modes = HashMap::from([("auto-agent".to_string(), ManagementMode::Auto)]);
+
+    let plan = plan_dispatch(
+        &OverseerConfig::default(),
+        &ledger,
+        &[candidate("/repo")],
+        now(),
+        &modes,
+    );
+    assert_eq!(plan.decisions[0].reason, "pr_already_open");
+    assert!(!plan.decisions[0].dispatch);
+}
+
+#[test]
+fn a_closed_or_merged_pull_request_is_dispatchable_again() {
+    // Once the entry that carried the pull request settles into a terminal
+    // phase — merged, or escalated after closing unmerged — the task is not
+    // waiting on anything any more and must be dispatchable, bounded only by
+    // max_retries_per_task like any other finished attempt.
+    for phase in [
+        LedgerPhase::Merged,
+        LedgerPhase::Failed,
+        LedgerPhase::Escalated,
+    ] {
+        let mut ledger = Ledger::default();
+        let mut settled = entry(phase);
+        settled.task_id = "task-1".into();
+        settled.display_id = "#1".into();
+        settled.repo = "/elsewhere".into();
+        settled.pr_url = Some("https://github.com/example/repo/pull/717".into());
+        ledger.entries.push(settled);
+
+        let plan = plan_dispatch(
+            &OverseerConfig::default(),
+            &ledger,
+            &[candidate("/repo")],
+            now(),
+            &HashMap::new(),
+        );
+        assert_eq!(plan.decisions[0].reason, "ready");
+        assert!(plan.decisions[0].dispatch);
+    }
+}
+
+#[test]
 fn a_terminal_entry_does_not_suppress_redispatch() {
     // Only a live worker holds the branch. Once the entry reaches a terminal
     // phase the task is dispatchable again, bounded by max_retries_per_task.

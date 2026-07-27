@@ -239,8 +239,19 @@ fn candidate_skip<'a>(
     // existing branch, and those failures feed the circuit until dispatch latches
     // off — so hold the candidate for as long as its worker is alive, whatever
     // management mode owns it.
-    if recorded.iter().any(|entry| !terminal(entry.phase)) {
-        return Some("active_worker");
+    //
+    // A non-terminal entry that already carries a `pr_url` is a different case
+    // worth naming on its own: the worker is done and a pull request is open, so
+    // re-dispatching would not just collide with a live worktree, it would retry
+    // work that already shipped. The operator's move is on the pull request, not
+    // on this task, and `pr_already_open` says so instead of reading like the
+    // worker is still running.
+    if let Some(entry) = recorded.iter().find(|entry| !terminal(entry.phase)) {
+        return Some(if entry.pr_url.is_some() {
+            "pr_already_open"
+        } else {
+            "active_worker"
+        });
     }
     if ledger
         .skip_list
