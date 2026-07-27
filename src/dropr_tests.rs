@@ -1,5 +1,24 @@
 use super::*;
 
+/// `dropr task ready` is the last CLI surface robco invokes, and the CLI only
+/// exposes `task list` and `task ready`. Pinning the argv means the next time
+/// that surface moves, this test fails instead of a dispatch pass.
+#[test]
+fn the_ready_fetch_invokes_a_subcommand_the_cli_exposes() {
+    assert_eq!(
+        ready_args("ws-1", "20"),
+        [
+            "task",
+            "ready",
+            "--workspace",
+            "ws-1",
+            "--limit",
+            "20",
+            "--json"
+        ]
+    );
+}
+
 /// The display-row parse, spelled once so each case reads as one call.
 fn parse_tasks(raw: &[u8]) -> Option<Vec<DroprTaskCandidate>> {
     parse_as(raw)

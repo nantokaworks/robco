@@ -6,10 +6,13 @@ mod claim;
 mod mcp;
 mod repo_tasks;
 mod workspace;
+mod writes;
 
 pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
 pub use repo_tasks::{DroprTaskFetch, FETCH_BUDGET, TASK_FETCH_LIMIT};
 pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
+pub use writes::{WriteError, WriteResult};
+pub(crate) use writes::{scribble_create_timeout, task_status_update_timeout};
 
 /// `dropr task ready --limit` caps at 20; larger values make the CLI
 /// exit with an argument error and the fetch fails for every repo.
@@ -60,15 +63,7 @@ pub fn fetch_ready_dispatch_tasks_timeout(
     let limit = limit.to_string();
     let program = crate::config::resolve_program("dropr").ok_or(ReadyDispatchError::Command)?;
     let mut command = Command::new(program);
-    command.args([
-        "task",
-        "ready",
-        "--workspace",
-        workspace_id,
-        "--limit",
-        &limit,
-        "--json",
-    ]);
+    command.args(ready_args(workspace_id, &limit));
     let output = crate::overseer::exec::run_timeout(command, timeout)
         .map_err(|_| ReadyDispatchError::Command)?;
     if !output.status.success() {
@@ -87,56 +82,23 @@ pub fn fetch_repo_tasks(workspace_id: &str) -> DroprTaskFetch {
     repo_tasks::fetch(workspace_id)
 }
 
-pub(crate) fn scribble_create_timeout(
-    task_id: &str,
-    content: &str,
-    timeout: Duration,
-) -> crate::Result<()> {
-    let mut command = dropr_command("dropr scribble create")?;
-    command.args([
-        "scribble",
-        "create",
-        "--task",
-        task_id,
-        "--content",
-        content,
-    ]);
-    checked_timeout(command, timeout, "dropr scribble create")
-}
-
-pub(crate) fn task_status_update_timeout(
-    task_id: &str,
-    status: &str,
-    timeout: Duration,
-) -> crate::Result<()> {
-    let mut command = dropr_command("dropr task status update")?;
-    command.args(["task", "status", "update", task_id, status]);
-    checked_timeout(command, timeout, "dropr task status update")
-}
-
-fn dropr_command(context: &'static str) -> crate::Result<Command> {
-    crate::config::resolve_program("dropr")
-        .map(Command::new)
-        .ok_or_else(|| crate::Error::Command {
-            context,
-            stderr: "dropr binary not found on PATH or common install dirs; install dropr or add it to the overseer daemon's PATH".into(),
-        })
-}
-
-fn checked_timeout(
-    command: Command,
-    timeout: Duration,
-    context: &'static str,
-) -> crate::Result<()> {
-    let output = crate::overseer::exec::run_timeout(command, timeout)?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(crate::Error::Command {
-            context,
-            stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        })
-    }
+/// The argv `dropr task ready` is invoked with, spelled once so a test can pin
+/// it against the CLI surface that exists.
+///
+/// `task ready` and [`workspace::DroprOverlay`]'s `workspace list` are all the
+/// CLI robco still shells out to. The writes in [`writes`] and the reads in
+/// [`repo_tasks`] and [`claim`] go over `dropr mcp-stdio` instead, because the
+/// CLI never grew the commands they need.
+fn ready_args<'a>(workspace_id: &'a str, limit: &'a str) -> [&'a str; 7] {
+    [
+        "task",
+        "ready",
+        "--workspace",
+        workspace_id,
+        "--limit",
+        limit,
+        "--json",
+    ]
 }
 
 fn parse_as<T: for<'de> Deserialize<'de>>(raw: &[u8]) -> Option<Vec<T>> {

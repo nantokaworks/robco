@@ -49,7 +49,7 @@ fn complete_session_result_with(
     case_dir: &Path,
     log_path: &Path,
     action: &dyn Fn(&TriageAction, &ExceptionCase) -> Result<()>,
-    scribble: &dyn Fn(&str, &str) -> Result<()>,
+    scribble: &dyn Fn(&str, &str) -> crate::dropr::WriteResult,
 ) -> Result<()> {
     let marker = case_dir.join("outcome.json");
     let (completion, replay) = match fs::read(&marker) {
@@ -79,7 +79,7 @@ pub(super) fn apply_session_result_with(
     ledger: &mut Ledger,
     case: &ExceptionCase,
     log_path: &Path,
-    scribble: &dyn Fn(&str, &str) -> Result<()>,
+    scribble: &dyn Fn(&str, &str) -> crate::dropr::WriteResult,
 ) -> Result<()> {
     apply_completion(
         normalize(result, case),
@@ -133,7 +133,7 @@ fn apply_completion(
     case: &ExceptionCase,
     log_path: &Path,
     action: &dyn Fn(&TriageAction, &ExceptionCase) -> Result<()>,
-    scribble: &dyn Fn(&str, &str) -> Result<()>,
+    scribble: &dyn Fn(&str, &str) -> crate::dropr::WriteResult,
 ) -> Result<()> {
     if !replay
         && let Some(request) = &completion.action
@@ -166,12 +166,16 @@ fn apply_completion(
                 // repeat escalation cannot move the timestamp.
                 entry.settled_at.get_or_insert_with(Utc::now);
             }
+            // The note is what an operator reading dropr sees; without it the
+            // escalation is there with no explanation attached. So its loss
+            // escalates in its own right rather than riding along as a `Hold`
+            // that the alert digest and the inbox both filter out.
             if !replay && let Err(error) = scribble(&case.task_id, &completion.reason) {
                 log(
                     log_path,
-                    DecisionKind::Hold,
+                    DecisionKind::Escalate,
                     case,
-                    &format!("escalation scribble failed: {error}"),
+                    &format!("escalation note not recorded in dropr: {error}"),
                 )?;
             }
             log(log_path, DecisionKind::Escalate, case, &completion.reason)
@@ -194,7 +198,7 @@ fn write_marker(path: &Path, completion: &Completion) -> Result<()> {
     Ok(())
 }
 
-fn dropr_scribble(task_id: &str, reason: &str) -> Result<()> {
+fn dropr_scribble(task_id: &str, reason: &str) -> crate::dropr::WriteResult {
     crate::dropr::scribble_create_timeout(task_id, reason, COMMAND_TIMEOUT)
 }
 

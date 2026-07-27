@@ -11,7 +11,10 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::mcp::{ToolOutcome, call_tool};
+use super::{
+    mcp::{ToolOutcome, call_tool},
+    writes::accepted,
+};
 
 /// The claim fields of a single dropr task, as `task_list` reports them.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
@@ -126,26 +129,12 @@ pub fn release_claim(workspace_id: &str, task_id: &str, agent_id: &str, timeout:
         timeout,
     );
     match outcome {
-        Some(ToolOutcome::Ok(payload)) => released(&payload),
+        // The bulk call answers per item, so the envelope alone proves nothing:
+        // a transition the wrong agent asked for fails inside a call that
+        // succeeded. See [`accepted`].
+        Some(ToolOutcome::Ok(payload)) => accepted(&payload),
         _ => false,
     }
-}
-
-/// Whether the bulk envelope actually released the lock.
-///
-/// `task_status_update` answers per item: a rejected transition — the wrong
-/// agent, an invalid state change — comes back as `status: "error"` inside an
-/// otherwise successful call, so the envelope alone proves nothing.
-fn released(payload: &Value) -> bool {
-    payload
-        .get("results")
-        .and_then(Value::as_array)
-        .is_some_and(|results| {
-            !results.is_empty()
-                && results
-                    .iter()
-                    .all(|item| item.get("status").and_then(Value::as_str) == Some("ok"))
-        })
 }
 
 /// Compacts a refusal into something a decision log line can carry: dropr
@@ -239,17 +228,16 @@ mod tests {
     fn a_per_item_rejection_is_not_a_release() {
         // The bulk call succeeds while the item inside it fails; reading only the
         // envelope would report a claim handed back that is still held.
-        assert!(!released(&json!({
+        assert!(!accepted(&json!({
             "results": [{
                 "id": "task-1",
                 "status": "error",
                 "error": {"message": "only the locking agent can release this lock"},
             }],
         })));
-        assert!(released(&json!({
+        assert!(accepted(&json!({
             "results": [{ "id": "task-1", "status": "ok" }],
         })));
-        assert!(!released(&json!({ "results": [] })));
     }
 
     #[test]

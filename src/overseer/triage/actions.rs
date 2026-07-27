@@ -15,9 +15,11 @@ pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Res
     match action {
         TriageAction::DroprScribbleCreate { task_id, content } => {
             crate::dropr::scribble_create_timeout(task_id, content, COMMAND_TIMEOUT)
+                .map_err(|error| write_failed("dropr scribble_create", &error))
         }
         TriageAction::DroprTaskStatusUpdate { task_id, status } => {
             crate::dropr::task_status_update_timeout(task_id, status, COMMAND_TIMEOUT)
+                .map_err(|error| write_failed("dropr task_status_update", &error))
         }
         TriageAction::RobcoAnswer { agent_id, text } => {
             tmux_send(agent_id, text, true)?;
@@ -66,6 +68,17 @@ pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Res
         );
         error
     })
+}
+
+/// A dropr write that did not land, as the error the action list returns.
+///
+/// A failed action escalates the whole triage completion, so the refused /
+/// unavailable distinction the write reports has to survive into that reason.
+fn write_failed(context: &'static str, error: &crate::dropr::WriteError) -> crate::Error {
+    crate::Error::Command {
+        context,
+        stderr: error.to_string(),
+    }
 }
 
 fn find_session(agent_id: &str) -> Result<String> {
