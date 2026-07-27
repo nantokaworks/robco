@@ -20,6 +20,7 @@ fn save_load_round_trip() {
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
             manual_merge_skip: None,
+            merge_judge_fail_safes: 0,
         }],
         skip_list: vec!["task-2".into()],
         counters: LedgerCounters {
@@ -89,6 +90,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
     };
     let ledger = Ledger {
         entries: vec![
@@ -156,6 +158,7 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: skip.map(str::to_owned),
+        merge_judge_fail_safes: 0,
     };
     let ledger = Ledger {
         entries: vec![
