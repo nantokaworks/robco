@@ -25,8 +25,11 @@ use crate::{
 /// rather than merged, because its required checks must re-run against the new head.
 pub(super) const BRANCH_UPDATED: &str = "behind_branch_updated";
 
-/// Reason recorded when the per-entry update budget is spent.
-pub(super) const UPDATE_CAP_REACHED: &str = "behind_update_cap_reached";
+/// Reason recorded when the per-entry update budget is spent. `pub(crate)`
+/// rather than `pub(super)` because `overseer::remedy` — outside `daemon` —
+/// needs to name this exact reason too, to keep its own classification in
+/// sync with `merge_recovery::classify`'s.
+pub(crate) const UPDATE_CAP_REACHED: &str = "behind_update_cap_reached";
 
 /// What `mergeStateStatus` means for this pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

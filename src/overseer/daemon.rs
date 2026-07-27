@@ -7,7 +7,7 @@ mod merge_hold;
 mod merge_judge_fail_safe;
 mod merge_recovery;
 mod merge_settle;
-mod merge_state;
+pub(crate) mod merge_state;
 mod observations;
 mod protection;
 mod pull_request;

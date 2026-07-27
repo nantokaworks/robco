@@ -612,6 +612,14 @@ Reasons are classified into the worker's and the operator's:
   and every probe or parse failure. **An unrecognised reason is operator-only** — a failure
   nobody anticipated must not silently drive a worker.
 
+This worker/operator split is `overseer::remedy::classify`, which the module also uses as
+its own fallback: any reason it calls worker-fixable, `overseer::remedy::resolve` treats as
+`Answer` even without a dedicated table entry, so the two never drift apart. `remedy` is the
+broader authority the Inbox reads from — see [The Inbox in the TUI](#the-inbox-in-the-tui) —
+turning a reason into a short move (`ANSWER`, `MERGE`, `RESET`, `RETRY`, `REVIEW`, `WATCH`)
+plus a sentence of guidance, rather than only the narrower recoverable/operator question this
+section answers.
+
 `merge_refused:rebase_refused_merge_commit` is a rebase GitHub declined because the head
 branch carries a merge commit. It is deliberately the operator's: the worker cannot clear
 it without rewriting a published branch, which the rails forbid, and the fix is to choose
@@ -871,9 +879,14 @@ state.
 ### The Inbox in the TUI
 
 The `Inbox` category under `OVERSEER` aggregates what is waiting on the operator: every
-escalation the daemon recorded, plus every worker sitting on a confirmation prompt. The
-category row summarises it as `N/M actionable` — how many of the listed items have a live
-tmux session to answer into.
+escalation the daemon recorded, plus every worker sitting on a confirmation prompt. Each
+item's reason is resolved by `overseer::remedy` into a `Move` — `ANSWER`, `MERGE`, `RESET`,
+`RETRY`, `REVIEW`, or `WATCH` — and the category row summarises it as `N/M actionable`: how
+many of the listed items resolve to something other than `WATCH`. This is independent of
+whether the item has a live tmux session — merging a pull request by hand, resetting a
+tripped circuit, or reviewing a parked ledger entry needs no session at all, so those rows
+count even when their worker is gone. Only `WATCH` — nothing has failed and nothing is
+waiting on a human, e.g. checks still running — is excluded.
 
 Expanding the category (`l`, `→`, or `Enter` on the category row) turns each item into a
 row of its own — one level, with no repeated count row between the category and its items,
@@ -883,9 +896,16 @@ marker, and `h` folds them back under the category. There is no second cursor an
 that only works while a particular preview tab is showing — an item lives in the left
 frame, so what the right pane happens to display never decides what acting on it does.
 
-Selecting an item previews *that item*: its kind, target, session, timestamp, and its
-reason in full. The sidebar trims the row label to the frame width, so the pane is where
-the whole escalation is readable. It deliberately does not re-list the other items — they
+A row reads `[ESC] REVIEW #296`: the kind code (`ESC` or `?`, the dismissal identity) stays,
+and the resolved move's tag replaces the raw reason that used to fill the row — the raw
+reason rarely fit the sidebar anyway, and a bare code or a judge's full sentence said
+nothing about what to *do*. A `WATCH` tag renders muted; every other tag renders like the
+rest of the row.
+
+Selecting an item previews *that item*: its kind, the same resolved move, target, session,
+timestamp, a `what this means` / `next step` pair of sentences, and its reason in full. The
+sidebar trims the row to the frame width, so the pane is where the whole escalation — and
+the guidance about it — is readable. It deliberately does not re-list the other items — they
 are already on screen a few columns to the left.
 
 Four keys act on the selected item:
@@ -897,10 +917,14 @@ Four keys act on the selected item:
 - `D` clears the whole Inbox, behind a confirmation. It is also bound on the Inbox category
   row itself.
 
-An item whose worker is dead or branch-only has no session to answer into. It is still
-listed — the escalation is real and the operator still needs to see it — but it renders as
-`display-only`, and both `Enter` and `y` say so rather than appearing to send something.
-`Enter` on such a row never falls through to attaching a session.
+An item whose worker is dead or branch-only has no session to answer into, or was never
+one to answer in the first place (a merge, a reset, a review). It is still listed — the
+escalation is real and the operator still needs to see it — but the preview's `session`
+field reads `display-only`, and both `Enter` and `y` say so rather than appearing to send
+something. `Enter` on such a row never falls through to attaching a session. An item whose
+own move needed an answer but has no session resolves to `REVIEW` instead — `remedy::resolve`
+downgrades it, since an instruction with no session to send it to is the operator's problem,
+not the worker's.
 
 ### Dismissing Inbox items
 

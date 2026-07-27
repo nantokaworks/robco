@@ -47,9 +47,37 @@ fn the_category_expands_straight_into_item_rows() {
     // No count header ahead of the items: item `n` is row `n`, which is what
     // the OVERSEER frame's scroll arithmetic relies on.
     assert_eq!(lines.len(), 2);
-    assert!(lines[0].contains("[ESC] #159"), "{lines:?}");
-    assert!(lines[1].contains("[?] agent-1"), "{lines:?}");
+    // `LONG_REASON` is a judge-shaped sentence with no live session for the
+    // first item, so it resolves to `Answer` and is then orphaned to
+    // `Review`; the second is a `Question`, always answerable.
+    assert!(lines[0].contains("[ESC] REVIEW #159"), "{lines:?}");
+    assert!(lines[1].contains("[?] ANSWER agent-1"), "{lines:?}");
     assert!(!lines.iter().any(|line| line.contains("inbox (")));
+}
+
+#[test]
+fn the_category_numerator_equals_the_non_watch_rendered_rows() {
+    // Mixed remedies: `autonomy_envelope` resolves to `Merge` regardless of
+    // session, `checks_waiting` resolves to `Watch`, and the `Question` is
+    // always `Answer` — two of the three are actionable.
+    let mut watching = item(InboxKind::Escalation, "#1", None);
+    watching.detail = "checks_waiting".into();
+    let mut merge_by_hand = item(InboxKind::Escalation, "#2", None);
+    merge_by_hand.detail = "autonomy_envelope".into();
+    let app = inbox_app(vec![
+        watching,
+        merge_by_hand,
+        item(InboxKind::Question, "agent-1", Some("robco-agent-1")),
+    ]);
+
+    let (summary, _) = crate::ui::overseer::category_summary(&app, OverseerCategory::Inbox);
+    assert_eq!(summary, "2/3 actionable", "{summary}");
+
+    let non_watch_rows = rendered(&detail_lines(&app))
+        .iter()
+        .filter(|line| !line.contains("WATCH"))
+        .count();
+    assert_eq!(non_watch_rows, 2);
 }
 
 #[test]

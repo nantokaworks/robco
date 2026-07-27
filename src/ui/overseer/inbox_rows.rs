@@ -1,6 +1,7 @@
 use ratatui::text::{Line, Span, Text};
 
 use crate::model::Selection;
+use crate::overseer::remedy::Move;
 use crate::ui::{App, inbox::InboxItem, theme::DEFAULT as THEME};
 
 /// The Inbox category's detail: one row per aggregated item, and nothing else.
@@ -29,19 +30,30 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
 /// Why an item cannot be answered, said where its target session would go.
 const DISPLAY_ONLY: &str = "display-only";
 
+/// A row is `[ESC] REVIEW #296`: the kind code stays (it is the dismissal
+/// identity), and the remedy's tag replaces the raw reason and the
+/// `=> {session} | display-only` suffix — at the 24-column sidebar minimum
+/// the row was clipped well ahead of that suffix, and `display-only` is now
+/// said positively by the tag itself (a `Watch` row needs no live session any
+/// more than a `Merge` one does). Two spans so a `WATCH` tag renders muted
+/// while the rest of the row keeps its normal selection/accent style.
 fn item_line(item: &InboxItem, selected: bool) -> Line<'static> {
     let marker = if selected { ">" } else { " " };
-    // A display-only item names why it cannot be answered where its target
-    // session would otherwise be: there is no live session to answer into.
-    let target = item.target_session.as_deref().unwrap_or(DISPLAY_ONLY);
-    Line::from(Span::styled(
-        format!("{marker} [{}] {} => {target}", item.kind.code(), item.label),
-        if selected {
-            THEME.selection_style()
-        } else {
-            THEME.accent_style()
-        },
-    ))
+    let remedy = item.remedy();
+    let base_style = if selected {
+        THEME.selection_style()
+    } else {
+        THEME.accent_style()
+    };
+    let tag_style = if remedy.step == Move::Watch {
+        THEME.muted_style()
+    } else {
+        base_style
+    };
+    Line::from(vec![
+        Span::styled(format!("{marker} [{}] ", item.kind.code()), base_style),
+        Span::styled(format!("{} {}", remedy.tag(), item.target_id), tag_style),
+    ])
 }
 
 /// The preview for a selected item row: what the row is, who it is about, and
@@ -63,8 +75,10 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         );
     };
 
+    let remedy = item.remedy();
     let mut lines = vec![
         field("kind", item.kind.label().to_string()),
+        field("remedy", remedy.tag().to_string()),
         field("target", item.target_id.clone()),
         match &item.target_session {
             Some(session) => field("session", session.clone()),
@@ -79,6 +93,12 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         // escalation can sit here for months, and the row is exactly the one
         // whose age the operator needs in order to judge it.
         field("at", item.at.format("%Y-%m-%d %H:%M UTC").to_string()),
+        Line::from(""),
+        Line::from(Span::styled("what this means", THEME.muted_style())),
+        Line::from(Span::styled(remedy.means, THEME.accent_style())),
+        Line::from(""),
+        Line::from(Span::styled("next step", THEME.muted_style())),
+        Line::from(Span::styled(remedy.next, THEME.accent_style())),
         Line::from(""),
         Line::from(Span::styled("reason", THEME.muted_style())),
     ];

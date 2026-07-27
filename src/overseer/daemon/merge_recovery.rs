@@ -27,6 +27,13 @@ use crate::{
     tmux,
 };
 
+/// `FailureClass` and `classify` moved verbatim to `overseer::remedy`, which
+/// is now the single place a reason's classification is named — `remedy`
+/// also uses `classify` as the fallback for any reason its own table does not
+/// list. Re-exported so this module and `merge_recovery_tests.rs` (which
+/// reads both through `use super::*`) need no further changes.
+pub(super) use crate::overseer::remedy::{FailureClass, classify};
+
 /// Reason recorded when the per-entry handback budget is spent.
 pub(super) const CAP_REACHED: &str = "merge_recovery_cap_reached";
 
@@ -42,46 +49,6 @@ fn dispatched(reason: &str) -> String {
 /// interval for those would bury the ones that mean something.
 fn skipped(why: &str) -> String {
     format!("merge_recovery_skipped:{why}")
-}
-
-/// Who owns a merge failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum FailureClass {
-    /// The worker can fix this from its own worktree.
-    Recoverable,
-    /// Nothing the worker can change; only an operator can move it.
-    Operator,
-}
-
-/// Classifies a reason the merge gate recorded.
-///
-/// Unrecognised reasons classify as `Operator`. Driving a worker on a failure
-/// mode nobody anticipated is the expensive mistake here, so the default is to
-/// leave it for a human rather than to guess that a prompt would help.
-pub(super) fn classify(reason: &str) -> FailureClass {
-    let recoverable = matches!(
-        reason,
-        // A dirty head conflicts with its base; a blocked one is missing a review
-        // or a required check. Both are resolved by pushing to the same branch.
-        "merge_state:dirty" | "merge_state:blocked" | "checks_not_green"
-        // The branch keeps losing the race against other merges, which the worker
-        // ends by rebasing its own branch onto the base.
-            | crate::overseer::daemon::merge_state::UPDATE_CAP_REACHED
-    ) || [
-        // `gh pr merge` refused or failed; the branch itself is the thing to fix.
-        "merge_exit:",
-        "merge_error:",
-        // The merge judge's own words are the remediation instruction.
-        "judge_veto:",
-        "judge_escalate:",
-    ]
-    .iter()
-    .any(|prefix| reason.starts_with(prefix));
-    if recoverable {
-        FailureClass::Recoverable
-    } else {
-        FailureClass::Operator
-    }
 }
 
 /// What to do about one recorded failure.

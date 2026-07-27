@@ -18,6 +18,7 @@ pub mod judge;
 pub mod ledger;
 pub mod logging;
 pub mod monitor;
+pub(crate) mod remedy;
 pub mod review;
 pub mod runtime_request;
 pub(crate) mod session;

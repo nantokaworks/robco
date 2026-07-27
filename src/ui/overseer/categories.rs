@@ -62,10 +62,14 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
         ),
         OverseerCategory::Ledger => ledger_summary_from(&snapshot.ledger),
         OverseerCategory::Inbox => {
+            // Actionable is derived per row from its resolved remedy — not
+            // whether it has a live session — so a `Merge`, `Reset`, `Retry`,
+            // or `Review` row counts even with no worker to answer into.
+            // Only `Watch` rows (nothing to do yet) are excluded.
             let actionable = app
                 .overseer_inbox
                 .iter()
-                .filter(|item| item.target_session.is_some())
+                .filter(|item| item.actionable())
                 .count();
             (
                 format!("{actionable}/{} actionable", app.overseer_inbox.len()),

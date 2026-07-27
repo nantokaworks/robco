@@ -110,8 +110,10 @@ fn the_selected_inbox_item_is_the_row_the_frame_scrolls_to() {
     );
     // The count the nested row used to carry is on the category row already, so
     // removing that level lost no information.
-    // The lone item is display-only, so none of the one listed is actionable.
-    assert!(category.contains("0/1 actionable"), "{category:?}");
+    // The lone item has no live session, but its reason resolves to a remedy
+    // other than `Answer` (an orphaned answer becomes `Review`), so it still
+    // counts: actionable tracks the resolved remedy, not session presence.
+    assert!(category.contains("1/1 actionable"), "{category:?}");
     assert!(
         !content
             .lines
