@@ -36,6 +36,7 @@ fn row(display_id: &str, status: &str, priority: &str, children: usize) -> TaskR
             title: format!("Task {display_id}"),
             priority: priority.to_owned(),
             status: status.to_owned(),
+            priority_score: None,
         },
     }
 }

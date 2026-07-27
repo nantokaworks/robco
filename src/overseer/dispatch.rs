@@ -43,6 +43,10 @@ pub struct Candidate {
     /// the pre-spawn claim can address the task without re-resolving the
     /// repository's workspace.
     pub workspace: String,
+    /// dropr's numeric refinement of `priority`, verbatim. `None` when the
+    /// ready feed did not carry one. Feeds [`order_candidates`]'s intra-bucket
+    /// tiebreak, refining `priority` rather than overriding it.
+    pub priority_score: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

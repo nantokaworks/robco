@@ -180,6 +180,7 @@ mod tests {
                 author: "allowed".into(),
                 priority: "medium".into(),
                 workspace: "workspace-1".into(),
+                priority_score: None,
             }],
             Utc::now(),
             &HashMap::new(),
@@ -197,6 +198,7 @@ mod tests {
             author: "allowed".into(),
             priority: "medium".into(),
             workspace: "workspace-1".into(),
+            priority_score: None,
         }
     }
 

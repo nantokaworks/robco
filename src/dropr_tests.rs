@@ -69,6 +69,16 @@ fn accepts_ready_tasks_without_priority_or_status() {
     assert_eq!(tasks[0].display_id, "#42");
     assert_eq!(tasks[0].priority, "");
     assert_eq!(tasks[0].status, "");
+    assert_eq!(tasks[0].priority_score, None);
+}
+
+#[test]
+fn parses_a_priority_score_when_the_feed_carries_one() {
+    let tasks = parse_tasks(
+        br##"[{"display_id":"#42","title":"Ship it","priority":"high","priority_score":340}]"##,
+    )
+    .unwrap();
+    assert_eq!(tasks[0].priority_score, Some(340));
 }
 #[test]
 fn rejects_malformed_ready_tasks() {

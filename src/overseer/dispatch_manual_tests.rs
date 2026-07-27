@@ -28,6 +28,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             author: "allowed".into(),
             priority: "medium".into(),
             workspace: "workspace-1".into(),
+            priority_score: None,
         },
         Candidate {
             task_id: "auto-task".into(),
@@ -37,6 +38,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             author: "allowed".into(),
             priority: "medium".into(),
             workspace: "workspace-1".into(),
+            priority_score: None,
         },
     ];
 

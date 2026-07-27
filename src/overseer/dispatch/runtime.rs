@@ -204,6 +204,7 @@ fn gather_candidates() -> Result<Vec<Candidate>> {
                 author: task.author,
                 priority: task.task.priority,
                 workspace: workspace.id.clone(),
+                priority_score: task.task.priority_score,
             });
         }
     }
