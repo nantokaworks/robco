@@ -276,6 +276,7 @@ always has.
 | `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. Switched off, each failure it would have acted on is still recorded once per revision as `merge_recovery_disabled:<reason>` and counted into `merge-recovery: off (N dropped)`. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
+| `max_merge_hold_rechecks` | non-negative integer | `10` | Further looks through the gate an entry escalated by `max_merge_holds` is given, so a condition an operator fixes afterwards is noticed instead of leaving the pull request parked for good. Only a pass that re-read the gate and found it still holding spends one; a pass waiting on a judgment spends nothing. The pass that spends the last look records `merge_hold_recheck_exhausted:<reason>`. `0` leaves an escalated entry where it is, which is how Overseer behaved before this budget existed. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
 | `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
@@ -542,6 +543,19 @@ frozen pair keeps spending it. When the budget runs out the entry reaches `escal
 records `merge_hold_cap_reached:<reason>` once, and stops recording that hold, which is
 what puts it in front of an operator in `robco overseer status` and the TUI Inbox instead
 of leaving it to accumulate identical lines.
+
+An entry escalated that way is not abandoned. The condition it stopped on — protection,
+checks, merge state — is one an operator can fix, and nothing else would ever bring the
+entry back: a pre-judge hold never reaches the judge, so the judge-verdict re-entry path
+has nothing to offer it. So such an entry is given `max_merge_hold_rechecks` further looks
+through the gate. A look is spent only by a pass that re-read the gate and found it still
+holding; a pass that clears the gate and waits on a judgment spends nothing, because a
+judgment arrives on the judge queue's own schedule — one session at a time — and can
+outlast the whole budget, which would strand the entry exactly the way the rechecks exist
+to prevent. Once a verdict lands the judge becomes the authority reconsidering the entry
+and the remaining looks are retired. The pass that spends the last look records
+`merge_hold_recheck_exhausted:<reason>` once, so the log distinguishes an entry still being
+re-checked from one nothing will look at again.
 
 The exits that already carry a budget of their own are not charged here: the `behind_*`
 family is bounded by `max_branch_updates`, the settle barrier by `max_merge_settle_passes`,

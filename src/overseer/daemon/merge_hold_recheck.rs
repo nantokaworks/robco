@@ -37,23 +37,43 @@ pub(super) fn escalated(entry: &mut LedgerEntry) {
 /// sitting untouched in a ledger written by an older build — start being
 /// reconsidered too, not only ones escalated from here on.
 ///
-/// Charges the attempt regardless of what this pass finds, so a condition
-/// that never clears still stops being reconsidered instead of polling
-/// forever; an escalation from a judge veto or a closed pull request never
-/// sets either signal, so this budget leaves those alone.
-pub(super) fn due(entry: &mut LedgerEntry, max: u32) -> bool {
-    if entry.phase != LedgerPhase::Escalated {
-        return false;
-    }
-    if !entry.merge_hold_cap_escalated && !entry.merge_hold.escalated {
-        return false;
-    }
-    if entry.merge_hold_rechecks >= max {
-        return false;
-    }
+/// Reads only. [`charge`] is what spends a look, and the caller charges it on
+/// the one outcome the budget is for — a pass that re-read the gate and found
+/// it still holding. An escalation from a judge veto or a closed pull request
+/// never sets either signal, so this budget leaves those alone.
+pub(super) fn due(entry: &LedgerEntry, max: u32) -> bool {
+    entry.phase == LedgerPhase::Escalated
+        && (entry.merge_hold_cap_escalated || entry.merge_hold.escalated)
+        && entry.merge_hold_rechecks < max
+}
+
+/// Spends one of the looks [`due`] granted, and reports whether that was the
+/// last one.
+///
+/// Kept apart from `due` because the two questions have different answers on
+/// the same pass. A reconsidered entry that clears the gate and waits on a
+/// judgment is not being re-checked — the gate already answered — and a
+/// judgment round trip runs on the judge queue's own schedule, one session at a
+/// time, which on a busy queue outlasts the whole budget. Charging every pass
+/// that merely *looked* would therefore spend the budget on waiting rather than
+/// on re-checking, and an entry whose verdict arrived one pass too late would be
+/// stranded in `Escalated` with nothing left to bring it back: exactly the
+/// failure this module exists to end.
+///
+/// Also promotes `merge_hold.escalated` to this module's own marker, so an
+/// entry escalated by an older build is tracked here from its first charge on.
+pub(super) fn charge(entry: &mut LedgerEntry, max: u32) -> bool {
     entry.merge_hold_cap_escalated = true;
     entry.merge_hold_rechecks = entry.merge_hold_rechecks.saturating_add(1);
-    true
+    entry.merge_hold_rechecks >= max
+}
+
+/// Reason recorded on the pass that spends the last look.
+///
+/// Carries the condition the entry stopped on, because "nothing will reconsider
+/// this again" is only actionable together with what it was still held on.
+pub(super) fn exhausted(reason: &str) -> String {
+    format!("merge_hold_recheck_exhausted:{reason}")
 }
 
 /// Retires the marker once the entry leaves `Escalated` for good by merging.
