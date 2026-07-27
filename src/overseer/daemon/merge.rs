@@ -205,6 +205,7 @@ fn evaluate(
     let mode = config.overseer.protection_mode;
     if let Some(unmet) =
         protection::unmet_condition(entry, registry, cache, mode, base_branch(&value))
+        && !protection_gate_overridden(unmet, config.overseer.allow_unverifiable_protection)
     {
         return Ok(Halt::gated(format!("unprotected:{unmet}")).on(&head));
     }
@@ -225,6 +226,14 @@ fn evaluate(
         Ok(()) => Outcome::Merged,
         Err(halt) => halt.on(&head),
     })
+}
+
+/// Whether an `unprotected:*` reason should still gate the merge, given the
+/// operator's `allow_unverifiable_protection` setting. Only `plan_unsupported` is
+/// waivable — every other reason names a base branch the probe actually read and
+/// found wanting, which this setting has no business overriding.
+fn protection_gate_overridden(unmet: &str, allow_unverifiable_protection: bool) -> bool {
+    unmet == protection::PLAN_UNSUPPORTED && allow_unverifiable_protection
 }
 
 /// What the merge judge said about a pull request the deterministic gate cleared.

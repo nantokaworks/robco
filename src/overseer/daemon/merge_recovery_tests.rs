@@ -45,6 +45,7 @@ fn every_reason_the_merge_gate_emits_resolves_to_one_class() {
         "unprotected:no_pull_request_rule",
         "unprotected:no_required_status_checks",
         "unprotected:probe_unavailable",
+        "unprotected:plan_unsupported",
         "unprotected:unknown_remote",
         "missing_pr_url",
         "autonomy_envelope",
