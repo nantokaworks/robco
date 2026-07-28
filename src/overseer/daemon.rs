@@ -4,6 +4,7 @@ mod merge;
 mod merge_apply;
 mod merge_decision;
 mod merge_delivery;
+mod merge_gate;
 mod merge_hold;
 mod merge_hold_recheck;
 mod merge_judge_fail_safe;

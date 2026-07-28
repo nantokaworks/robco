@@ -1,16 +1,16 @@
 use std::collections::HashSet;
 
 use super::{
-    merge_apply::{merge_now, merge_state_cleared},
+    merge_apply::merge_now,
     merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
+    merge_gate,
     merge_hold::{self, HoldPlan},
     merge_hold_recheck,
     merge_judge_gate::{Judgment, judge_allows},
     merge_queue, merge_recovery, merge_settle,
     merge_settle::Barrier,
-    protection,
     protection::ProtectionCache,
-    pull_request::{self, Checks, base_branch, checks, head_sha},
+    pull_request::{self, head_sha},
 };
 use crate::{
     Result,
@@ -22,13 +22,6 @@ use crate::{
     },
     registry::Registry,
 };
-
-/// Reason recorded when a check finished and did not pass — the worker's own head is red.
-const CHECKS_FAILED: &str = "checks_not_green";
-
-/// Reason recorded when the checks have not finished. Nothing has failed, so nothing
-/// is handed back.
-const CHECKS_WAITING: &str = "checks_waiting";
 
 /// Reason recorded for a merge candidate whose pull request the ledger never
 /// learned. There is nothing to read, so the gate stops before every other step.
@@ -205,10 +198,10 @@ fn log_repo(repo: &str, reason: &str) -> Result<()> {
     logging::append(&decision)
 }
 
-/// Runs one pull request through the gate: read, conclusion, protection, checks,
-/// merge state, merge judge, merge. Every non-merge exit names itself, so the
-/// caller has one place to record the decision and one place to decide whether
-/// the failure is the owning worker's to fix.
+/// Runs one pull request through the gate: read, conclusion, protection, merge
+/// state, checks, merge state queue, merge judge, merge. Every non-merge exit
+/// names itself, so the caller has one place to record the decision and one
+/// place to decide whether the failure is the owning worker's to fix.
 #[allow(clippy::too_many_arguments)]
 fn evaluate(
     entry: &mut LedgerEntry,
@@ -236,19 +229,7 @@ fn evaluate(
         judgments.forget_terminal_merge(&entry.task_id, url)?;
         return Ok(merge_decision::concluded(entry, conclusion).on(&head));
     }
-    let mode = config.overseer.protection_mode;
-    if let Some(unmet) =
-        protection::unmet_condition(entry, registry, cache, mode, base_branch(&value))
-        && !protection_gate_overridden(unmet, config.overseer.allow_unverifiable_protection)
-    {
-        return Ok(Halt::gated(format!("unprotected:{unmet}")).on(&head));
-    }
-    match checks(&value) {
-        Checks::Green => {}
-        Checks::Failed => return Ok(Halt::hold(CHECKS_FAILED).on(&head)),
-        Checks::Waiting => return Ok(Halt::hold(CHECKS_WAITING).on(&head)),
-    }
-    if let Some(halt) = merge_state_cleared(entry, url, &value, config, heads) {
+    if let Some(halt) = merge_gate::gate(entry, url, &value, config, cache, registry, heads) {
         return Ok(halt.on(&head));
     }
     match judge_allows(entry, url, &value, config, judgments, consecutive_failures)? {
@@ -256,18 +237,17 @@ fn evaluate(
         Judgment::Halt(halt) => return Ok(halt.on(&head)),
         Judgment::Queued => return Ok(Outcome::Pending),
     }
-    Ok(match merge_now(entry, url, config.merge_strategy, mode)? {
-        Ok(()) => Outcome::Merged,
-        Err(halt) => halt.on(&head),
-    })
-}
-
-/// Whether an `unprotected:*` reason should still gate the merge, given the
-/// operator's `allow_unverifiable_protection` setting. Only `plan_unsupported` is
-/// waivable — every other reason names a base branch the probe actually read and
-/// found wanting, which this setting has no business overriding.
-fn protection_gate_overridden(unmet: &str, allow_unverifiable_protection: bool) -> bool {
-    unmet == protection::PLAN_UNSUPPORTED && allow_unverifiable_protection
+    Ok(
+        match merge_now(
+            entry,
+            url,
+            config.merge_strategy,
+            config.overseer.protection_mode,
+        )? {
+            Ok(()) => Outcome::Merged,
+            Err(halt) => halt.on(&head),
+        },
+    )
 }
 
 /// A repo the Overseer does not manage should not have its pull requests merged

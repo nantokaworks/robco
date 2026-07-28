@@ -181,22 +181,6 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
 }
 
 #[test]
-fn allow_unverifiable_protection_waives_only_the_plan_unsupported_reason() {
-    // #316: only `plan_unsupported` is waivable; every other reason still gates.
-    use crate::overseer::daemon::protection as p;
-    for (reason, allowed, expected) in [
-        (p::PLAN_UNSUPPORTED, true, true),
-        (p::PLAN_UNSUPPORTED, false, false),
-        (p::NO_PULL_REQUEST_RULE, true, false),
-        (p::NO_REQUIRED_STATUS_CHECKS, true, false),
-        (p::PROBE_UNAVAILABLE, true, false),
-        (p::UNKNOWN_REMOTE, true, false),
-    ] {
-        assert_eq!(protection_gate_overridden(reason, allowed), expected);
-    }
-}
-
-#[test]
 fn a_repo_opted_out_of_the_overseer_blocks_auto_merge_for_every_worker_in_it() {
     // #306: a repo the operator switched out of Overseer management should not
     // have its pull requests merged automatically either, even for a worker
