@@ -68,6 +68,30 @@ fn behind_is_recoverable_while_other_states_hold_under_their_own_name() {
 }
 
 #[test]
+fn only_dirty_preempts_the_checks_stage() {
+    // #349: `DIRTY` is the only merge state whose check rollup is structurally
+    // empty forever, so it is the only one that should short-circuit the checks
+    // stage. Every other held state — including ones GitHub has not invented yet —
+    // must fall through and let the checks stage decide first.
+    assert_eq!(
+        preempting_hold_reason(&json!({"mergeStateStatus": "DIRTY"})),
+        Some("merge_state:dirty".to_string())
+    );
+    for state in ["BLOCKED", "DRAFT", "UNSTABLE", "UNKNOWN", "SOMETHING_NEW"] {
+        assert_eq!(
+            preempting_hold_reason(&json!({"mergeStateStatus": state})),
+            None
+        );
+    }
+    for state in ["CLEAN", "HAS_HOOKS", "BEHIND"] {
+        assert_eq!(
+            preempting_hold_reason(&json!({"mergeStateStatus": state})),
+            None
+        );
+    }
+}
+
+#[test]
 fn an_unreported_merge_state_does_not_park_the_pull_request() {
     assert_eq!(merge_state(&json!({})), MergeState::Ready);
     assert_eq!(

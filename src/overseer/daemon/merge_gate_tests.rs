@@ -69,6 +69,178 @@ fn a_conflicting_pull_request_with_no_checks_holds_on_the_conflict_not_the_wait(
 }
 
 #[test]
+fn an_unstable_pull_request_with_a_failed_check_holds_on_the_check_not_the_state() {
+    // #349: `UNSTABLE` means "a check is not passing" — a less specific restatement
+    // of what the rollup already says. Letting it preempt the checks stage the way
+    // `DIRTY` must turns a worker-fixable `checks_not_green` into an operator-only
+    // `merge_state:unstable`, which never reaches merge recovery. The rollup here
+    // has a real run to read, unlike `DIRTY`'s permanently empty one, so the gate
+    // must let the checks stage name it instead.
+    let mut e = entry();
+    let value = json!({
+        "state": "OPEN",
+        "mergeStateStatus": "UNSTABLE",
+        "statusCheckRollup": [{"name": "ci", "conclusion": "FAILURE"}],
+    });
+    let halt = gate(
+        &mut e,
+        "https://pr/1",
+        &value,
+        &config_without_protection(),
+        &mut ProtectionCache::default(),
+        &Registry {
+            version: 1,
+            repos: vec![],
+        },
+        &mut merge_queue::Heads::new(),
+    )
+    .expect("an unstable pull request with a failed check must be held");
+    assert_eq!(halt.reason, "checks_not_green");
+
+    // And that reason is the one `merge_recovery` already hands back to the worker —
+    // proving the handback `merge_state:unstable` used to block now actually fires.
+    use crate::overseer::daemon::merge_recovery;
+    let plan = merge_recovery::plan(&mut e, &halt.reason, "sha", true, 2);
+    assert_eq!(plan, merge_recovery::RecoveryPlan::Dispatch);
+}
+
+#[test]
+fn an_unstable_pull_request_with_checks_still_running_waits_not_holds_on_the_state() {
+    // The other direction of #349: an `UNSTABLE` head whose rollup has not finished
+    // must wait on the checks, not report a merge-state reason that skips recovery
+    // entirely — nothing has failed yet, so nothing should be handed to a worker.
+    let mut e = entry();
+    let value = json!({
+        "state": "OPEN",
+        "mergeStateStatus": "UNSTABLE",
+        "statusCheckRollup": [{"name": "ci", "conclusion": null}],
+    });
+    let halt = gate(
+        &mut e,
+        "https://pr/1",
+        &value,
+        &config_without_protection(),
+        &mut ProtectionCache::default(),
+        &Registry {
+            version: 1,
+            repos: vec![],
+        },
+        &mut merge_queue::Heads::new(),
+    )
+    .expect("an unstable pull request with running checks must still be held");
+    assert_eq!(halt.reason, "checks_waiting");
+}
+
+#[test]
+fn a_blocked_pull_request_with_a_green_rollup_still_holds_on_the_missing_review() {
+    // #349: `BLOCKED` falls through to the checks stage now, but a green rollup
+    // cannot explain a missing review — that fact lives outside `statusCheckRollup`
+    // entirely. `merge_state_cleared` must still catch it and hold under the
+    // state's own name, or a blocked pull request with passing checks would merge.
+    let mut e = entry();
+    let value = json!({
+        "state": "OPEN",
+        "mergeStateStatus": "BLOCKED",
+        "statusCheckRollup": [{"name": "ci", "conclusion": "SUCCESS"}],
+    });
+    let halt = gate(
+        &mut e,
+        "https://pr/1",
+        &value,
+        &config_without_protection(),
+        &mut ProtectionCache::default(),
+        &Registry {
+            version: 1,
+            repos: vec![],
+        },
+        &mut merge_queue::Heads::new(),
+    )
+    .expect("a blocked pull request must be held even with a green rollup");
+    assert_eq!(halt.reason, "merge_state:blocked");
+}
+
+#[test]
+fn a_blocked_pull_request_with_a_failed_check_holds_on_the_check_not_the_state() {
+    // The other half of `BLOCKED`'s two causes: when the rollup itself carries the
+    // failure, the checks stage names it directly instead of the less specific
+    // `merge_state:blocked`.
+    let mut e = entry();
+    let value = json!({
+        "state": "OPEN",
+        "mergeStateStatus": "BLOCKED",
+        "statusCheckRollup": [{"name": "ci", "conclusion": "FAILURE"}],
+    });
+    let halt = gate(
+        &mut e,
+        "https://pr/1",
+        &value,
+        &config_without_protection(),
+        &mut ProtectionCache::default(),
+        &Registry {
+            version: 1,
+            repos: vec![],
+        },
+        &mut merge_queue::Heads::new(),
+    )
+    .expect("a blocked pull request with a failed check must be held");
+    assert_eq!(halt.reason, "checks_not_green");
+}
+
+#[test]
+fn a_draft_pull_request_with_a_green_rollup_still_holds_on_the_draft_state() {
+    // #349: a draft's checks may well be green — that says nothing about whether
+    // it is ready to merge, so `merge_state_cleared` must still hold it under
+    // `merge_state:draft` rather than letting a green rollup merge a draft.
+    let mut e = entry();
+    let value = json!({
+        "state": "OPEN",
+        "mergeStateStatus": "DRAFT",
+        "statusCheckRollup": [{"name": "ci", "conclusion": "SUCCESS"}],
+    });
+    let halt = gate(
+        &mut e,
+        "https://pr/1",
+        &value,
+        &config_without_protection(),
+        &mut ProtectionCache::default(),
+        &Registry {
+            version: 1,
+            repos: vec![],
+        },
+        &mut merge_queue::Heads::new(),
+    )
+    .expect("a draft pull request must be held even with a green rollup");
+    assert_eq!(halt.reason, "merge_state:draft");
+}
+
+#[test]
+fn a_draft_pull_request_with_a_failed_check_holds_on_the_check_not_the_state() {
+    // The other half of `DRAFT`'s fall-through: a failing check is named directly
+    // so the worker still gets pushed the fix, exactly as it would once the pull
+    // request is marked ready for review.
+    let mut e = entry();
+    let value = json!({
+        "state": "OPEN",
+        "mergeStateStatus": "DRAFT",
+        "statusCheckRollup": [{"name": "ci", "conclusion": "FAILURE"}],
+    });
+    let halt = gate(
+        &mut e,
+        "https://pr/1",
+        &value,
+        &config_without_protection(),
+        &mut ProtectionCache::default(),
+        &Registry {
+            version: 1,
+            repos: vec![],
+        },
+        &mut merge_queue::Heads::new(),
+    )
+    .expect("a draft pull request with a failed check must be held");
+    assert_eq!(halt.reason, "checks_not_green");
+}
+
+#[test]
 fn a_clean_pull_request_with_pending_checks_still_waits_on_the_checks() {
     // No regression in the ordinary case: a mergeable head with checks that simply
     // have not finished yet is still held as `checks_waiting`, not handed back —
