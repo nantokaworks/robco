@@ -128,6 +128,11 @@ where
     Ok(())
 }
 
+/// Mirrors the resolution order `resolve_token` uses for the running bot
+/// (`src/overseer/discord/mod.rs`): the process environment wins, then the
+/// session env file, a blank value counting as absent at both layers. When the
+/// token resolves from the file the daemon already has everything it needs, so
+/// there is nothing to copy into launchd and no reason to defer the load.
 #[cfg(target_os = "macos")]
 fn discord_env_plan<R: BufRead, W: Write>(
     input: &mut R,
@@ -138,27 +143,83 @@ fn discord_env_plan<R: BufRead, W: Write>(
         return Ok(None);
     }
     let name = &config.overseer.discord.token_env;
-    let Ok(value) = std::env::var(name) else {
-        return Ok(Some(SetenvPlan {
-            name: name.clone(),
-            value: None,
-        }));
-    };
-    if prompt::confirm(
-        input,
-        output,
-        &format!("Copy {name} from this process into launchd?"),
-        false,
-    )? {
-        Ok(Some(SetenvPlan {
-            name: name.clone(),
-            value: Some(value),
-        }))
-    } else {
-        Ok(Some(SetenvPlan {
-            name: name.clone(),
-            value: None,
-        }))
+    if let Some(value) = std::env::var(name)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return if prompt::confirm(
+            input,
+            output,
+            &format!("Copy {name} from this process into launchd?"),
+            false,
+        )? {
+            Ok(Some(SetenvPlan {
+                name: name.clone(),
+                value: Some(value),
+            }))
+        } else {
+            Ok(Some(SetenvPlan {
+                name: name.clone(),
+                value: None,
+            }))
+        };
+    }
+    let resolved_from_file = crate::overseer::session::env::env_file_path(config)
+        .and_then(|path| crate::overseer::session::env::lookup_var(&path, name))
+        .is_some_and(|value| !value.trim().is_empty());
+    if resolved_from_file {
+        return Ok(None);
+    }
+    Ok(Some(SetenvPlan {
+        name: name.clone(),
+        value: None,
+    }))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod discord_env_plan_tests {
+    use super::*;
+
+    fn discord_config(token_env: &str, env_file: std::path::PathBuf) -> Config {
+        let mut config = Config::default();
+        config.overseer.discord.enabled = true;
+        config.overseer.discord.token_env = token_env.to_string();
+        config.overseer.session_env_file = Some(env_file);
+        config
+    }
+
+    fn plan(config: &Config) -> Option<SetenvPlan> {
+        let mut input: &[u8] = b"";
+        let mut output = Vec::new();
+        discord_env_plan(&mut input, &mut output, config).unwrap()
+    }
+
+    #[test]
+    fn no_token_anywhere_still_defers_with_the_setenv_hint() {
+        let temp = tempfile::tempdir().unwrap();
+        let config = discord_config("ROBCO_TEST_DISCORD_TOKEN_ABSENT", temp.path().join("env"));
+
+        assert!(plan(&config).is_some_and(|plan| plan.value.is_none()));
+    }
+
+    #[test]
+    fn a_token_in_the_session_env_file_resolves_with_no_plan_at_all() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("env");
+        std::fs::write(&file, "ROBCO_TEST_DISCORD_TOKEN_FILE=from-file\n").unwrap();
+        let config = discord_config("ROBCO_TEST_DISCORD_TOKEN_FILE", file);
+
+        assert!(plan(&config).is_none());
+    }
+
+    #[test]
+    fn a_blank_value_in_the_session_env_file_is_treated_as_absent() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("env");
+        std::fs::write(&file, "ROBCO_TEST_DISCORD_TOKEN_BLANK=   \n").unwrap();
+        let config = discord_config("ROBCO_TEST_DISCORD_TOKEN_BLANK", file);
+
+        assert!(plan(&config).is_some_and(|plan| plan.value.is_none()));
     }
 }
 

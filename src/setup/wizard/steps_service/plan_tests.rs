@@ -77,6 +77,21 @@ fn manual_setenv_defers_accepted_reload() {
 }
 
 #[test]
+fn no_setenv_plan_does_not_defer_the_bootstrap() {
+    let plan = ServicePlan {
+        setenv: None,
+        bootstrap: bootstrap_plan(false, BootstrapMode::Load),
+    };
+    let mut output = Vec::new();
+    plan.apply(&mut output).unwrap();
+    let output = String::from_utf8(output).unwrap();
+
+    assert!(!output.contains("Automatic service loading or reloading deferred"));
+    assert!(!output.contains("launchctl setenv"));
+    assert!(output.contains("launchctl bootstrap"));
+}
+
+#[test]
 fn reload_renders_bootout_before_bootstrap() {
     let mut output = Vec::new();
     bootstrap_plan(false, BootstrapMode::Reload)
