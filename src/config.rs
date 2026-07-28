@@ -1,5 +1,7 @@
+mod discord_notify;
 mod language;
 mod merge_strategy;
+mod notify;
 mod paths;
 
 use std::{
@@ -9,6 +11,7 @@ use std::{
 
 pub(crate) use language::directive as language_directive;
 pub use merge_strategy::MergeStrategy;
+pub use notify::NotifyConfig;
 use paths::config_path;
 pub use paths::{config_file_path, ensure_robco_dir, state_path};
 pub(crate) use paths::{expand_tilde, home_dir, robco_dir, ui_state_path};
@@ -31,7 +34,7 @@ fn default_pr_prompt() -> String {
     DEFAULT_PR_PROMPT.to_string()
 }
 
-use crate::{Result, model::Status, openclaw::OpenClawConfig, overseer::config::OverseerConfig};
+use crate::{Result, openclaw::OpenClawConfig, overseer::config::OverseerConfig};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -56,47 +59,8 @@ impl ProjectIcon {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub struct NotifyConfig {
-    pub enabled: bool,
-    pub waiting: bool,
-    pub idle: bool,
-    /// Notify when the AI finishes a turn (`Status::Done`). Defaults to on.
-    #[serde(default = "notify_flag_default")]
-    pub done: bool,
-    pub dead: bool,
-}
-
 fn notify_flag_default() -> bool {
     true
-}
-
-impl Default for NotifyConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            waiting: true,
-            idle: true,
-            done: true,
-            dead: true,
-        }
-    }
-}
-
-impl NotifyConfig {
-    pub fn wants(&self, status: Status) -> bool {
-        if !self.enabled {
-            return false;
-        }
-
-        match status {
-            Status::Waiting => self.waiting,
-            Status::Idle => self.idle,
-            Status::Done => self.done,
-            Status::Dead => self.dead,
-            Status::Running | Status::BranchOnly => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +94,11 @@ pub struct Config {
     /// of the file.
     #[serde(skip)]
     pub merge_strategy_notice: Option<String>,
+    /// Set when the loaded file's `overseer.discord` still carries a
+    /// retired per-event `notify_*` boolean — see [`discord_notify`].
+    /// Derived on load and never part of the file.
+    #[serde(skip)]
+    pub discord_legacy_notify_notice: Option<String>,
     /// Prompt sent to an agent when requesting a PR. Defaults to "Commit any
     /// remaining changes, push the branch, and open a pull request against main
     /// following the project's PR conventions."
@@ -217,6 +186,7 @@ impl Default for Config {
             subagent_indicator: true,
             merge_strategy: MergeStrategy::default(),
             merge_strategy_notice: None,
+            discord_legacy_notify_notice: None,
             pr_prompt: default_pr_prompt(),
             language: None,
             notify: NotifyConfig::default(),
@@ -247,6 +217,7 @@ impl Config {
         config.worktree_root = expand_tilde(&config.worktree_root);
         config.repos_root = expand_tilde(&config.repos_root);
         config.migrate_merge_strategy(&raw)?;
+        config.discord_legacy_notify_notice = discord_notify::detect_legacy_keys(&raw);
         Ok(config)
     }
 

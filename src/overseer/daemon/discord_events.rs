@@ -21,9 +21,8 @@ const RECONCILE_NOTIFY_FRESHNESS: Duration = Duration::minutes(15);
 /// Every phase transition that produces a Discord event, as
 /// `(phase reached, decision kind, reason)`. `merged` covers the terminal
 /// phase most workers reach; `failed` and `escalated` are the remaining
-/// terminal phases and share one config toggle (`notify_task_finished`) but
-/// keep distinct reasons, so an operator's client can still tell the
-/// outcomes apart.
+/// terminal phases and share the `errors` notify tier but keep distinct
+/// reasons, so an operator's client can still tell the outcomes apart.
 const PHASE_EVENTS: &[(LedgerPhase, DecisionKind, &str)] = &[
     (
         LedgerPhase::Dispatched,

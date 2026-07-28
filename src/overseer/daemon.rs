@@ -50,6 +50,11 @@ pub async fn run_daemon() -> Result<()> {
     if let Some(notice) = &config.merge_strategy_notice {
         logging::log_message(None, notice)?;
     }
+    // Same rationale as the merge-strategy notice above: the condition
+    // describes the file, which does not change between passes.
+    if let Some(notice) = &config.discord_legacy_notify_notice {
+        logging::log_message(None, notice)?;
+    }
     // Before the first pass, and never inside one: a daemon whose spawned
     // sessions cannot authenticate answers every judgment with a fail-safe, and
     // the operator's only signal used to be pull requests quietly piling up.
