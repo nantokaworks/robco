@@ -62,7 +62,12 @@ pub(super) fn apply_pr(
         match pr.state.to_ascii_uppercase().as_str() {
             "MERGED" => {
                 entry.phase = LedgerPhase::Merged;
-                if entry.pr_url.is_none() {
+                // The recorded URL is a hint, not the key: a terminal entry's
+                // pull request is matched by branch (see
+                // `daemon::external_state::probe_by_branch`), so the URL that
+                // actually merged can differ from whatever was last recorded.
+                // Correct it unconditionally rather than only filling a gap.
+                if entry.pr_url.as_deref() != pr.url.as_deref() {
                     entry.pr_url.clone_from(&pr.url);
                 }
             }

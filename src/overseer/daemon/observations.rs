@@ -19,7 +19,7 @@ mod external_state;
 #[path = "liveness.rs"]
 mod liveness;
 
-pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
+pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader, now: DateTime<Utc>) -> Observations {
     let mut observations = Observations::default();
     match inbox.read_new() {
         Ok(reports) => observations.inbox = reports.into_iter().map(Into::into).collect(),
@@ -132,7 +132,7 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader) -> Observations {
         .entries
         .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
     gather_task_states(&auto_ledger, &mut observations);
-    gather_pr_states(&owned_ledger, &mut observations);
+    gather_pr_states(&owned_ledger, &mut observations, now);
     observations
 }
 
