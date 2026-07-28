@@ -110,7 +110,7 @@ fn backlog_start(path: &PathBuf, limit: usize) -> crate::Result<u64> {
 mod tests {
     use super::*;
     use crate::overseer::config::DiscordConfig;
-    use crate::overseer::discord::gateway::{bounded_batch, next_notification};
+    use crate::overseer::discord::notify::{bounded_batch, next_notification};
     use crate::overseer::logging::{self, DecisionEntry, DecisionKind};
 
     #[test]

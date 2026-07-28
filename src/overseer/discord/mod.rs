@@ -1,15 +1,19 @@
 mod actions;
+mod category;
 pub mod commands;
 mod cursor;
 mod gateway;
 pub mod handler;
 pub(crate) mod ledger_requests;
+mod localize;
 mod notifications;
+mod notify;
 mod ops_agent;
 mod ops_gateway;
 mod ops_messages;
 mod ops_result;
 mod ops_session;
+mod ops_sessions;
 mod ops_state;
 
 use crate::overseer::config::DiscordConfig;
