@@ -14,6 +14,12 @@ use super::AGENT_INDENT;
 /// with a plain dash rather than a triangle — so its content starts at the
 /// same place an expandable sibling's does: nothing about the row shifts
 /// depending on whether it happens to have children.
+///
+/// `▸`/`▾` stay as they were — the "points the wrong way" complaint is
+/// addressed by [`AGENT_INDENT`] instead: once the connector hangs directly
+/// under the repo row's fold icon, the guide column itself leads the eye
+/// straight down into the subtree, so the handle glyph does not have to
+/// carry that direction on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ui::tree) enum TreeHandle {
     Leaf,
@@ -48,10 +54,11 @@ fn connector(is_last: bool, handle: TreeHandle) -> String {
     format!("{arm}─{}", handle.glyph())
 }
 
-/// The connector prefix shared by every row that descends from an agent: the
-/// nesting step under the repo, one guide column per ancestor (continuing
-/// `│` or blank, per [`guide_column`]), then this row's own fused
-/// branch+handle glyph.
+/// The connector prefix shared by every row that descends from an agent:
+/// [`AGENT_INDENT`]'s (zero-width) nesting step so a depth-0 connector lands
+/// under the repo row's own fold icon, one guide column per ancestor
+/// (continuing `│` or blank, per [`guide_column`]), then this row's own
+/// fused branch+handle glyph.
 pub(super) fn tree_prefix(
     cursor: &str,
     ancestor_continues: &[bool],
