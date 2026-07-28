@@ -96,21 +96,19 @@ pub(super) fn repo_management_glyph(management: ManagementMode, style: Style) ->
     Span::styled(ManagementMarker::of_repo(management).glyph(), style)
 }
 
-/// One nesting step, applied to every agent row so its title starts right of
-/// the repo name above it and the row reads as a child of that repo. The marker
-/// cell sits right of this and of the identity-tree indent, so it is indented
-/// along with the row instead of occupying a fixed column pinned to the row's
-/// left edge.
-///
-/// Four columns wide, not two: the repo row now carries its own management
-/// marker cell (glyph + separating space) ahead of its name, so the nesting
-/// step has to clear that in addition to the plain two-column indent it always
-/// covered, or a depth-0 agent row's own marker would land under the repo
-/// row's title instead of right of it.
+/// The nesting step between an agent row's cursor and its own connector.
+/// Empty: a depth-0 connector must land in the same column as the repo row's
+/// fold icon (`repo_row::build`, `ProjectIcon::marker`), and that column —
+/// cursor width plus one separating space — never moves with the icon's own
+/// display width. `ProjectIcon::Emoji` renders its glyphs at two cells instead
+/// of one (`config.rs::ProjectIcon::marker`), which pushes everything *after*
+/// the icon to the right, but never the icon's own starting column. So the
+/// same zero offset is correct under every `ProjectIcon` setting — checked for
+/// both `None` and `Emoji` in `tree::tests`, not merely assumed.
 ///
 /// Rows that must track the agent title column carry this too: the child-worktree
 /// row and the empty-repo filler in the parent module.
-pub(super) const AGENT_INDENT: &str = "    ";
+pub(super) const AGENT_INDENT: &str = "";
 
 /// The prefix of an agent row: cursor, the nesting step under the repo, the
 /// ancestor guide columns, this row's own connector fused with its expand

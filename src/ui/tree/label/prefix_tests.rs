@@ -40,11 +40,11 @@ fn prefix(
 fn the_three_management_states_render_three_distinct_markers() {
     assert_eq!(
         prefix(">", ManagementMarker::Auto, &[], true, TreeHandle::Leaf),
-        ">     └── ● "
+        "> └── ● "
     );
     assert_eq!(
         prefix(">", ManagementMarker::Manual, &[], true, TreeHandle::Leaf),
-        ">     └── ○ "
+        "> └── ○ "
     );
     assert_eq!(
         prefix(
@@ -54,7 +54,7 @@ fn the_three_management_states_render_three_distinct_markers() {
             true,
             TreeHandle::Leaf
         ),
-        ">     └──   "
+        "> └──   "
     );
 }
 
@@ -122,6 +122,40 @@ fn the_marker_does_not_move_the_title_column() {
     }
 }
 
+/// Child-worktree rows hang off an agent through `leaf_row_prefix`, which
+/// wraps the same `tree_prefix` an agent row's own connector uses. `#327`'s
+/// fix pulls an agent connector under the repo row's fold icon by changing
+/// `AGENT_INDENT`; this confirms `leaf_row_prefix` carries that change too,
+/// rather than assuming it does because both call the same helper.
+#[test]
+fn a_child_worktree_row_shares_its_owning_agents_connector_column() {
+    let ancestors = [true];
+    let is_last = false;
+    let agent = agent_row_prefix(
+        ">",
+        ManagementMarker::Unmanaged,
+        &ancestors,
+        is_last,
+        TreeHandle::Expanded,
+        Style::default(),
+        Style::default(),
+    );
+    let agent_prefix: String = agent.iter().map(|span| span.content.as_ref()).collect();
+    let child = leaf_row_prefix(">", &ancestors, is_last, Style::default());
+
+    let connector_column = |content: &str| {
+        content
+            .find('├')
+            .expect("prefix carries its own branch connector")
+    };
+    assert_eq!(
+        connector_column(&agent_prefix),
+        connector_column(child.content.as_ref()),
+        "child-worktree connector does not line up with its owning agent's: agent={agent_prefix:?} child={:?}",
+        child.content
+    );
+}
+
 const ALL: [ManagementMarker; 3] = [
     ManagementMarker::Auto,
     ManagementMarker::Manual,
@@ -165,7 +199,7 @@ fn the_connector_reflects_last_sibling_and_fuses_the_handle() {
             true,
             TreeHandle::Expanded
         ),
-        "      └─▾   "
+        "  └─▾   "
     );
     assert_eq!(
         prefix(
@@ -175,7 +209,7 @@ fn the_connector_reflects_last_sibling_and_fuses_the_handle() {
             false,
             TreeHandle::Collapsed
         ),
-        "      ├─▸   "
+        "  ├─▸   "
     );
 }
 
@@ -192,7 +226,7 @@ fn ancestor_guides_continue_or_blank_independently_of_the_rows_own_branch() {
             true,
             TreeHandle::Leaf
         ),
-        "      │ └──   "
+        "  │ └──   "
     );
     assert_eq!(
         prefix(
@@ -202,7 +236,7 @@ fn ancestor_guides_continue_or_blank_independently_of_the_rows_own_branch() {
             true,
             TreeHandle::Leaf
         ),
-        "        └──   "
+        "    └──   "
     );
     assert_eq!(
         prefix(
@@ -212,7 +246,7 @@ fn ancestor_guides_continue_or_blank_independently_of_the_rows_own_branch() {
             false,
             TreeHandle::Leaf
         ),
-        "      │   ├──   "
+        "  │   ├──   "
     );
 }
 
