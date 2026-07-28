@@ -1,11 +1,17 @@
 use super::{
     commands::Command,
     ops_messages::{capture_summary, opening_message},
-    ops_result,
+    ops_sessions::{SessionSlots, StartOutcome},
     ops_state::{DeliveryOutcome, OpsState, ResolutionState},
 };
 use crate::overseer::triage::ExceptionCase;
 use std::path::PathBuf;
+
+/// Concurrent conversational sessions `OpsAgent` runs before further routing
+/// gets the busy message. Each session is a spawned OS thread running an
+/// agent CLI, so this bounds real resource use, not just Discord noise; see
+/// `DiscordConfig::chat_concurrency_cap` for the operator-facing knob.
+const DEFAULT_CONCURRENCY_CAP: usize = 3;
 
 pub(super) trait PendingSession: Send {
     fn poll(&mut self) -> Option<Result<Vec<u8>, String>>;
@@ -53,18 +59,13 @@ pub(super) enum Effect {
     },
 }
 
-struct Active {
-    request: SessionRequest,
-    session: Box<dyn PendingSession>,
-}
-
 pub(super) struct OpsAgent {
     parent_channel: String,
     allowed_users: Vec<String>,
     triage_root: PathBuf,
     state_path: PathBuf,
     state: OpsState,
-    active: Option<Active>,
+    sessions: SessionSlots,
 }
 
 impl OpsAgent {
@@ -81,13 +82,19 @@ impl OpsAgent {
             triage_root,
             state_path,
             state,
-            active: None,
+            sessions: SessionSlots::new(DEFAULT_CONCURRENCY_CAP),
         })
     }
 
-    pub fn update_access(&mut self, parent_channel: String, allowed_users: Vec<String>) {
+    pub fn update_access(
+        &mut self,
+        parent_channel: String,
+        allowed_users: Vec<String>,
+        concurrency_cap: usize,
+    ) {
         self.parent_channel = parent_channel;
         self.allowed_users = allowed_users;
+        self.sessions.set_cap(concurrency_cap);
     }
 
     pub fn discover(&mut self) -> Result<Vec<Effect>, String> {
@@ -142,26 +149,26 @@ impl OpsAgent {
         self.state.by_thread(channel_id).is_some()
     }
 
+    /// `category_member` is resolved by the caller (`gateway.rs`, via
+    /// `category::is_in_category`) since it requires a Discord HTTP fetch
+    /// this synchronous, unit-testable routing logic has no business making.
     pub fn route(
         &mut self,
         channel_id: &str,
         user_id: &str,
         message: &str,
         spawner: &mut dyn SessionSpawner,
+        category_member: bool,
     ) -> Option<Effect> {
         if !self.allowed_users.iter().any(|allowed| allowed == user_id)
-            || (channel_id != self.parent_channel && !self.is_thread(channel_id))
+            || (channel_id != self.parent_channel
+                && !self.is_thread(channel_id)
+                && !category_member)
             || message.trim().is_empty()
             || message.trim_start().starts_with('!')
             || message.trim_start().starts_with("CONFIRM ")
         {
             return None;
-        }
-        if self.active.is_some() {
-            return Some(Effect::Post {
-                channel_id: channel_id.into(),
-                text: "The ops agent is handling another request; please retry shortly.".into(),
-            });
         }
         let case = self
             .state
@@ -173,12 +180,14 @@ impl OpsAgent {
             case,
             message: message.into(),
         };
-        match spawner.spawn(request.clone()) {
-            Ok(session) => {
-                self.active = Some(Active { request, session });
-                None
-            }
-            Err(error) => Some(Effect::Post {
+        let busy = Effect::Post {
+            channel_id: channel_id.into(),
+            text: "The ops agent is handling another request; please retry shortly.".into(),
+        };
+        match self.sessions.start(channel_id, request, spawner) {
+            StartOutcome::Started => None,
+            StartOutcome::Busy | StartOutcome::AtCapacity => Some(busy),
+            StartOutcome::SpawnFailed(error) => Some(Effect::Post {
                 channel_id: channel_id.into(),
                 text: format!("Ops agent could not start: {error}"),
             }),
@@ -186,51 +195,7 @@ impl OpsAgent {
     }
 
     pub fn poll(&mut self) -> Vec<Effect> {
-        let Some(active) = self.active.as_mut() else {
-            return Vec::new();
-        };
-        let Some(result) = active.session.poll() else {
-            return Vec::new();
-        };
-        let request = active.request.clone();
-        self.active = None;
-        let raw = match result {
-            Ok(raw) => raw,
-            Err(error) => {
-                return vec![Effect::Post {
-                    channel_id: request.channel_id,
-                    text: format!("Ops agent failed: {error}"),
-                }];
-            }
-        };
-        let parsed = match ops_result::parse(&raw) {
-            Ok(parsed) => parsed,
-            Err(error) => {
-                return vec![Effect::Post {
-                    channel_id: request.channel_id,
-                    text: format!("Ops agent returned an invalid result: {error}"),
-                }];
-            }
-        };
-        let mut effects = vec![Effect::Post {
-            channel_id: request.channel_id.clone(),
-            text: parsed.reply,
-        }];
-        for action in parsed.actions {
-            match action {
-                Ok(command) => effects.push(Effect::Action {
-                    channel_id: request.channel_id.clone(),
-                    user_id: request.user_id.clone(),
-                    case_id: request.case.as_ref().map(|case| case.id.clone()),
-                    command,
-                }),
-                Err(reason) => effects.push(Effect::AuditRefusal {
-                    user_id: request.user_id.clone(),
-                    reason,
-                }),
-            }
-        }
-        effects
+        self.sessions.poll()
     }
 
     pub fn resolve_answer(
@@ -284,3 +249,7 @@ mod tests;
 #[cfg(test)]
 #[path = "ops_lifecycle_tests.rs"]
 mod lifecycle_tests;
+
+#[cfg(test)]
+#[path = "ops_agent_category_tests.rs"]
+mod category_tests;

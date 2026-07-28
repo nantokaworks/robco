@@ -226,6 +226,32 @@ pub struct DiscordConfig {
     pub notify_merged: bool,
     pub notify_circuit: bool,
     pub notify_worker_blocked: bool,
+    /// Sends a notification when a ledger entry is newly dispatched.
+    pub notify_task_started: bool,
+    /// Sends a notification when a ledger entry newly reaches a terminal
+    /// phase other than `merged` (`failed` or `escalated`), which already
+    /// has its own `merged` event. One toggle covers both outcomes.
+    pub notify_task_finished: bool,
+    /// Runs notification titles and descriptions through an LLM pass in
+    /// `language` before posting. Independent of `language` itself, which
+    /// also governs the ops-agent reply and every worker/judge prompt — an
+    /// operator may want those localized but keep templated notifications
+    /// in English for speed and cost. Has no effect while `language` is
+    /// unset or blank; the pass is skipped either way.
+    pub notify_localize: bool,
+    /// Discord category IDs whose text channels get a conversational reply
+    /// to plain chat, the same way `channel_id` already does. Empty by
+    /// default, so the feature is off until an operator opts in — an
+    /// operator may want every message under that category answered without
+    /// naming each channel, e.g. as channels are added or renamed.
+    pub chat_category_ids: Vec<String>,
+    /// Concurrent ops-agent sessions across `channel_id` and every
+    /// `chat_category_ids` channel combined. Each session is a spawned OS
+    /// thread running an agent CLI, so this is a real resource bound, not
+    /// just a Discord-noise knob — see `OpsAgent`'s per-channel session map.
+    /// Beyond the cap a channel gets the same busy reply a single-slot agent
+    /// already returned, rather than a dropped message.
+    pub chat_concurrency_cap: usize,
     pub action_limit_per_hour: usize,
     pub confirmation_ttl_secs: u64,
 }
@@ -242,6 +268,11 @@ impl Default for DiscordConfig {
             notify_merged: true,
             notify_circuit: true,
             notify_worker_blocked: true,
+            notify_task_started: true,
+            notify_task_finished: true,
+            notify_localize: true,
+            chat_category_ids: Vec::new(),
+            chat_concurrency_cap: 3,
             action_limit_per_hour: 30,
             confirmation_ttl_secs: 120,
         }

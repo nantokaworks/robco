@@ -67,9 +67,15 @@ pub(crate) fn append_to(path: &Path, entry: &DecisionEntry) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
+    // Serialize into a buffer first and issue exactly one `write_all` on the
+    // `O_APPEND` descriptor. `O_APPEND` only makes a single `write` syscall
+    // atomic; `serde_json::to_writer` straight to the file emits one syscall
+    // per token, so two processes serializing at the same time interleaved at
+    // token granularity and shredded both records (dropr:VYj8In1jqvunWtAy3OtCo).
+    let mut buf = serde_json::to_vec(entry)?;
+    buf.push(b'\n');
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    serde_json::to_writer(&mut file, entry)?;
-    file.write_all(b"\n")?;
+    file.write_all(&buf)?;
     Ok(())
 }
 
@@ -83,6 +89,37 @@ pub fn log_message(task: Option<&str>, reason: &str) -> Result<()> {
 pub fn tail(limit: usize) -> Result<Vec<DecisionEntry>> {
     let path = super::decision_log_path()?;
     tail_from(&path, limit)
+}
+
+/// Count of lines in the decision log that exist but do not parse as a
+/// `DecisionEntry` — e.g. two records shredded together by a non-atomic
+/// append. Every reader (`tail_from`, `DigestCursor`, the Discord cursor)
+/// already skips a line it cannot parse, because there is nothing else to do
+/// with it; this is the counterpart that makes the skip visible instead of
+/// silent, surfaced by `robco overseer status` (dropr:VYj8In1jqvunWtAy3OtCo).
+///
+/// A fresh full-file scan rather than a running counter: readers only see the
+/// window they poll (`tail_from`'s last 64KiB, the cursor's unread tail), so
+/// a counter fed by them would undercount corruption outside that window, and
+/// would need to survive daemon restarts to stay accurate. A scan is cheap at
+/// the file sizes this log reaches and needs no persisted state.
+pub fn corrupt_line_count() -> Result<usize> {
+    corrupt_line_count_at(&super::decision_log_path()?)
+}
+
+pub(crate) fn corrupt_line_count_at(path: &Path) -> Result<usize> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error.into()),
+    };
+    let reader = BufReader::new(file);
+    Ok(reader
+        .lines()
+        .map_while(std::result::Result::ok)
+        .filter(|line| !line.trim().is_empty())
+        .filter(|line| serde_json::from_str::<DecisionEntry>(line).is_err())
+        .count())
 }
 
 pub(crate) struct DigestCursor {
@@ -194,75 +231,5 @@ pub(crate) fn tail_from(path: &Path, limit: usize) -> Result<Vec<DecisionEntry>>
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bounded_tail_skips_malformed_lines() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("decisions.jsonl");
-        for index in 0..3 {
-            append_to(
-                &path,
-                &DecisionEntry::new(DecisionKind::Skip, index.to_string()),
-            )
-            .unwrap();
-        }
-        let entries = tail_from(&path, 2).unwrap();
-        assert_eq!(entries[0].reason, "1");
-    }
-
-    #[test]
-    fn bounded_tail_reads_end_of_large_log() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("decisions.jsonl");
-        let mut file = File::create(&path).unwrap();
-        for _ in 0..(TAIL_WINDOW_BYTES / 8 + 1) {
-            file.write_all(b"invalid\n").unwrap();
-        }
-        drop(file);
-        for index in 0..3 {
-            append_to(
-                &path,
-                &DecisionEntry::new(DecisionKind::Skip, index.to_string()),
-            )
-            .unwrap();
-        }
-
-        let entries = tail_from(&path, 2).unwrap();
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].reason, "1");
-        assert_eq!(entries[1].reason, "2");
-    }
-
-    #[test]
-    fn escalation_batch_produces_one_digest_not_one_line_each() {
-        let entries = (0..4)
-            .map(|index| {
-                let mut entry =
-                    DecisionEntry::new(DecisionKind::Escalate, format!("reason-{index}"));
-                entry.task = Some(format!("task-{index}"));
-                entry
-            })
-            .collect::<Vec<_>>();
-        let digest = coalesce_digest(&entries).unwrap();
-        assert!(digest.starts_with("4 overseer alert(s):"));
-        assert_eq!(digest.lines().count(), 1);
-        assert!(digest.contains("+1 more"));
-    }
-
-    #[test]
-    fn offset_cursor_digests_large_gap_once() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("decisions.jsonl");
-        let mut cursor = DigestCursor::at_end_of(path.clone()).unwrap();
-        let entry = DecisionEntry::new(DecisionKind::Escalate, "same alert");
-        for _ in 0..250 {
-            append_to(&path, &entry).unwrap();
-        }
-
-        let digest = cursor.read_digest().unwrap().unwrap();
-        assert!(digest.starts_with("250 overseer alert(s):"));
-        assert!(cursor.read_digest().unwrap().is_none());
-    }
-}
+#[path = "logging_tests.rs"]
+mod tests;
