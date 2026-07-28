@@ -9,6 +9,7 @@ use super::{
     ops_agent::OpsAgent,
     ops_gateway::process_effects,
     ops_session::SystemSessionSpawner,
+    reactions,
 };
 use crate::overseer::{
     config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir, triage_dir,
@@ -77,6 +78,7 @@ pub async fn run(
                         let now = SystemTime::now().duration_since(UNIX_EPOCH)
                             .unwrap_or_default().as_secs();
                         let message_channel = message.channel_id.to_string();
+                        let message_id = message.id.to_string();
                         let thread = ops.is_thread(&message_channel);
                         // A category lookup is only worth the HTTP round trip for a
                         // channel that is neither the parent channel nor an already
@@ -105,6 +107,9 @@ pub async fn run(
                             extra_channel,
                             &mut executor,
                         ) {
+                            for stage in reactions::handled_stages(handled.outcome) {
+                                reactions::react(&http, message.channel_id, message.id, stage).await;
+                            }
                             let _ = send_text(&http, message.channel_id, &handled.response).await;
                             if thread && handled.succeeded {
                                 let effects = if let Some(command) = handled.executed.as_ref() {
@@ -121,17 +126,21 @@ pub async fn run(
                                     handler, &mut executor, now,
                                 ).await;
                             }
-                        } else if let Some(effect) = ops.route(
-                            &message_channel,
-                            &message.author.id.to_string(),
-                            &message.content,
-                            &mut spawner,
-                            category_member,
-                        ) {
-                            process_effects(
-                                &http, notify::channel_id(&current), vec![effect], &mut ops,
-                                handler, &mut executor, now,
-                            ).await;
+                        } else {
+                            let effects = ops.route(
+                                &message_channel,
+                                &message.author.id.to_string(),
+                                &message.content,
+                                &message_id,
+                                &mut spawner,
+                                category_member,
+                            );
+                            if !effects.is_empty() {
+                                process_effects(
+                                    &http, notify::channel_id(&current), effects, &mut ops,
+                                    handler, &mut executor, now,
+                                ).await;
+                            }
                         }
                     }
                     Ok(_) => {}
@@ -228,7 +237,8 @@ async fn audit_permissions(http: &Client) {
         | Permissions::CREATE_PUBLIC_THREADS
         | Permissions::MANAGE_THREADS
         | Permissions::EMBED_LINKS
-        | Permissions::READ_MESSAGE_HISTORY;
+        | Permissions::READ_MESSAGE_HISTORY
+        | Permissions::ADD_REACTIONS;
     match bits {
         Some(bits) if bits & !allowed.bits() != 0 => {
             eprintln!("overseer: warning: Discord application requests excessive bot permissions");

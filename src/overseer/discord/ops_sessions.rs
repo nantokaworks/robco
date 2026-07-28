@@ -9,7 +9,8 @@
 //! category from exhausting the machine; overflow gets the same busy
 //! message a single-slot agent already returned.
 
-use super::ops_agent::{Effect, PendingSession, SessionRequest, SessionSpawner};
+use super::ops_agent::{Effect, PendingSession, SessionRequest, SessionSpawner, react_effect};
+use super::reactions::ReactionStage;
 use std::collections::HashMap;
 
 struct Active {
@@ -81,28 +82,38 @@ impl SessionSlots {
 }
 
 fn effects_from_result(request: &SessionRequest, result: Result<Vec<u8>, String>) -> Vec<Effect> {
+    let terminal = |stage| react_effect(&request.channel_id, &request.message_id, stage);
     let raw = match result {
         Ok(raw) => raw,
         Err(error) => {
-            return vec![Effect::Post {
-                channel_id: request.channel_id.clone(),
-                text: format!("Ops agent failed: {error}"),
-            }];
+            return vec![
+                terminal(ReactionStage::Failure),
+                Effect::Post {
+                    channel_id: request.channel_id.clone(),
+                    text: format!("Ops agent failed: {error}"),
+                },
+            ];
         }
     };
     let parsed = match super::ops_result::parse(&raw) {
         Ok(parsed) => parsed,
         Err(error) => {
-            return vec![Effect::Post {
-                channel_id: request.channel_id.clone(),
-                text: format!("Ops agent returned an invalid result: {error}"),
-            }];
+            return vec![
+                terminal(ReactionStage::Failure),
+                Effect::Post {
+                    channel_id: request.channel_id.clone(),
+                    text: format!("Ops agent returned an invalid result: {error}"),
+                },
+            ];
         }
     };
-    let mut effects = vec![Effect::Post {
-        channel_id: request.channel_id.clone(),
-        text: parsed.reply,
-    }];
+    let mut effects = vec![
+        terminal(ReactionStage::Success),
+        Effect::Post {
+            channel_id: request.channel_id.clone(),
+            text: parsed.reply,
+        },
+    ];
     for action in parsed.actions {
         match action {
             Ok(command) => effects.push(Effect::Action {

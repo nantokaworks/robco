@@ -3,6 +3,7 @@ use super::{
     ops_messages::{capture_summary, opening_message},
     ops_sessions::{SessionSlots, StartOutcome},
     ops_state::{DeliveryOutcome, OpsState, ResolutionState},
+    reactions::ReactionStage,
 };
 use crate::overseer::triage::ExceptionCase;
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ pub(super) struct SessionRequest {
     pub channel_id: String,
     pub case: Option<ExceptionCase>,
     pub message: String,
+    pub message_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +58,11 @@ pub(super) enum Effect {
         case_id: String,
         post: bool,
         archive: bool,
+    },
+    React {
+        channel_id: String,
+        message_id: String,
+        stage: ReactionStage,
     },
 }
 
@@ -152,14 +159,20 @@ impl OpsAgent {
     /// `category_member` is resolved by the caller (`gateway.rs`, via
     /// `category::is_in_category`) since it requires a Discord HTTP fetch
     /// this synchronous, unit-testable routing logic has no business making.
+    ///
+    /// Returns an empty `Vec` only when the message is ignored outright
+    /// (disallowed user/channel, empty body, or a `!`/`CONFIRM` prefix routed
+    /// elsewhere) — every accepted message yields at least an `Acknowledged`
+    /// reaction, so callers can use emptiness as the ignore signal.
     pub fn route(
         &mut self,
         channel_id: &str,
         user_id: &str,
         message: &str,
+        message_id: &str,
         spawner: &mut dyn SessionSpawner,
         category_member: bool,
-    ) -> Option<Effect> {
+    ) -> Vec<Effect> {
         if !self.allowed_users.iter().any(|allowed| allowed == user_id)
             || (channel_id != self.parent_channel
                 && !self.is_thread(channel_id)
@@ -168,7 +181,7 @@ impl OpsAgent {
             || message.trim_start().starts_with('!')
             || message.trim_start().starts_with("CONFIRM ")
         {
-            return None;
+            return Vec::new();
         }
         let case = self
             .state
@@ -179,18 +192,31 @@ impl OpsAgent {
             channel_id: channel_id.into(),
             case,
             message: message.into(),
+            message_id: message_id.into(),
         };
+        let acknowledged = react_effect(channel_id, message_id, ReactionStage::Acknowledged);
         let busy = Effect::Post {
             channel_id: channel_id.into(),
             text: "The ops agent is handling another request; please retry shortly.".into(),
         };
         match self.sessions.start(channel_id, request, spawner) {
-            StartOutcome::Started => None,
-            StartOutcome::Busy | StartOutcome::AtCapacity => Some(busy),
-            StartOutcome::SpawnFailed(error) => Some(Effect::Post {
-                channel_id: channel_id.into(),
-                text: format!("Ops agent could not start: {error}"),
-            }),
+            StartOutcome::Started => vec![
+                acknowledged,
+                react_effect(channel_id, message_id, ReactionStage::Working),
+            ],
+            StartOutcome::Busy | StartOutcome::AtCapacity => vec![
+                acknowledged,
+                react_effect(channel_id, message_id, ReactionStage::Refused),
+                busy,
+            ],
+            StartOutcome::SpawnFailed(error) => vec![
+                acknowledged,
+                react_effect(channel_id, message_id, ReactionStage::Failure),
+                Effect::Post {
+                    channel_id: channel_id.into(),
+                    text: format!("Ops agent could not start: {error}"),
+                },
+            ],
         }
     }
 
@@ -239,6 +265,14 @@ impl OpsAgent {
 
     pub fn finalize_exhausted_resolution(&mut self, case_id: &str) -> Result<(), String> {
         self.state.finalize_exhausted(&self.state_path, case_id)
+    }
+}
+
+pub(super) fn react_effect(channel_id: &str, message_id: &str, stage: ReactionStage) -> Effect {
+    Effect::React {
+        channel_id: channel_id.into(),
+        message_id: message_id.into(),
+        stage,
     }
 }
 
