@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::mem;
 
 use super::{
     Candidate, drain, plan_dispatch,
@@ -68,17 +69,26 @@ pub fn dispatch_pass(
             super::apply_judgment(plan.decisions, &advice)
         }
     };
-    let mut failures = ledger.counters.consecutive_failures;
-    let opened = execute_plan(
+    // Taken out of the ledger rather than borrowed from it: `spawn` below needs
+    // `ledger` mutably too, and the two budgets are unrelated (see
+    // `Ledger::dispatch_failure_streaks`), so there is nothing to reconcile by
+    // keeping them aliased for the loop's duration.
+    let mut streaks = mem::take(&mut ledger.dispatch_failure_streaks);
+    let tripped = execute_plan(
         decisions,
         config.overseer.failure_circuit_threshold,
-        &mut failures,
+        &mut streaks,
         |candidate| spawn_candidate(config, ledger, candidate, now, taken.label()),
         log_candidate,
     )?;
-    ledger.counters.consecutive_failures = failures;
-    if opened {
-        open_circuit(config)?;
+    ledger.dispatch_failure_streaks = streaks;
+    // A candidate that exhausted its own budget stops being redispatched from
+    // here on, the same mechanism an operator uses manually — but dispatch
+    // stays enabled for every other repository; see `execute_plan`.
+    for candidate in tripped {
+        if !ledger.skip_list.contains(&candidate.task_id) {
+            ledger.skip_list.push(candidate.task_id);
+        }
     }
     Ok(())
 }
@@ -92,17 +102,25 @@ fn worker_modes() -> Result<HashMap<String, crate::model::ManagementMode>> {
         .collect())
 }
 
+/// Runs every dispatchable decision, tracking spawn failures per candidate
+/// (`streaks`, keyed by `Candidate::task_id`) rather than in one pass-wide
+/// total. A candidate that reaches `threshold` consecutive failures is
+/// returned in the result so the caller can take it out of rotation — see
+/// `dispatch_pass` — instead of this function reaching for the global circuit
+/// itself: one candidate's own budget must never gate every other repository's
+/// dispatch (dropr:_ord_VtFSIiLgWpgmDAGm).
 fn execute_plan<F, L>(
     decisions: Vec<super::GateDecision>,
     threshold: u32,
-    failures: &mut u32,
+    streaks: &mut BTreeMap<String, u32>,
     mut spawn: F,
     mut log: L,
-) -> Result<bool>
+) -> Result<Vec<Candidate>>
 where
     F: FnMut(&Candidate) -> Result<SpawnOutcome>,
     L: FnMut(DecisionKind, &Candidate, &str) -> Result<()>,
 {
+    let mut tripped = Vec::new();
     for decision in decisions {
         let Some(candidate) = decision.candidate else {
             continue;
@@ -111,28 +129,34 @@ where
             log(DecisionKind::Skip, &candidate, &decision.reason)?;
             continue;
         }
-        if *failures >= threshold {
-            return Ok(true);
-        }
         match spawn(&candidate) {
-            Ok(SpawnOutcome::Spawned) => {}
+            Ok(SpawnOutcome::Spawned) => {
+                streaks.remove(&candidate.task_id);
+            }
             // A candidate the pre-spawn re-check held was never attempted, so it
             // leaves the failure budget for genuine spawn faults untouched.
             Ok(SpawnOutcome::Held(reason)) => log(DecisionKind::Hold, &candidate, &reason)?,
             Err(error) => {
-                *failures = failures.saturating_add(1);
+                let streak = streaks.entry(candidate.task_id.clone()).or_insert(0);
+                *streak = streak.saturating_add(1);
                 log(
                     DecisionKind::Hold,
                     &candidate,
                     &format!("spawn_failed:{error}"),
                 )?;
-                if *failures >= threshold {
-                    return Ok(true);
+                if *streak >= threshold {
+                    streaks.remove(&candidate.task_id);
+                    log(
+                        DecisionKind::CircuitOpen,
+                        &candidate,
+                        "candidate_circuit_open",
+                    )?;
+                    tripped.push(candidate);
                 }
             }
         }
     }
-    Ok(false)
+    Ok(tripped)
 }
 
 fn open_circuit(config: &mut Config) -> Result<()> {

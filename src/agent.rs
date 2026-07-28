@@ -51,7 +51,7 @@ pub(crate) fn create_agent_with_launch(
     let id = nanoid!(8);
     let task_number = leading_task_number(name_slug);
     let slug = naming_slug(title, name_slug);
-    let branch = format!("{}{}", resolve_branch_prefix(config, &repo.name), slug);
+    let branch = worker_branch_name(config, &repo.name, title, name_slug);
     let base_commit = git::head_commit(&repo.path)?;
     let worktree_path = config
         .worktree_root
@@ -375,6 +375,26 @@ pub fn kill_agent(repo: &RepoNode, agent: &AgentNode, force: bool) -> Result<()>
         // entry; the caller then drops the registry row.
         git::prune_worktrees(&repo.path)
     }
+}
+
+/// The branch name a worker spawned for `title` (with dispatch's optional
+/// `name_slug`) would get in `repo_name`. Exposed so a caller can check whether
+/// that branch already exists — e.g. a previous run's leftovers — *before*
+/// committing to a `git worktree add` that is certain to fail on it (see
+/// `crate::spawn::branch_conflict`, dropr:_ord_VtFSIiLgWpgmDAGm). Kept as the
+/// single formula `create_agent_with_launch` itself calls, so the two never
+/// drift apart.
+pub(crate) fn worker_branch_name(
+    config: &Config,
+    repo_name: &str,
+    title: &str,
+    name_slug: Option<&str>,
+) -> String {
+    format!(
+        "{}{}",
+        resolve_branch_prefix(config, repo_name),
+        naming_slug(title, name_slug)
+    )
 }
 
 fn resolve_branch_prefix(config: &Config, repo_name: &str) -> String {

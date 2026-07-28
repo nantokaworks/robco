@@ -8,6 +8,7 @@ use serde::Serialize;
 use crate::{
     Error, Result, agent,
     config::Config,
+    git,
     model::{AgentNode, RepoNode},
     overseer::session::env::SessionEnv,
     registry::Registry,
@@ -110,6 +111,41 @@ fn worker_env(blocked: Vec<(String, String)>, session_env: &SessionEnv) -> Vec<(
     env
 }
 
+/// The branch a spawn for this candidate would collide with, if one is
+/// already sitting in the repository — e.g. a previous run's worktree that
+/// outlived it (see `crate::overseer::dispatch::worker::spawn_candidate`,
+/// dropr:_ord_VtFSIiLgWpgmDAGm). Checked with the exact formula
+/// `create_agent_with_launch` uses so this can never disagree with what the
+/// real spawn would name the branch. `None` means the spawn is clear to
+/// proceed.
+pub(crate) fn branch_conflict(
+    repo_selector: &str,
+    title: &str,
+    name_slug: Option<&str>,
+    config: &Config,
+) -> Result<Option<String>> {
+    let registry = Registry::load()?;
+    let repo = resolve_repo(&registry, repo_selector)?;
+    branch_conflict_for(repo, title, name_slug, config)
+}
+
+/// The git-only half of [`branch_conflict`], split out so it can be tested
+/// against a throwaway repository without going through `Registry::load`'s
+/// on-disk state.
+fn branch_conflict_for(
+    repo: &RepoNode,
+    title: &str,
+    name_slug: Option<&str>,
+    config: &Config,
+) -> Result<Option<String>> {
+    let branch = agent::worker_branch_name(config, &repo.name, title, name_slug);
+    if git::branch_exists(&repo.path, &branch)? {
+        Ok(Some(branch))
+    } else {
+        Ok(None)
+    }
+}
+
 fn resolve_repo<'a>(registry: &'a Registry, selector: &str) -> Result<&'a RepoNode> {
     let requested = Path::new(selector);
     if requested.is_absolute() {
@@ -169,66 +205,5 @@ impl From<&AgentNode> for SpawnOutcome {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn session_env(vars: &[(&str, &str)]) -> SessionEnv {
-        SessionEnv::from_config_vars(vars)
-    }
-
-    #[test]
-    fn configured_session_credential_survives_the_worker_blocklist() {
-        let blocked = vec![
-            ("CLAUDE_CODE_OAUTH_TOKEN".to_string(), String::new()),
-            ("GITHUB_TOKEN".to_string(), String::new()),
-        ];
-
-        let env = worker_env(
-            blocked,
-            &session_env(&[("CLAUDE_CODE_OAUTH_TOKEN", "token")]),
-        );
-
-        assert_eq!(
-            env,
-            vec![
-                ("GITHUB_TOKEN".to_string(), String::new()),
-                ("CLAUDE_CODE_OAUTH_TOKEN".to_string(), "token".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn an_unconfigured_credential_is_still_blanked() {
-        let blocked = vec![("AWS_SECRET".to_string(), String::new())];
-
-        let env = worker_env(blocked, &session_env(&[]));
-
-        assert_eq!(env, vec![("AWS_SECRET".to_string(), String::new())]);
-    }
-
-    #[test]
-    fn interactive_spawns_still_receive_the_session_channel() {
-        // `blocked` is empty for a non-autonomous spawn; the channel is not.
-        let env = worker_env(Vec::new(), &session_env(&[("ANTHROPIC_API_KEY", "key")]));
-
-        assert_eq!(
-            env,
-            vec![("ANTHROPIC_API_KEY".to_string(), "key".to_string())]
-        );
-    }
-
-    #[test]
-    fn outcome_copies_agent_shape() {
-        let outcome = SpawnOutcome {
-            id: "worker".into(),
-            branch: "repo/task".into(),
-            worktree_path: "/tmp/worktree".into(),
-            tmux_session: "robco-task".into(),
-        };
-        let value = serde_json::to_value(outcome).unwrap();
-        assert_eq!(value["id"], "worker");
-        assert_eq!(value["branch"], "repo/task");
-        assert_eq!(value["worktree_path"], "/tmp/worktree");
-        assert_eq!(value["tmux_session"], "robco-task");
-    }
-}
+#[path = "spawn_tests.rs"]
+mod tests;

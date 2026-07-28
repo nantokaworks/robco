@@ -168,6 +168,20 @@ pub struct Ledger {
     /// Repositories waiting on a post-merge fast-forward, keyed by repository
     /// path. Defaulted so ledgers written before the field existed still load.
     pub merge_settling: BTreeMap<String, MergeSettling>,
+    /// Consecutive spawn failures per dispatch candidate, keyed by
+    /// `Candidate::task_id`. Its own budget, separate from
+    /// `counters.consecutive_failures`: that counter is shared with the
+    /// worker-monitor and merge subsystems and resets on any unrelated merge
+    /// landing anywhere in the registry, which is exactly why a single
+    /// repeatedly-failing dispatch candidate never tripped it while other
+    /// repositories kept dispatching successfully (dropr:_ord_VtFSIiLgWpgmDAGm).
+    /// Bounded by `overseer.failure_circuit_threshold`, the same threshold the
+    /// global circuit uses, but reaching it moves only the offending candidate
+    /// onto `skip_list` — dispatch stays enabled for every other repository and
+    /// `dispatch_enabled` is never touched. Cleared on a successful spawn and
+    /// once a candidate trips its budget (a candidate later removed from
+    /// `skip_list` by an operator starts its budget over).
+    pub dispatch_failure_streaks: BTreeMap<String, u32>,
 }
 
 /// Live workers counted globally and per repository.
