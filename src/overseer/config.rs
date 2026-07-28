@@ -7,7 +7,7 @@ use super::autonomy::AutonomyLevel;
 
 #[path = "config_notify_level.rs"]
 mod notify_level;
-pub use notify_level::{NotifyLevel, NotifyTier, notify_admits};
+pub use notify_level::{NotifyLevel, NotifyTier};
 
 /// How strictly the auto-merge gate requires the base branch to be protected.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ValueEnum)]
@@ -228,27 +228,8 @@ pub struct DiscordConfig {
     pub token_env: String,
     pub channel_id: Option<String>,
     pub allowed_user_ids: Vec<String>,
-    /// Notification verbosity baseline. See [`notify_admits`] for how it
-    /// composes with the per-event booleans below.
+    /// Notification verbosity baseline; the sole gate for which events post.
     pub notify_level: NotifyLevel,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_escalation: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_pr_opened: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_merged: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_circuit: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_worker_blocked: Option<bool>,
-    /// Sends a notification when a ledger entry is newly dispatched.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_task_started: Option<bool>,
-    /// Sends a notification when a ledger entry newly reaches a terminal
-    /// phase other than `merged` (`failed` or `escalated`), which already
-    /// has its own `merged` event. One toggle covers both outcomes.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub notify_task_finished: Option<bool>,
     /// Runs notification titles and descriptions through an LLM pass in
     /// `language` before posting. Independent of `language` itself, which
     /// also governs the ops-agent reply and every worker/judge prompt — an
@@ -281,13 +262,6 @@ impl Default for DiscordConfig {
             channel_id: None,
             allowed_user_ids: Vec::new(),
             notify_level: NotifyLevel::default(),
-            notify_escalation: None,
-            notify_pr_opened: None,
-            notify_merged: None,
-            notify_circuit: None,
-            notify_worker_blocked: None,
-            notify_task_started: None,
-            notify_task_finished: None,
             notify_localize: true,
             chat_category_ids: Vec::new(),
             chat_concurrency_cap: 3,

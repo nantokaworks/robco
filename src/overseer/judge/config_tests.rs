@@ -156,6 +156,34 @@ fn the_legacy_overseer_key_does_not_survive_a_save() {
     assert_eq!(saved["merge_strategy"], serde_json::json!("merge"));
 }
 
+/// `detect_legacy_keys` itself is exercised directly in
+/// `config::discord_notify::tests`; this only checks that `Config::load_at`
+/// actually wires its result into `discord_legacy_notify_notice`.
+#[test]
+fn load_at_wires_the_discord_legacy_notify_notice() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.json");
+
+    let clean = serde_json::to_value(Config::default()).unwrap();
+    fs::write(&path, serde_json::to_string(&clean).unwrap()).unwrap();
+    assert_eq!(
+        Config::load_at(&path).unwrap().discord_legacy_notify_notice,
+        None
+    );
+
+    let mut carrying = clean;
+    carrying["overseer"]["discord"]
+        .as_object_mut()
+        .unwrap()
+        .insert("notify_circuit".into(), true.into());
+    fs::write(&path, serde_json::to_string(&carrying).unwrap()).unwrap();
+    let notice = Config::load_at(&path)
+        .unwrap()
+        .discord_legacy_notify_notice
+        .expect("a removed key present in the file is reported");
+    assert!(notice.contains("notify_circuit"), "{notice}");
+}
+
 #[test]
 fn pr_prompt_defaults_when_missing_from_config() {
     let value = serde_json::to_value(Config::default()).unwrap();

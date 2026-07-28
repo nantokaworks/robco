@@ -199,10 +199,8 @@ pub(crate) fn discord<R: BufRead, W: Write>(
     session_env::write_var(&path, &token_env, &token)
 }
 
-/// Offers the notification-verbosity level in place of the seven individual
-/// `notify_*` toggles, which the wizard has never surfaced one by one.
-/// Selecting a level here leaves those toggles unset, so they defer to it —
-/// see `overseer::config::notify_admits`.
+/// Offers the notification-verbosity level, the sole gate for which Discord
+/// events post — see `overseer::config::NotifyLevel::admits`.
 fn notify_level<R: BufRead, W: Write>(
     input: &mut R,
     output: &mut W,
