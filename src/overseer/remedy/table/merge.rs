@@ -27,6 +27,18 @@ pub(super) const EXACT: &[(&str, Remedy)] = &[
         },
     ),
     (
+        // `daemon::merge_queue::WAITING_TURN` — this pull request is behind
+        // its base, but another pull request in the same repository is
+        // already head of the merge queue this pass.
+        crate::overseer::daemon::merge_queue::WAITING_TURN,
+        Remedy {
+            step: Move::Watch,
+            means: "this pull request is behind its base, but another pull request in the \
+                    same repository is ahead of it in the merge queue",
+            next: "nothing to do until the pull request ahead of it merges",
+        },
+    ),
+    (
         // `daemon::merge::CHECKS_FAILED` — a check finished and did not pass,
         // on the worker's own head.
         "checks_not_green",

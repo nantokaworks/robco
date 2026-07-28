@@ -6,7 +6,7 @@ use super::{
     merge_hold::{self, HoldPlan},
     merge_hold_recheck,
     merge_judge_gate::{Judgment, judge_allows},
-    merge_recovery, merge_settle,
+    merge_queue, merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection,
     protection::ProtectionCache,
@@ -64,6 +64,10 @@ pub(super) fn auto_merge_pass(
     }
     merge_settle::age(merge_settling);
     let max_rechecks = config.overseer.max_merge_hold_rechecks;
+    // Fresh every pass, and shared across every entry it evaluates this pass: which
+    // pull request is a repository's head of queue is recomputed from iteration
+    // order each time, never remembered from the last pass. See `merge_queue`.
+    let mut heads = merge_queue::Heads::new();
     for entry in entries.iter_mut() {
         // Read, never charged here: the budget pays for a pass that re-read the
         // gate and found it still holding, and this pass has not reached the gate
@@ -117,6 +121,7 @@ pub(super) fn auto_merge_pass(
             &registry,
             judgments,
             consecutive_failures,
+            &mut heads,
         )?;
         match outcome {
             Outcome::Merged => {
@@ -204,6 +209,7 @@ fn log_repo(repo: &str, reason: &str) -> Result<()> {
 /// merge state, merge judge, merge. Every non-merge exit names itself, so the
 /// caller has one place to record the decision and one place to decide whether
 /// the failure is the owning worker's to fix.
+#[allow(clippy::too_many_arguments)]
 fn evaluate(
     entry: &mut LedgerEntry,
     url: &str,
@@ -212,6 +218,7 @@ fn evaluate(
     registry: &Registry,
     judgments: &mut JudgmentQueue,
     consecutive_failures: u32,
+    heads: &mut merge_queue::Heads,
 ) -> Result<Outcome> {
     let value = match pull_request::read(&entry.repo, url) {
         Ok(value) => value,
@@ -241,7 +248,7 @@ fn evaluate(
         Checks::Failed => return Ok(Halt::hold(CHECKS_FAILED).on(&head)),
         Checks::Waiting => return Ok(Halt::hold(CHECKS_WAITING).on(&head)),
     }
-    if let Some(halt) = merge_state_cleared(entry, url, &value, config) {
+    if let Some(halt) = merge_state_cleared(entry, url, &value, config, heads) {
         return Ok(halt.on(&head));
     }
     match judge_allows(entry, url, &value, config, judgments, consecutive_failures)? {
