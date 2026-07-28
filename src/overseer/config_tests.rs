@@ -20,6 +20,15 @@ fn a_config_written_before_retention_existed_loads_with_a_bounded_window() {
 }
 
 #[test]
+fn a_discord_config_written_before_task_lifecycle_events_existed_defaults_them_on() {
+    let raw = r#"{"enabled": true, "channel_id": "1", "allowed_user_ids": ["9"]}"#;
+    let config: DiscordConfig = serde_json::from_str(raw).unwrap();
+    assert!(config.notify_task_started);
+    assert!(config.notify_task_finished);
+    assert_eq!(config.channel_id.as_deref(), Some("1"));
+}
+
+#[test]
 fn serialized_config_carries_no_enabled_key() {
     let value = serde_json::to_value(OverseerConfig::default()).unwrap();
     assert!(value.get("enabled").is_none());

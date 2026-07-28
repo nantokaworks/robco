@@ -254,6 +254,8 @@ always has.
       "notify_merged": true,
       "notify_circuit": true,
       "notify_worker_blocked": true,
+      "notify_task_started": true,
+      "notify_task_finished": true,
       "action_limit_per_hour": 30,
       "confirmation_ttl_secs": 120
     }
@@ -312,6 +314,8 @@ always has.
 | `notify_merged` | boolean | `true` | Sends merged daemon event notifications. |
 | `notify_circuit` | boolean | `true` | Sends circuit-open notifications. |
 | `notify_worker_blocked` | boolean | `true` | Sends worker-blocked daemon event notifications. |
+| `notify_task_started` | boolean | `true` | Sends a notification when a ledger entry is newly dispatched. |
+| `notify_task_finished` | boolean | `true` | Sends a notification when a ledger entry newly reaches `failed` or `escalated`. `merged` keeps its own `notify_merged` toggle above; this one covers the two remaining terminal outcomes under a single switch. |
 | `action_limit_per_hour` | non-negative integer | `30` | Maximum mutating Discord actions in a rolling hour. Attempts count when execution begins. |
 | `confirmation_ttl_secs` | non-negative integer | `120` | Lifetime of an impactful command's confirmation nonce. |
 

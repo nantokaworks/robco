@@ -20,8 +20,11 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
         None
     };
     let (enabled, title, color) = match (event, entry.kind) {
+        (Some("task_started"), _) => (config.notify_task_started, "Task started", 0x95a5a6),
         (Some("pr_opened"), _) => (config.notify_pr_opened, "PR opened", 0x3498db),
         (Some("merged"), _) => (config.notify_merged, "Merged", 0x2ecc71),
+        (Some("task_failed"), _) => (config.notify_task_finished, "Task failed", 0xc0392b),
+        (Some("task_escalated"), _) => (config.notify_task_finished, "Task escalated", 0xd35400),
         (Some("worker_blocked"), _) => (config.notify_worker_blocked, "Worker blocked", 0xe67e22),
         (_, DecisionKind::CircuitOpen) => (config.notify_circuit, "Circuit open", 0xe74c3c),
         (_, DecisionKind::Escalate) => (config.notify_escalation, "Escalation", 0xf1c40f),
@@ -82,6 +85,47 @@ mod tests {
             notification
                 .description
                 .contains("https://example.test/pull/1")
+        );
+    }
+
+    #[test]
+    fn task_started_is_gated_by_its_own_toggle() {
+        let mut entry = DecisionEntry::new(DecisionKind::Dispatch, "task_started");
+        entry.source = Some("daemon_event".into());
+
+        let mut config = DiscordConfig::default();
+        assert!(from_decision(&config, &entry).is_some());
+
+        config.notify_task_started = false;
+        assert!(from_decision(&config, &entry).is_none());
+    }
+
+    #[test]
+    fn task_failed_and_task_escalated_share_the_finished_toggle() {
+        let mut failed = DecisionEntry::new(DecisionKind::Hold, "task_failed");
+        failed.source = Some("daemon_event".into());
+        let mut escalated = DecisionEntry::new(DecisionKind::Escalate, "task_escalated");
+        escalated.source = Some("daemon_event".into());
+
+        let mut config = DiscordConfig::default();
+        assert!(from_decision(&config, &failed).is_some());
+        assert!(from_decision(&config, &escalated).is_some());
+
+        config.notify_task_finished = false;
+        assert!(from_decision(&config, &failed).is_none());
+        assert!(from_decision(&config, &escalated).is_none());
+    }
+
+    #[test]
+    fn task_escalated_does_not_fall_through_to_the_generic_escalation_toggle() {
+        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "task_escalated");
+        entry.source = Some("daemon_event".into());
+
+        let mut config = DiscordConfig::default();
+        config.notify_escalation = false;
+        assert!(
+            from_decision(&config, &entry).is_some(),
+            "task_escalated must be gated by notify_task_finished, not notify_escalation"
         );
     }
 

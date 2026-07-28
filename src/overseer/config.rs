@@ -226,6 +226,12 @@ pub struct DiscordConfig {
     pub notify_merged: bool,
     pub notify_circuit: bool,
     pub notify_worker_blocked: bool,
+    /// Sends a notification when a ledger entry is newly dispatched.
+    pub notify_task_started: bool,
+    /// Sends a notification when a ledger entry newly reaches a terminal
+    /// phase other than `merged` (`failed` or `escalated`), which already
+    /// has its own `merged` event. One toggle covers both outcomes.
+    pub notify_task_finished: bool,
     pub action_limit_per_hour: usize,
     pub confirmation_ttl_secs: u64,
 }
@@ -242,6 +248,8 @@ impl Default for DiscordConfig {
             notify_merged: true,
             notify_circuit: true,
             notify_worker_blocked: true,
+            notify_task_started: true,
+            notify_task_finished: true,
             action_limit_per_hour: 30,
             confirmation_ttl_secs: 120,
         }
