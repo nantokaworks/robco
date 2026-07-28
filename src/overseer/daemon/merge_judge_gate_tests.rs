@@ -21,6 +21,8 @@ fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
         merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
     };
     assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
     assert_eq!(entry.phase, LedgerPhase::Escalated);

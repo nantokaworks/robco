@@ -65,10 +65,21 @@ pub struct LedgerEntry {
     #[serde(default)]
     pub merge_hold_cap_escalated: bool,
     /// Reconsiderations given to an entry the hold cap escalated. Bounded by
-    /// `overseer.max_merge_hold_rechecks` so a stuck condition still stops
-    /// being reconsidered instead of polling forever.
+    /// `overseer.max_merge_hold_rechecks`, but only ever charged for a pass
+    /// that actually learned something — see `merge_hold_recheck_reason` /
+    /// `merge_hold_recheck_head`. A condition that never changes is
+    /// reconsidered for free instead of polling this budget away.
     #[serde(default)]
     pub merge_hold_rechecks: u32,
+    /// Gate reason the last charged (or escalating) reconsideration pass saw.
+    /// Kept apart from `merge_hold.reason`, which `merge_hold::cleared` can
+    /// wipe on a pass this module never charges, for the same reason
+    /// `merge_hold_cap_escalated` is kept apart from `merge_hold.escalated`.
+    #[serde(default)]
+    pub merge_hold_recheck_reason: Option<String>,
+    /// Head sha the last charged (or escalating) reconsideration pass saw.
+    #[serde(default)]
+    pub merge_hold_recheck_head: Option<String>,
 }
 
 /// What the merge gate remembers about handing this pull request's failures back

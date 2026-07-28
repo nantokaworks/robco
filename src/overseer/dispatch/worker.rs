@@ -113,6 +113,8 @@ pub(super) fn spawn_candidate(
         merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::runtime::log_candidate(
@@ -175,6 +177,8 @@ mod tests {
             merge_judge_fail_safes: 0,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
         }
     }
 

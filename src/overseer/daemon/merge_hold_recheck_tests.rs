@@ -19,25 +19,36 @@ fn entry() -> LedgerEntry {
         merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
     }
 }
 
-/// The full shape this module exists for: the hold cap escalates the entry, the
-/// gate is given a bounded number of fresh looks at it, and once the condition
-/// actually clears the caller settles the marker on the merge.
+const REASON: &str = "checks_not_green";
+const HEAD_A: &str = "aaaaaaa";
+const HEAD_B: &str = "bbbbbbb";
+
+/// The full shape this module exists for: the hold cap escalates the entry, a
+/// condition that keeps changing spends the bounded looks, and once the
+/// condition actually clears the caller settles the marker on the merge.
 #[test]
 fn cap_reached_then_condition_cleared_then_merged() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
 
-    escalated(&mut entry);
+    escalated(&mut entry, REASON, HEAD_A);
     assert!(entry.merge_hold_cap_escalated);
     assert_eq!(entry.merge_hold_rechecks, 0);
 
     // The very next pass is given a fresh look — no operator hand-merge needed,
     // and no waiting for a new head sha.
     assert!(due(&entry, 3));
-    assert!(!charge(&mut entry, 3), "one of three looks spent");
+    // A worker pushed a new revision, still failing: a genuine change, so it
+    // spends a look.
+    assert!(
+        !charge(&mut entry, REASON, HEAD_B, 3),
+        "one of three looks spent"
+    );
     assert_eq!(entry.merge_hold_rechecks, 1);
 
     // The condition cleared on that pass, so the caller settles the marker the
@@ -48,30 +59,73 @@ fn cap_reached_then_condition_cleared_then_merged() {
     assert!(!due(&entry, 3), "a settled entry is not reconsidered again");
 }
 
+/// The bug this task exists to fix: a hold reason and head that never change
+/// must not spend the budget at all, no matter how many passes re-read them —
+/// an operator who fixes the condition an hour later still reaches the gate on
+/// the very next pass.
 #[test]
-fn a_condition_that_never_clears_stops_being_reconsidered() {
+fn an_unchanged_condition_never_consumes_the_budget() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
-    escalated(&mut entry);
+    escalated(&mut entry, REASON, HEAD_A);
 
-    for expected in [1, 2, 3] {
+    for _ in 0..50 {
         assert!(due(&entry, 3));
-        let spent = charge(&mut entry, 3);
-        assert_eq!(entry.merge_hold_rechecks, expected);
-        assert_eq!(spent, expected == 3, "only the last charge reports spent");
+        assert!(!charge(&mut entry, REASON, HEAD_A, 3));
     }
-    // The budget is spent: no per-poll loop forever.
+    assert_eq!(entry.merge_hold_rechecks, 0);
+    assert!(due(&entry, 3), "still due — nothing has been spent");
+}
+
+/// A condition that keeps changing (a worker keeps pushing new failing
+/// revisions) still spends one look per genuine change and still converges on
+/// exhaustion, so it cannot loop forever either.
+#[test]
+fn a_condition_that_keeps_changing_still_converges_on_exhaustion() {
+    let mut entry = entry();
+    entry.phase = LedgerPhase::Escalated;
+    escalated(&mut entry, REASON, HEAD_A);
+
+    let heads = ["h1", "h2", "h3"];
+    for (i, head) in heads.iter().enumerate() {
+        assert!(due(&entry, 3));
+        let spent = charge(&mut entry, REASON, head, 3);
+        assert_eq!(entry.merge_hold_rechecks, (i + 1) as u32);
+        assert_eq!(
+            spent,
+            i == heads.len() - 1,
+            "only the last charge reports spent"
+        );
+    }
+    // The budget is spent: no per-poll loop forever, even though the condition
+    // never stopped changing.
     for _ in 0..5 {
         assert!(!due(&entry, 3));
     }
     assert_eq!(entry.merge_hold_rechecks, 3);
 }
 
+/// A changed reason on the same head is just as much a genuine re-evaluation
+/// as a changed head on the same reason.
+#[test]
+fn a_changed_reason_on_the_same_head_spends_a_look() {
+    let mut entry = entry();
+    entry.phase = LedgerPhase::Escalated;
+    escalated(&mut entry, "checks_waiting", HEAD_A);
+
+    assert!(!charge(&mut entry, "merge_state:dirty", HEAD_A, 3));
+    assert_eq!(entry.merge_hold_rechecks, 1);
+
+    // And now that pair repeats: no further charge.
+    assert!(!charge(&mut entry, "merge_state:dirty", HEAD_A, 3));
+    assert_eq!(entry.merge_hold_rechecks, 1);
+}
+
 #[test]
 fn a_zero_budget_never_reconsiders() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
-    escalated(&mut entry);
+    escalated(&mut entry, REASON, HEAD_A);
     assert!(!due(&entry, 0));
 }
 
@@ -88,7 +142,7 @@ fn an_escalation_the_hold_cap_did_not_raise_is_left_alone() {
 #[test]
 fn a_non_escalated_entry_is_never_due() {
     let mut entry = entry();
-    escalated(&mut entry);
+    escalated(&mut entry, REASON, HEAD_A);
     entry.phase = LedgerPhase::PrOpened;
     assert!(!due(&entry, 10));
 }
@@ -107,19 +161,22 @@ fn a_non_escalated_entry_is_never_due() {
 fn looking_without_charging_leaves_the_budget_whole() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
-    escalated(&mut entry);
+    escalated(&mut entry, REASON, HEAD_A);
 
-    // Ten passes of waiting on a judgment: each one looks, none of them spends.
+    // Ten passes of waiting on a judgment: each one looks, none of them spends
+    // (the caller simply never calls `charge` on a `Pending` outcome).
     for _ in 0..10 {
         assert!(due(&entry, 3), "a pass that charges nothing stays due");
     }
     assert_eq!(entry.merge_hold_rechecks, 0);
 
-    // And the looks the budget *is* for are still all there.
-    for expected in [1, 2, 3] {
+    // And the looks the budget *is* for are still all there, spent by genuine
+    // changes.
+    let heads = ["h1", "h2", "h3"];
+    for (i, head) in heads.iter().enumerate() {
         assert!(due(&entry, 3));
-        charge(&mut entry, 3);
-        assert_eq!(entry.merge_hold_rechecks, expected);
+        charge(&mut entry, REASON, head, 3);
+        assert_eq!(entry.merge_hold_rechecks, (i + 1) as u32);
     }
     assert!(!due(&entry, 3));
 }
@@ -131,8 +188,8 @@ fn looking_without_charging_leaves_the_budget_whole() {
 fn a_verdict_settles_the_marker_before_the_budget_runs_out() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
-    escalated(&mut entry);
-    charge(&mut entry, 5);
+    escalated(&mut entry, REASON, HEAD_A);
+    charge(&mut entry, REASON, HEAD_B, 5);
     assert_eq!(entry.merge_hold_rechecks, 1);
 
     settle(&mut entry);
@@ -147,10 +204,13 @@ fn a_verdict_settles_the_marker_before_the_budget_runs_out() {
 fn the_last_charge_reports_itself_and_names_the_condition() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
-    escalated(&mut entry);
+    escalated(&mut entry, REASON, HEAD_A);
 
-    assert!(!charge(&mut entry, 2), "not the last look");
-    assert!(charge(&mut entry, 2), "the last look reports spent");
+    assert!(!charge(&mut entry, REASON, "h1", 2), "not the last look");
+    assert!(
+        charge(&mut entry, REASON, "h2", 2),
+        "the last look reports spent"
+    );
     assert_eq!(
         exhausted("checks_not_green"),
         "merge_hold_recheck_exhausted:checks_not_green"
@@ -170,10 +230,15 @@ fn an_entry_a_prior_build_already_escalated_is_reconsidered_from_merge_hold_alon
     assert!(!entry.merge_hold_cap_escalated);
 
     assert!(due(&entry, 3));
-    charge(&mut entry, 3);
+    charge(&mut entry, REASON, HEAD_A, 3);
     assert_eq!(entry.merge_hold_rechecks, 1);
     // The first charge promotes the entry to the durable flag, since
     // a Pending outcome on this very pass would let `merge_hold::cleared` wipe
     // `merge_hold.escalated` before the next pass gets to read it.
     assert!(entry.merge_hold_cap_escalated);
+
+    // And having now recorded a baseline, a repeat of that same pair spends
+    // nothing further.
+    assert!(!charge(&mut entry, REASON, HEAD_A, 3));
+    assert_eq!(entry.merge_hold_rechecks, 1);
 }
