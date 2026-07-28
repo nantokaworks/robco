@@ -6,9 +6,10 @@ use super::{
     ledger_requests::LedgerRequest,
     localize::{LocalizeSpawner, SystemLocalizeSpawner, TitleCache},
     notify::{self, InFlight},
-    ops_agent::OpsAgent,
+    ops_agent::{OpsAgent, RouteOutcome},
     ops_gateway::process_effects,
     ops_session::SystemSessionSpawner,
+    typing::TypingKeepalive,
 };
 use crate::overseer::{
     config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir, triage_dir,
@@ -62,6 +63,7 @@ pub async fn run(
     let mut localize_cache = TitleCache::default();
     let mut in_flight: Option<InFlight> = None;
     let mut category_cache = CategoryCache::default();
+    let mut typing = TypingKeepalive::default();
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut retry_at = tokio::time::Instant::now();
     let mut retry_delay = Duration::from_secs(1);
@@ -105,6 +107,7 @@ pub async fn run(
                             extra_channel,
                             &mut executor,
                         ) {
+                            typing.start(&http, &message_channel, message.channel_id).await;
                             let _ = send_text(&http, message.channel_id, &handled.response).await;
                             if thread && handled.succeeded {
                                 let effects = if let Some(command) = handled.executed.as_ref() {
@@ -121,17 +124,26 @@ pub async fn run(
                                     handler, &mut executor, now,
                                 ).await;
                             }
-                        } else if let Some(effect) = ops.route(
-                            &message_channel,
-                            &message.author.id.to_string(),
-                            &message.content,
-                            &mut spawner,
-                            category_member,
-                        ) {
-                            process_effects(
-                                &http, notify::channel_id(&current), vec![effect], &mut ops,
-                                handler, &mut executor, now,
-                            ).await;
+                        } else {
+                            match ops.route(
+                                &message_channel,
+                                &message.author.id.to_string(),
+                                &message.content,
+                                &mut spawner,
+                                category_member,
+                            ) {
+                                RouteOutcome::Ignored => {}
+                                RouteOutcome::Started => {
+                                    typing.start(&http, &message_channel, message.channel_id).await;
+                                }
+                                RouteOutcome::Effect(effect) => {
+                                    typing.start(&http, &message_channel, message.channel_id).await;
+                                    process_effects(
+                                        &http, notify::channel_id(&current), vec![effect], &mut ops,
+                                        handler, &mut executor, now,
+                                    ).await;
+                                }
+                            }
                         }
                     }
                     Ok(_) => {}
@@ -155,6 +167,7 @@ pub async fn run(
                 );
                 let mut effects = ops.discover()?;
                 effects.extend(ops.poll());
+                typing.reconcile(&http, ops.active_chat_channels()).await;
                 let now = SystemTime::now().duration_since(UNIX_EPOCH)
                     .unwrap_or_default().as_secs();
                 process_effects(

@@ -88,9 +88,9 @@ fn thread_answer_requires_confirmation_then_resolves() {
     let mut ops = mapped_agent(temp.path(), case("question"));
     let raw = br#"{"reply":"I can answer.","actions":[{"name":"robco_answer","agent_id":"worker-1","text":"proceed"}]}"#;
     let mut spawner = Canned::one(raw);
-    assert!(
-        ops.route("20", "user", "Please answer", &mut spawner, false)
-            .is_none()
+    assert_eq!(
+        ops.route("20", "user", "Please answer", &mut spawner, false),
+        RouteOutcome::Started
     );
     assert_eq!(spawner.requests[0].case.as_ref().unwrap().id, "case-1");
     let effects = ops.poll();
@@ -158,12 +158,42 @@ fn conversational_status_reply_executes_no_actions() {
     )
     .unwrap();
     let mut spawner = Canned::one(br#"{"reply":"All systems nominal.","actions":[]}"#);
-    assert!(
-        ops.route("10", "user", "How are things?", &mut spawner, false)
-            .is_none()
+    assert_eq!(
+        ops.route("10", "user", "How are things?", &mut spawner, false),
+        RouteOutcome::Started
     );
     assert!(
         matches!(ops.poll().as_slice(), [Effect::Post { text, .. }] if text == "All systems nominal.")
+    );
+}
+
+#[test]
+fn active_chat_channels_reflects_outstanding_sessions_until_polled() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut ops = OpsAgent::load(
+        "10".into(),
+        vec!["user".into()],
+        temp.path().join("triage"),
+        temp.path().join("ops/threads.json"),
+    )
+    .unwrap();
+    let mut spawner = Canned::one(br#"{"reply":"hi","actions":[]}"#);
+    assert!(ops.active_chat_channels().next().is_none());
+    assert_eq!(
+        ops.route("10", "user", "hello", &mut spawner, false),
+        RouteOutcome::Started
+    );
+    assert_eq!(
+        ops.active_chat_channels().collect::<Vec<_>>(),
+        vec!["10"],
+        "the channel stays outstanding — this is what the gateway's typing \
+         keepalive re-triggers against on schedule",
+    );
+    ops.poll();
+    assert!(
+        ops.active_chat_channels().next().is_none(),
+        "once the reply is drained the channel must drop out of the active \
+         set, which is what stops the typing keepalive",
     );
 }
 
