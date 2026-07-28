@@ -69,7 +69,12 @@ fn successful_localization_replaces_title_and_description() {
     };
     let result = session.poll().expect("session already resolved");
     let mut cache = TitleCache::default();
-    let localized = resolve(&mut cache, "Japanese", &notification("Merged", "body"), result);
+    let localized = resolve(
+        &mut cache,
+        "Japanese",
+        &notification("Merged", "body"),
+        result,
+    );
     assert_eq!(localized.title, "マージ済み");
     assert_eq!(localized.description, "詳細");
     assert_eq!(localized.color, 0x123456);

@@ -10,14 +10,13 @@
 //! same event redelivered after a failed send, or an identical digest), but
 //! never serves a stale identifier.
 
-use super::{
-    notifications::Notification,
-    ops_agent::PendingSession,
-};
+use super::{notifications::Notification, ops_agent::PendingSession};
 use crate::{
     config::Config,
     overseer::{
-        session::{BRIEFING_PROMPT, EphemeralSession, SessionHandle, SessionResult, auth, env::SessionEnv},
+        session::{
+            BRIEFING_PROMPT, EphemeralSession, SessionHandle, SessionResult, auth, env::SessionEnv,
+        },
         triage::triage_profile,
     },
 };
@@ -130,8 +129,7 @@ impl LocalizeSpawner for SystemLocalizeSpawner {
         notification: &Notification,
     ) -> Result<Box<dyn PendingSession>, String> {
         let config = Config::load().map_err(|error| error.to_string())?;
-        let profile =
-            triage_profile(&config).ok_or_else(|| "ops profile not found".to_string())?;
+        let profile = triage_profile(&config).ok_or_else(|| "ops profile not found".to_string())?;
         let timeout = Duration::from_secs(config.overseer.triage_timeout_mins.saturating_mul(60));
         let case_dir = self
             .root
@@ -167,11 +165,7 @@ fn spawn_session(
             env: &env,
             prompt: BRIEFING_PROMPT,
         }
-        .run_controlled(
-            &is_complete,
-            &control,
-            Some(&case_dir.join("session.pid")),
-        )
+        .run_controlled(&is_complete, &control, Some(&case_dir.join("session.pid")))
     })
 }
 

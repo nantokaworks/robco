@@ -171,7 +171,10 @@ pub(crate) fn discord<R: BufRead, W: Write>(
     discord.chat_category_ids = if categories.trim().is_empty() {
         Vec::new()
     } else {
-        categories.split(',').map(|id| id.trim().to_string()).collect()
+        categories
+            .split(',')
+            .map(|id| id.trim().to_string())
+            .collect()
     };
     discord.token_env = prompt::validated_text(
         input,

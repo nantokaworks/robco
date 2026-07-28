@@ -11,11 +11,19 @@ use crate::overseer::{
 /// keep distinct reasons, so an operator's client can still tell the
 /// outcomes apart.
 const PHASE_EVENTS: &[(LedgerPhase, DecisionKind, &str)] = &[
-    (LedgerPhase::Dispatched, DecisionKind::Dispatch, "task_started"),
+    (
+        LedgerPhase::Dispatched,
+        DecisionKind::Dispatch,
+        "task_started",
+    ),
     (LedgerPhase::PrOpened, DecisionKind::Hold, "pr_opened"),
     (LedgerPhase::Merged, DecisionKind::Merge, "merged"),
     (LedgerPhase::Failed, DecisionKind::Hold, "task_failed"),
-    (LedgerPhase::Escalated, DecisionKind::Escalate, "task_escalated"),
+    (
+        LedgerPhase::Escalated,
+        DecisionKind::Escalate,
+        "task_escalated",
+    ),
 ];
 
 pub(super) fn record(

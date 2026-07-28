@@ -174,8 +174,13 @@ pub async fn run(
 /// one channel's parent category over Discord's HTTP API, following the
 /// same `channel(id).model()` pattern `ops_gateway::reconcile_thread`
 /// already uses for thread lookups.
-async fn fetch_parent_category(http: &Client, channel_id: String) -> Result<Option<String>, String> {
-    let id: u64 = channel_id.parse().map_err(|error: std::num::ParseIntError| error.to_string())?;
+async fn fetch_parent_category(
+    http: &Client,
+    channel_id: String,
+) -> Result<Option<String>, String> {
+    let id: u64 = channel_id
+        .parse()
+        .map_err(|error: std::num::ParseIntError| error.to_string())?;
     let channel = http
         .channel(Id::new(id))
         .await

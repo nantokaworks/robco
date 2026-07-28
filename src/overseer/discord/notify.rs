@@ -51,12 +51,8 @@ pub(super) async fn deliver(
 ) -> Result<(), String> {
     if let Some(mut flight) = in_flight.take() {
         if let Some(result) = flight.session.poll() {
-            let notification = localize::resolve(
-                localize_cache,
-                &flight.language,
-                &flight.fallback,
-                result,
-            );
+            let notification =
+                localize::resolve(localize_cache, &flight.language, &flight.fallback, result);
             let delivered = match channel_id(current) {
                 Some(channel) => send_embed(http, channel, notification).await,
                 None => false,
