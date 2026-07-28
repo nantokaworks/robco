@@ -9,7 +9,8 @@
 //! category from exhausting the machine; overflow gets the same busy
 //! message a single-slot agent already returned.
 
-use super::ops_agent::{Effect, PendingSession, SessionRequest, SessionSpawner, react_effect};
+use super::ops_agent::{PendingSession, SessionRequest, SessionSpawner};
+use super::ops_effect::{Effect, react_effect};
 use super::reactions::ReactionStage;
 use std::collections::HashMap;
 

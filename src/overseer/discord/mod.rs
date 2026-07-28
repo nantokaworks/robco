@@ -9,6 +9,7 @@ mod localize;
 mod notifications;
 mod notify;
 mod ops_agent;
+mod ops_effect;
 mod ops_gateway;
 mod ops_messages;
 mod ops_result;
