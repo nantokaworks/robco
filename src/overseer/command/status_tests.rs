@@ -165,3 +165,15 @@ fn a_recorded_probe_is_reported_verbatim() {
     assert_eq!(session_auth_line(Some(&health)), health.summary());
     assert!(session_auth_line(Some(&health)).starts_with("session auth: failed"));
 }
+
+#[test]
+fn corrupt_lines_warning_is_silent_when_nothing_is_broken() {
+    assert_eq!(corrupt_lines_warning(0), None);
+}
+
+#[test]
+fn corrupt_lines_warning_names_the_count_when_something_is_broken() {
+    let warning = corrupt_lines_warning(2).unwrap();
+    assert!(warning.starts_with("2 unparseable decision-log line(s)"));
+    assert!(warning.contains("decisions.jsonl"));
+}
