@@ -22,6 +22,7 @@ fn overseer_worker(id: &str, title: &str, management: ManagementMode) -> AgentNo
         parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
         management,
         title: title.into(),
+        task_number: None,
         worktree_path: format!("/tmp/{id}").into(),
         branch: id.into(),
         base_commit: String::new(),

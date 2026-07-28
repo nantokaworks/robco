@@ -59,6 +59,7 @@ fn test_agent(worktree_path: std::path::PathBuf) -> AgentNode {
         id: "stable-agent".into(),
         parent_agent_id: None,
         title: "agent".into(),
+        task_number: None,
         worktree_path,
         branch: "feature/agent".into(),
         base_commit: String::new(),

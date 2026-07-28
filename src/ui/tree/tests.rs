@@ -1,10 +1,7 @@
-use ratatui::{Terminal, backend::TestBackend};
-
 use super::*;
 use crate::{config::Config, registry::Registry};
 
-const WIDTH: u16 = 60;
-const HEIGHT: u16 = 12;
+use super::render_test_support::{rendered_rows, row_containing, title_column};
 
 /// One repo carrying an Overseer Auto worker, an Overseer Manual worker, and a
 /// hand-made worktree nobody manages. Titles are kept short (single digits of
@@ -51,42 +48,6 @@ fn app_with_managed_workers() -> App {
     app.orphans = Vec::new();
     app.overseer_visible = false;
     app
-}
-
-fn rendered_rows(app: &App) -> Vec<String> {
-    let visible = app.visible();
-    let mut terminal = Terminal::new(TestBackend::new(WIDTH, HEIGHT)).unwrap();
-    terminal
-        .draw(|frame| draw(frame, app, &visible, None))
-        .unwrap();
-    let buffer = terminal.backend().buffer();
-    // Rows are read from the tree pane's own left edge so a row string starts
-    // with the cursor cell, not with the frame margin.
-    let tree = layout::panes(layout::root(buffer.area).body, app.overseer_frame_height()).tree;
-    (tree.y..tree.bottom())
-        .map(|y| {
-            (tree.x..tree.right())
-                .map(|x| buffer.cell((x, y)).unwrap().symbol())
-                .collect()
-        })
-        .collect()
-}
-
-fn row_containing(rows: &[String], title: &str) -> String {
-    rows.iter()
-        .find(|row| row.contains(title))
-        .unwrap_or_else(|| panic!("no rendered row for {title}"))
-        .clone()
-}
-
-/// The column the title starts at, counted in cells rather than bytes or display
-/// width so neither the multi-byte marker nor a two-column project icon distorts
-/// it. A wide glyph lives in a single cell and its second column is left blank,
-/// so one cell is one column here.
-fn title_column(rows: &[String], title: &str) -> usize {
-    let row = row_containing(rows, title);
-    let byte = row.find(title).unwrap();
-    row[..byte].chars().count()
 }
 
 /// The repo in `app_with_managed_workers` carries no `management` field, so it

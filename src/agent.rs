@@ -49,14 +49,14 @@ pub(crate) fn create_agent_with_launch(
     prepare_worktree: impl FnOnce(&std::path::Path) -> Result<()>,
 ) -> Result<AgentNode> {
     let id = nanoid!(8);
-    let name_slug = naming_slug(title, name_slug);
-    let branch = format!("{}{}", resolve_branch_prefix(config, &repo.name), name_slug);
+    let task_number = leading_task_number(name_slug);
+    let slug = naming_slug(title, name_slug);
+    let branch = format!("{}{}", resolve_branch_prefix(config, &repo.name), slug);
     let base_commit = git::head_commit(&repo.path)?;
-    let worktree_path =
-        config
-            .worktree_root
-            .join(format!("{}_{}_{}", repo.name, name_slug, &id[..6]));
-    let tmux_session = tmux::session_name(&config.tmux_session_prefix, &repo.name, &name_slug);
+    let worktree_path = config
+        .worktree_root
+        .join(format!("{}_{}_{}", repo.name, slug, &id[..6]));
+    let tmux_session = tmux::session_name(&config.tmux_session_prefix, &repo.name, &slug);
 
     fs::create_dir_all(&config.worktree_root)?;
     git::add_worktree(&repo.path, &worktree_path, &branch, &base_commit)?;
@@ -87,6 +87,7 @@ pub(crate) fn create_agent_with_launch(
             ManagementMode::Manual
         },
         title: title.to_string(),
+        task_number,
         worktree_path,
         branch,
         base_commit,
@@ -110,6 +111,18 @@ pub(crate) fn create_agent_with_launch(
         subagents: Vec::new(),
         children: Vec::new(),
     })
+}
+
+/// The bare dropr task number a dispatch-provided `name_slug` leads with (see
+/// `crate::overseer::dispatch::naming::name_slug`), captured once here rather
+/// than re-derived from `branch` or `title` at tree-render time. `None` for a
+/// manual spawn, which passes no `name_slug` and so gets no number.
+fn leading_task_number(name_slug: Option<&str>) -> Option<String> {
+    let digits: String = name_slug?
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    (!digits.is_empty()).then_some(digits)
 }
 
 fn naming_slug(title: &str, explicit: Option<&str>) -> String {
@@ -200,6 +213,11 @@ pub fn adopt_worktree(
         },
         parent_agent_id,
         title: label,
+        // Adoption never learns a dropr task number: nothing here carries the
+        // slug `create_agent_with_launch` derived one from, and a re-adopted
+        // worker's row rendering exactly as an unowned one's is deliberate
+        // (see `crate::model::AgentNode::task_number`).
+        task_number: None,
         worktree_path,
         branch: branch.unwrap_or_else(|| "(detached)".to_string()),
         base_commit: head.unwrap_or_default(),

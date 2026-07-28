@@ -113,11 +113,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     THEME.tree_structure_style(selected),
                     THEME.management_marker_style(selected),
                 );
+                let title = match &agent.task_number {
+                    Some(number) => format!("#{number} {}", agent.title),
+                    None => agent.title.clone(),
+                };
                 lines.push(label::labeled_row(
                     projects_width,
                     prefix,
                     primary,
-                    &agent.title,
+                    &title,
                     agent_style,
                     selected,
                     app.started.elapsed(),
@@ -221,5 +225,9 @@ fn short_path(path: &std::path::Path) -> String {
     }
 }
 
+#[cfg(test)]
+mod render_test_support;
+#[cfg(test)]
+mod task_number_tests;
 #[cfg(test)]
 mod tests;
