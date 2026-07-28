@@ -18,12 +18,25 @@ struct Pending {
     expires_at: u64,
 }
 
+/// How a `Handled` result should be reported as a Discord reaction. Distinct
+/// from `succeeded`/`executed` because those two alone cannot tell a
+/// still-pending confirmation prompt (not terminal) apart from a rate-limit
+/// refusal (terminal) — both leave `executed: None, succeeded: false`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HandledOutcome {
+    Success,
+    Failure,
+    Refused,
+    AwaitingConfirmation,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Handled {
     pub response: String,
     pub executed: Option<Command>,
     pub case_id: Option<String>,
     pub succeeded: bool,
+    pub outcome: HandledOutcome,
 }
 
 pub struct Handler {
@@ -129,6 +142,7 @@ impl Handler {
                 executed: None,
                 case_id: None,
                 succeeded: false,
+                outcome: HandledOutcome::Refused,
             });
         };
         if pending.user_id != user_id
@@ -140,6 +154,7 @@ impl Handler {
                 executed: None,
                 case_id: None,
                 succeeded: false,
+                outcome: HandledOutcome::Refused,
             });
         }
         let mut handled = self.execute(pending.command, user_id, now_secs, executor);
@@ -169,6 +184,7 @@ impl Handler {
                     executed: None,
                     case_id: None,
                     succeeded: false,
+                    outcome: HandledOutcome::Refused,
                 };
             }
             self.actions.push_back(now_secs);
@@ -181,6 +197,11 @@ impl Handler {
             executed: Some(command),
             case_id: None,
             succeeded,
+            outcome: if succeeded {
+                HandledOutcome::Success
+            } else {
+                HandledOutcome::Failure
+            },
         }
     }
 
@@ -212,6 +233,7 @@ impl Handler {
             executed: None,
             case_id: None,
             succeeded: false,
+            outcome: HandledOutcome::AwaitingConfirmation,
         }
     }
 }

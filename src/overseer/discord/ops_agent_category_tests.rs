@@ -49,7 +49,7 @@ fn a_category_member_channel_routes_without_being_the_parent_or_a_thread() {
     let mut ops = agent(&temp);
     let mut spawner = Canned::one(br#"{"reply":"hi","actions":[]}"#);
     assert_eq!(
-        ops.route("30", "user", "hello", &mut spawner, false),
+        ops.route("30", "user", "hello", "msg-1", &mut spawner, false),
         RouteOutcome::Ignored
     );
     assert!(
@@ -58,10 +58,10 @@ fn a_category_member_channel_routes_without_being_the_parent_or_a_thread() {
     );
 
     let mut spawner = Canned::one(br#"{"reply":"hi","actions":[]}"#);
-    assert_eq!(
-        ops.route("30", "user", "hello", &mut spawner, true),
-        RouteOutcome::Started
-    );
+    assert!(matches!(
+        ops.route("30", "user", "hello", "msg-1", &mut spawner, true),
+        RouteOutcome::Started(_)
+    ));
     assert_eq!(spawner.requests.len(), 1);
 }
 
@@ -77,14 +77,14 @@ fn two_category_channels_run_sessions_concurrently_up_to_the_cap() {
         ]),
         requests: Vec::new(),
     };
-    assert_eq!(
-        ops.route("30", "user", "hello a", &mut spawner, true),
-        RouteOutcome::Started
-    );
-    assert_eq!(
-        ops.route("31", "user", "hello b", &mut spawner, true),
-        RouteOutcome::Started
-    );
+    assert!(matches!(
+        ops.route("30", "user", "hello a", "msg-1", &mut spawner, true),
+        RouteOutcome::Started(_)
+    ));
+    assert!(matches!(
+        ops.route("31", "user", "hello b", "msg-2", &mut spawner, true),
+        RouteOutcome::Started(_)
+    ));
     assert_eq!(spawner.requests.len(), 2);
     let replies: Vec<String> = ops
         .poll()
@@ -104,16 +104,25 @@ fn a_third_concurrent_channel_beyond_the_cap_gets_the_busy_message_not_a_dropped
     let mut ops = agent(&temp);
     ops.update_access("10".into(), vec!["user".into()], 1);
     let mut spawner = Canned::one(br#"{"reply":"a","actions":[]}"#);
-    assert_eq!(
-        ops.route("30", "user", "hello a", &mut spawner, true),
-        RouteOutcome::Started
-    );
-    let overflow = ops.route("31", "user", "hello b", &mut spawner, true);
-    let RouteOutcome::Effect(effect) = overflow else {
+    assert!(matches!(
+        ops.route("30", "user", "hello a", "msg-1", &mut spawner, true),
+        RouteOutcome::Started(_)
+    ));
+    // The second channel must be refused with an immediate reply rather than
+    // silently starting a session, so the variant itself is part of the claim.
+    let RouteOutcome::Immediate(overflow) =
+        ops.route("31", "user", "hello b", "msg-2", &mut spawner, true)
+    else {
         panic!("a second concurrent channel at cap 1 must not be silently dropped");
     };
-    assert!(matches!(
-        effect,
-        Effect::Post { text, .. } if text.contains("another request")
+    assert!(overflow.iter().any(
+        |effect| matches!(effect, Effect::Post { text, .. } if text.contains("another request"))
     ));
+    assert!(overflow.iter().any(|effect| matches!(
+        effect,
+        Effect::React {
+            stage: ReactionStage::Refused,
+            ..
+        }
+    )));
 }

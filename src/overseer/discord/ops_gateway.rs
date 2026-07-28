@@ -2,6 +2,7 @@ use super::{
     actions::SystemExecutor,
     handler::Handler,
     ops_agent::{Effect, OpsAgent},
+    reactions,
 };
 use crate::overseer::{
     logging::{self, DecisionEntry, DecisionKind},
@@ -78,6 +79,18 @@ pub(super) async fn process_effects(
                 });
             }
             Effect::AuditRefusal { user_id, reason } => audit_refusal(&user_id, &reason),
+            Effect::React {
+                channel_id,
+                message_id,
+                stage,
+            } => {
+                if let (Some(channel), Some(message)) = (
+                    reactions::parse_id(&channel_id),
+                    reactions::parse_id(&message_id),
+                ) {
+                    reactions::react(http, channel, message, stage).await;
+                }
+            }
             Effect::DeliverResolution {
                 thread_id,
                 case_id,

@@ -161,6 +161,7 @@ mod tests {
             user_id: "u".into(),
             channel_id: "c".into(),
             message: "run shell".into(),
+            message_id: "m".into(),
             case: Some(ExceptionCase {
                 id: "x".into(),
                 kind: "k".into(),
@@ -187,6 +188,7 @@ mod tests {
             user_id: "u".into(),
             channel_id: "c".into(),
             message: "status".into(),
+            message_id: "m".into(),
             case: None,
         };
         let text = briefing(&request, Some("Japanese"));
@@ -207,6 +209,7 @@ mod tests {
             user_id: "u".into(),
             channel_id: "c".into(),
             message: "hello".into(),
+            message_id: "m".into(),
             case: None,
         };
         let profile = crate::config::Profile {

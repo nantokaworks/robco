@@ -3,6 +3,7 @@ use super::{
     ops_messages::{capture_summary, opening_message},
     ops_sessions::{SessionSlots, StartOutcome},
     ops_state::{DeliveryOutcome, OpsState, ResolutionState},
+    reactions::ReactionStage,
 };
 use crate::overseer::triage::ExceptionCase;
 use std::path::PathBuf;
@@ -27,6 +28,7 @@ pub(super) struct SessionRequest {
     pub channel_id: String,
     pub case: Option<ExceptionCase>,
     pub message: String,
+    pub message_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,21 +59,30 @@ pub(super) enum Effect {
         post: bool,
         archive: bool,
     },
+    React {
+        channel_id: String,
+        message_id: String,
+        stage: ReactionStage,
+    },
 }
 
 /// Outcome of routing an inbound message to the conversational ops agent.
-/// Distinct from a plain `Option<Effect>` so the gateway can tell an
-/// ignored message (no typing indicator) apart from one that started a
-/// session (typing indicator, no immediate effect to process).
+/// Distinct from a plain `Vec<Effect>` so the gateway can tell an ignored
+/// message (no typing indicator, no reaction) apart from one that started a
+/// session (typing indicator, reply arriving later). Both accepted variants
+/// carry the reaction trail the acceptance itself produces, so the caller
+/// never has to re-derive which stage the message reached.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum RouteOutcome {
-    /// The message was not directed at the ops agent; produce no reply and
-    /// show no typing indicator.
+    /// The message was not directed at the ops agent; produce no reply,
+    /// show no typing indicator, and post no reaction.
     Ignored,
-    /// A session was spawned; its reply arrives later via `poll`.
-    Started,
-    /// An immediate reply is due (busy, at capacity, or spawn failure).
-    Effect(Effect),
+    /// A session was spawned; its reply arrives later via `poll`. The
+    /// effects are the acknowledged/working reactions alone.
+    Started(Vec<Effect>),
+    /// An immediate reply is due (busy, at capacity, or spawn failure),
+    /// carried here alongside the reactions that accompany it.
+    Immediate(Vec<Effect>),
 }
 
 pub(super) struct OpsAgent {
@@ -167,11 +178,18 @@ impl OpsAgent {
     /// `category_member` is resolved by the caller (`gateway.rs`, via
     /// `category::is_in_category`) since it requires a Discord HTTP fetch
     /// this synchronous, unit-testable routing logic has no business making.
+    ///
+    /// Returns `RouteOutcome::Ignored` only when the message is ignored
+    /// outright (disallowed user/channel, empty body, or a `!`/`CONFIRM`
+    /// prefix routed elsewhere) — every accepted message yields at least an
+    /// `Acknowledged` reaction, so the variant alone tells the caller whether
+    /// to show a typing indicator without inspecting the effects.
     pub fn route(
         &mut self,
         channel_id: &str,
         user_id: &str,
         message: &str,
+        message_id: &str,
         spawner: &mut dyn SessionSpawner,
         category_member: bool,
     ) -> RouteOutcome {
@@ -194,18 +212,31 @@ impl OpsAgent {
             channel_id: channel_id.into(),
             case,
             message: message.into(),
+            message_id: message_id.into(),
         };
+        let acknowledged = react_effect(channel_id, message_id, ReactionStage::Acknowledged);
         let busy = Effect::Post {
             channel_id: channel_id.into(),
             text: "The ops agent is handling another request; please retry shortly.".into(),
         };
         match self.sessions.start(channel_id, request, spawner) {
-            StartOutcome::Started => RouteOutcome::Started,
-            StartOutcome::Busy | StartOutcome::AtCapacity => RouteOutcome::Effect(busy),
-            StartOutcome::SpawnFailed(error) => RouteOutcome::Effect(Effect::Post {
-                channel_id: channel_id.into(),
-                text: format!("Ops agent could not start: {error}"),
-            }),
+            StartOutcome::Started => RouteOutcome::Started(vec![
+                acknowledged,
+                react_effect(channel_id, message_id, ReactionStage::Working),
+            ]),
+            StartOutcome::Busy | StartOutcome::AtCapacity => RouteOutcome::Immediate(vec![
+                acknowledged,
+                react_effect(channel_id, message_id, ReactionStage::Refused),
+                busy,
+            ]),
+            StartOutcome::SpawnFailed(error) => RouteOutcome::Immediate(vec![
+                acknowledged,
+                react_effect(channel_id, message_id, ReactionStage::Failure),
+                Effect::Post {
+                    channel_id: channel_id.into(),
+                    text: format!("Ops agent could not start: {error}"),
+                },
+            ]),
         }
     }
 
@@ -260,6 +291,14 @@ impl OpsAgent {
 
     pub fn finalize_exhausted_resolution(&mut self, case_id: &str) -> Result<(), String> {
         self.state.finalize_exhausted(&self.state_path, case_id)
+    }
+}
+
+pub(super) fn react_effect(channel_id: &str, message_id: &str, stage: ReactionStage) -> Effect {
+    Effect::React {
+        channel_id: channel_id.into(),
+        message_id: message_id.into(),
+        stage,
     }
 }
 

@@ -9,6 +9,7 @@ use super::{
     ops_agent::{OpsAgent, RouteOutcome},
     ops_gateway::process_effects,
     ops_session::SystemSessionSpawner,
+    reactions,
     typing::TypingKeepalive,
 };
 use crate::overseer::{
@@ -79,6 +80,7 @@ pub async fn run(
                         let now = SystemTime::now().duration_since(UNIX_EPOCH)
                             .unwrap_or_default().as_secs();
                         let message_channel = message.channel_id.to_string();
+                        let message_id = message.id.to_string();
                         let thread = ops.is_thread(&message_channel);
                         // A category lookup is only worth the HTTP round trip for a
                         // channel that is neither the parent channel nor an already
@@ -107,7 +109,12 @@ pub async fn run(
                             extra_channel,
                             &mut executor,
                         ) {
+                            // Typing first, so the indicator appears with the
+                            // least latency; the reaction trail follows.
                             typing.start(&http, &message_channel, message.channel_id).await;
+                            for stage in reactions::handled_stages(handled.outcome) {
+                                reactions::react(&http, message.channel_id, message.id, stage).await;
+                            }
                             let _ = send_text(&http, message.channel_id, &handled.response).await;
                             if thread && handled.succeeded {
                                 let effects = if let Some(command) = handled.executed.as_ref() {
@@ -129,17 +136,20 @@ pub async fn run(
                                 &message_channel,
                                 &message.author.id.to_string(),
                                 &message.content,
+                                &message_id,
                                 &mut spawner,
                                 category_member,
                             ) {
                                 RouteOutcome::Ignored => {}
-                                RouteOutcome::Started => {
-                                    typing.start(&http, &message_channel, message.channel_id).await;
-                                }
-                                RouteOutcome::Effect(effect) => {
+                                // Both accepted outcomes carry their reaction
+                                // trail, so they are driven identically here;
+                                // the variants stay distinct because only
+                                // `Immediate` also carries a reply to post.
+                                RouteOutcome::Started(effects)
+                                | RouteOutcome::Immediate(effects) => {
                                     typing.start(&http, &message_channel, message.channel_id).await;
                                     process_effects(
-                                        &http, notify::channel_id(&current), vec![effect], &mut ops,
+                                        &http, notify::channel_id(&current), effects, &mut ops,
                                         handler, &mut executor, now,
                                     ).await;
                                 }
@@ -241,7 +251,8 @@ async fn audit_permissions(http: &Client) {
         | Permissions::CREATE_PUBLIC_THREADS
         | Permissions::MANAGE_THREADS
         | Permissions::EMBED_LINKS
-        | Permissions::READ_MESSAGE_HISTORY;
+        | Permissions::READ_MESSAGE_HISTORY
+        | Permissions::ADD_REACTIONS;
     match bits {
         Some(bits) if bits & !allowed.bits() != 0 => {
             eprintln!("overseer: warning: Discord application requests excessive bot permissions");
