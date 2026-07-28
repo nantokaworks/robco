@@ -71,6 +71,7 @@ pub struct OverseerConfig {
     /// settings that can drift apart again.
     #[serde(rename = "merge_strategy", skip_serializing)]
     pub legacy_merge_strategy: Option<String>,
+    /// See `ledger::LedgerEntry::branch_updates` for what this still bounds.
     pub max_branch_updates: u32,
     /// Auto-merge passes one repository may be held waiting for its post-merge
     /// `git pull --ff-only` before the barrier is lifted without it. The bound is

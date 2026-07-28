@@ -84,9 +84,15 @@ pub(super) fn cleared(entry: &mut LedgerEntry) {
 ///
 /// A skip is the gate reporting that there is nothing here for it to do — the
 /// pull request has already settled — and it leaves the entry terminal, so it
-/// cannot repeat. The `behind_` family is already bounded by
-/// `overseer.max_branch_updates`, and charging it here would let one condition
-/// spend two budgets and escalate under whichever ran out first.
+/// cannot repeat. The `behind_` family is excluded for two different reasons
+/// depending on the member: `behind_branch_updated` and
+/// `merge_state::UPDATE_CAP_REACHED` are already bounded by
+/// `overseer.max_branch_updates`, and charging them here too would let one
+/// condition spend two budgets and escalate under whichever ran out first;
+/// `merge_queue::WAITING_TURN` carries no budget of its own at all, the same
+/// way `merge_settle::SETTLING` does not — waiting for another pull request in
+/// the same repository to merge first is the expected steady state, not a
+/// condition to escalate out of.
 fn bounded(halt: &Halt) -> bool {
     halt.kind != DecisionKind::Skip && !halt.reason.starts_with("behind_")
 }
