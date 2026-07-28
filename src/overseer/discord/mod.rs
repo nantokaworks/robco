@@ -1,4 +1,5 @@
 mod actions;
+mod category;
 pub mod commands;
 mod cursor;
 mod gateway;
@@ -12,6 +13,7 @@ mod ops_gateway;
 mod ops_messages;
 mod ops_result;
 mod ops_session;
+mod ops_sessions;
 mod ops_state;
 
 use crate::overseer::config::DiscordConfig;

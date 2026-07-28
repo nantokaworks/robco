@@ -51,6 +51,9 @@ fn discord_validators_reject_secrets_and_bad_ids() {
     assert!(!steps::digits("12x"));
     assert!(steps::valid_user_ids("1, 2"));
     assert!(!steps::valid_user_ids("1,"));
+    assert!(steps::valid_category_ids(""));
+    assert!(steps::valid_category_ids("1, 2"));
+    assert!(!steps::valid_category_ids("1,"));
     assert!(steps::env_name("ROBCO_DISCORD_TOKEN"));
     assert!(!steps::env_name("token-value!"));
 }
@@ -58,12 +61,22 @@ fn discord_validators_reject_secrets_and_bad_ids() {
 #[test]
 fn discord_answers_are_applied_after_retries() {
     let mut config = Config::default();
-    let mut input =
-        Cursor::new(b"y\nbad\n123\n\n1, nope\n10,20\nsecret-value!\nMY_DISCORD_TOKEN\n\n");
+    let mut input = Cursor::new(
+        b"y\nbad\n123\n\n1, nope\n10,20\n1,\n30,40\nsecret-value!\nMY_DISCORD_TOKEN\n\n",
+    );
     steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
     assert_eq!(config.overseer.discord.channel_id.as_deref(), Some("123"));
     assert_eq!(config.overseer.discord.allowed_user_ids, ["10", "20"]);
+    assert_eq!(config.overseer.discord.chat_category_ids, ["30", "40"]);
     assert_eq!(config.overseer.discord.token_env, "MY_DISCORD_TOKEN");
+}
+
+#[test]
+fn discord_blank_chat_category_answer_disables_the_feature() {
+    let mut config = Config::default();
+    let mut input = Cursor::new(b"y\n123\n10,20\n\nMY_DISCORD_TOKEN\n\n");
+    steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
+    assert!(config.overseer.discord.chat_category_ids.is_empty());
 }
 
 /// A per-test temp file, kept out of the process-wide fake home
@@ -80,7 +93,7 @@ fn discord_blank_token_answer_leaves_the_env_file_untouched() {
     let mut config = Config::default();
     let (_temp, env_file) = isolated_env_file(&mut config);
     std::fs::write(&env_file, "UNRELATED=kept\n").unwrap();
-    let mut input = Cursor::new(b"y\n123\n10,20\nMY_DISCORD_TOKEN\n\n");
+    let mut input = Cursor::new(b"y\n123\n10,20\n\nMY_DISCORD_TOKEN\n\n");
 
     steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
 
@@ -94,7 +107,7 @@ fn discord_blank_token_answer_leaves_the_env_file_untouched() {
 fn discord_typed_token_is_written_to_the_session_env_file() {
     let mut config = Config::default();
     let (_temp, env_file) = isolated_env_file(&mut config);
-    let mut input = Cursor::new(b"y\n123\n10,20\nMY_DISCORD_TOKEN\nthe-bot-token\n");
+    let mut input = Cursor::new(b"y\n123\n10,20\n\nMY_DISCORD_TOKEN\nthe-bot-token\n");
 
     steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
 

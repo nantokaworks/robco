@@ -26,6 +26,8 @@ fn a_discord_config_written_before_task_lifecycle_events_existed_defaults_them_o
     assert!(config.notify_task_started);
     assert!(config.notify_task_finished);
     assert!(config.notify_localize);
+    assert!(config.chat_category_ids.is_empty());
+    assert_eq!(config.chat_concurrency_cap, 3);
     assert_eq!(config.channel_id.as_deref(), Some("1"));
 }
 

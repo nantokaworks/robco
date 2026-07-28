@@ -1,5 +1,6 @@
 use super::{
     actions::SystemExecutor,
+    category::{self, CategoryCache},
     cursor::DecisionCursor,
     handler::Handler,
     ledger_requests::LedgerRequest,
@@ -18,7 +19,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc::Sender,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt as _};
 use twilight_http::Client;
@@ -60,6 +61,7 @@ pub async fn run(
         Box::new(SystemLocalizeSpawner::new(ops_root.join("localize")));
     let mut localize_cache = TitleCache::default();
     let mut in_flight: Option<InFlight> = None;
+    let mut category_cache = CategoryCache::default();
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut retry_at = tokio::time::Instant::now();
     let mut retry_delay = Duration::from_secs(1);
@@ -76,12 +78,31 @@ pub async fn run(
                             .unwrap_or_default().as_secs();
                         let message_channel = message.channel_id.to_string();
                         let thread = ops.is_thread(&message_channel);
+                        // A category lookup is only worth the HTTP round trip for a
+                        // channel that is neither the parent channel nor an already
+                        // known ops thread — both already grant `extra_channel` on
+                        // their own, and an empty `chat_category_ids` short-circuits
+                        // `is_in_category` before it touches the cache regardless.
+                        let category_member = if thread
+                            || message_channel == current.channel_id.clone().unwrap_or_default()
+                        {
+                            false
+                        } else {
+                            category::is_in_category(
+                                &mut category_cache,
+                                |channel_id| fetch_parent_category(&http, channel_id),
+                                &message_channel,
+                                &current.chat_category_ids,
+                                Instant::now(),
+                            ).await
+                        };
+                        let extra_channel = thread || category_member;
                         if let Some(handled) = handler.handle_allowed(
                             &message_channel,
                             &message.author.id.to_string(),
                             &message.content,
                             now,
-                            thread,
+                            extra_channel,
                             &mut executor,
                         ) {
                             let _ = send_text(&http, message.channel_id, &handled.response).await;
@@ -105,6 +126,7 @@ pub async fn run(
                             &message.author.id.to_string(),
                             &message.content,
                             &mut spawner,
+                            category_member,
                         ) {
                             process_effects(
                                 &http, notify::channel_id(&current), vec![effect], &mut ops,
@@ -129,6 +151,7 @@ pub async fn run(
                 ops.update_access(
                     current.channel_id.clone().unwrap_or_default(),
                     current.allowed_user_ids.clone(),
+                    current.chat_concurrency_cap,
                 );
                 let mut effects = ops.discover()?;
                 effects.extend(ops.poll());
@@ -145,6 +168,22 @@ pub async fn run(
             }
         }
     }
+}
+
+/// The live half of `category::is_in_category`'s injected lookup: resolves
+/// one channel's parent category over Discord's HTTP API, following the
+/// same `channel(id).model()` pattern `ops_gateway::reconcile_thread`
+/// already uses for thread lookups.
+async fn fetch_parent_category(http: &Client, channel_id: String) -> Result<Option<String>, String> {
+    let id: u64 = channel_id.parse().map_err(|error: std::num::ParseIntError| error.to_string())?;
+    let channel = http
+        .channel(Id::new(id))
+        .await
+        .map_err(|error| error.to_string())?
+        .model()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(channel.parent_id.map(|id| id.to_string()))
 }
 
 pub(super) async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &str) -> bool {

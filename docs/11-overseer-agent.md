@@ -257,6 +257,8 @@ always has.
       "notify_task_started": true,
       "notify_task_finished": true,
       "notify_localize": true,
+      "chat_category_ids": [],
+      "chat_concurrency_cap": 3,
       "action_limit_per_hour": 30,
       "confirmation_ttl_secs": 120
     }
@@ -318,8 +320,18 @@ always has.
 | `notify_task_started` | boolean | `true` | Sends a notification when a ledger entry is newly dispatched. |
 | `notify_task_finished` | boolean | `true` | Sends a notification when a ledger entry newly reaches `failed` or `escalated`. `merged` keeps its own `notify_merged` toggle above; this one covers the two remaining terminal outcomes under a single switch. |
 | `notify_localize` | boolean | `true` | Runs notification titles and descriptions through an LLM pass in the top-level [`language`](09-config-reference.md#language) before posting. No effect while `language` is unset or blank — the pass is always skipped then, regardless of this key. A localization failure (timeout, launch failure, malformed result) still delivers the English text; nothing is ever dropped. |
+| `chat_category_ids` | array of strings | `[]` | Discord category IDs whose text channels get a conversational reply to plain chat, exactly like `channel_id` already does — same `allowed_user_ids` boundary, no command prefix needed. Empty leaves behavior byte-identical to before this key existed: no channel lookup is ever attempted. See [Category-scoped chat](#category-scoped-chat) below. |
+| `chat_concurrency_cap` | non-negative integer | `3` | Concurrent ops-agent sessions across `channel_id` and every `chat_category_ids` channel combined, each a spawned OS thread running an agent CLI. A channel beyond the cap gets the same "handling another request" reply a single-channel agent already returned, rather than a dropped message. |
 | `action_limit_per_hour` | non-negative integer | `30` | Maximum mutating Discord actions in a rolling hour. Attempts count when execution begins. |
 | `confirmation_ttl_secs` | non-negative integer | `120` | Lifetime of an impactful command's confirmation nonce. |
+
+### Category-scoped chat
+
+`chat_category_ids` widens conversational chat (plain messages, no `!` prefix) from the single `channel_id` to every text channel under a listed Discord category. The `allowed_user_ids` boundary is unchanged: robco can kill workers and drive merges, so widening *who* it talks to is a separate decision from widening *where* — a category-member channel simply gets the same treatment `channel_id` already gets, nothing more. `!`-prefixed commands work in a category channel too, for the same reason they already work in a triage thread: the confirmation and rate-limit machinery is per-user, not per-channel, so there is no separate boundary to relax.
+
+- **Resolving membership.** A Discord `MESSAGE_CREATE` payload carries no `parent_id`, so membership is resolved with an HTTP `GET /channels/:id` on first sight of a channel, cached in-process (5 minute TTL, oldest-evicted past a bounded size) so a busy category does not re-fetch on every message. No gateway intent is added for this — the existing message-content intent is enough, and the same `channel(id).model()` fetch the triage-thread reconciler already makes. An empty `chat_category_ids` skips the cache and the fetch entirely; a channel that is already the parent channel or a known triage thread skips it too, since both already qualify on their own.
+- **Threads are out of scope.** A thread under a category channel is two hops from the category (thread → channel → category); this feature resolves only the first hop, so a thread inside a category channel does not itself inherit chat access. A triage thread still works exactly as before, through its own `is_thread` mechanism, unrelated to categories.
+- **Concurrency.** Conversational sessions used to share one global slot; scoping chat to a whole category means people in two different channels can now talk to the agent at the same time, so the slot became a per-channel map bounded by `chat_concurrency_cap`. Each session is a spawned OS thread running an agent CLI, so the cap is a real resource bound, not just a Discord-noise knob. A channel beyond the cap gets the existing "handling another request" reply instead of a dropped message.
 
 Profiles have an `autonomous_args` array. The built-in defaults are:
 

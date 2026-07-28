@@ -160,6 +160,19 @@ pub(crate) fn discord<R: BufRead, W: Write>(
         valid_user_ids,
     )?;
     discord.allowed_user_ids = users.split(',').map(|id| id.trim().to_string()).collect();
+    let categories = prompt::validated_text(
+        input,
+        output,
+        "Chat category IDs (comma-separated, blank to disable)",
+        &discord.chat_category_ids.join(","),
+        "leave blank, or provide one or more digit-only category IDs",
+        valid_category_ids,
+    )?;
+    discord.chat_category_ids = if categories.trim().is_empty() {
+        Vec::new()
+    } else {
+        categories.split(',').map(|id| id.trim().to_string()).collect()
+    };
     discord.token_env = prompt::validated_text(
         input,
         output,
@@ -189,6 +202,13 @@ pub(crate) fn digits(value: &str) -> bool {
 pub(crate) fn valid_user_ids(value: &str) -> bool {
     let ids: Vec<_> = value.split(',').map(str::trim).collect();
     !ids.is_empty() && ids.iter().all(|id| digits(id))
+}
+
+/// Unlike `valid_user_ids`, a blank answer is valid here: chat categories are
+/// an opt-in extra alongside `channel_id`, not a required allowlist, so
+/// leaving the field empty (the default) must keep the feature off.
+pub(crate) fn valid_category_ids(value: &str) -> bool {
+    value.trim().is_empty() || value.split(',').map(str::trim).all(digits)
 }
 
 pub(crate) fn env_name(value: &str) -> bool {
