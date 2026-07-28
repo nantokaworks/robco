@@ -10,6 +10,13 @@
 //! `BEHIND` is therefore recoverable — the branch is updated and the pull request
 //! returns to the queue so its required checks re-run against the new head — while every
 //! other non-mergeable state is parked with a reason naming the state itself.
+//!
+//! Naming the state is what makes some of those other states recoverable too, just one
+//! layer up: `overseer::remedy::classify` reads the reason this module records and, for
+//! `merge_state:dirty` and `merge_state:blocked`, hands it back to the owning worker
+//! through `merge_recovery` — a conflict or a missing review is exactly the kind of thing
+//! a worker fixes by pushing. This module only decides how to name a state; whether that
+//! name is ever acted on is `remedy`'s call, not this one's.
 
 use std::process::Command;
 
@@ -68,6 +75,22 @@ pub(super) fn merge_state(value: &Value) -> MergeState<'_> {
 /// Hold reason for a state the gate cannot act on, e.g. `merge_state:dirty`.
 pub(super) fn hold_reason(raw: &str) -> String {
     format!("merge_state:{}", raw.to_ascii_lowercase())
+}
+
+/// The hold reason for a merge state that is decisively unmergeable — never `Ready`
+/// (which still needs green checks) or `Behind` (which still needs the branch update
+/// queue), both of which keep a next step of their own.
+///
+/// Callers evaluate this *before* the checks gate: a state such as `DIRTY` reports zero
+/// check runs, because GitHub cannot construct `refs/pull/N/merge` to run them against
+/// for a head that conflicts with its base. Waiting on checks that can never exist would
+/// hold the pull request under `checks_waiting` and mask a conflict the owning worker
+/// could otherwise be handed back — see `overseer::remedy::classify`.
+pub(super) fn held_reason(value: &Value) -> Option<String> {
+    match merge_state(value) {
+        MergeState::Held(raw) => Some(hold_reason(raw)),
+        MergeState::Ready | MergeState::Behind => None,
+    }
 }
 
 /// What to do about a pull request that has fallen behind its base.
