@@ -112,7 +112,25 @@ pub(super) fn status(config: &Config) -> Result<()> {
     {
         println!("warning: {warning}");
     }
+    if let Some(warning) = corrupt_lines_warning(logging::corrupt_line_count()?) {
+        println!("warning: {warning}");
+    }
     Ok(())
+}
+
+/// A decision-log line that exists but does not parse is silently skipped by
+/// every reader — there is nothing else to do with it — which otherwise makes
+/// corruption (e.g. two records shredded together by a non-atomic append)
+/// invisible forever. Surfacing the count here is what makes it visible
+/// (dropr:VYj8In1jqvunWtAy3OtCo). Omitted while the count is zero, so the line
+/// names an exception rather than a permanent zero.
+fn corrupt_lines_warning(count: usize) -> Option<String> {
+    if count == 0 {
+        return None;
+    }
+    Some(format!(
+        "{count} unparseable decision-log line(s) — corrupted entries are silently skipped; inspect ~/.robco/overseer/decisions.jsonl"
+    ))
 }
 
 /// Whether a session the daemon spawns can authenticate.
