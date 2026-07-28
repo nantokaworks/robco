@@ -91,7 +91,7 @@ pub async fn run_daemon() -> Result<()> {
             )?,
         }
         let now = Utc::now();
-        let mut observed = observations::gather(&ledger, &mut inbox);
+        let mut observed = observations::gather(&ledger, &mut inbox, now);
         if let Err(error) = append_jsonl(
             &snapshots_path()?,
             &ObservationSnapshot {
@@ -106,7 +106,7 @@ pub async fn run_daemon() -> Result<()> {
         let (mut next, actions) =
             reconcile(&ledger, &observed, now, config.overseer.stuck_after_mins);
         if config.overseer.discord.enabled {
-            discord_events::record(&ledger, &next, &observed)?;
+            discord_events::record(&ledger, &next, &observed, now)?;
         }
         account_failures(&ledger, &mut next, &actions);
         if config.overseer.triage_enabled {

@@ -11,7 +11,21 @@ use crate::{
         monitor::{ObservationError, Observations, PrObservation, TaskObservation},
     },
 };
+use chrono::{DateTime, Duration, Utc};
 use std::{collections::HashSet, process::Command};
+
+/// How long the reconcile probe keeps re-checking an escalated or failed
+/// entry's branch after it settled, before it gives up asking.
+///
+/// Every entry this admits costs one `gh pr list` per poll, and nothing but
+/// retention ever removes a terminal entry whose worktree an operator leaves
+/// standing (see `daemon::retention`), so an unbounded window would let a
+/// stuck entry cost that call forever. Thirty days comfortably covers the
+/// slowest realistic turnaround for an operator to notice an escalation and
+/// land the fix — dropr task #335's own motivating examples went stale for
+/// weeks, not months — while still giving every entry a point where re-asking
+/// stops paying for itself.
+const RECONCILE_MAX_SETTLED_AGE: Duration = Duration::days(30);
 
 pub(super) fn gather_task_states(ledger: &Ledger, observations: &mut Observations) {
     let workspaces = DroprOverlay::load_best_effort();
@@ -93,29 +107,64 @@ fn gather_repo_task_states(
     }
 }
 
-const PR_FIELDS: &str = "state,statusCheckRollup,url";
+const PR_FIELDS: &str = "state,statusCheckRollup,url,mergedAt";
 
 /// Whether an entry's pull request is still worth a `gh` read.
 ///
-/// A live entry is always read. An escalated one is read too, as long as it
-/// already has a pull request: escalation is a question put to an operator, and
-/// the answer is very often the merge itself, performed by hand. Without this the
-/// ledger had no way to learn that happened, and the entry stayed escalated for as
-/// long as the daemon ran.
+/// A live entry is always read. `escalated` and `failed` are read too, within
+/// `RECONCILE_MAX_SETTLED_AGE` of settling: both are a question put to an
+/// operator, and the answer is very often the merge itself, landed by hand or
+/// by a follow-up run. Without this the ledger had no way to learn that
+/// happened, and the entry stayed frozen for as long as the daemon ran — see
+/// dropr task #335.
 ///
-/// The other terminal phases are left alone. `merged` has already run its cleanup,
-/// `failed` was reported to dropr and must not be quietly revived by a probe, and
-/// an entry that escalated before opening a pull request will not grow one. Every
-/// entry this admits costs one `gh pr view`, never the branch-wide list.
-fn worth_probing(entry: &LedgerEntry) -> bool {
-    !terminal(entry.phase) || (entry.phase == LedgerPhase::Escalated && entry.pr_url.is_some())
+/// `merged` is left alone: its cleanup has already run, and re-reading it
+/// would only cost a call for an answer nothing acts on. An entry with no
+/// `settled_at` — one that reached a terminal phase before the field
+/// existed — has no age to compare and stays eligible; the alternative would
+/// silently stop reconciling exactly the backlog this bound exists to clear.
+fn worth_probing(entry: &LedgerEntry, now: DateTime<Utc>) -> bool {
+    if !terminal(entry.phase) {
+        return true;
+    }
+    matches!(entry.phase, LedgerPhase::Escalated | LedgerPhase::Failed)
+        && entry.settled_at.is_none_or(|settled_at| {
+            now.signed_duration_since(settled_at) <= RECONCILE_MAX_SETTLED_AGE
+        })
 }
 
-pub(super) fn gather_pr_states(ledger: &Ledger, observations: &mut Observations) {
-    for entry in ledger.entries.iter().filter(|entry| worth_probing(entry)) {
-        let observed = match &entry.pr_url {
-            Some(url) => view_pr(&entry.repo, url),
-            None => list_branch_prs(&entry.repo, &entry.branch),
+/// Whether an entry's pull request is identified by its branch rather than
+/// its recorded `pr_url`.
+///
+/// A live entry's own worker keeps `pr_url` in sync with reality, so trusting
+/// it is cheaper and just as correct. A terminal entry earns no such trust:
+/// it escalated or failed under one recorded URL, and by the time this pass
+/// re-checks it, the pull request that actually closed the work can be a
+/// different number on the same branch — dropr task #335's `#283` case, where
+/// the recorded PR closed unmerged and the real merge landed as a separate PR
+/// on the same branch. Branch identity survives that; a specific URL does
+/// not.
+fn probe_by_branch(entry: &LedgerEntry) -> bool {
+    terminal(entry.phase)
+}
+
+pub(super) fn gather_pr_states(
+    ledger: &Ledger,
+    observations: &mut Observations,
+    now: DateTime<Utc>,
+) {
+    for entry in ledger
+        .entries
+        .iter()
+        .filter(|entry| worth_probing(entry, now))
+    {
+        let observed = if probe_by_branch(entry) {
+            list_branch_prs(&entry.repo, &entry.branch)
+        } else {
+            match &entry.pr_url {
+                Some(url) => view_pr(&entry.repo, url),
+                None => list_branch_prs(&entry.repo, &entry.branch),
+            }
         };
         match observed {
             Ok(Some(mut pr)) => {
@@ -189,75 +238,5 @@ fn best_pr(prs: Vec<PrObservation>) -> Option<PrObservation> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn entry(phase: LedgerPhase, pr_url: Option<&str>) -> LedgerEntry {
-        LedgerEntry {
-            task_id: "task".into(),
-            display_id: "#1".into(),
-            repo: "/repo".into(),
-            agent_id: "agent".into(),
-            branch: "branch".into(),
-            phase,
-            dispatched_at: chrono::Utc::now(),
-            settled_at: None,
-            retries: 0,
-            pr_url: pr_url.map(str::to_owned),
-            branch_updates: 0,
-            merge_recovery: Default::default(),
-            merge_hold: Default::default(),
-            manual_merge_skip: None,
-            merge_judge_fail_safes: 0,
-            merge_hold_cap_escalated: false,
-            merge_hold_rechecks: 0,
-        }
-    }
-
-    fn pr(state: &str) -> PrObservation {
-        PrObservation {
-            state: state.into(),
-            url: Some(format!("https://pr/{state}")),
-            ..PrObservation::default()
-        }
-    }
-
-    /// The case that used to write an error into `decisions.jsonl` on every
-    /// pass: a worker is still implementing and has not opened its pull request.
-    #[test]
-    fn a_branch_with_no_pull_request_is_a_state_not_an_error() {
-        assert_eq!(best_pr(Vec::new()), None);
-    }
-
-    /// An escalation an operator answered by merging the pull request themselves
-    /// used to be invisible: the entry was terminal, so it was never read again.
-    #[test]
-    fn an_escalated_entry_is_still_read_while_it_has_a_pull_request() {
-        let url = Some("https://pr/1");
-        assert!(worth_probing(&entry(LedgerPhase::Escalated, url)));
-        // Nothing to read, and nothing that will appear later.
-        assert!(!worth_probing(&entry(LedgerPhase::Escalated, None)));
-        // Cleanup has already run for one, and the other was reported to dropr as
-        // a failure that a probe must not quietly revive.
-        assert!(!worth_probing(&entry(LedgerPhase::Merged, url)));
-        assert!(!worth_probing(&entry(LedgerPhase::Failed, url)));
-        for live in [
-            LedgerPhase::Dispatched,
-            LedgerPhase::Claimed,
-            LedgerPhase::Working,
-            LedgerPhase::PrOpened,
-        ] {
-            assert!(worth_probing(&entry(live, None)), "{live:?} is still live");
-        }
-    }
-
-    #[test]
-    fn an_open_pull_request_outranks_earlier_attempts() {
-        let best = best_pr(vec![pr("CLOSED"), pr("OPEN"), pr("MERGED")]).unwrap();
-        assert_eq!(best.state, "OPEN");
-        // A merge that landed still outweighs an attempt that was abandoned, so
-        // a reopened-then-closed branch does not read as unmerged.
-        let best = best_pr(vec![pr("CLOSED"), pr("MERGED")]).unwrap();
-        assert_eq!(best.state, "MERGED");
-    }
-}
+#[path = "external_state_tests.rs"]
+mod tests;

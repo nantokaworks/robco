@@ -95,6 +95,11 @@ pub struct PrObservation {
     pub url: Option<String>,
     pub state: String,
     pub status_check_rollup: Vec<serde_json::Value>,
+    /// When GitHub reports the pull request merged. `None` for one that never
+    /// merged, and for a read from a `gh` build too old to report the field.
+    /// The reconcile pass reads this to tell a merge that just happened from
+    /// one it is only now discovering — see `daemon::discord_events`.
+    pub merged_at: Option<DateTime<Utc>>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
