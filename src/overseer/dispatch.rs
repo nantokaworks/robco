@@ -9,6 +9,7 @@ use entries::{has_active_worker, task_entries, terminal, worker_mode};
 use order::order_candidates;
 
 mod claim;
+mod drain;
 mod entries;
 pub(crate) mod naming;
 mod order;
