@@ -126,7 +126,7 @@ pub(super) fn auto_merge_pass(
             // The one outcome the recheck budget is for: this pass re-read the
             // gate and the gate still holds, so the look it was granted is spent.
             Outcome::Halted { halt, head } => {
-                if recheck && merge_hold_recheck::charge(entry, max_rechecks) {
+                if recheck && merge_hold_recheck::charge(entry, &halt.reason, &head, max_rechecks) {
                     // Recorded on the pass that spends the last look, so the log
                     // says once — and only once — that nothing will reconsider
                     // this entry again. Without it the operator cannot tell an
@@ -174,7 +174,7 @@ fn hold(
         }
         HoldPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
-            merge_hold_recheck::escalated(entry);
+            merge_hold_recheck::escalated(entry, &halt.reason, head);
             log(
                 entry,
                 DecisionKind::Escalate,

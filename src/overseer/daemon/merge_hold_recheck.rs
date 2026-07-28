@@ -17,14 +17,37 @@
 //! prior build escalated this way, so `due` also accepts that as proof, which
 //! is what lets an already-escalated entry sitting in a ledger written before
 //! this module existed start being reconsidered too.
+//!
+//! What a reconsideration look *costs* follows the same reasoning: a pass that
+//! re-reads the gate and finds the identical (reason, head) pair it already
+//! saw has not re-checked anything — it has confirmed the condition escalation
+//! itself already recorded. Charging that pass anyway is what let a single
+//! unresolved conflict burn a ten-look budget in ten minutes, long before an
+//! operator could plausibly have acted. So the budget now counts *changes*:
+//! [`charge`] compares the reason and head this pass saw against
+//! `merge_hold_recheck_reason` / `merge_hold_recheck_head`, the pair the last
+//! charged (or escalating) pass recorded, and only spends a look when they
+//! differ. A condition that never changes is reconsidered for free,
+//! indefinitely — an operator fix reaches the gate on the next pass whenever
+//! it lands. A condition that keeps changing (a worker pushing a new failing
+//! revision every pass) still spends one look per genuine change and still
+//! converges on exhaustion once `max` distinct states have been seen.
 
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 
 /// Marks `entry` as escalated by the hold cap, so it is reconsidered instead of
 /// being left for good the way other escalations are.
-pub(super) fn escalated(entry: &mut LedgerEntry) {
+///
+/// `reason` and `head` are the condition the hold cap just reached. Seeding
+/// them here means the very first reconsideration pass — which ordinarily
+/// finds the same condition still holding, since nothing has had time to
+/// change yet — is not treated as a change against an empty baseline and
+/// charged for free information escalation itself already recorded.
+pub(super) fn escalated(entry: &mut LedgerEntry, reason: &str, head: &str) {
     entry.merge_hold_cap_escalated = true;
     entry.merge_hold_rechecks = 0;
+    entry.merge_hold_recheck_reason = Some(reason.to_owned());
+    entry.merge_hold_recheck_head = Some(head.to_owned());
 }
 
 /// Whether `entry` should be given another look through the gate this pass.
@@ -47,8 +70,8 @@ pub(super) fn due(entry: &LedgerEntry, max: u32) -> bool {
         && entry.merge_hold_rechecks < max
 }
 
-/// Spends one of the looks [`due`] granted, and reports whether that was the
-/// last one.
+/// Spends one of the looks [`due`] granted when the pass actually learned
+/// something, and reports whether that was the last one.
 ///
 /// Kept apart from `due` because the two questions have different answers on
 /// the same pass. A reconsidered entry that clears the gate and waits on a
@@ -60,10 +83,23 @@ pub(super) fn due(entry: &LedgerEntry, max: u32) -> bool {
 /// stranded in `Escalated` with nothing left to bring it back: exactly the
 /// failure this module exists to end.
 ///
+/// Charging is further narrowed to passes where `reason` or `head` differs
+/// from `merge_hold_recheck_reason` / `merge_hold_recheck_head` — the pair the
+/// last charged (or escalating) pass recorded. A pass that re-reads the
+/// identical pair has not re-checked anything; see the module doc for why that
+/// must not spend budget.
+///
 /// Also promotes `merge_hold.escalated` to this module's own marker, so an
 /// entry escalated by an older build is tracked here from its first charge on.
-pub(super) fn charge(entry: &mut LedgerEntry, max: u32) -> bool {
+pub(super) fn charge(entry: &mut LedgerEntry, reason: &str, head: &str, max: u32) -> bool {
     entry.merge_hold_cap_escalated = true;
+    let unchanged = entry.merge_hold_recheck_reason.as_deref() == Some(reason)
+        && entry.merge_hold_recheck_head.as_deref() == Some(head);
+    entry.merge_hold_recheck_reason = Some(reason.to_owned());
+    entry.merge_hold_recheck_head = Some(head.to_owned());
+    if unchanged {
+        return false;
+    }
     entry.merge_hold_rechecks = entry.merge_hold_rechecks.saturating_add(1);
     entry.merge_hold_rechecks >= max
 }
@@ -80,6 +116,8 @@ pub(super) fn exhausted(reason: &str) -> String {
 pub(super) fn settle(entry: &mut LedgerEntry) {
     entry.merge_hold_cap_escalated = false;
     entry.merge_hold_rechecks = 0;
+    entry.merge_hold_recheck_reason = None;
+    entry.merge_hold_recheck_head = None;
 }
 
 #[cfg(test)]

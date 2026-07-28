@@ -24,6 +24,8 @@ fn entry(display_id: &str, repo: &str, phase: LedgerPhase, settled_minute: u32) 
         merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
     }
 }
 

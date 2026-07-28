@@ -91,6 +91,8 @@ fn management_app() -> App {
             merge_judge_fail_safes: 0,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
         },
         LedgerEntry {
             task_id: "manual-task".into(),
@@ -110,6 +112,8 @@ fn management_app() -> App {
             merge_judge_fail_safes: 0,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
         },
     ];
     app
@@ -667,6 +671,8 @@ fn active_phases_excludes_terminal_entries() {
                 merge_judge_fail_safes: 0,
                 merge_hold_cap_escalated: false,
                 merge_hold_rechecks: 0,
+                merge_hold_recheck_reason: None,
+                merge_hold_recheck_head: None,
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -686,6 +692,8 @@ fn active_phases_excludes_terminal_entries() {
                 merge_judge_fail_safes: 0,
                 merge_hold_cap_escalated: false,
                 merge_hold_rechecks: 0,
+                merge_hold_recheck_reason: None,
+                merge_hold_recheck_head: None,
             },
         ],
         ..Ledger::default()
