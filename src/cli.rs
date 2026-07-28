@@ -101,6 +101,10 @@ pub enum OverseerCommand {
     ClearInbox,
     /// Write a launchd service plist and load or reload it after confirmation.
     InstallService,
+    /// Quarantine unparseable decision-log lines to a sidecar file, keeping
+    /// every valid line byte-identical and in order. Safe to run while the
+    /// daemon is appending.
+    CompactDecisions(OverseerCompactDecisionsArgs),
 }
 
 #[derive(Debug, ClapArgs)]
@@ -131,6 +135,13 @@ pub struct OverseerAutonomyArgs {
     /// risk-free docs-or-tests change, `full_auto` escalates the hard stops alone.
     #[arg(value_enum)]
     pub level: AutonomyLevel,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OverseerCompactDecisionsArgs {
+    /// Report kept/quarantined counts without rewriting the log.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

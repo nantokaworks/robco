@@ -122,6 +122,9 @@ pub(crate) fn corrupt_line_count_at(path: &Path) -> Result<usize> {
         .count())
 }
 
+mod compact;
+pub use compact::{CompactionReport, compact};
+
 pub(crate) struct DigestCursor {
     path: PathBuf,
     offset: u64,
