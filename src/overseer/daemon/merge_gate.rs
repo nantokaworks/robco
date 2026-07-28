@@ -24,15 +24,19 @@ const CHECKS_FAILED: &str = "checks_not_green";
 /// is handed back.
 const CHECKS_WAITING: &str = "checks_waiting";
 
-/// Merge state is checked ahead of checks, not after: a pull request GitHub calls
-/// decisively unmergeable (`DIRTY` at minimum) reports zero check runs, because
-/// GitHub cannot construct `refs/pull/N/merge` for a conflicting head and so never
-/// fires the checks that would run against it. Evaluating checks first would hold
-/// such a pull request under `checks_waiting` forever — the actual, worker-fixable
-/// conflict never gets a hold reason `merge_recovery` recognises. `Ready` and
-/// `Behind` are unaffected: [`merge_state::held_reason`] returns `None` for both, so
-/// they still reach the checks gate exactly as before, and `Behind`'s branch update
-/// still only runs once checks are green, via `merge_state_cleared` below.
+/// Only `DIRTY` is checked ahead of the checks stage: a conflicting head reports zero
+/// check runs, because GitHub cannot construct `refs/pull/N/merge` for it and so never
+/// fires the checks that would run against it. Evaluating checks first would hold such
+/// a pull request under `checks_waiting` forever — the actual, worker-fixable conflict
+/// never gets a hold reason `merge_recovery` recognises.
+///
+/// Every other merge state — `BLOCKED`, `DRAFT`, `UNSTABLE`, `UNKNOWN`, and anything
+/// GitHub adds later — still has a head checks can genuinely run against, so
+/// [`merge_state::preempting_hold_reason`] returns `None` for them and `gate` lets the
+/// checks stage decide first, exactly like `Ready` and `Behind` always have. See that
+/// function's doc for why letting them fall through loses no information:
+/// `merge_state_cleared` below re-reads the merge state right before a merge attempt
+/// and still holds under the state's own name whenever the rollup alone said `Green`.
 pub(super) fn gate(
     entry: &mut LedgerEntry,
     url: &str,
@@ -49,7 +53,7 @@ pub(super) fn gate(
     {
         return Some(Halt::gated(format!("unprotected:{unmet}")));
     }
-    if let Some(reason) = merge_state::held_reason(value) {
+    if let Some(reason) = merge_state::preempting_hold_reason(value) {
         return Some(Halt::hold(reason));
     }
     match checks(value) {

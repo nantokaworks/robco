@@ -17,6 +17,20 @@
 //! through `merge_recovery` — a conflict or a missing review is exactly the kind of thing
 //! a worker fixes by pushing. This module only decides how to name a state; whether that
 //! name is ever acted on is `remedy`'s call, not this one's.
+//!
+//! Not every held state should preempt the checks stage, though — only `DIRTY` has a
+//! head GitHub structurally never runs checks against (see
+//! [`preempting_hold_reason`]). `BLOCKED`, `DRAFT`, and `UNSTABLE` all still have a head
+//! checks genuinely run against, so `merge_gate::gate` lets them fall through to the
+//! checks stage first, and relies on [`super::merge_apply::merge_state_cleared`] to hold
+//! them under their own name afterward for the one case a green rollup cannot explain.
+//! `BLOCKED` in particular can mean either a missing review or a missing required check:
+//! falling through means a failing required check is named `checks_not_green` — the
+//! more specific, already-recoverable reason — while a missing review alone (a green
+//! rollup) still surfaces as `merge_state:blocked` once `merge_state_cleared` re-reads
+//! it. `DRAFT` follows the same reasoning: a draft with failing checks is still named
+//! `checks_not_green` so the worker gets pushed the fix, while a draft with a green
+//! rollup surfaces as `merge_state:draft` so an operator knows to mark it ready.
 
 use std::process::Command;
 
@@ -77,19 +91,24 @@ pub(super) fn hold_reason(raw: &str) -> String {
     format!("merge_state:{}", raw.to_ascii_lowercase())
 }
 
-/// The hold reason for a merge state that is decisively unmergeable — never `Ready`
-/// (which still needs green checks) or `Behind` (which still needs the branch update
-/// queue), both of which keep a next step of their own.
+/// The hold reason for a merge state whose check rollup cannot be trusted to name the
+/// real blocker — the only state this returns `Some` for is `DIRTY`.
 ///
-/// Callers evaluate this *before* the checks gate: a state such as `DIRTY` reports zero
-/// check runs, because GitHub cannot construct `refs/pull/N/merge` to run them against
-/// for a head that conflicts with its base. Waiting on checks that can never exist would
-/// hold the pull request under `checks_waiting` and mask a conflict the owning worker
-/// could otherwise be handed back — see `overseer::remedy::classify`.
-pub(super) fn held_reason(value: &Value) -> Option<String> {
+/// Callers evaluate this *before* the checks gate: `DIRTY` reports zero check runs,
+/// because GitHub cannot construct `refs/pull/N/merge` to run them against for a head
+/// that conflicts with its base — not because nothing has started, but because nothing
+/// ever will. Waiting on checks that can never exist would hold the pull request under
+/// `checks_waiting` and mask a conflict the owning worker could otherwise be handed
+/// back — see `overseer::remedy::classify`.
+///
+/// Every other held state (`BLOCKED`, `DRAFT`, `UNSTABLE`, `UNKNOWN`, and anything
+/// GitHub adds later) still has a head checks genuinely run against, so this returns
+/// `None` for them and lets `merge_gate::gate` send them through the checks stage
+/// instead — see the module doc for why that loses no information.
+pub(super) fn preempting_hold_reason(value: &Value) -> Option<String> {
     match merge_state(value) {
-        MergeState::Held(raw) => Some(hold_reason(raw)),
-        MergeState::Ready | MergeState::Behind => None,
+        MergeState::Held(raw) if raw == "DIRTY" => Some(hold_reason(raw)),
+        MergeState::Held(_) | MergeState::Ready | MergeState::Behind => None,
     }
 }
 
