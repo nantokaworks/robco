@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::mem;
 
 use super::{
-    Candidate, plan_dispatch,
+    Candidate, drain, plan_dispatch,
     route::{Route, remaining_capacity, route},
     worker::{SpawnOutcome, spawn_candidate},
 };
@@ -35,7 +35,14 @@ pub fn dispatch_pass(
         return Ok(());
     }
 
-    let candidates = gather_candidates()?;
+    let Some(candidates) = gather_candidates()? else {
+        // The gather itself failed (e.g. `dropr_overlay_unavailable`, already
+        // logged inside `gather_candidates`); an empty result here is not
+        // evidence the board is quiet, so the queue-drained check must not
+        // run on it.
+        return Ok(());
+    };
+    drain::check(&candidates, ledger)?;
     let plan = plan_dispatch(&config.overseer, ledger, &candidates, now, &worker_modes);
     let approved = plan
         .decisions
@@ -167,14 +174,19 @@ fn open_circuit(config: &mut Config) -> Result<()> {
     Ok(())
 }
 
-fn gather_candidates() -> Result<Vec<Candidate>> {
+/// `None` means the gather itself failed (currently: the dropr workspace
+/// overlay was unreachable) — distinct from `Some(vec![])`, a gather that
+/// succeeded and simply found nothing ready. Callers that treat "no
+/// candidates" as a board signal (the queue-drained check) must tell the two
+/// apart, or an outage reads as "all done".
+fn gather_candidates() -> Result<Option<Vec<Candidate>>> {
     let registry = Registry::load()?;
     let (workspaces, overlay_ok) = dropr::DroprOverlay::load_with_status_timeout(COMMAND_TIMEOUT);
     if !overlay_ok {
         // Without the workspace overlay every repo would be skipped silently;
         // record the outage so an idle overseer is diagnosable from decisions.jsonl.
         log_global(DecisionKind::Skip, "dropr_overlay_unavailable")?;
-        return Ok(Vec::new());
+        return Ok(None);
     }
     let mut candidates = Vec::new();
     for repo in &registry.repos {
@@ -244,7 +256,7 @@ fn gather_candidates() -> Result<Vec<Candidate>> {
             });
         }
     }
-    Ok(candidates)
+    Ok(Some(candidates))
 }
 
 pub(super) fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) -> Result<()> {

@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use super::autonomy::AutonomyLevel;
 
+#[path = "config_notify_level.rs"]
+mod notify_level;
+pub use notify_level::{NotifyLevel, NotifyTier, notify_admits};
+
 /// How strictly the auto-merge gate requires the base branch to be protected.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ValueEnum)]
 #[serde(rename_all = "snake_case")]
@@ -221,17 +225,27 @@ pub struct DiscordConfig {
     pub token_env: String,
     pub channel_id: Option<String>,
     pub allowed_user_ids: Vec<String>,
-    pub notify_escalation: bool,
-    pub notify_pr_opened: bool,
-    pub notify_merged: bool,
-    pub notify_circuit: bool,
-    pub notify_worker_blocked: bool,
+    /// Notification verbosity baseline. See [`notify_admits`] for how it
+    /// composes with the per-event booleans below.
+    pub notify_level: NotifyLevel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_escalation: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_pr_opened: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_merged: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_circuit: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_worker_blocked: Option<bool>,
     /// Sends a notification when a ledger entry is newly dispatched.
-    pub notify_task_started: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_task_started: Option<bool>,
     /// Sends a notification when a ledger entry newly reaches a terminal
     /// phase other than `merged` (`failed` or `escalated`), which already
     /// has its own `merged` event. One toggle covers both outcomes.
-    pub notify_task_finished: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notify_task_finished: Option<bool>,
     /// Runs notification titles and descriptions through an LLM pass in
     /// `language` before posting. Independent of `language` itself, which
     /// also governs the ops-agent reply and every worker/judge prompt — an
@@ -263,13 +277,14 @@ impl Default for DiscordConfig {
             token_env: default_discord_token_env(),
             channel_id: None,
             allowed_user_ids: Vec::new(),
-            notify_escalation: true,
-            notify_pr_opened: true,
-            notify_merged: true,
-            notify_circuit: true,
-            notify_worker_blocked: true,
-            notify_task_started: true,
-            notify_task_finished: true,
+            notify_level: NotifyLevel::default(),
+            notify_escalation: None,
+            notify_pr_opened: None,
+            notify_merged: None,
+            notify_circuit: None,
+            notify_worker_blocked: None,
+            notify_task_started: None,
+            notify_task_finished: None,
             notify_localize: true,
             chat_category_ids: Vec::new(),
             chat_concurrency_cap: 3,

@@ -1,5 +1,5 @@
 use crate::overseer::{
-    config::DiscordConfig,
+    config::{DiscordConfig, NotifyTier, notify_admits},
     logging::{DecisionEntry, DecisionKind},
 };
 
@@ -19,18 +19,61 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     } else {
         None
     };
-    let (enabled, title, color) = match (event, entry.kind) {
-        (Some("task_started"), _) => (config.notify_task_started, "Task started", 0x95a5a6),
-        (Some("pr_opened"), _) => (config.notify_pr_opened, "PR opened", 0x3498db),
-        (Some("merged"), _) => (config.notify_merged, "Merged", 0x2ecc71),
-        (Some("task_failed"), _) => (config.notify_task_finished, "Task failed", 0xc0392b),
-        (Some("task_escalated"), _) => (config.notify_task_finished, "Task escalated", 0xd35400),
-        (Some("worker_blocked"), _) => (config.notify_worker_blocked, "Worker blocked", 0xe67e22),
-        (_, DecisionKind::CircuitOpen) => (config.notify_circuit, "Circuit open", 0xe74c3c),
-        (_, DecisionKind::Escalate) => (config.notify_escalation, "Escalation", 0xf1c40f),
+    let (explicit, tier, title, color) = match (event, entry.kind) {
+        (Some("task_started"), _) => (
+            config.notify_task_started,
+            NotifyTier::Summary,
+            "Task started",
+            0x95a5a6,
+        ),
+        (Some("pr_opened"), _) => (
+            config.notify_pr_opened,
+            NotifyTier::All,
+            "PR opened",
+            0x3498db,
+        ),
+        (Some("merged"), _) => (
+            config.notify_merged,
+            NotifyTier::Summary,
+            "Merged",
+            0x2ecc71,
+        ),
+        (Some("task_failed"), _) => (
+            config.notify_task_finished,
+            NotifyTier::Errors,
+            "Task failed",
+            0xc0392b,
+        ),
+        (Some("task_escalated"), _) => (
+            config.notify_task_finished,
+            NotifyTier::Errors,
+            "Task escalated",
+            0xd35400,
+        ),
+        (Some("worker_blocked"), _) => (
+            config.notify_worker_blocked,
+            NotifyTier::Errors,
+            "Worker blocked",
+            0xe67e22,
+        ),
+        // No legacy boolean ever gated this event — it did not exist before
+        // `notify_level` did — so it is governed by the level alone.
+        (Some("queue_drained"), _) => (None, NotifyTier::Summary, "Queue drained", 0x1abc9c),
+        (_, DecisionKind::CircuitOpen) => (
+            config.notify_circuit,
+            NotifyTier::Errors,
+            "Circuit open",
+            0xe74c3c,
+        ),
+        (_, DecisionKind::Escalate) => (
+            config.notify_escalation,
+            NotifyTier::Errors,
+            "Escalation",
+            0xf1c40f,
+        ),
         _ => return None,
     };
-    if !enabled {
+    if !notify_admits(explicit, config.notify_level, tier) {
         return None;
     }
     let mut details = vec![entry.reason.clone()];
@@ -55,8 +98,16 @@ pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notif
         .iter()
         .filter(|entry| entry.source.as_deref() != Some("discord"))
         .filter(|entry| match entry.kind {
-            DecisionKind::CircuitOpen => config.notify_circuit,
-            DecisionKind::Escalate => config.notify_escalation,
+            DecisionKind::CircuitOpen => notify_admits(
+                config.notify_circuit,
+                config.notify_level,
+                NotifyTier::Errors,
+            ),
+            DecisionKind::Escalate => notify_admits(
+                config.notify_escalation,
+                config.notify_level,
+                NotifyTier::Errors,
+            ),
             _ => false,
         })
         .cloned()
@@ -79,7 +130,13 @@ mod tests {
         entry.source = Some("daemon_event".into());
         entry.task = Some("task-135".into());
         entry.pr_url = Some("https://example.test/pull/1".into());
-        let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+        // `pr_opened` is `all`-tier, above the `summary` default, so this
+        // exercises it at the level that admits it.
+        let config = DiscordConfig {
+            notify_level: crate::overseer::config::NotifyLevel::All,
+            ..DiscordConfig::default()
+        };
+        let notification = from_decision(&config, &entry).unwrap();
         assert!(notification.description.contains("task-135"));
         assert!(
             notification
@@ -96,7 +153,7 @@ mod tests {
         let mut config = DiscordConfig::default();
         assert!(from_decision(&config, &entry).is_some());
 
-        config.notify_task_started = false;
+        config.notify_task_started = Some(false);
         assert!(from_decision(&config, &entry).is_none());
     }
 
@@ -111,7 +168,7 @@ mod tests {
         assert!(from_decision(&config, &failed).is_some());
         assert!(from_decision(&config, &escalated).is_some());
 
-        config.notify_task_finished = false;
+        config.notify_task_finished = Some(false);
         assert!(from_decision(&config, &failed).is_none());
         assert!(from_decision(&config, &escalated).is_none());
     }
@@ -122,7 +179,7 @@ mod tests {
         entry.source = Some("daemon_event".into());
 
         let config = DiscordConfig {
-            notify_escalation: false,
+            notify_escalation: Some(false),
             ..DiscordConfig::default()
         };
         assert!(
@@ -139,5 +196,72 @@ mod tests {
         let notification = digest(&DiscordConfig::default(), &entries).unwrap();
         assert!(notification.description.starts_with("3 overseer alert(s):"));
         assert_eq!(notification.description.lines().count(), 1);
+    }
+
+    #[test]
+    fn summary_level_admits_task_started_finish_and_drain_but_not_pr_opened() {
+        let config = DiscordConfig::default();
+        assert_eq!(
+            config.notify_level,
+            crate::overseer::config::NotifyLevel::Summary
+        );
+
+        for (reason, kind) in [
+            ("task_started", DecisionKind::Dispatch),
+            ("merged", DecisionKind::Merge),
+            ("queue_drained", DecisionKind::Skip),
+            ("task_failed", DecisionKind::Hold),
+        ] {
+            let mut entry = DecisionEntry::new(kind, reason);
+            entry.source = Some("daemon_event".into());
+            assert!(
+                from_decision(&config, &entry).is_some(),
+                "{reason} should fire at the summary default"
+            );
+        }
+
+        let mut pr_opened = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
+        pr_opened.source = Some("daemon_event".into());
+        assert!(
+            from_decision(&config, &pr_opened).is_none(),
+            "pr_opened is all-tier and must stay silent at the summary default"
+        );
+    }
+
+    #[test]
+    fn errors_level_silences_task_started_merged_and_drain() {
+        let config = DiscordConfig {
+            notify_level: crate::overseer::config::NotifyLevel::Errors,
+            ..DiscordConfig::default()
+        };
+
+        for (reason, kind) in [
+            ("task_started", DecisionKind::Dispatch),
+            ("merged", DecisionKind::Merge),
+            ("queue_drained", DecisionKind::Skip),
+        ] {
+            let mut entry = DecisionEntry::new(kind, reason);
+            entry.source = Some("daemon_event".into());
+            assert!(
+                from_decision(&config, &entry).is_none(),
+                "{reason} is summary-tier and must stay silent at errors"
+            );
+        }
+
+        let mut failed = DecisionEntry::new(DecisionKind::Hold, "task_failed");
+        failed.source = Some("daemon_event".into());
+        assert!(from_decision(&config, &failed).is_some());
+    }
+
+    #[test]
+    fn explicit_boolean_overrides_a_wide_open_level() {
+        let config = DiscordConfig {
+            notify_level: crate::overseer::config::NotifyLevel::All,
+            notify_pr_opened: Some(false),
+            ..DiscordConfig::default()
+        };
+        let mut entry = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
+        entry.source = Some("daemon_event".into());
+        assert!(from_decision(&config, &entry).is_none());
     }
 }
