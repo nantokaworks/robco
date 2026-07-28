@@ -133,8 +133,8 @@ fn a_pull_request_waiting_on_the_judge_is_recorded_once_and_then_by_its_verdict(
 
         queue.tick(&config).unwrap();
         assert_eq!(
-            queue.snapshot().active.as_deref(),
-            Some("merge:task-1"),
+            queue.snapshot().active,
+            vec!["merge:task-1".to_string()],
             "an active judgment must be visible to `robco overseer status`"
         );
         // A pass that finds the judgment still running must not re-log it.

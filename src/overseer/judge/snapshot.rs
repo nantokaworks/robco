@@ -13,10 +13,12 @@ use std::{fs, io::ErrorKind, path::Path};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueSnapshot {
-    /// Label of the judgment currently running, if any.
+    /// Labels of the judgments currently running, one per occupied slot —
+    /// at most one dispatch round plus at most one merge judgment per
+    /// repository. See `crate::overseer::judge::Request::slot`.
     #[serde(default)]
-    pub active: Option<String>,
-    /// Labels of the judgments waiting behind it, in service order.
+    pub active: Vec<String>,
+    /// Labels of the judgments waiting behind them, in service order.
     #[serde(default)]
     pub pending: Vec<String>,
 }
@@ -45,14 +47,18 @@ impl QueueSnapshot {
 
     /// One-line rendering for `robco overseer status`.
     pub fn summary(&self) -> String {
+        let active = if self.active.is_empty() {
+            "none".to_owned()
+        } else {
+            self.active.join(", ")
+        };
         let waiting = if self.pending.is_empty() {
             String::new()
         } else {
             format!(" ({})", self.pending.join(", "))
         };
         format!(
-            "judge queue: active {}  waiting {}{waiting}",
-            self.active.as_deref().unwrap_or("none"),
+            "judge queue: active {active}  waiting {}{waiting}",
             self.pending.len()
         )
     }
@@ -67,12 +73,26 @@ mod tests {
         let idle = QueueSnapshot::default();
         assert_eq!(idle.summary(), "judge queue: active none  waiting 0");
         let busy = QueueSnapshot {
-            active: Some("merge:task-1".into()),
+            active: vec!["merge:task-1".into()],
             pending: vec!["merge:task-2".into()],
         };
         assert_eq!(
             busy.summary(),
             "judge queue: active merge:task-1  waiting 1 (merge:task-2)"
+        );
+    }
+
+    /// Two merge judgments in different repositories are both `active` at
+    /// once — the whole point of the per-repository queue.
+    #[test]
+    fn concurrent_judgments_across_repositories_are_all_reported_active() {
+        let busy = QueueSnapshot {
+            active: vec!["merge:task-1".into(), "merge:task-2".into()],
+            pending: Vec::new(),
+        };
+        assert_eq!(
+            busy.summary(),
+            "judge queue: active merge:task-1, merge:task-2  waiting 0"
         );
     }
 
@@ -85,8 +105,8 @@ mod tests {
             QueueSnapshot::default()
         );
         let snapshot = QueueSnapshot {
-            active: Some("dispatch:2".into()),
-            pending: vec!["merge:task-1".into()],
+            active: vec!["dispatch:2".into(), "merge:task-1".into()],
+            pending: vec!["merge:task-2".into()],
         };
         snapshot.save(&path).unwrap();
         assert_eq!(QueueSnapshot::load(&path).unwrap(), snapshot);
