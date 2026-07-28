@@ -15,6 +15,7 @@ mod ops_result;
 mod ops_session;
 mod ops_sessions;
 mod ops_state;
+mod typing;
 
 use crate::overseer::config::DiscordConfig;
 use std::{

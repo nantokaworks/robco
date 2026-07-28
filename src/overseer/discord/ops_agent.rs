@@ -59,6 +59,21 @@ pub(super) enum Effect {
     },
 }
 
+/// Outcome of routing an inbound message to the conversational ops agent.
+/// Distinct from a plain `Option<Effect>` so the gateway can tell an
+/// ignored message (no typing indicator) apart from one that started a
+/// session (typing indicator, no immediate effect to process).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RouteOutcome {
+    /// The message was not directed at the ops agent; produce no reply and
+    /// show no typing indicator.
+    Ignored,
+    /// A session was spawned; its reply arrives later via `poll`.
+    Started,
+    /// An immediate reply is due (busy, at capacity, or spawn failure).
+    Effect(Effect),
+}
+
 pub(super) struct OpsAgent {
     parent_channel: String,
     allowed_users: Vec<String>,
@@ -159,7 +174,7 @@ impl OpsAgent {
         message: &str,
         spawner: &mut dyn SessionSpawner,
         category_member: bool,
-    ) -> Option<Effect> {
+    ) -> RouteOutcome {
         if !self.allowed_users.iter().any(|allowed| allowed == user_id)
             || (channel_id != self.parent_channel
                 && !self.is_thread(channel_id)
@@ -168,7 +183,7 @@ impl OpsAgent {
             || message.trim_start().starts_with('!')
             || message.trim_start().starts_with("CONFIRM ")
         {
-            return None;
+            return RouteOutcome::Ignored;
         }
         let case = self
             .state
@@ -185,9 +200,9 @@ impl OpsAgent {
             text: "The ops agent is handling another request; please retry shortly.".into(),
         };
         match self.sessions.start(channel_id, request, spawner) {
-            StartOutcome::Started => None,
-            StartOutcome::Busy | StartOutcome::AtCapacity => Some(busy),
-            StartOutcome::SpawnFailed(error) => Some(Effect::Post {
+            StartOutcome::Started => RouteOutcome::Started,
+            StartOutcome::Busy | StartOutcome::AtCapacity => RouteOutcome::Effect(busy),
+            StartOutcome::SpawnFailed(error) => RouteOutcome::Effect(Effect::Post {
                 channel_id: channel_id.into(),
                 text: format!("Ops agent could not start: {error}"),
             }),
@@ -196,6 +211,12 @@ impl OpsAgent {
 
     pub fn poll(&mut self) -> Vec<Effect> {
         self.sessions.poll()
+    }
+
+    /// Channel ids with a chat session still outstanding, for the typing
+    /// indicator keepalive to reconcile against.
+    pub fn active_chat_channels(&self) -> impl Iterator<Item = &str> {
+        self.sessions.active_channels()
     }
 
     pub fn resolve_answer(
