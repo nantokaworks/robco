@@ -209,7 +209,7 @@ fn the_connector_reflects_last_sibling_and_fuses_the_handle() {
             false,
             TreeHandle::Collapsed
         ),
-        "  ├─▽   "
+        "  ├─▸   "
     );
 }
 
@@ -279,7 +279,7 @@ fn the_structure_and_the_state_marker_are_drawn_in_different_styles() {
         spans
             .iter()
             .filter(|span| span.style == structure)
-            .any(|span| span.content.contains('▽')),
+            .any(|span| span.content.contains('▸')),
         "the expand handle belongs to the structure layer: {spans:?}"
     );
 }

@@ -15,10 +15,11 @@ use super::AGENT_INDENT;
 /// same place an expandable sibling's does: nothing about the row shifts
 /// depending on whether it happens to have children.
 ///
-/// Collapsed and expanded both point down — the direction the subtree
-/// actually opens — rather than collapsed pointing right and expanded
-/// pointing down, as `▸`/`▾` used to. Weight carries the state instead:
-/// hollow `▽` for collapsed, solid `▾` for expanded.
+/// `▸`/`▾` stay as they were — the "points the wrong way" complaint is
+/// addressed by [`AGENT_INDENT`] instead: once the connector hangs directly
+/// under the repo row's fold icon, the guide column itself leads the eye
+/// straight down into the subtree, so the handle glyph does not have to
+/// carry that direction on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ui::tree) enum TreeHandle {
     Leaf,
@@ -30,7 +31,7 @@ impl TreeHandle {
     fn glyph(self) -> &'static str {
         match self {
             Self::Leaf => "─",
-            Self::Collapsed => "▽",
+            Self::Collapsed => "▸",
             Self::Expanded => "▾",
         }
     }

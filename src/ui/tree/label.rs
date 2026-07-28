@@ -22,7 +22,7 @@ use marquee::display;
 /// the row's title.
 ///
 /// Round is the point. The tree already spends triangles and box-drawing on
-/// structure — `▽`/`▾` expand handles, `└` child connectors — so a triangular
+/// structure — `▸`/`▾` expand handles, `└` child connectors — so a triangular
 /// state marker landing next to a handle reads as a second, smaller handle
 /// rather than as state. One glyph family per layer: round means management,
 /// angular means structure.
