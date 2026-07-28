@@ -122,6 +122,27 @@ fn branch_prefix_falls_back_when_repo_name_sanitizes_to_empty() {
     assert_eq!(resolve_branch_prefix(&config, "..."), "robco/");
 }
 
+#[test]
+fn worker_branch_name_matches_the_prefix_and_slug_it_is_built_from() {
+    // The formula `crate::spawn::branch_conflict` checks with must never drift
+    // from the one `create_agent_with_launch` actually spawns with — this pins
+    // the two together.
+    let config = Config::default();
+    assert_eq!(
+        worker_branch_name(
+            &config,
+            "myapp",
+            "Add a thing",
+            Some("42-dropr-Add-a-thing")
+        ),
+        format!(
+            "{}{}",
+            resolve_branch_prefix(&config, "myapp"),
+            naming_slug("Add a thing", Some("42-dropr-Add-a-thing"))
+        )
+    );
+}
+
 fn repo_named(name: &str) -> RepoNode {
     RepoNode {
         path: format!("/tmp/{name}").into(),

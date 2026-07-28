@@ -35,6 +35,19 @@ pub(super) fn spawn_candidate(
     if super::has_active_worker(ledger, &task.task_id, &task.display_id) {
         return Ok(SpawnOutcome::Held("active_worker".into()));
     }
+    // A prior attempt at this same task can leave its branch behind — most
+    // commonly the escalated case, where the worker finished and opened a pull
+    // request but the branch itself was never cleaned up. `git worktree add`
+    // is certain to fail on that branch name, and doing so on every pass is
+    // exactly the loop this check exists to stop (dropr:_ord_VtFSIiLgWpgmDAGm).
+    // Held rather than reused or reclaimed: the branch may still carry
+    // uncommitted or unmerged work from that prior attempt, so the safe move is
+    // to leave it alone and let an operator decide, not to guess.
+    if let Some(branch) =
+        spawn::branch_conflict(&task.repo, &task.title, name_slug(task).as_deref(), config)?
+    {
+        return Ok(SpawnOutcome::Held(format!("branch_exists:{branch}")));
+    }
     // The ledger only knows about workers this overseer started. Re-read the
     // task in dropr and take its claim here, so an agent that claimed it while
     // the judge round was in flight is seen now rather than discovered when two

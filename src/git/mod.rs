@@ -7,7 +7,7 @@ pub(crate) mod merge_lock;
 pub mod post_merge;
 mod remote;
 #[cfg(test)]
-mod test_repo;
+pub(crate) mod test_repo;
 mod worktree;
 
 pub use branch::*;
