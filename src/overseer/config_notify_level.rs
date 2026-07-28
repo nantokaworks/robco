@@ -1,16 +1,13 @@
-//! Discord notification verbosity: [`NotifyLevel`], the intrinsic
-//! [`NotifyTier`] an event belongs to, and [`notify_admits`], which
-//! resolves the two against a legacy per-event boolean override. Split out
-//! of `config.rs` to keep that file under the source size limit.
+//! Discord notification verbosity: [`NotifyLevel`], the sole gate for which
+//! events post, and the intrinsic [`NotifyTier`] an event belongs to. Split
+//! out of `config.rs` to keep that file under the source size limit.
 
 use serde::{Deserialize, Serialize};
 
 /// Discord notification verbosity, ordered `off < errors < summary < all`.
 /// Every Discord event has an intrinsic [`NotifyTier`]; a level admits an
-/// event when the event's tier is at or below the level. This is the
-/// *baseline* only — see [`notify_admits`] for how it composes with the
-/// seven legacy per-event booleans on `DiscordConfig`, which still take
-/// precedence when explicitly set.
+/// event when the event's tier is at or below the level. This is the sole
+/// gate for whether an event posts — see [`NotifyLevel::admits`].
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NotifyLevel {
@@ -38,8 +35,7 @@ impl NotifyLevel {
         }
     }
 
-    /// Whether this level admits an event at `tier` on its own, before any
-    /// per-event boolean override in [`notify_admits`] is applied.
+    /// Whether this level admits an event at `tier`.
     pub fn admits(self, tier: NotifyTier) -> bool {
         self.rank() >= tier.rank()
     }
@@ -62,28 +58,6 @@ impl NotifyTier {
             Self::All => 3,
         }
     }
-}
-
-/// Resolves whether one event fires, composing `notify_level` with a
-/// per-event legacy boolean.
-///
-/// **Precedence: an explicitly-set boolean always wins; the level is only
-/// the baseline for an event no boolean addresses.** Every Discord config
-/// ever saved by this program serializes its seven per-event booleans
-/// explicitly (there is no `skip_serializing_if` that would have omitted
-/// them), so this keeps every config file written before `notify_level`
-/// existed behaving exactly as before — the level has no effect on an
-/// installation that already says what it wants. `notify_level` only takes
-/// over once an operator (or the install wizard) actually unsets a
-/// boolean — which is what a *fresh* `DiscordConfig::default()` does for
-/// all seven, so a new install is governed by the level from the start.
-/// The alternative precedence directions were rejected: "both must allow"
-/// would silently mute an event an existing config explicitly turned on
-/// the moment an operator lowered the level, and "level wins outright"
-/// would break every existing config's explicit `true` the day this
-/// shipped.
-pub fn notify_admits(explicit: Option<bool>, level: NotifyLevel, tier: NotifyTier) -> bool {
-    explicit.unwrap_or_else(|| level.admits(tier))
 }
 
 #[cfg(test)]
@@ -110,25 +84,5 @@ mod tests {
         for tier in [NotifyTier::Errors, NotifyTier::Summary, NotifyTier::All] {
             assert!(!NotifyLevel::Off.admits(tier));
         }
-    }
-
-    #[test]
-    fn explicit_boolean_overrides_the_level_in_either_direction() {
-        assert!(notify_admits(Some(true), NotifyLevel::Off, NotifyTier::All));
-        assert!(!notify_admits(
-            Some(false),
-            NotifyLevel::All,
-            NotifyTier::Errors
-        ));
-    }
-
-    #[test]
-    fn unset_boolean_defers_to_the_level() {
-        assert!(notify_admits(
-            None,
-            NotifyLevel::Summary,
-            NotifyTier::Summary
-        ));
-        assert!(!notify_admits(None, NotifyLevel::Summary, NotifyTier::All));
     }
 }

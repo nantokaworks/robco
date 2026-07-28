@@ -266,11 +266,6 @@ always has.
 }
 ```
 
-The seven `notify_escalation` / `notify_pr_opened` / `notify_merged` / `notify_circuit` /
-`notify_worker_blocked` / `notify_task_started` / `notify_task_finished` keys still exist and
-still work — see [Notification level](#notification-level) below — but a fresh config no longer
-carries them; `notify_level` alone now governs a fresh install.
-
 ### Overseer fields
 
 | Key | Type | Default | Implemented behavior |
@@ -317,14 +312,7 @@ carries them; `notify_level` alone now governs a fresh install.
 | `token_env` | string | `"ROBCO_DISCORD_TOKEN"` | Name of the environment variable containing the bot token. The value is never read from config. |
 | `channel_id` | string or `null` | `null` | Allowed parent channel id and notification destination. It must parse as a non-zero integer. |
 | `allowed_user_ids` | array of strings | `[]` | Exact Discord user-id allowlist. The bot refuses to start when it is empty. |
-| `notify_level` | `"off"`, `"errors"`, `"summary"`, or `"all"` | `"summary"` | Notification verbosity baseline. See [Notification level](#notification-level) below. |
-| `notify_escalation` | boolean or `null` | `null` | Sends decision-log escalation notifications. `null` defers to `notify_level`; set explicitly to override it either way. |
-| `notify_pr_opened` | boolean or `null` | `null` | Sends PR-opened daemon event notifications. `null` defers to `notify_level` — `pr_opened` is `all`-tier, so it stays silent at every lower level unless this is set to `true`. |
-| `notify_merged` | boolean or `null` | `null` | Sends merged daemon event notifications. `null` defers to `notify_level`. |
-| `notify_circuit` | boolean or `null` | `null` | Sends circuit-open notifications. `null` defers to `notify_level`. |
-| `notify_worker_blocked` | boolean or `null` | `null` | Sends worker-blocked daemon event notifications. `null` defers to `notify_level`. |
-| `notify_task_started` | boolean or `null` | `null` | Sends a notification when a ledger entry is newly dispatched. `null` defers to `notify_level`. |
-| `notify_task_finished` | boolean or `null` | `null` | Sends a notification when a ledger entry newly reaches `failed` or `escalated`. `merged` keeps its own `notify_merged` toggle above; this one covers the two remaining terminal outcomes under a single switch. `null` defers to `notify_level`. |
+| `notify_level` | `"off"`, `"errors"`, `"summary"`, or `"all"` | `"summary"` | Notification verbosity baseline, and the sole gate for which events post. See [Notification level](#notification-level) below. |
 | `notify_localize` | boolean | `true` | Runs notification titles and descriptions through an LLM pass in the top-level [`language`](09-config-reference.md#language) before posting. No effect while `language` is unset or blank — the pass is always skipped then, regardless of this key. A localization failure (timeout, launch failure, malformed result) still delivers the English text; nothing is ever dropped. |
 | `chat_category_ids` | array of strings | `[]` | Discord category IDs whose text channels get a conversational reply to plain chat, exactly like `channel_id` already does — same `allowed_user_ids` boundary, no command prefix needed. Empty leaves behavior byte-identical to before this key existed: no channel lookup is ever attempted. See [Category-scoped chat](#category-scoped-chat) below. |
 | `chat_concurrency_cap` | non-negative integer | `3` | Concurrent ops-agent sessions across `channel_id` and every `chat_category_ids` channel combined, each a spawned OS thread running an agent CLI. A channel beyond the cap gets the same "handling another request" reply a single-channel agent already returned, rather than a dropped message. |
@@ -347,22 +335,17 @@ below the level:
 **This changes the default.** Before `notify_level` existed, every event fired unconditionally
 (equivalent to `"all"`). The wizard and a fresh `DiscordConfig::default()` both now default to
 `"summary"`, which is quieter: it silences `pr_opened` while still covering start, finish, and
-every failure. Set `notify_level` to `"all"` to restore the old behavior in full, or set
-`notify_pr_opened` explicitly to `true` to keep just that one event without raising the level.
+every failure. Set `notify_level` to `"all"` to restore the old behavior in full.
 
-**Precedence.** An explicitly-set boolean always wins over the level; the level is only the
-baseline for an event whose boolean is `null` (unset). This is why nothing changes for an
-installation that already has a config file: every config this program has ever saved serializes
-all seven booleans explicitly (`true`, matching the old default), so `notify_level` has no effect
-on it until an operator deliberately unsets one of those seven keys (or lets the wizard rewrite the
-file, which leaves them unset from then on). A fresh install has all seven unset from the start, so
-it is governed by `notify_level` immediately. The two rejected alternatives were: "both the level
-and the boolean must allow the event", which would have silently muted an event an existing
-config explicitly turned on the moment an operator lowered the level; and "the level wins
-outright", which would have broken every existing config's explicit `true` the day this shipped.
-
-`queue_drained` has no legacy boolean of its own — it did not exist before `notify_level` did — so
-it is governed by the level alone, at the `summary` tier.
+**Legacy per-event overrides.** An earlier revision of this feature kept seven per-event
+`notify_*` booleans (`notify_escalation`, `notify_pr_opened`, `notify_merged`, `notify_circuit`,
+`notify_worker_blocked`, `notify_task_started`, `notify_task_finished`) alongside `notify_level`,
+each an explicit override that took precedence over the level when set. Those keys have since been
+removed: `notify_level` is now the only gate. A config file still carrying one of the seven still
+loads — the key is silently ignored — but the daemon logs a one-time notice at start-up naming
+which keys were found, so an operator who relied on one of them (`notify_pr_opened = true` in
+particular, since `pr_opened` is `all`-tier and `summary` is the default) learns that raising
+`notify_level` is now the way to get that event back.
 
 #### Queue-drained notification
 
