@@ -14,7 +14,11 @@ use crate::overseer::dispatch::Candidate;
 
 impl JudgmentQueue {
     pub(in crate::overseer::judge) fn is_active(&self) -> bool {
-        self.active.is_some()
+        !self.active.is_empty()
+    }
+
+    pub(in crate::overseer::judge) fn active_len(&self) -> usize {
+        self.active.len()
     }
 
     pub(in crate::overseer::judge) fn set_llm_calls_today(&mut self, count: u32) {

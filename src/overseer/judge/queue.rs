@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{Result, config::Config, overseer::daily::DailyCounter};
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
     fs,
     path::PathBuf,
     sync::mpsc::TryRecvError,
@@ -19,7 +19,11 @@ use std::{
 
 pub struct JudgmentQueue {
     pending: VecDeque<Request>,
-    active: Option<(Request, crate::overseer::session::SessionHandle)>,
+    /// Judgments currently running, keyed by [`Request::slot`]. A `BTreeMap`
+    /// rather than a `HashMap` so the order `persist_pending` and
+    /// `publish_snapshot` see is deterministic across ticks instead of
+    /// shuffling with the hasher's mood.
+    active: BTreeMap<String, (Request, crate::overseer::session::SessionHandle)>,
     completed: CompletedJudgments,
     terminal_merges: RevisionCache,
     root: PathBuf,
@@ -65,7 +69,7 @@ impl JudgmentQueue {
             .collect();
         Ok(Self {
             pending: persisted.requests.iter().cloned().collect(),
-            active: None,
+            active: BTreeMap::new(),
             completed: CompletedJudgments::default(),
             terminal_merges,
             root,
@@ -81,7 +85,8 @@ impl JudgmentQueue {
         })
     }
 
-    /// Starts or polls at most one judgment and never waits for its model process.
+    /// Polls every running judgment and starts new ones for open slots, up to
+    /// the configured concurrency ceiling, and never waits for a model process.
     pub fn tick(&mut self, config: &Config) -> Result<()> {
         let advanced = self.advance(config);
         // Published after every pass, including the failing ones: a snapshot
@@ -94,47 +99,83 @@ impl JudgmentQueue {
     }
 
     fn advance(&mut self, config: &Config) -> Result<()> {
-        if self.active.is_none() {
-            if let Some(request) = self.pending.pop_front() {
-                if let Request::Dispatch { approved, .. } = &request
-                    && self.counter.count_today() >= config.overseer.daily_llm_budget
-                {
-                    let parsed = Parsed::Dispatch(DispatchAdvice {
-                        candidate_ids: approved.iter().map(|item| item.task_id.clone()).collect(),
-                        reason: "daily_llm_budget".into(),
-                        fail_safe: true,
-                        ignored_fields: Vec::new(),
-                    });
-                    audit::record(&self.log_path, &request, &parsed)?;
-                    self.completed.insert(request, parsed);
-                    return Ok(());
-                }
-                if self.recoverable.remove(request.key())
-                    && let Some(parsed) = self.stored_verdict(&request)
-                {
-                    audit::record(&self.log_path, &request, &parsed)?;
-                    self.completed.insert(request, parsed);
-                    return Ok(());
-                }
-                self.counter.increment(&self.counter_path)?;
-                let handle = spawn_session(config, request.clone(), &self.root);
-                self.active = Some((request, handle));
-            }
-            return Ok(());
+        for (request, received) in self.poll_active() {
+            let parsed = completion::normalize(received, &request);
+            audit::record(&self.log_path, &request, &parsed)?;
+            self.completed.insert(request, parsed);
         }
-        let received = match self.active.as_ref().unwrap().1.try_recv() {
-            Ok(result) => result,
-            Err(TryRecvError::Empty) => return Ok(()),
-            Err(TryRecvError::Disconnected) => {
-                crate::overseer::session::SessionResult::LaunchFailed(
-                    "judgment session thread disconnected".into(),
-                )
+        self.fill_slots(config)
+    }
+
+    /// Drains every active judgment that has finished, without waiting on any
+    /// that has not.
+    fn poll_active(&mut self) -> Vec<(Request, crate::overseer::session::SessionResult)> {
+        let mut finished = Vec::new();
+        self.active.retain(|_, (request, handle)| match handle.try_recv() {
+            Ok(result) => {
+                finished.push((request.clone(), result));
+                false
             }
-        };
-        let (request, _) = self.active.take().unwrap();
-        let parsed = completion::normalize(received, &request);
-        audit::record(&self.log_path, &request, &parsed)?;
-        self.completed.insert(request, parsed);
+            Err(TryRecvError::Empty) => true,
+            Err(TryRecvError::Disconnected) => {
+                finished.push((
+                    request.clone(),
+                    crate::overseer::session::SessionResult::LaunchFailed(
+                        "judgment session thread disconnected".into(),
+                    ),
+                ));
+                false
+            }
+        });
+        finished
+    }
+
+    /// Starts judgments for as many open slots as the pending queue and the
+    /// concurrency ceiling allow, in service order.
+    ///
+    /// A slot is open when nothing with the same [`Request::slot`] is already
+    /// active; the ceiling bounds the total regardless of how many slots are
+    /// open, since each judgment is a spawned agent CLI process. Every
+    /// iteration either starts a session or resolves a request without one
+    /// (daily budget exhausted, or a stored verdict recovered after a
+    /// restart), and both remove the request from `pending` — so the loop
+    /// always terminates.
+    fn fill_slots(&mut self, config: &Config) -> Result<()> {
+        let ceiling = config.overseer.max_concurrent_judges.max(1);
+        while self.active.len() < ceiling {
+            let Some(index) = self
+                .pending
+                .iter()
+                .position(|request| !self.active.contains_key(&request.slot()))
+            else {
+                break;
+            };
+            let request = self.pending.remove(index).expect("index from position");
+            if let Request::Dispatch { approved, .. } = &request
+                && self.counter.count_today() >= config.overseer.daily_llm_budget
+            {
+                let parsed = Parsed::Dispatch(DispatchAdvice {
+                    candidate_ids: approved.iter().map(|item| item.task_id.clone()).collect(),
+                    reason: "daily_llm_budget".into(),
+                    fail_safe: true,
+                    ignored_fields: Vec::new(),
+                });
+                audit::record(&self.log_path, &request, &parsed)?;
+                self.completed.insert(request, parsed);
+                continue;
+            }
+            if self.recoverable.remove(request.key())
+                && let Some(parsed) = self.stored_verdict(&request)
+            {
+                audit::record(&self.log_path, &request, &parsed)?;
+                self.completed.insert(request, parsed);
+                continue;
+            }
+            self.counter.increment(&self.counter_path)?;
+            let slot = request.slot();
+            let handle = spawn_session(config, request.clone(), &self.root);
+            self.active.insert(slot, (request, handle));
+        }
         Ok(())
     }
 
@@ -186,7 +227,7 @@ impl JudgmentQueue {
     /// waiting or already running.
     fn enqueue_once(&mut self, request: Request) -> bool {
         let key = request.key();
-        let active = self.active.as_ref().is_some_and(|item| item.0.key() == key);
+        let active = self.active.values().any(|item| item.0.key() == key);
         if active || self.pending.iter().any(|item| item.key() == key) {
             return false;
         }
@@ -223,7 +264,7 @@ impl JudgmentQueue {
     }
 
     fn persist_pending(&mut self) -> Result<()> {
-        let next = PendingQueue::capture(self.active.as_ref().map(|item| &item.0), &self.pending);
+        let next = PendingQueue::capture(self.active.values().map(|item| &item.0), &self.pending);
         if next != self.persisted {
             next.save(&self.pending_path)?;
             self.persisted = next;
@@ -233,7 +274,7 @@ impl JudgmentQueue {
 
     fn publish_snapshot(&mut self) -> Result<()> {
         let next = QueueSnapshot {
-            active: self.active.as_ref().map(|item| item.0.label()),
+            active: self.active.values().map(|item| item.0.label()).collect(),
             pending: self.pending.iter().map(Request::label).collect(),
         };
         if next != self.snapshot {
