@@ -132,6 +132,7 @@ pub struct OverseerConfig {
     pub triage_profile: Option<String>,
     pub judge_profile: Option<String>,
     pub merge_judge_profile: Option<String>,
+    pub max_concurrent_judges: usize,
     /// Profile the periodic board reviewer runs under. `None` disables the
     /// review pass outright — it is the whole on/off switch, so a daemon that
     /// has never heard of the reviewer behaves exactly as it did before it
@@ -202,6 +203,7 @@ impl Default for OverseerConfig {
             triage_profile: None,
             judge_profile: None,
             merge_judge_profile: None,
+            max_concurrent_judges: 4,
             review_profile: None,
             review_interval_mins: 20,
             // 96 covers a full day at the shortest sensible cadence (15 min),

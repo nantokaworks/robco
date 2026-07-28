@@ -12,11 +12,11 @@
 //! one file serving a display contract and a recovery contract at once, where
 //! any change to either has to keep faith with the other.
 //!
-//! The active request is saved at the front of the list, and comes back
-//! *pending*: its session process did not survive the restart, so it must be
-//! re-run rather than waited on. What keeps that from re-buying a verdict is
-//! [`super::queue::JudgmentQueue::advance`], which consumes a `result.json` the
-//! case directory already holds instead of spawning.
+//! Active requests are saved ahead of the waiting ones, and all come back
+//! *pending*: their session processes did not survive the restart, so each
+//! must be re-run rather than waited on. What keeps that from re-buying a
+//! verdict is [`super::queue::JudgmentQueue::advance`], which consumes a
+//! `result.json` the case directory already holds instead of spawning.
 
 use std::{collections::VecDeque, fs, io::ErrorKind, path::Path};
 
@@ -48,11 +48,14 @@ impl PendingQueue {
         }
     }
 
-    /// Captures the queue's live state: the running request first, then the
-    /// waiting ones.
-    pub(super) fn capture(active: Option<&Request>, pending: &VecDeque<Request>) -> Self {
+    /// Captures the queue's live state: the running requests first (in slot
+    /// order, since `active` is keyed by slot), then the waiting ones.
+    pub(super) fn capture<'a>(
+        active: impl Iterator<Item = &'a Request>,
+        pending: &'a VecDeque<Request>,
+    ) -> Self {
         Self {
-            requests: active.into_iter().chain(pending.iter()).cloned().collect(),
+            requests: active.chain(pending.iter()).cloned().collect(),
         }
     }
 

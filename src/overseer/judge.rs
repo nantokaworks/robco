@@ -69,6 +69,22 @@ impl Request {
             Self::Merge { case, .. } => format!("merge:{}", case.task_id),
         }
     }
+
+    /// The concurrency slot this request occupies in `JudgmentQueue::active`.
+    ///
+    /// Dispatch requests all share one slot — a dispatch round asks about the
+    /// whole board, not one repository, so there is nothing to key it by —
+    /// while merge requests get one slot per repository. Two pull requests
+    /// against the same repository therefore still serialize, because they
+    /// share a slot, while two against different repositories occupy
+    /// separate slots and run concurrently, bounded only by the queue's
+    /// global `max_concurrent_judges` ceiling.
+    pub(super) fn slot(&self) -> String {
+        match self {
+            Self::Dispatch { .. } => "dispatch".to_owned(),
+            Self::Merge { case, .. } => format!("repo:{}", case.repo),
+        }
+    }
 }
 
 pub(super) fn spawn_session(config: &Config, request: Request, root: &Path) -> SessionHandle {
@@ -152,6 +168,10 @@ mod tests;
 #[cfg(test)]
 #[path = "judge/queue_tests.rs"]
 mod queue_tests;
+
+#[cfg(test)]
+#[path = "judge/queue_concurrency_tests.rs"]
+mod queue_concurrency_tests;
 
 #[cfg(test)]
 #[path = "judge/pending_tests.rs"]
