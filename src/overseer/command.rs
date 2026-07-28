@@ -14,12 +14,14 @@ use crate::{
     registry::Registry,
 };
 
+mod compact;
 mod escalation;
 mod inbox;
 mod service;
 mod settings;
 mod status;
 
+use compact::compact_decisions;
 pub(crate) use escalation::escalate_workers;
 use inbox::clear_inbox;
 use service::install_service;
@@ -47,6 +49,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Panic => panic_stop(),
         OverseerCommand::ClearInbox => clear_inbox(),
         OverseerCommand::InstallService => install_service(),
+        OverseerCommand::CompactDecisions(args) => compact_decisions(args.dry_run),
     }
 }
 
