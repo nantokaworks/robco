@@ -90,7 +90,7 @@ fn thread_answer_requires_confirmation_then_resolves() {
     let mut spawner = Canned::one(raw);
     assert_eq!(
         ops.route("20", "user", "Please answer", "msg-1", &mut spawner, false),
-        vec![
+        RouteOutcome::Started(vec![
             Effect::React {
                 channel_id: "20".into(),
                 message_id: "msg-1".into(),
@@ -101,7 +101,7 @@ fn thread_answer_requires_confirmation_then_resolves() {
                 message_id: "msg-1".into(),
                 stage: ReactionStage::Working,
             },
-        ]
+        ])
     );
     assert_eq!(spawner.requests[0].case.as_ref().unwrap().id, "case-1");
     let effects = ops.poll();
@@ -184,15 +184,55 @@ fn conversational_status_reply_executes_no_actions() {
             "msg-1",
             &mut spawner,
             false
-        )
-        .len(),
-        2
+        ),
+        RouteOutcome::Started(vec![
+            Effect::React {
+                channel_id: "10".into(),
+                message_id: "msg-1".into(),
+                stage: ReactionStage::Acknowledged,
+            },
+            Effect::React {
+                channel_id: "10".into(),
+                message_id: "msg-1".into(),
+                stage: ReactionStage::Working,
+            },
+        ])
     );
     assert!(matches!(
         ops.poll().as_slice(),
         [Effect::React { stage: ReactionStage::Success, .. }, Effect::Post { text, .. }]
             if text == "All systems nominal."
     ));
+}
+
+#[test]
+fn active_chat_channels_reflects_outstanding_sessions_until_polled() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut ops = OpsAgent::load(
+        "10".into(),
+        vec!["user".into()],
+        temp.path().join("triage"),
+        temp.path().join("ops/threads.json"),
+    )
+    .unwrap();
+    let mut spawner = Canned::one(br#"{"reply":"hi","actions":[]}"#);
+    assert!(ops.active_chat_channels().next().is_none());
+    assert!(matches!(
+        ops.route("10", "user", "hello", "msg-1", &mut spawner, false),
+        RouteOutcome::Started(_)
+    ));
+    assert_eq!(
+        ops.active_chat_channels().collect::<Vec<_>>(),
+        vec!["10"],
+        "the channel stays outstanding — this is what the gateway's typing \
+         keepalive re-triggers against on schedule",
+    );
+    ops.poll();
+    assert!(
+        ops.active_chat_channels().next().is_none(),
+        "once the reply is drained the channel must drop out of the active \
+         set, which is what stops the typing keepalive",
+    );
 }
 
 #[test]

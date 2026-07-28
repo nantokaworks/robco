@@ -64,6 +64,12 @@ impl SessionSlots {
         }
     }
 
+    /// Channel ids with a session still outstanding, for the gateway's
+    /// typing-indicator keepalive to reconcile against.
+    pub fn active_channels(&self) -> impl Iterator<Item = &str> {
+        self.active.keys().map(String::as_str)
+    }
+
     /// Polls every active session, draining and reporting each that finished.
     pub fn poll(&mut self) -> Vec<Effect> {
         let mut finished = Vec::new();

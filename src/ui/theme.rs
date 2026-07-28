@@ -152,12 +152,6 @@ impl Theme {
         Style::default().fg(self.status_color(status))
     }
 
-    pub fn selected_status_style(self, status: Status) -> Style {
-        Style::default()
-            .fg(self.status_color(status))
-            .add_modifier(Modifier::BOLD)
-    }
-
     pub fn worktree_missing_style(self, selected: bool) -> Style {
         let style = Style::default().fg(Color::Red);
         if selected {

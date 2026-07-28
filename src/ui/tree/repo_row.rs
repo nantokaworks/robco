@@ -119,9 +119,15 @@ fn collapsed_rollup(
                 .count(),
         )
     });
+    // On a selected row every chunk joins the reversed selection bar (full
+    // inversion, matching `indicator::primary_span`/`supplementary_spans`)
+    // rather than keeping its per-status colour: `selection_bg` is the same
+    // green as `Status::Running`, so a coloured-on-selection-background
+    // scheme would make a running count vanish. The per-status colours stay
+    // intact on the unselected row, which is the rollup's whole point.
     let status_style = |status| {
         if selected {
-            THEME.selected_status_style(status)
+            THEME.selected_indicator_style()
         } else {
             THEME.status_style(status)
         }
@@ -145,10 +151,12 @@ fn collapsed_rollup(
         .count();
     if missing_count > 0 {
         right.push(Span::styled(if first { "  " } else { " · " }, style));
-        right.push(Span::styled(
-            format!("{missing_count} ⌦"),
-            THEME.worktree_missing_style(selected),
-        ));
+        let missing_style = if selected {
+            THEME.selected_indicator_style()
+        } else {
+            THEME.worktree_missing_style(false)
+        };
+        right.push(Span::styled(format!("{missing_count} ⌦"), missing_style));
     }
     let merge_failed_count = repo
         .agents
@@ -157,9 +165,84 @@ fn collapsed_rollup(
         .count();
     if merge_failed_count > 0 {
         right.push(Span::styled(if first { "  " } else { " · " }, style));
+        let merge_failed_style = if selected {
+            THEME.selected_indicator_style()
+        } else {
+            THEME.merge_failed_style(false)
+        };
         right.push(Span::styled(
             format!("{merge_failed_count} merge-failed"),
-            THEME.merge_failed_style(selected),
+            merge_failed_style,
         ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::test_support;
+
+    fn rollup_repo() -> crate::model::RepoNode {
+        let dir = std::path::PathBuf::from("/tmp/repo_row_tests");
+        let mut running = test_support::agent("running", dir.join("running"));
+        running.status = Status::Running;
+        let mut waiting = test_support::agent("waiting", dir.join("waiting"));
+        waiting.status = Status::Waiting;
+        let mut missing = test_support::agent("missing", dir.join("missing"));
+        missing.worktree_missing = true;
+        let mut failed = test_support::agent("failed", dir.join("failed"));
+        failed.merge_error = Some("conflict".into());
+        test_support::repo(dir, vec![running, waiting, missing, failed])
+    }
+
+    #[test]
+    fn selected_rollup_has_no_background_gap() {
+        let repo = rollup_repo();
+        let mut right = Vec::new();
+        collapsed_rollup(&repo, true, THEME.selection_style(), &mut right);
+
+        // Status chunks, the worktree-missing chunk, and the merge-failed
+        // chunk all previously fell through to a style with no `bg`, leaving
+        // a hollow gap in the selection bar. Every span — separators
+        // included — must now carry the selection background.
+        assert!(!right.is_empty());
+        for span in &right {
+            assert_eq!(span.style.bg, Some(THEME.selection_bg));
+        }
+
+        // Full inversion (matching `indicator::primary_span`): every chunk —
+        // including the `Running` count, which would otherwise be green on
+        // the green selection background — loses its per-status colour on a
+        // selected row in favour of the reversed selection foreground.
+        for span in &right {
+            assert_eq!(span.style.fg, Some(THEME.selection_fg));
+        }
+    }
+
+    #[test]
+    fn unselected_rollup_keeps_per_status_colours() {
+        let repo = rollup_repo();
+        let mut right = Vec::new();
+        collapsed_rollup(&repo, false, THEME.hint_style(), &mut right);
+
+        assert!(!right.is_empty());
+        for span in &right {
+            assert_eq!(
+                span.style.bg, None,
+                "unselected rollup must not gain a background"
+            );
+        }
+
+        let running_chunk = right
+            .iter()
+            .find(|span| span.content.contains(Status::Running.glyph()))
+            .expect("running chunk present");
+        assert_eq!(running_chunk.style.fg, Some(THEME.running));
+
+        let waiting_chunk = right
+            .iter()
+            .find(|span| span.content.contains(Status::Waiting.glyph()))
+            .expect("waiting chunk present");
+        assert_eq!(waiting_chunk.style.fg, Some(THEME.waiting));
     }
 }

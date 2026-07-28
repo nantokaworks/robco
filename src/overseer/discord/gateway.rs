@@ -6,10 +6,11 @@ use super::{
     ledger_requests::LedgerRequest,
     localize::{LocalizeSpawner, SystemLocalizeSpawner, TitleCache},
     notify::{self, InFlight},
-    ops_agent::OpsAgent,
+    ops_agent::{OpsAgent, RouteOutcome},
     ops_gateway::process_effects,
     ops_session::SystemSessionSpawner,
     reactions,
+    typing::TypingKeepalive,
 };
 use crate::overseer::{
     config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir, triage_dir,
@@ -63,6 +64,7 @@ pub async fn run(
     let mut localize_cache = TitleCache::default();
     let mut in_flight: Option<InFlight> = None;
     let mut category_cache = CategoryCache::default();
+    let mut typing = TypingKeepalive::default();
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut retry_at = tokio::time::Instant::now();
     let mut retry_delay = Duration::from_secs(1);
@@ -107,6 +109,9 @@ pub async fn run(
                             extra_channel,
                             &mut executor,
                         ) {
+                            // Typing first, so the indicator appears with the
+                            // least latency; the reaction trail follows.
+                            typing.start(&http, &message_channel, message.channel_id).await;
                             for stage in reactions::handled_stages(handled.outcome) {
                                 reactions::react(&http, message.channel_id, message.id, stage).await;
                             }
@@ -127,19 +132,27 @@ pub async fn run(
                                 ).await;
                             }
                         } else {
-                            let effects = ops.route(
+                            match ops.route(
                                 &message_channel,
                                 &message.author.id.to_string(),
                                 &message.content,
                                 &message_id,
                                 &mut spawner,
                                 category_member,
-                            );
-                            if !effects.is_empty() {
-                                process_effects(
-                                    &http, notify::channel_id(&current), effects, &mut ops,
-                                    handler, &mut executor, now,
-                                ).await;
+                            ) {
+                                RouteOutcome::Ignored => {}
+                                // Both accepted outcomes carry their reaction
+                                // trail, so they are driven identically here;
+                                // the variants stay distinct because only
+                                // `Immediate` also carries a reply to post.
+                                RouteOutcome::Started(effects)
+                                | RouteOutcome::Immediate(effects) => {
+                                    typing.start(&http, &message_channel, message.channel_id).await;
+                                    process_effects(
+                                        &http, notify::channel_id(&current), effects, &mut ops,
+                                        handler, &mut executor, now,
+                                    ).await;
+                                }
                             }
                         }
                     }
@@ -164,6 +177,7 @@ pub async fn run(
                 );
                 let mut effects = ops.discover()?;
                 effects.extend(ops.poll());
+                typing.reconcile(&http, ops.active_chat_channels()).await;
                 let now = SystemTime::now().duration_since(UNIX_EPOCH)
                     .unwrap_or_default().as_secs();
                 process_effects(

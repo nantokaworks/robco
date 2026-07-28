@@ -196,7 +196,7 @@ fn thread_name(case_id: &str) -> String {
     format!("escalation-{case_id}").chars().take(90).collect()
 }
 
-fn parse_channel(raw: &str) -> Option<Id<ChannelMarker>> {
+pub(super) fn parse_channel(raw: &str) -> Option<Id<ChannelMarker>> {
     raw.parse::<u64>()
         .ok()
         .filter(|value| *value != 0)

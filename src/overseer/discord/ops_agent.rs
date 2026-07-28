@@ -66,6 +66,25 @@ pub(super) enum Effect {
     },
 }
 
+/// Outcome of routing an inbound message to the conversational ops agent.
+/// Distinct from a plain `Vec<Effect>` so the gateway can tell an ignored
+/// message (no typing indicator, no reaction) apart from one that started a
+/// session (typing indicator, reply arriving later). Both accepted variants
+/// carry the reaction trail the acceptance itself produces, so the caller
+/// never has to re-derive which stage the message reached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum RouteOutcome {
+    /// The message was not directed at the ops agent; produce no reply,
+    /// show no typing indicator, and post no reaction.
+    Ignored,
+    /// A session was spawned; its reply arrives later via `poll`. The
+    /// effects are the acknowledged/working reactions alone.
+    Started(Vec<Effect>),
+    /// An immediate reply is due (busy, at capacity, or spawn failure),
+    /// carried here alongside the reactions that accompany it.
+    Immediate(Vec<Effect>),
+}
+
 pub(super) struct OpsAgent {
     parent_channel: String,
     allowed_users: Vec<String>,
@@ -160,10 +179,11 @@ impl OpsAgent {
     /// `category::is_in_category`) since it requires a Discord HTTP fetch
     /// this synchronous, unit-testable routing logic has no business making.
     ///
-    /// Returns an empty `Vec` only when the message is ignored outright
-    /// (disallowed user/channel, empty body, or a `!`/`CONFIRM` prefix routed
-    /// elsewhere) — every accepted message yields at least an `Acknowledged`
-    /// reaction, so callers can use emptiness as the ignore signal.
+    /// Returns `RouteOutcome::Ignored` only when the message is ignored
+    /// outright (disallowed user/channel, empty body, or a `!`/`CONFIRM`
+    /// prefix routed elsewhere) — every accepted message yields at least an
+    /// `Acknowledged` reaction, so the variant alone tells the caller whether
+    /// to show a typing indicator without inspecting the effects.
     pub fn route(
         &mut self,
         channel_id: &str,
@@ -172,7 +192,7 @@ impl OpsAgent {
         message_id: &str,
         spawner: &mut dyn SessionSpawner,
         category_member: bool,
-    ) -> Vec<Effect> {
+    ) -> RouteOutcome {
         if !self.allowed_users.iter().any(|allowed| allowed == user_id)
             || (channel_id != self.parent_channel
                 && !self.is_thread(channel_id)
@@ -181,7 +201,7 @@ impl OpsAgent {
             || message.trim_start().starts_with('!')
             || message.trim_start().starts_with("CONFIRM ")
         {
-            return Vec::new();
+            return RouteOutcome::Ignored;
         }
         let case = self
             .state
@@ -200,28 +220,34 @@ impl OpsAgent {
             text: "The ops agent is handling another request; please retry shortly.".into(),
         };
         match self.sessions.start(channel_id, request, spawner) {
-            StartOutcome::Started => vec![
+            StartOutcome::Started => RouteOutcome::Started(vec![
                 acknowledged,
                 react_effect(channel_id, message_id, ReactionStage::Working),
-            ],
-            StartOutcome::Busy | StartOutcome::AtCapacity => vec![
+            ]),
+            StartOutcome::Busy | StartOutcome::AtCapacity => RouteOutcome::Immediate(vec![
                 acknowledged,
                 react_effect(channel_id, message_id, ReactionStage::Refused),
                 busy,
-            ],
-            StartOutcome::SpawnFailed(error) => vec![
+            ]),
+            StartOutcome::SpawnFailed(error) => RouteOutcome::Immediate(vec![
                 acknowledged,
                 react_effect(channel_id, message_id, ReactionStage::Failure),
                 Effect::Post {
                     channel_id: channel_id.into(),
                     text: format!("Ops agent could not start: {error}"),
                 },
-            ],
+            ]),
         }
     }
 
     pub fn poll(&mut self) -> Vec<Effect> {
         self.sessions.poll()
+    }
+
+    /// Channel ids with a chat session still outstanding, for the typing
+    /// indicator keepalive to reconcile against.
+    pub fn active_chat_channels(&self) -> impl Iterator<Item = &str> {
+        self.sessions.active_channels()
     }
 
     pub fn resolve_answer(
