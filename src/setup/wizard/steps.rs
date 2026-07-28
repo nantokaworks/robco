@@ -4,7 +4,7 @@ use crate::{
     Error, Result,
     cli::InstallTarget,
     config::{Config, Profile},
-    overseer::session::env as session_env,
+    overseer::{config::NotifyLevel, session::env as session_env},
     setup::install_targets,
 };
 
@@ -143,6 +143,7 @@ pub(crate) fn discord<R: BufRead, W: Write>(
     if !discord.enabled {
         return Ok(());
     }
+    discord.notify_level = notify_level(input, output, discord.notify_level)?;
     discord.channel_id = Some(prompt::validated_text(
         input,
         output,
@@ -196,6 +197,36 @@ pub(crate) fn discord<R: BufRead, W: Write>(
     let path = env_file
         .ok_or_else(|| Error::Wizard("cannot resolve the session env file location".into()))?;
     session_env::write_var(&path, &token_env, &token)
+}
+
+/// Offers the notification-verbosity level in place of the seven individual
+/// `notify_*` toggles, which the wizard has never surfaced one by one.
+/// Selecting a level here leaves those toggles unset, so they defer to it —
+/// see `overseer::config::notify_admits`.
+fn notify_level<R: BufRead, W: Write>(
+    input: &mut R,
+    output: &mut W,
+    current: NotifyLevel,
+) -> Result<NotifyLevel> {
+    const LEVELS: [NotifyLevel; 4] = [
+        NotifyLevel::Off,
+        NotifyLevel::Errors,
+        NotifyLevel::Summary,
+        NotifyLevel::All,
+    ];
+    let choices = ["off", "errors", "summary", "all"].map(str::to_string);
+    let default = LEVELS
+        .iter()
+        .position(|level| *level == current)
+        .unwrap_or(0);
+    let selected = prompt::select(
+        input,
+        output,
+        "Discord notification level",
+        &choices,
+        default,
+    )?;
+    Ok(LEVELS[selected])
 }
 
 pub(crate) fn digits(value: &str) -> bool {

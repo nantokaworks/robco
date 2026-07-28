@@ -134,7 +134,10 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let log = temp.path().join("decisions.jsonl");
         let cursor_path = temp.path().join("discord.cursor");
-        let mut first = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
+        // `task_started` rather than `pr_opened`: it fires at the
+        // `notify_level` default (`summary`), unlike `pr_opened` (`all`-tier),
+        // and this test is exercising cursor retry ordering, not gating.
+        let mut first = DecisionEntry::new(DecisionKind::Dispatch, "task_started");
         first.source = Some("daemon_event".into());
         logging::append_to(&log, &first).unwrap();
         for reason in ["one", "two"] {
@@ -147,7 +150,7 @@ mod tests {
         assert!(!cursor.complete(batch.remove(0), false).unwrap());
         let retry = VecDeque::from(cursor.next_batch(3).unwrap());
         assert_eq!(retry.len(), 3);
-        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "pr_opened");
+        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "task_started");
         let (count, notification) = next_notification(&DiscordConfig::default(), &retry);
         assert_eq!(count, 1);
         assert!(notification.is_some());
