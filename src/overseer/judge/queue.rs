@@ -111,22 +111,23 @@ impl JudgmentQueue {
     /// that has not.
     fn poll_active(&mut self) -> Vec<(Request, crate::overseer::session::SessionResult)> {
         let mut finished = Vec::new();
-        self.active.retain(|_, (request, handle)| match handle.try_recv() {
-            Ok(result) => {
-                finished.push((request.clone(), result));
-                false
-            }
-            Err(TryRecvError::Empty) => true,
-            Err(TryRecvError::Disconnected) => {
-                finished.push((
-                    request.clone(),
-                    crate::overseer::session::SessionResult::LaunchFailed(
-                        "judgment session thread disconnected".into(),
-                    ),
-                ));
-                false
-            }
-        });
+        self.active
+            .retain(|_, (request, handle)| match handle.try_recv() {
+                Ok(result) => {
+                    finished.push((request.clone(), result));
+                    false
+                }
+                Err(TryRecvError::Empty) => true,
+                Err(TryRecvError::Disconnected) => {
+                    finished.push((
+                        request.clone(),
+                        crate::overseer::session::SessionResult::LaunchFailed(
+                            "judgment session thread disconnected".into(),
+                        ),
+                    ));
+                    false
+                }
+            });
         finished
     }
 
