@@ -101,9 +101,9 @@ fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     for (title, expected) in [
-        ("auto-agt", "      ├──   "),
-        ("man-agt", "      ├── ○ "),
-        ("hand-made", "      └──   "),
+        ("auto-agt", "  ├──   "),
+        ("man-agt", "  ├── ○ "),
+        ("hand-made", "  └──   "),
     ] {
         assert!(
             row_containing(&rows, title).starts_with(expected),
@@ -124,9 +124,9 @@ fn an_agent_marker_reappears_when_it_stops_matching_its_repo() {
     let rows = rendered_rows(&app);
 
     for (title, expected) in [
-        ("auto-agt", "      ├── ● "),
-        ("man-agt", "      ├──   "),
-        ("hand-made", "      └──   "),
+        ("auto-agt", "  ├── ● "),
+        ("man-agt", "  ├──   "),
+        ("hand-made", "  └──   "),
     ] {
         assert!(
             row_containing(&rows, title).starts_with(expected),
@@ -174,6 +174,40 @@ fn an_agent_title_starts_right_of_its_repo_name() {
                 "{agent} title column {title} is not right of the repo name column {repo}"
             );
         }
+    }
+}
+
+/// `#327`: an agent row's connector must hang directly under the repo row's
+/// fold icon, not float clear of it. Checked under both `project_icon = none`
+/// (a single narrow triangle) and `project_icon = emoji` (a two-cell folder
+/// glyph) — an offset that only lines up by coincidence under the default
+/// config would still be wrong here.
+#[test]
+fn an_agent_connector_starts_under_the_repo_fold_icon() {
+    for icon in [
+        crate::config::ProjectIcon::None,
+        crate::config::ProjectIcon::Emoji,
+    ] {
+        let mut app = app_with_managed_workers();
+        app.config.project_icon = icon;
+        let rows = rendered_rows(&app);
+
+        let repo_row = row_containing(&rows, "repo");
+        let icon_byte = repo_row
+            .find(icon.marker(true))
+            .expect("repo row carries its fold icon");
+        let icon_column = repo_row[..icon_byte].chars().count();
+
+        let agent_row = row_containing(&rows, "auto-agt");
+        let connector_byte = agent_row
+            .find('├')
+            .expect("agent row carries its connector");
+        let connector_column = agent_row[..connector_byte].chars().count();
+
+        assert_eq!(
+            connector_column, icon_column,
+            "{icon:?}: connector column {connector_column} does not match fold icon column {icon_column}"
+        );
     }
 }
 
@@ -250,11 +284,11 @@ fn nested_agent_rows_draw_ancestor_guides() {
     let rows = rendered_rows(&app);
     // root-a has a later root sibling (root-b), so its own branch is `├` and
     // the guide it leaves behind for its descendants continues.
-    assert!(row_containing(&rows, "r-a").starts_with("      ├──   "));
+    assert!(row_containing(&rows, "r-a").starts_with("  ├──   "));
     // nested-a is root-a's only child (its own branch is `└`), but the guide
     // over root-a's column must still show `│`, not blank.
-    assert!(row_containing(&rows, "n-a").starts_with("      │ └──   "));
+    assert!(row_containing(&rows, "n-a").starts_with("  │ └──   "));
     // root-b is the last root-level agent, so its branch is `└` and nothing
     // precedes it.
-    assert!(row_containing(&rows, "r-b").starts_with("      └──   "));
+    assert!(row_containing(&rows, "r-b").starts_with("  └──   "));
 }

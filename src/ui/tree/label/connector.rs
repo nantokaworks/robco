@@ -14,6 +14,11 @@ use super::AGENT_INDENT;
 /// with a plain dash rather than a triangle — so its content starts at the
 /// same place an expandable sibling's does: nothing about the row shifts
 /// depending on whether it happens to have children.
+///
+/// Collapsed and expanded both point down — the direction the subtree
+/// actually opens — rather than collapsed pointing right and expanded
+/// pointing down, as `▸`/`▾` used to. Weight carries the state instead:
+/// hollow `▽` for collapsed, solid `▾` for expanded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ui::tree) enum TreeHandle {
     Leaf,
@@ -25,7 +30,7 @@ impl TreeHandle {
     fn glyph(self) -> &'static str {
         match self {
             Self::Leaf => "─",
-            Self::Collapsed => "▸",
+            Self::Collapsed => "▽",
             Self::Expanded => "▾",
         }
     }
@@ -48,10 +53,11 @@ fn connector(is_last: bool, handle: TreeHandle) -> String {
     format!("{arm}─{}", handle.glyph())
 }
 
-/// The connector prefix shared by every row that descends from an agent: the
-/// nesting step under the repo, one guide column per ancestor (continuing
-/// `│` or blank, per [`guide_column`]), then this row's own fused
-/// branch+handle glyph.
+/// The connector prefix shared by every row that descends from an agent:
+/// [`AGENT_INDENT`]'s (zero-width) nesting step so a depth-0 connector lands
+/// under the repo row's own fold icon, one guide column per ancestor
+/// (continuing `│` or blank, per [`guide_column`]), then this row's own
+/// fused branch+handle glyph.
 pub(super) fn tree_prefix(
     cursor: &str,
     ancestor_continues: &[bool],

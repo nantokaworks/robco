@@ -197,7 +197,7 @@ fn a_configured_language_survives_a_save_and_load_round_trip() {
 fn project_icon_defaults_and_maps_markers() {
     assert_eq!(ProjectIcon::default(), ProjectIcon::None);
     assert_eq!(ProjectIcon::None.marker(true), "▾");
-    assert_eq!(ProjectIcon::None.marker(false), "▸");
+    assert_eq!(ProjectIcon::None.marker(false), "▽");
     assert_eq!(ProjectIcon::Nerdfont.marker(true), "\u{f07c}");
     assert_eq!(ProjectIcon::Nerdfont.marker(false), "\u{f07b}");
     assert_eq!(ProjectIcon::Emoji.marker(true), "📂");

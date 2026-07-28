@@ -83,8 +83,11 @@ pub(super) fn build(
         right,
     )];
     if expanded && repo.agents.is_empty() {
+        // Eight columns: where an agent row's own title would start (cursor +
+        // separator + connector + separator + marker cell + separator), so the
+        // filler text sits where an actual agent title would.
         lines.push(Line::from(Span::styled(
-            format!("    {}(no agents)", label::AGENT_INDENT),
+            format!("        {}(no agents)", label::AGENT_INDENT),
             THEME.muted_style(),
         )));
     }
