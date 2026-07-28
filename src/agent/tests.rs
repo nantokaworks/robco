@@ -9,18 +9,18 @@ fn naming_slug_caps_at_word_boundary() {
 }
 
 #[test]
-fn naming_slug_keeps_the_source_and_number_when_capping() {
+fn naming_slug_keeps_the_number_and_source_when_capping() {
     // The number is what must survive the cap. Capping cuts at the last hyphen
-    // inside the budget, and the leading `dropr-<n>-` sits well inside it.
+    // inside the budget, and the leading `<n>-dropr-` sits well inside it.
     assert_eq!(
-        cap_name_slug("dropr-297-Lead-auto-created-worktree-branch-and-session-names"),
-        "dropr-297-Lead-auto-created"
+        cap_name_slug("297-dropr-Lead-auto-created-worktree-branch-and-session-names"),
+        "297-dropr-Lead-auto-created"
     );
     // A title carrying no hyphen of its own still cannot eat the prefix: the
-    // hyphen after the number is the boundary the cap falls back to.
+    // hyphen after the source is the boundary the cap falls back to.
     assert_eq!(
-        cap_name_slug("dropr-297-Leadautocreatedworktreebranchnames"),
-        "dropr-297"
+        cap_name_slug("297-dropr-Leadautocreatedworktreebranchnames"),
+        "297-dropr"
     );
 }
 
@@ -244,6 +244,7 @@ fn agent_titled(title: &str, branch: &str) -> AgentNode {
         id: "agent123".to_string(),
         parent_agent_id: None,
         title: title.to_string(),
+        task_number: None,
         worktree_path: "/tmp/wt".into(),
         branch: branch.to_string(),
         base_commit: String::new(),

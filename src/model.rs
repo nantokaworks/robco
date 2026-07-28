@@ -68,6 +68,13 @@ pub struct AgentNode {
     #[serde(default = "default_management_mode")]
     pub management: ManagementMode,
     pub title: String,
+    /// The bare dropr task number (e.g. `"333"`) an Overseer-dispatched worker
+    /// was created for, captured once at spawn time from the naming slug so
+    /// the tree row can lead with it without re-deriving it from `branch` or
+    /// `title` at render time. `None` for a manually-created or adopted agent,
+    /// which carries no dropr task number at all.
+    #[serde(default)]
+    pub task_number: Option<String>,
     pub worktree_path: PathBuf,
     pub branch: String,
     pub base_commit: String,
@@ -325,6 +332,7 @@ mod tests {
                 parent_agent_id: parent.map(str::to_string),
                 management: ManagementMode::Manual,
                 title: id.into(),
+                task_number: None,
                 worktree_path: PathBuf::from(id),
                 branch: id.into(),
                 base_commit: String::new(),
@@ -372,6 +380,7 @@ mod tests {
                 parent_agent_id: parent.map(str::to_string),
                 management: ManagementMode::Manual,
                 title: id.into(),
+                task_number: None,
                 worktree_path: PathBuf::from(id),
                 branch: id.into(),
                 base_commit: String::new(),
@@ -460,6 +469,7 @@ mod tests {
             parent_agent_id: None,
             management: ManagementMode::Manual,
             title: "task".into(),
+            task_number: None,
             worktree_path: "/tmp/task".into(),
             branch: "task".into(),
             base_commit: String::new(),

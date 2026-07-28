@@ -16,6 +16,7 @@ fn agent(id: &str) -> AgentNode {
         id: id.to_string(),
         parent_agent_id: None,
         title: id.to_string(),
+        task_number: None,
         worktree_path: format!("/worktrees/{id}").into(),
         branch: format!("feature/{id}"),
         base_commit: String::new(),

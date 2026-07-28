@@ -103,11 +103,17 @@ that hands it the claim Overseer already holds on its assigned dropr task, and r
 it to verify that claim rather than take one, report lifecycle changes, commit and push
 its branch, and open (but not merge) a pull request.
 
-All three names are built from one slug that leads with the task's source and number —
-dropr task `#295` becomes `dropr-295-<title>`, capped at 32 characters on a hyphen
-boundary. Leading with the source keeps the origin of the number readable and leaves the
-numbering space open for a second task source later. Existing workers keep the names they
-were created with; the shape applies to newly dispatched ones.
+All three names are built from one slug that leads with the task's number and source —
+dropr task `#295` becomes `295-dropr-<title>`, capped at 32 characters on a hyphen
+boundary. The number leads because it is what the operator actually scans a column of
+names for; the source segment right after it keeps the origin of the number readable and
+leaves the numbering space open for a second task source later. Existing workers keep the
+names they were created with; the shape applies to newly dispatched ones.
+
+An Overseer-dispatched agent's tree row leads with the same number (`#295 <title>`), read
+from the dropr display id captured once at spawn time rather than re-derived from the
+name above. A manually-created or adopted agent carries no such number and its row is
+unchanged.
 
 Overseer selects `worker_profile` when configured, otherwise `default_program`, and passes
 that profile's `autonomous_args`. With the built-in profiles these are the client's

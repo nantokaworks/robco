@@ -112,6 +112,7 @@ mod tests {
                 id: "agent".into(),
                 parent_agent_id: None,
                 title: "task".into(),
+                task_number: None,
                 worktree_path: worktree_path.into(),
                 branch: "task".into(),
                 base_commit: String::new(),

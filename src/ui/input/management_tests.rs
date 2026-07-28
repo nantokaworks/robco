@@ -12,6 +12,7 @@ fn worker(parent: Option<&str>, management: ManagementMode) -> AgentNode {
         parent_agent_id: parent.map(str::to_string),
         management,
         title: "worker".into(),
+        task_number: None,
         worktree_path: "/tmp/worker-1".into(),
         branch: "worker-1".into(),
         base_commit: "abc123".into(),

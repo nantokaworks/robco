@@ -214,7 +214,7 @@ mod tests {
         // here is that a dispatched candidate is numbered from dropr.
         assert_eq!(
             name_slug(&candidate("#295", "Add a top-level language config")).as_deref(),
-            Some("dropr-295-Add-a-top-level-language-config")
+            Some("295-dropr-Add-a-top-level-language-config")
         );
         assert_eq!(name_slug(&candidate("", "Add a config")), None);
     }

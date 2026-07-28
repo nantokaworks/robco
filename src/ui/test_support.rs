@@ -19,6 +19,7 @@ pub(in crate::ui) fn agent(id: &str, worktree_path: PathBuf) -> AgentNode {
         parent_agent_id: None,
         management: ManagementMode::Manual,
         title: id.to_string(),
+        task_number: None,
         worktree_path,
         branch: format!("robco/{id}"),
         base_commit: String::new(),

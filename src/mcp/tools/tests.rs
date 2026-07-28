@@ -21,6 +21,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
                 id: id.to_string(),
                 parent_agent_id: None,
                 title: "task".to_string(),
+                task_number: None,
                 worktree_path: "/repo-wt".into(),
                 branch: "task".to_string(),
                 base_commit: "abc".to_string(),

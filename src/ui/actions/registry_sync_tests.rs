@@ -36,6 +36,7 @@ fn agent(id: &str) -> AgentNode {
         parent_agent_id: None,
         management: ManagementMode::Auto,
         title: id.to_string(),
+        task_number: None,
         worktree_path: PathBuf::from(format!("/wt/{id}")),
         branch: id.to_string(),
         base_commit: String::new(),

@@ -33,6 +33,7 @@ fn dummy_agent() -> AgentNode {
         parent_agent_id: None,
         management: ManagementMode::Manual,
         title: "t".to_string(),
+        task_number: None,
         worktree_path: "/tmp/wt".into(),
         branch: "b".to_string(),
         base_commit: String::new(),
