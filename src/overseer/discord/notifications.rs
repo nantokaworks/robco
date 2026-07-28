@@ -121,8 +121,10 @@ mod tests {
         let mut entry = DecisionEntry::new(DecisionKind::Escalate, "task_escalated");
         entry.source = Some("daemon_event".into());
 
-        let mut config = DiscordConfig::default();
-        config.notify_escalation = false;
+        let config = DiscordConfig {
+            notify_escalation: false,
+            ..DiscordConfig::default()
+        };
         assert!(
             from_decision(&config, &entry).is_some(),
             "task_escalated must be gated by notify_task_finished, not notify_escalation"

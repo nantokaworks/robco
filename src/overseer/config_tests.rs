@@ -25,6 +25,7 @@ fn a_discord_config_written_before_task_lifecycle_events_existed_defaults_them_o
     let config: DiscordConfig = serde_json::from_str(raw).unwrap();
     assert!(config.notify_task_started);
     assert!(config.notify_task_finished);
+    assert!(config.notify_localize);
     assert_eq!(config.channel_id.as_deref(), Some("1"));
 }
 

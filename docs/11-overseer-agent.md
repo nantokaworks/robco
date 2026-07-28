@@ -256,6 +256,7 @@ always has.
       "notify_worker_blocked": true,
       "notify_task_started": true,
       "notify_task_finished": true,
+      "notify_localize": true,
       "action_limit_per_hour": 30,
       "confirmation_ttl_secs": 120
     }
@@ -316,6 +317,7 @@ always has.
 | `notify_worker_blocked` | boolean | `true` | Sends worker-blocked daemon event notifications. |
 | `notify_task_started` | boolean | `true` | Sends a notification when a ledger entry is newly dispatched. |
 | `notify_task_finished` | boolean | `true` | Sends a notification when a ledger entry newly reaches `failed` or `escalated`. `merged` keeps its own `notify_merged` toggle above; this one covers the two remaining terminal outcomes under a single switch. |
+| `notify_localize` | boolean | `true` | Runs notification titles and descriptions through an LLM pass in the top-level [`language`](09-config-reference.md#language) before posting. No effect while `language` is unset or blank — the pass is always skipped then, regardless of this key. A localization failure (timeout, launch failure, malformed result) still delivers the English text; nothing is ever dropped. |
 | `action_limit_per_hour` | non-negative integer | `30` | Maximum mutating Discord actions in a rolling hour. Attempts count when execution begins. |
 | `confirmation_ttl_secs` | non-negative integer | `120` | Lifetime of an impactful command's confirmation nonce. |
 

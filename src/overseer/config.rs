@@ -232,6 +232,13 @@ pub struct DiscordConfig {
     /// phase other than `merged` (`failed` or `escalated`), which already
     /// has its own `merged` event. One toggle covers both outcomes.
     pub notify_task_finished: bool,
+    /// Runs notification titles and descriptions through an LLM pass in
+    /// `language` before posting. Independent of `language` itself, which
+    /// also governs the ops-agent reply and every worker/judge prompt — an
+    /// operator may want those localized but keep templated notifications
+    /// in English for speed and cost. Has no effect while `language` is
+    /// unset or blank; the pass is skipped either way.
+    pub notify_localize: bool,
     pub action_limit_per_hour: usize,
     pub confirmation_ttl_secs: u64,
 }
@@ -250,6 +257,7 @@ impl Default for DiscordConfig {
             notify_worker_blocked: true,
             notify_task_started: true,
             notify_task_finished: true,
+            notify_localize: true,
             action_limit_per_hour: 30,
             confirmation_ttl_secs: 120,
         }

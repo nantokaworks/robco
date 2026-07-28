@@ -3,18 +3,16 @@ use super::{
     cursor::DecisionCursor,
     handler::Handler,
     ledger_requests::LedgerRequest,
-    notifications::{Notification, digest, from_decision},
+    localize::{LocalizeSpawner, SystemLocalizeSpawner, TitleCache},
+    notify::{self, InFlight},
     ops_agent::OpsAgent,
     ops_gateway::process_effects,
     ops_session::SystemSessionSpawner,
 };
 use crate::overseer::{
-    config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir,
-    logging::DecisionKind, triage_dir,
+    config::DiscordConfig, decision_log_path, discord_cursor_path, discord_ops_dir, triage_dir,
 };
-use serde_json::json;
 use std::{
-    collections::VecDeque,
     sync::{
         Arc, RwLock,
         atomic::{AtomicBool, Ordering},
@@ -25,7 +23,6 @@ use std::{
 use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt as _};
 use twilight_http::Client;
 use twilight_model::{
-    channel::message::embed::Embed,
     guild::Permissions,
     id::{Id, marker::ChannelMarker},
 };
@@ -59,6 +56,10 @@ pub async fn run(
         ops_root.join("threads.json"),
     )?;
     let mut spawner = SystemSessionSpawner::new(ops_root.join("sessions"));
+    let mut localize_spawner: Box<dyn LocalizeSpawner> =
+        Box::new(SystemLocalizeSpawner::new(ops_root.join("localize")));
+    let mut localize_cache = TitleCache::default();
+    let mut in_flight: Option<InFlight> = None;
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let mut retry_at = tokio::time::Instant::now();
     let mut retry_delay = Duration::from_secs(1);
@@ -95,7 +96,7 @@ pub async fn run(
                                     Vec::new()
                                 };
                                 process_effects(
-                                    &http, channel_id(&current), effects, &mut ops,
+                                    &http, notify::channel_id(&current), effects, &mut ops,
                                     handler, &mut executor, now,
                                 ).await;
                             }
@@ -106,7 +107,7 @@ pub async fn run(
                             &mut spawner,
                         ) {
                             process_effects(
-                                &http, channel_id(&current), vec![effect], &mut ops,
+                                &http, notify::channel_id(&current), vec![effect], &mut ops,
                                 handler, &mut executor, now,
                             ).await;
                         }
@@ -134,92 +135,16 @@ pub async fn run(
                 let now = SystemTime::now().duration_since(UNIX_EPOCH)
                     .unwrap_or_default().as_secs();
                 process_effects(
-                    &http, channel_id(&current), effects, &mut ops,
+                    &http, notify::channel_id(&current), effects, &mut ops,
                     handler, &mut executor, now,
                 ).await;
-                let pending = cursor.next_batch(500).map_err(|error| error.to_string())?;
-                let mut pending = bounded_batch(pending, 20);
-                while !pending.is_empty() {
-                    let (count, notification) = next_notification(&current, &pending);
-                    let delivered = match (notification, channel_id(&current)) {
-                        (Some(notification), Some(channel)) => {
-                            send_embed(&http, channel, notification).await
-                        }
-                        (Some(_), None) => false,
-                        (None, _) => true,
-                    };
-                    if !delivered {
-                        retry_at = tokio::time::Instant::now() + retry_delay;
-                        retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
-                        break;
-                    }
-                    let mut completed = None;
-                    for _ in 0..count {
-                        completed = pending.pop_front();
-                    }
-                    cursor.complete(
-                        completed.expect("planned pending decision"),
-                        true,
-                    ).map_err(|error| error.to_string())?;
-                    retry_delay = Duration::from_secs(1);
-                }
+                notify::deliver(
+                    &http, &current, &mut cursor, &mut *localize_spawner, &mut localize_cache,
+                    &mut in_flight, &mut retry_at, &mut retry_delay,
+                ).await?;
             }
         }
     }
-}
-
-pub(super) fn bounded_batch(
-    pending: Vec<super::cursor::PendingDecision>,
-    limit: usize,
-) -> VecDeque<super::cursor::PendingDecision> {
-    let mut end = pending.len().min(limit);
-    if end == 0 {
-        return VecDeque::new();
-    }
-    while end < pending.len()
-        && pending[end - 1].entry.as_ref().is_some_and(is_digest_entry)
-        && pending[end].entry.as_ref().is_some_and(is_digest_entry)
-    {
-        end += 1;
-    }
-    pending.into_iter().take(end).collect()
-}
-
-pub(super) fn next_notification(
-    config: &DiscordConfig,
-    pending: &VecDeque<super::cursor::PendingDecision>,
-) -> (usize, Option<Notification>) {
-    let first = pending.front().expect("non-empty pending decisions");
-    if first.entry.as_ref().is_some_and(is_digest_entry) {
-        let entries = pending
-            .iter()
-            .map(|item| item.entry.as_ref())
-            .take_while(|entry| entry.is_some_and(is_digest_entry))
-            .flatten()
-            .cloned()
-            .collect::<Vec<_>>();
-        return (entries.len(), digest(config, &entries));
-    }
-    (
-        1,
-        first
-            .entry
-            .as_ref()
-            .and_then(|entry| from_decision(config, entry)),
-    )
-}
-
-fn is_digest_entry(entry: &crate::overseer::logging::DecisionEntry) -> bool {
-    entry.source.as_deref() != Some("discord")
-        && matches!(
-            entry.kind,
-            DecisionKind::Escalate | DecisionKind::CircuitOpen
-        )
-}
-
-fn channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {
-    let raw = config.channel_id.as_deref()?.parse::<u64>().ok()?;
-    (raw != 0).then(|| Id::new(raw))
 }
 
 pub(super) async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &str) -> bool {
@@ -228,28 +153,6 @@ pub(super) async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &
         Ok(_) => true,
         Err(error) => {
             eprintln!("overseer: Discord response failed: {error}");
-            false
-        }
-    }
-}
-
-async fn send_embed(http: &Client, channel: Id<ChannelMarker>, notification: Notification) -> bool {
-    let embed: Embed = match serde_json::from_value(json!({
-        "title": notification.title,
-        "description": notification.description,
-        "color": notification.color,
-        "type": "rich"
-    })) {
-        Ok(embed) => embed,
-        Err(error) => {
-            eprintln!("overseer: Discord embed construction failed: {error}");
-            return false;
-        }
-    };
-    match http.create_message(channel).embeds(&[embed]).await {
-        Ok(_) => true,
-        Err(error) => {
-            eprintln!("overseer: Discord notification failed: {error}");
             false
         }
     }
