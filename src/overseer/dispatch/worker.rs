@@ -5,6 +5,7 @@ use crate::overseer::{
     OVERSEER_AGENT_ID,
     ledger::{Ledger, LedgerEntry, LedgerPhase},
     logging::DecisionKind,
+    other_prs::OtherPrs,
     templates::worker_prompt,
 };
 use crate::{Result, config::Config, spawn};
@@ -34,6 +35,14 @@ pub(super) fn spawn_candidate(
     // one just claimed.
     if super::has_active_worker(ledger, &task.task_id, &task.display_id) {
         return Ok(SpawnOutcome::Held("active_worker".into()));
+    }
+    // The ledger only knows what the overseer itself dispatched, so a task an
+    // outside agent already finished never shows up as `active_worker` above.
+    // This is the same blind spot dropr task #350 surfaces for display — here
+    // it stops a worker from starting on work a pull request already covers,
+    // whatever the dropr task's own status still says (dropr task #354).
+    if let Some(reason) = closed_elsewhere(&OtherPrs::load()?, task) {
+        return Ok(SpawnOutcome::Held(reason));
     }
     // A prior attempt at this same task can leave its branch behind — most
     // commonly the escalated case, where the worker finished and opened a pull
@@ -151,101 +160,16 @@ fn name_slug(task: &Candidate) -> Option<String> {
     naming::name_slug(TaskSource::Dropr, &task.display_id, &task.title)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::overseer::config::OverseerConfig;
-    use crate::overseer::dispatch::plan_dispatch;
-    use std::collections::HashMap;
-
-    fn entry(task_id: &str, retries: u32) -> LedgerEntry {
-        LedgerEntry {
-            task_id: task_id.into(),
-            display_id: "#1".into(),
-            repo: "/repo".into(),
-            agent_id: "auto-agent".into(),
-            branch: "branch".into(),
-            phase: LedgerPhase::Failed,
-            dispatched_at: Utc::now(),
-            settled_at: None,
-            retries,
-            pr_url: None,
-            branch_updates: 0,
-            merge_recovery: Default::default(),
-            merge_hold: Default::default(),
-            manual_merge_skip: None,
-            merge_judge_fail_safes: 0,
-            merge_hold_cap_escalated: false,
-            merge_hold_rechecks: 0,
-            merge_hold_recheck_reason: None,
-            merge_hold_recheck_head: None,
-        }
-    }
-
-    #[test]
-    fn a_failed_spawn_still_counts_against_max_retries() {
-        // The attempt is recorded before the spawn runs, so an attempt that never
-        // reaches a ledger entry of its own still bounds the next pass.
-        let mut ledger = Ledger::default();
-        ledger.entries.push(entry("task-1", 0));
-
-        assert_eq!(record_attempt(&mut ledger, "task-1", "#1"), 1);
-        assert_eq!(ledger.entries[0].retries, 1);
-
-        let plan = plan_dispatch(
-            &OverseerConfig::default(),
-            &ledger,
-            &[Candidate {
-                task_id: "task-1".into(),
-                display_id: "#1".into(),
-                title: "task".into(),
-                repo: "/repo".into(),
-                author: "allowed".into(),
-                priority: "medium".into(),
-                workspace: "workspace-1".into(),
-                priority_score: None,
-                status: "open".into(),
-            }],
-            Utc::now(),
-            &HashMap::new(),
-        );
-        assert_eq!(plan.decisions[0].reason, "max_retries");
-        assert!(!plan.decisions[0].dispatch);
-    }
-
-    fn candidate(display_id: &str, title: &str) -> Candidate {
-        Candidate {
-            task_id: "23O9SkXUps3lOIHuXvj4Z".into(),
-            display_id: display_id.into(),
-            title: title.into(),
-            repo: "/repo".into(),
-            author: "allowed".into(),
-            priority: "medium".into(),
-            workspace: "workspace-1".into(),
-            priority_score: None,
-            status: "open".into(),
-        }
-    }
-
-    #[test]
-    fn a_candidate_is_named_from_its_dropr_number() {
-        // Shape coverage lives with the slug itself in `naming`; what matters
-        // here is that a dispatched candidate is numbered from dropr.
-        assert_eq!(
-            name_slug(&candidate("#295", "Add a top-level language config")).as_deref(),
-            Some("295-dropr-Add-a-top-level-language-config")
-        );
-        assert_eq!(name_slug(&candidate("", "Add a config")), None);
-    }
-
-    #[test]
-    fn attempts_are_counted_across_both_identifiers() {
-        let mut ledger = Ledger::default();
-        ledger.entries.push(entry("task-1", 0));
-        // An entry recorded under the display id belongs to the same task.
-        ledger.entries.push(entry("#1", 0));
-
-        assert_eq!(record_attempt(&mut ledger, "task-1", "#1"), 2);
-        assert!(ledger.entries.iter().all(|entry| entry.retries == 2));
-    }
+/// A skip reason, named after the pull request, when `other_prs` already
+/// carries one that closes `task` — separated from `spawn_candidate` so this
+/// decision is tested against an in-memory fixture rather than the real
+/// `~/.robco/overseer/other_prs.json`.
+fn closed_elsewhere(other_prs: &OtherPrs, task: &Candidate) -> Option<String> {
+    other_prs
+        .closing(&task.repo, &task.display_id)
+        .map(|pr| format!("pr_closes_task:{}", pr.url))
 }
+
+#[cfg(test)]
+#[path = "worker_tests.rs"]
+mod tests;
