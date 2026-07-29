@@ -79,6 +79,15 @@ pub(in crate::ui::tree) fn supplementary_spans(
         };
         spans.push(Span::styled(format!("{prefix}merge-failed"), style));
     }
+    if supplementary.needs_decision {
+        let prefix = if spans.is_empty() { gap } else { " " };
+        let style = if selected {
+            sel
+        } else {
+            THEME.needs_decision_style(false)
+        };
+        spans.push(Span::styled(format!("{prefix}blocked"), style));
+    }
     spans
 }
 
@@ -106,6 +115,7 @@ mod tests {
             SupplementaryIndicators {
                 worktree_missing: true,
                 merge_failed: true,
+                needs_decision: true,
             },
             true,
             " ",
@@ -114,5 +124,21 @@ mod tests {
             assert_eq!(span.style.bg, Some(THEME.selection_bg));
             assert_eq!(span.style.fg, Some(THEME.selection_fg));
         }
+    }
+
+    #[test]
+    fn needs_decision_renders_a_blocked_badge() {
+        let spans = supplementary_spans(
+            None,
+            SupplementaryIndicators {
+                worktree_missing: false,
+                merge_failed: false,
+                needs_decision: true,
+            },
+            false,
+            " ",
+        );
+        let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
+        assert_eq!(text, " blocked");
     }
 }

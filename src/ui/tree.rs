@@ -77,6 +77,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.merging = app.is_merging_agent(&repo.path, &agent.id);
                 indicator_state.worktree_missing = agent.worktree_missing;
                 indicator_state.merge_failed = agent.merge_error.is_some();
+                // Gated on the agent not actually running: a worker that has
+                // resumed real work (spinner motion) has moved past whatever
+                // report put it in this state, and the pane is the more
+                // current signal at that point.
+                indicator_state.needs_decision = agent.status != Status::Running
+                    && app.overseer_snapshot.blocked_reason(&agent.id).is_some();
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.mcp_active = agent.mcp_active;
                 indicator_state.subagents_active = active;

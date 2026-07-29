@@ -1,10 +1,12 @@
 //! A cross-process, per-repository merge lock.
 //!
-//! The merge sequence races on the target repository's base branch and working
-//! tree, so only one may run against a repository at a time. The TUI already
-//! serialises its own merges in memory, but the MCP server and the TUI are
-//! separate processes and neither can see the other's state — the lock is what
-//! makes that guarantee hold across both.
+//! The merge sequence races on the target repository's base branch, so only
+//! one may run against a repository at a time. The TUI already serialises its
+//! own merges in memory, but the MCP server and the TUI are separate
+//! processes and neither can see the other's state — the lock is what makes
+//! that guarantee hold across both. The sequence itself never touches the
+//! repository's working tree, so this lock is about robco processes racing
+//! each other, not about protecting whatever an operator has checked out.
 //!
 //! It is an advisory `flock`, so the kernel drops it when the holder exits.
 //! There is no stale lock to reap and no pid to second-guess: a robco that

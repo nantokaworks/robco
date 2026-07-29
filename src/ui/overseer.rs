@@ -97,6 +97,14 @@ impl OverseerSnapshot {
     pub(in crate::ui) fn circuit_open(&self) -> bool {
         self.ledger.counters.consecutive_failures >= self.overseer.failure_circuit_threshold
     }
+
+    /// The reason `agent_id`'s worker still needs a human decision, or `None`
+    /// once the Overseer has closed the loop on its own. See
+    /// [`decisions::blocked_reason`] for why the ledger phase alone cannot
+    /// answer this.
+    pub(in crate::ui) fn blocked_reason(&self, agent_id: &str) -> Option<String> {
+        decisions::blocked_reason(&self.ledger, &self.decisions, agent_id)
+    }
 }
 
 pub(super) fn active_worker_management(app: &App) -> Vec<WorkerManagement> {

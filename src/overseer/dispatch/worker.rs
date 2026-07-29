@@ -223,6 +223,7 @@ mod tests {
                 priority: "medium".into(),
                 workspace: "workspace-1".into(),
                 priority_score: None,
+                status: "open".into(),
             }],
             Utc::now(),
             &HashMap::new(),
@@ -241,6 +242,7 @@ mod tests {
             priority: "medium".into(),
             workspace: "workspace-1".into(),
             priority_score: None,
+            status: "open".into(),
         }
     }
 
