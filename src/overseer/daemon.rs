@@ -1,5 +1,6 @@
 mod check_rollup;
 mod discord_events;
+mod external_prs;
 mod merge;
 mod merge_apply;
 mod merge_decision;
@@ -109,6 +110,11 @@ pub async fn run_daemon() -> Result<()> {
             observed.errors.push(ObservationError::new(format!(
                 "snapshot write failed: {error}"
             )));
+        }
+        // Best-effort and self-contained: a failure here must not interrupt
+        // dispatch or merging, so it is logged rather than propagated.
+        if let Err(error) = external_prs::refresh_pass(&ledger, now) {
+            logging::log_message(None, &format!("other-PR discovery failed: {error}"))?;
         }
         let (mut next, actions) =
             reconcile(&ledger, &observed, now, config.overseer.stuck_after_mins);

@@ -2,7 +2,7 @@ use std::{fs, time::Instant, time::SystemTime};
 
 use crate::{
     config::Config,
-    overseer::{dismissals::Dismissals, ledger::Ledger, logging},
+    overseer::{dismissals::Dismissals, ledger::Ledger, logging, other_prs::OtherPrs},
     registry::Registry,
 };
 
@@ -20,6 +20,7 @@ pub(super) struct OverseerResult {
 
 pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> OverseerResult {
     let ledger = Ledger::load().unwrap_or_default();
+    let other_prs = OtherPrs::load().unwrap_or_default();
     let decisions = logging::tail(DECISION_SNAPSHOT_LIMIT).unwrap_or_default();
     let reports = inbox::question_reports(registry);
     let inbox = inbox::aggregate(
@@ -57,6 +58,7 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
         snapshot: OverseerSnapshot {
             overseer,
             ledger,
+            other_prs,
             decisions,
             daemon_alive,
             heartbeat_age,

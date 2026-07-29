@@ -18,6 +18,7 @@ pub mod judge;
 pub mod ledger;
 pub mod logging;
 pub mod monitor;
+pub mod other_prs;
 pub(crate) mod remedy;
 pub mod review;
 pub mod runtime_request;
@@ -149,6 +150,13 @@ pub fn heartbeat_path() -> Result<PathBuf> {
 
 pub fn snapshots_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("observations.jsonl"))
+}
+
+/// Pull requests discovered in a watched repository that Overseer did not
+/// dispatch — see [`other_prs`]. Its own file, deliberately apart from
+/// `ledger.json`: the ledger records only what Overseer itself dispatched.
+pub fn other_prs_path() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("other_prs.json"))
 }
 
 /// Whether the dispatch pass's ready-candidate gather found the board
