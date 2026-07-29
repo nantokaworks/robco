@@ -8,6 +8,7 @@ fn task(display_id: &str) -> DroprTaskCandidate {
         priority: String::new(),
         status: "open".to_owned(),
         priority_score: None,
+        blocked_reason: None,
     }
 }
 

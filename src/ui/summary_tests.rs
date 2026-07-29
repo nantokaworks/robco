@@ -85,6 +85,7 @@ fn a_linked_repo_names_its_workspace_and_lists_its_tasks() {
         priority: "high".into(),
         status: "open".into(),
         priority_score: None,
+        blocked_reason: None,
     }]);
 
     let lines = rendered(&repo(Some(workspace()), tasks));

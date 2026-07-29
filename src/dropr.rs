@@ -33,6 +33,13 @@ pub struct DroprTaskCandidate {
     /// every candidate from that feed carries `None` until the CLI grows it.
     #[serde(default)]
     pub priority_score: Option<i64>,
+    /// The reason text from the task's unresolved `blocker` scribble, when the
+    /// task is `blocked` and the fetch found one. `task_list` never returns
+    /// this itself — `dropr::repo_tasks` fills it in with a separate lookup
+    /// after the task walk settles. `None` for a task that is not blocked, or
+    /// when the lookup found or asked nothing.
+    #[serde(default)]
+    pub blocked_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
