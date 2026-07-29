@@ -14,6 +14,7 @@ use crossterm::{
 use crate::{
     Result,
     config::Config,
+    locale::Locale,
     model::{ManagementMode, Selection},
     registry::Registry,
 };
@@ -216,6 +217,10 @@ fn default_pane(selection: Option<Selection>) -> PreviewPane {
 pub struct App {
     pub(crate) registry: Registry,
     pub(crate) config: Config,
+    /// Resolved once from `config.language` at construction time — see
+    /// `crate::locale::Locale::resolve`. Every localized render call site
+    /// reads this instead of re-resolving `config.language` itself.
+    pub(crate) locale: Locale,
     pub(crate) ephemeral_root: Option<PathBuf>,
     pub(crate) selected: usize,
     pub(crate) expanded: Vec<bool>,
@@ -315,9 +320,11 @@ impl App {
         let other_collapsed = saved.other_collapsed;
         let orphans_collapsed = saved.orphans_collapsed;
         let overseer_visible = list::overseer_is_visible();
+        let locale = Locale::resolve(config.language.as_deref());
         let mut app = Self {
             registry,
             config,
+            locale,
             ephemeral_root,
             selected: 0,
             expanded,

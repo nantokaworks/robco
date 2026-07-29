@@ -6,8 +6,10 @@ use ratatui::{
     text::{Line, Span},
 };
 
+use crate::locale::{Locale, t};
 use crate::model::ManagementMode;
 use crate::overseer::{
+    CIRCUIT_OPEN_HINT, DISPATCH_STOPPED_HINT, DISPATCH_WITHOUT_DAEMON_HINT,
     config::{OverseerConfig, ProtectionMode},
     ledger::{Ledger, LedgerPhase},
     logging::DecisionEntry,
@@ -17,6 +19,9 @@ use crate::registry::Registry;
 use super::WorkerManagement;
 use crate::ui::theme::DEFAULT as THEME;
 
+// `locale` pushed this past clippy's 7-argument default; each argument is
+// already an independent piece of `category_detail`'s `&App` snapshot.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn append_health(
     lines: &mut Vec<Line<'static>>,
     config: &OverseerConfig,
@@ -25,6 +30,7 @@ pub(super) fn append_health(
     heartbeat_age: Option<Duration>,
     daemon_version: Option<&str>,
     version_drift: Option<&str>,
+    locale: Locale,
 ) {
     lines.push(flags_line(&[
         (
@@ -85,13 +91,13 @@ pub(super) fn append_health(
         lines.push(warning(drift));
     }
     if dispatch_without_daemon {
-        lines.push(warning(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
+        lines.push(warning(t(locale, DISPATCH_WITHOUT_DAEMON_HINT)));
     }
     if !config.dispatch_enabled && alive && !circuit_open {
-        lines.push(warning(crate::overseer::DISPATCH_STOPPED_HINT));
+        lines.push(warning(t(locale, DISPATCH_STOPPED_HINT)));
     }
     if circuit_open {
-        lines.push(warning(crate::overseer::CIRCUIT_OPEN_HINT));
+        lines.push(warning(t(locale, CIRCUIT_OPEN_HINT)));
     }
     // Gated on auto-merge, like the red `autonomy` flag above: the envelope only
     // decides anything while the merge pass runs, so warning about it otherwise
@@ -99,7 +105,7 @@ pub(super) fn append_health(
     if config.auto_merge
         && let Some(hint) = config.autonomy_level.envelope_warning()
     {
-        lines.push(warning(hint));
+        lines.push(warning(t(locale, hint)));
     }
     lines.push(Line::default());
 }

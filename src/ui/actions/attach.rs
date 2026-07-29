@@ -1,5 +1,6 @@
 use crate::{
     Result, agent,
+    locale::{fmt, t},
     model::{Selection, Status},
     overseer, tmux,
 };
@@ -30,7 +31,7 @@ impl App {
             if let Some(session) = session {
                 self.attach_session(&session);
             } else {
-                self.show_message("no live session in this child worktree");
+                self.show_message(t(self.locale, "no live session in this child worktree"));
             }
             return Ok(());
         }
@@ -43,7 +44,7 @@ impl App {
         };
         let selected = self.registry.repos[repo].agents[agent_idx].clone();
         if selected.status == Status::BranchOnly {
-            self.show_message(format!("branch remains: {}", selected.branch));
+            self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
             return Ok(());
         }
         match agent::ensure_agent_session(&selected) {
@@ -61,7 +62,7 @@ impl App {
             }) => {
                 let selected = self.registry.repos[repo].agents[agent_idx].clone();
                 if selected.status == Status::BranchOnly {
-                    self.show_message(format!("branch remains: {}", selected.branch));
+                    self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
                     return Ok(());
                 }
                 match agent::ensure_shell_session(&selected) {
@@ -110,7 +111,7 @@ impl App {
             }) => {
                 let selected = self.registry.repos[repo].agents[agent_idx].clone();
                 if selected.status == Status::BranchOnly {
-                    self.show_message(format!("branch remains: {}", selected.branch));
+                    self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
                     return Ok(());
                 }
                 match agent::ensure_agent_session(&selected) {
@@ -143,7 +144,7 @@ impl App {
             tmux::send_keys(&session, &["Enter"])
         });
         match result {
-            Ok(()) => self.show_message("instruction sent to overseer control"),
+            Ok(()) => self.show_message(t(self.locale, "instruction sent to overseer control")),
             Err(err) => self.show_message(err.to_string()),
         }
     }
@@ -195,11 +196,14 @@ impl App {
                 DroprTaskReload::OverlayUnavailable => "dropr workspace listing unavailable",
                 DroprTaskReload::OverlayDisabled => "dropr overlay is disabled",
             };
-            self.show_message(message);
+            self.show_message(t(self.locale, message));
             return Ok(());
         }
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
-            self.show_message("restart is not available for child worktrees");
+            self.show_message(t(
+                self.locale,
+                "restart is not available for child worktrees",
+            ));
             return Ok(());
         }
         if let Some(Selection::Agent {
@@ -209,15 +213,18 @@ impl App {
         {
             let selected = self.registry.repos[repo].agents[agent_idx].clone();
             if self.is_merging_agent(&self.registry.repos[repo].path, &selected.id) {
-                self.show_message("cannot restart an agent while it is merging");
+                self.show_message(t(
+                    self.locale,
+                    "cannot restart an agent while it is merging",
+                ));
                 return Ok(());
             }
             if selected.status == Status::BranchOnly {
-                self.show_message(format!("branch remains: {}", selected.branch));
+                self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
                 return Ok(());
             }
             match agent::restart_agent(&selected) {
-                Ok(()) => self.show_message(format!("restarted {}", selected.title)),
+                Ok(()) => self.show_message(fmt(self.locale, "restarted {}", &[&selected.title])),
                 Err(err) => self.show_message(err.to_string()),
             }
         }

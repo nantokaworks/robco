@@ -7,6 +7,7 @@ use super::super::{
     App, Mode, error_dialog, help, input::management, input_wrap, spinner, text_input::TextInput,
     theme::DEFAULT as THEME,
 };
+use crate::locale::{Locale, fmt, t};
 
 /// A dialog's title and body, plus where the text caret belongs inside it.
 pub(super) struct DialogContent {
@@ -18,57 +19,71 @@ pub(super) struct DialogContent {
 }
 
 pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
+    let locale = app.locale;
     let content_width = body.width.saturating_sub(4) as usize;
     let (title, lines, caret): (&str, Vec<Line<'static>>, Option<(usize, usize)>) = match &app.mode
     {
         Mode::PromptAgent { input, .. } => {
-            let (line, column) = input_line("agent", input);
+            let (line, column) = input_line(t(locale, "agent"), input);
             let lines = vec![
                 Line::from(Span::styled(
-                    "Create a new agent with an optional | initial prompt.",
+                    t(
+                        locale,
+                        "Create a new agent with an optional | initial prompt.",
+                    ),
                     THEME.accent_style(),
                 )),
                 Line::from(""),
                 line,
-                hint_line("format: title | initial prompt"),
+                hint_line(locale, "format: title | initial prompt"),
                 Line::from(""),
-                hint_line("enter create   esc cancel"),
+                hint_line(locale, "enter create   esc cancel"),
             ];
-            ("new agent", lines, Some((2, column)))
+            (t(locale, "new agent"), lines, Some((2, column)))
         }
         Mode::PromptRepo { input } => {
-            let (line, column) = input_line("git URL or path", input);
+            let (line, column) = input_line(t(locale, "git URL or path"), input);
             (
-                "add repo",
+                t(locale, "add repo"),
                 vec![
                     line,
-                    hint_line("git format: <git-url> [branch]"),
-                    hint_line("enter add   esc cancel"),
+                    hint_line(locale, "git format: <git-url> [branch]"),
+                    hint_line(locale, "enter add   esc cancel"),
                 ],
                 Some((0, column)),
             )
         }
         Mode::PromptOverseer { input } => {
             let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
-            let wrapped =
-                input_wrap::input_lines("instruction", input, content_width, max_input_height);
+            let wrapped = input_wrap::input_lines(
+                t(locale, "instruction"),
+                input,
+                content_width,
+                max_input_height,
+            );
             let caret = wrapped.caret;
             let mut lines = wrapped.lines;
-            lines.push(hint_line("enter send   esc cancel"));
-            ("instruct overseer control", lines, Some(caret))
+            lines.push(hint_line(locale, "enter send   esc cancel"));
+            (t(locale, "instruct overseer control"), lines, Some(caret))
         }
         Mode::PromptInbox { label, input, .. } => {
             let max_input_height = body.height.saturating_sub(5).clamp(1, 10) as usize;
-            let mut lines = vec![Line::from(format!("target: {label}"))];
-            let wrapped = input_wrap::input_lines("answer", input, content_width, max_input_height);
+            let mut lines = vec![Line::from(fmt(locale, "target: {}", &[label]))];
+            let wrapped = input_wrap::input_lines(
+                t(locale, "answer"),
+                input,
+                content_width,
+                max_input_height,
+            );
             let caret = (wrapped.caret.0 + lines.len(), wrapped.caret.1);
             lines.extend(wrapped.lines);
-            lines.push(hint_line("enter send   esc cancel"));
-            ("answer overseer inbox", lines, Some(caret))
+            lines.push(hint_line(locale, "enter send   esc cancel"));
+            (t(locale, "answer overseer inbox"), lines, Some(caret))
         }
         Mode::ConfirmKill { repo, agent } => (
-            "delete worktree?",
+            t(locale, "delete worktree?"),
             confirm_lines(
+                locale,
                 app.registry.repos[*repo].agents[*agent].title.clone(),
                 "y delete   n/esc cancel",
             ),
@@ -80,38 +95,49 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             count,
             ..
         } => (
-            "manage whole repo?",
+            t(locale, "manage whole repo?"),
             vec![
                 Line::from(repo_name.clone()),
-                Line::from(format!(
-                    "{count} worker{} {}",
-                    if *count == 1 { "" } else { "s" },
-                    management::bulk_action(*target)
+                Line::from(fmt(
+                    locale,
+                    "{} worker(s) {}",
+                    &[&count.to_string(), management::bulk_action(*target)],
                 )),
-                hint_line("y apply   n/esc cancel"),
+                hint_line(locale, "y apply   n/esc cancel"),
             ],
             None,
         ),
         Mode::ConfirmRemoveRepo { path } => (
-            "remove repo?",
-            confirm_lines(path.display().to_string(), "y remove   n/esc cancel"),
+            t(locale, "remove repo?"),
+            confirm_lines(
+                locale,
+                path.display().to_string(),
+                "y remove   n/esc cancel",
+            ),
             None,
         ),
         Mode::ConfirmMerge { repo, agent } => (
-            "merge?",
+            t(locale, "merge?"),
             vec![
                 Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
-                Line::from(format!("strategy: {}", app.config.merge_strategy.label())),
-                hint_line("y merge   n/esc cancel"),
+                Line::from(fmt(
+                    locale,
+                    "strategy: {}",
+                    &[app.config.merge_strategy.label()],
+                )),
+                hint_line(locale, "y merge   n/esc cancel"),
             ],
             None,
         ),
         Mode::ConfirmCleanup { repo, agent } => (
-            "clean up merged PR?",
+            t(locale, "clean up merged PR?"),
             vec![
                 Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
-                Line::from("already merged: pull main, remove worktree, delete branch"),
-                hint_line("y clean up   n/esc cancel"),
+                Line::from(t(
+                    locale,
+                    "already merged: pull main, remove worktree, delete branch",
+                )),
+                hint_line(locale, "y clean up   n/esc cancel"),
             ],
             None,
         ),
@@ -123,63 +149,89 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
         } => {
             let checking = app.pr_precheck_active_for(repo_path, agent_id);
             let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
-            let mut lines = vec![Line::from(format!("branch: {branch}"))];
+            let mut lines = vec![Line::from(fmt(locale, "branch: {}", &[branch]))];
             if checking {
                 lines.push(Line::from(Span::styled(
-                    format!(
+                    fmt(
+                        locale,
                         "checking session/PR… {}",
-                        spinner::frame(app.started.elapsed())
+                        &[spinner::frame(app.started.elapsed())],
                     ),
                     THEME.accent_style(),
                 )));
             }
-            let wrapped = input_wrap::input_lines("prompt", input, content_width, max_input_height);
+            let wrapped = input_wrap::input_lines(
+                t(locale, "prompt"),
+                input,
+                content_width,
+                max_input_height,
+            );
             let caret = (wrapped.caret.0 + lines.len(), wrapped.caret.1);
             lines.extend(wrapped.lines);
-            lines.push(hint_line(if checking {
-                "esc cancel"
-            } else {
-                "enter send   ctrl-s save only   esc cancel"
-            }));
-            ("request PR from agent?", lines, Some(caret))
+            lines.push(hint_line(
+                locale,
+                if checking {
+                    "esc cancel"
+                } else {
+                    "enter send   ctrl-s save only   esc cancel"
+                },
+            ));
+            (t(locale, "request PR from agent?"), lines, Some(caret))
         }
         Mode::ConfirmDeleteBranch { repo, agent } => (
-            "delete branch?",
+            t(locale, "delete branch?"),
             confirm_lines(
+                locale,
                 app.registry.repos[*repo].agents[*agent].branch.clone(),
                 "y delete   n/esc keep",
             ),
             None,
         ),
         Mode::ConfirmKillOrphan { session } => (
-            "kill session?",
-            confirm_lines(session.clone(), "y kill   n/esc cancel"),
+            t(locale, "kill session?"),
+            confirm_lines(locale, session.clone(), "y kill   n/esc cancel"),
             None,
         ),
         Mode::ConfirmOverseerPanic => (
-            "stop overseer?",
+            t(locale, "stop overseer?"),
             vec![
-                Line::from("disable dispatch + kill all overseer workers"),
-                Line::from("daemon stays alive; press S again to turn dispatch back on"),
-                hint_line("y stop   n/esc cancel"),
+                Line::from(t(locale, "disable dispatch + kill all overseer workers")),
+                Line::from(t(
+                    locale,
+                    "daemon stays alive; press S again to turn dispatch back on",
+                )),
+                hint_line(locale, "y stop   n/esc cancel"),
             ],
             None,
         ),
         Mode::ConfirmOverseerReset => (
-            "reset dispatch circuit?",
+            t(locale, "reset dispatch circuit?"),
             vec![
-                Line::from("re-enable dispatch and clear the failure counter"),
-                hint_line("y reset   n/esc cancel"),
+                Line::from(t(
+                    locale,
+                    "re-enable dispatch and clear the failure counter",
+                )),
+                hint_line(locale, "y reset   n/esc cancel"),
             ],
             None,
         ),
         Mode::ConfirmInboxDismissAll { count } => (
-            "clear the overseer inbox?",
+            t(locale, "clear the overseer inbox?"),
             vec![
-                Line::from(format!("hide all {count} listed item(s)")),
-                Line::from("decisions.jsonl and ledger.json are not modified;"),
-                Line::from("a newer escalation for the same target is listed again"),
-                hint_line("y clear   n/esc cancel"),
+                Line::from(fmt(
+                    locale,
+                    "hide all {} listed item(s)",
+                    &[&count.to_string()],
+                )),
+                Line::from(t(
+                    locale,
+                    "decisions.jsonl and ledger.json are not modified;",
+                )),
+                Line::from(t(
+                    locale,
+                    "a newer escalation for the same target is listed again",
+                )),
+                hint_line(locale, "y clear   n/esc cancel"),
             ],
             None,
         ),
@@ -192,7 +244,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             error_dialog::content(lines, force_kill.is_some()),
             None,
         ),
-        Mode::Help { .. } => ("help", help::lines(), None),
+        Mode::Help { .. } => (t(locale, "help"), help::lines(locale), None),
         Mode::Normal => return None,
     };
 
@@ -203,8 +255,8 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
     })
 }
 
-fn confirm_lines(subject: String, hint: &str) -> Vec<Line<'static>> {
-    vec![Line::from(subject), hint_line(hint)]
+fn confirm_lines(locale: Locale, subject: String, hint: &'static str) -> Vec<Line<'static>> {
+    vec![Line::from(subject), hint_line(locale, hint)]
 }
 
 /// One-line labelled input, paired with the display column its caret sits at.
@@ -217,6 +269,9 @@ fn input_line(label: &str, input: &TextInput) -> (Line<'static>, usize) {
     (Line::from(spans), column)
 }
 
-fn hint_line(text: &str) -> Line<'static> {
-    Line::from(Span::styled(text.to_string(), THEME.hint_style()))
+fn hint_line(locale: Locale, text: &'static str) -> Line<'static> {
+    Line::from(Span::styled(
+        t(locale, text).to_string(),
+        THEME.hint_style(),
+    ))
 }

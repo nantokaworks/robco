@@ -7,6 +7,7 @@
 use ratatui::text::{Line, Span};
 
 use crate::{
+    locale::t,
     model::{Selection, Status},
     overseer::discord_channels::{ChannelAgent, ChannelAgentStatus, DiscordChannels},
 };
@@ -37,7 +38,7 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
     let ids = ordered_channel_ids(channels);
     if ids.is_empty() {
         return vec![Line::styled(
-            "no retained channel agents yet",
+            t(app.locale, "no retained channel agents yet"),
             THEME.muted_style(),
         )];
     }

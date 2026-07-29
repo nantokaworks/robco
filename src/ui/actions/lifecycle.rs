@@ -1,5 +1,6 @@
 use crate::{
     Result, git,
+    locale::{fmt, t},
     model::{RepoNode, Selection, Status},
 };
 use std::path::Path;
@@ -31,11 +32,11 @@ impl App {
             .iter()
             .position(|repo| repo.path == path)
         else {
-            self.show_message("repository changed, not removed");
+            self.show_message(t(self.locale, "repository changed, not removed"));
             return Ok(());
         };
         if !self.registry.repos[repo].pinned || !self.registry.repos[repo].agents.is_empty() {
-            self.show_message("repository changed, not removed");
+            self.show_message(t(self.locale, "repository changed, not removed"));
             return Ok(());
         }
 
@@ -50,13 +51,13 @@ impl App {
             })
         })?;
         self.clamp_selection();
-        self.show_message(format!("removed {removed}"));
+        self.show_message(fmt(self.locale, "removed {}", &[&removed]));
         Ok(())
     }
 
     pub(in crate::ui) fn merge_selected(&mut self) {
         if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
-            self.show_message("merge is not available for child worktrees");
+            self.show_message(t(self.locale, "merge is not available for child worktrees"));
             return;
         }
         let Some(Selection::Agent {
@@ -72,8 +73,10 @@ impl App {
         let repo_path = self.registry.repos[repo].path.clone();
         let repo_name = self.registry.repos[repo].name.clone();
         if let Some(running) = self.merge_job(&repo_path).map(|job| job.branch.clone()) {
-            self.show_message(format!(
-                "merge already in progress in {repo_name}: {running}"
+            self.show_message(fmt(
+                self.locale,
+                "merge already in progress in {}: {}",
+                &[&repo_name, &running],
             ));
             return;
         }
@@ -82,14 +85,17 @@ impl App {
         let repo_node = self.registry.repos[repo].clone();
         let selected = repo_node.agents[agent_idx].clone();
         if selected.status == Status::BranchOnly {
-            self.show_message(format!("branch remains: {}", selected.branch));
+            self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
             return;
         }
 
         match git::worktree_is_clean(&selected.worktree_path) {
             Ok(true) => {}
             Ok(false) => {
-                self.show_message("commit or clean untracked changes before merge");
+                self.show_message(t(
+                    self.locale,
+                    "commit or clean untracked changes before merge",
+                ));
                 return;
             }
             Err(err) => {
@@ -131,12 +137,16 @@ impl App {
             // Closed without merging: the branch still holds the only copy of
             // its work, so removing the worktree and deleting the branch would
             // destroy it.
-            git::PrState::ClosedUnmerged => self.show_message(format!(
-                "PR for {branch} was closed without merging; reopen it or open a new one"
+            git::PrState::ClosedUnmerged => self.show_message(fmt(
+                self.locale,
+                "PR for {} was closed without merging; reopen it or open a new one",
+                &[branch],
             )),
-            git::PrState::Absent => {
-                self.show_message(format!("no open PR for {branch}; create a PR first"))
-            }
+            git::PrState::Absent => self.show_message(fmt(
+                self.locale,
+                "no open PR for {}; create a PR first",
+                &[branch],
+            )),
         }
     }
 
@@ -156,12 +166,12 @@ impl App {
     pub(in crate::ui) fn add_repo_path(&mut self, path: &str) {
         let path = std::path::PathBuf::from(path);
         if !crate::discover::is_git_repo(&path) {
-            self.show_message("path is not a git repository");
+            self.show_message(t(self.locale, "path is not a git repository"));
             return;
         }
 
         let Ok(path) = path.canonicalize() else {
-            self.show_message("could not resolve path");
+            self.show_message(t(self.locale, "could not resolve path"));
             return;
         };
 
@@ -171,9 +181,9 @@ impl App {
         {
             self.show_message(err.to_string());
         } else if !changed {
-            self.show_message("repository already listed");
+            self.show_message(t(self.locale, "repository already listed"));
         } else {
-            self.show_message("repository added");
+            self.show_message(t(self.locale, "repository added"));
         }
     }
 }

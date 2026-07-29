@@ -28,6 +28,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             snapshot.heartbeat_age,
             snapshot.daemon_version.as_deref(),
             snapshot.version_drift().as_deref(),
+            app.locale,
         ),
         OverseerCategory::Ledger => {
             let management = active_worker_management(app);
