@@ -122,16 +122,63 @@ fn expanding_discord_and_selecting_a_channel_row_routes_enter_to_attach() {
         .expect("no discord channel row after expanding the category");
     assert_eq!(app.selected_item(), Some(Selection::DiscordChannel(0)));
 
-    // No turn is running for this fabricated channel, so there is no tmux
-    // session to attach to. Enter must say so explicitly rather than doing
-    // nothing (dropr:371) — not fall through to the generic attach path, and
-    // not toggle the category the way an `OverseerCategory` selection would.
+    // Enter must route to the channel's own attach action rather than the
+    // category toggle a bare `Selection::OverseerCategory` selection would
+    // take (dropr:371) — proven here by staying expanded and showing some
+    // explicit response rather than doing nothing. The exact wording of that
+    // response depends on `tmux` actually being on PATH (present locally and
+    // on the `ubuntu-latest` CI runner, absent on `macos-latest`), so it is
+    // asserted deterministically, without a live tmux dependency, by
+    // `a_channel_no_longer_listed_reports_explicitly_instead_of_doing_nothing`
+    // below via the out-of-range index branch, which never reaches `tmux`.
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
 
     assert!(app.overseer_category_expanded(OverseerCategory::Discord));
-    let (message, _) = app.message.expect("Enter on the row must report something");
-    assert!(message.contains("no live session"), "{message}");
+    assert!(
+        app.message.is_some(),
+        "Enter on the row must report something rather than doing nothing silently"
+    );
+}
+
+#[test]
+fn a_channel_no_longer_listed_reports_explicitly_instead_of_doing_nothing() {
+    // Deterministic, tmux-free coverage of the "say so explicitly" contract
+    // (dropr:371): selecting a channel row whose index has since fallen out
+    // of range (the retained-channel list shrank between render and Enter)
+    // must not attempt to derive or attach a session at all — it reports and
+    // returns before ever calling `tmux`.
+    let mut app = test_app();
+    app.overseer_visible = true;
+    app.orphans = Vec::new();
+    app.selected = 0;
+
+    app.attach_discord_channel_selected(0);
+    assert!(app.message.is_none(), "not selected on this row: no-op");
+
+    app.overseer_snapshot.discord_channels.channels.insert(
+        "only-channel".into(),
+        crate::overseer::discord_channels::ChannelAgent {
+            first_seen_at: chrono::Utc::now(),
+            last_active_at: chrono::Utc::now(),
+            turn_count: 0,
+            status: crate::overseer::discord_channels::ChannelAgentStatus::Idle,
+            last_error: None,
+            history: Vec::new(),
+        },
+    );
+    app.set_overseer_category_expanded(OverseerCategory::Discord, true);
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::DiscordChannel(0)))
+        .expect("no discord channel row after expanding the category");
+
+    app.attach_discord_channel_selected(1);
+    let (message, _) = app
+        .message
+        .expect("an out-of-range channel index must report explicitly");
+    assert!(message.contains("no longer listed"), "{message}");
 }
 
 #[test]
