@@ -12,7 +12,8 @@
 use super::ops_agent::{PendingSession, SessionRequest, SessionSpawner};
 use super::ops_effect::{Effect, react_effect};
 use super::reactions::ReactionStage;
-use std::collections::HashMap;
+use crate::overseer::discord_channels::DiscordChannels;
+use std::{collections::HashMap, path::Path};
 
 struct Active {
     request: SessionRequest,
@@ -72,7 +73,9 @@ impl SessionSlots {
     }
 
     /// Polls every active session, draining and reporting each that finished.
-    pub fn poll(&mut self) -> Vec<Effect> {
+    /// `channels` records each finished turn's outcome (dropr:363) so the
+    /// info pane and the next briefing's history both stay current.
+    pub fn poll(&mut self, channels: &mut DiscordChannels, channels_path: &Path) -> Vec<Effect> {
         let mut finished = Vec::new();
         self.active.retain(|_, active| match active.session.poll() {
             Some(result) => {
@@ -83,16 +86,35 @@ impl SessionSlots {
         });
         finished
             .into_iter()
-            .flat_map(|(request, result)| effects_from_result(&request, result))
+            .flat_map(|(request, result)| {
+                effects_from_result(&request, result, channels, channels_path)
+            })
             .collect()
     }
 }
 
-fn effects_from_result(request: &SessionRequest, result: Result<Vec<u8>, String>) -> Vec<Effect> {
+fn record_turn(
+    channels: &mut DiscordChannels,
+    path: &Path,
+    request: &SessionRequest,
+    outcome: Result<&str, &str>,
+) {
+    if let Err(error) = channels.end_turn(path, &request.channel_id, &request.message, outcome) {
+        eprintln!("overseer: failed to record Discord channel state: {error}");
+    }
+}
+
+fn effects_from_result(
+    request: &SessionRequest,
+    result: Result<Vec<u8>, String>,
+    channels: &mut DiscordChannels,
+    channels_path: &Path,
+) -> Vec<Effect> {
     let terminal = |stage| react_effect(&request.channel_id, &request.message_id, stage);
     let raw = match result {
         Ok(raw) => raw,
         Err(error) => {
+            record_turn(channels, channels_path, request, Err(&error));
             return vec![
                 terminal(ReactionStage::Failure),
                 Effect::Post {
@@ -105,6 +127,7 @@ fn effects_from_result(request: &SessionRequest, result: Result<Vec<u8>, String>
     let parsed = match super::ops_result::parse(&raw) {
         Ok(parsed) => parsed,
         Err(error) => {
+            record_turn(channels, channels_path, request, Err(&error));
             return vec![
                 terminal(ReactionStage::Failure),
                 Effect::Post {
@@ -114,6 +137,7 @@ fn effects_from_result(request: &SessionRequest, result: Result<Vec<u8>, String>
             ];
         }
     };
+    record_turn(channels, channels_path, request, Ok(&parsed.reply));
     let mut effects = vec![
         terminal(ReactionStage::Success),
         Effect::Post {
