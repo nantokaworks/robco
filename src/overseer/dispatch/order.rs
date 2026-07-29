@@ -109,6 +109,7 @@ mod tests {
             priority: priority.into(),
             workspace: "workspace-1".into(),
             priority_score: None,
+            status: "open".into(),
         }
     }
 
