@@ -41,6 +41,24 @@ fn a_configured_language_lands_outside_every_fence() {
     assert_eq!(text.matches("<<<END_EXTERNAL_DATA>>>").count(), 7);
 }
 
+/// The briefing must spell out every required field per action, not just the
+/// action names — a bare name list is what let the model omit `content` and
+/// `task_id` in two separate incidents (task #355).
+#[test]
+fn every_action_lists_its_required_fields() {
+    let text = briefing(&case(), "capture", None);
+    assert!(
+        text.contains("\"name\":\"dropr_scribble_create\",\"task_id\":\"...\",\"content\":\"...\"")
+    );
+    assert!(text.contains(
+        "\"name\":\"dropr_task_status_update\",\"task_id\":\"...\",\"status\":\"open|ready\""
+    ));
+    assert!(text.contains("\"name\":\"robco_answer\",\"agent_id\":\"...\",\"text\":\"...\""));
+    assert!(text.contains(
+        "\"name\":\"robco_agent_create\",\"repo\":\"...\",\"title\":\"...\",\"prompt\":\"...\""
+    ));
+}
+
 /// The guarantee a config without the key rests on.
 #[test]
 fn an_unset_language_leaves_the_briefing_byte_identical() {
