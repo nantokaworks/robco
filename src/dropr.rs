@@ -12,7 +12,7 @@ pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
 pub use repo_tasks::{DroprTaskFetch, FETCH_BUDGET, TASK_FETCH_LIMIT};
 pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
 pub use writes::{WriteError, WriteResult};
-pub(crate) use writes::{scribble_create_timeout, task_status_update_timeout};
+pub(crate) use writes::{scribble_create_timeout, task_create_timeout, task_status_update_timeout};
 
 /// `dropr task ready --limit` caps at 20; larger values make the CLI
 /// exit with an argument error and the fetch fails for every repo.

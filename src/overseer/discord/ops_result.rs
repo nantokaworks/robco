@@ -71,6 +71,15 @@ fn parse_action(mut value: Value) -> Result<Command, String> {
         }
         "skip" | "dropr_task_skip" => Command::Skip(text("task_id")?),
         "retry" | "dropr_task_retry" => Command::Retry(text("task_id")?),
+        "dropr_task_create" => Command::TaskCreate {
+            repo: text("repo")?,
+            title: text("title")?,
+            description: object
+                .get("description")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+        },
         "robco_answer" => Command::Answer {
             agent: text("agent_id")?,
             text: text("text")?,
@@ -104,5 +113,40 @@ mod tests {
         assert!(parse(unknown).unwrap().actions[0].is_err());
         let merge = br#"{"reply":"no","actions":[{"name":"automerge","enabled":true}]}"#;
         assert!(parse(merge).unwrap().actions[0].is_err());
+    }
+
+    #[test]
+    fn parses_task_create_with_optional_description() {
+        let raw = br#"{"reply":"ok","actions":[
+            {"name":"dropr_task_create","repo":"robco","title":"fix the thing"},
+            {"name":"dropr_task_create","repo":"robco","title":"fix the thing","description":"details"}
+        ]}"#;
+        let actions = parse(raw).unwrap().actions;
+        assert_eq!(
+            actions[0],
+            Ok(Command::TaskCreate {
+                repo: "robco".into(),
+                title: "fix the thing".into(),
+                description: None,
+            })
+        );
+        assert_eq!(
+            actions[1],
+            Ok(Command::TaskCreate {
+                repo: "robco".into(),
+                title: "fix the thing".into(),
+                description: Some("details".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_task_create_missing_required_fields() {
+        let missing_repo =
+            br#"{"reply":"no","actions":[{"name":"dropr_task_create","title":"x"}]}"#;
+        assert!(parse(missing_repo).unwrap().actions[0].is_err());
+        let missing_title =
+            br#"{"reply":"no","actions":[{"name":"dropr_task_create","repo":"robco"}]}"#;
+        assert!(parse(missing_title).unwrap().actions[0].is_err());
     }
 }

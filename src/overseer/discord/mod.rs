@@ -17,6 +17,7 @@ mod ops_session;
 mod ops_sessions;
 mod ops_state;
 mod reactions;
+mod task_create;
 mod typing;
 
 use crate::overseer::config::DiscordConfig;

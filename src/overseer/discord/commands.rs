@@ -7,7 +7,15 @@ pub enum Command {
     Tasks,
     Skip(String),
     Retry(String),
-    Answer { agent: String, text: String },
+    TaskCreate {
+        repo: String,
+        title: String,
+        description: Option<String>,
+    },
+    Answer {
+        agent: String,
+        text: String,
+    },
     Approve(String),
     Kill(String),
     Log(usize),
