@@ -9,7 +9,7 @@ use chrono::Utc;
 use ratatui::text::Text;
 
 use crate::{
-    model::{ManagementMode, OverseerCategory, Status},
+    model::{ManagementMode, MergeLifecycle, OverseerCategory, Status},
     overseer::{
         config::OverseerConfig, ledger::Ledger, logging::DecisionEntry, other_prs::OtherPrs,
     },
@@ -104,6 +104,18 @@ impl OverseerSnapshot {
     /// answer this.
     pub(in crate::ui) fn blocked_reason(&self, agent_id: &str) -> Option<String> {
         decisions::blocked_reason(&self.ledger, &self.decisions, agent_id)
+    }
+
+    /// Where `agent_id`'s pull request stands once its AI session has gone
+    /// quiet. See [`decisions::merge_lifecycle`].
+    pub(in crate::ui) fn merge_lifecycle(&self, agent_id: &str) -> Option<MergeLifecycle> {
+        decisions::merge_lifecycle(&self.ledger, agent_id)
+    }
+
+    /// The raw gate reason behind `merge_lifecycle`'s bucket. See
+    /// [`decisions::merge_hold_detail`].
+    pub(in crate::ui) fn merge_hold_detail(&self, agent_id: &str) -> Option<String> {
+        decisions::merge_hold_detail(&self.ledger, agent_id)
     }
 }
 

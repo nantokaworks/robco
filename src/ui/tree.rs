@@ -83,6 +83,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 // current signal at that point.
                 indicator_state.needs_decision = agent.status != Status::Running
                     && app.overseer_snapshot.blocked_reason(&agent.id).is_some();
+                // Same gating as `needs_decision` above: a worker that has
+                // resumed real work has moved past whatever the ledger
+                // still records for its last pull request.
+                indicator_state.merge_lifecycle = (agent.status != Status::Running)
+                    .then(|| app.overseer_snapshot.merge_lifecycle(&agent.id))
+                    .flatten();
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.mcp_active = agent.mcp_active;
                 indicator_state.subagents_active = active;

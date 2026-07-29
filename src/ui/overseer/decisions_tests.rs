@@ -8,15 +8,18 @@ fn decision(kind: DecisionKind, task: &str, reason: &str) -> DecisionEntry {
     entry
 }
 
-fn escalated_ledger(agent_id: &str, task_id: &str) -> Ledger {
-    let mut ledger = Ledger::default();
-    ledger.entries.push(crate::overseer::ledger::LedgerEntry {
+fn ledger_entry(
+    agent_id: &str,
+    task_id: &str,
+    phase: LedgerPhase,
+) -> crate::overseer::ledger::LedgerEntry {
+    crate::overseer::ledger::LedgerEntry {
         task_id: task_id.into(),
         display_id: task_id.into(),
         repo: "nantokaworks/robco".into(),
         agent_id: agent_id.into(),
         branch: format!("task-{task_id}"),
-        phase: LedgerPhase::Escalated,
+        phase,
         dispatched_at: Utc::now(),
         settled_at: None,
         retries: 0,
@@ -30,7 +33,22 @@ fn escalated_ledger(agent_id: &str, task_id: &str) -> Ledger {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
-    });
+    }
+}
+
+fn escalated_ledger(agent_id: &str, task_id: &str) -> Ledger {
+    let mut ledger = Ledger::default();
+    ledger
+        .entries
+        .push(ledger_entry(agent_id, task_id, LedgerPhase::Escalated));
+    ledger
+}
+
+fn pr_opened_ledger(agent_id: &str, task_id: &str, hold_reason: Option<&str>) -> Ledger {
+    let mut ledger = Ledger::default();
+    let mut entry = ledger_entry(agent_id, task_id, LedgerPhase::PrOpened);
+    entry.merge_hold.reason = hold_reason.map(str::to_string);
+    ledger.entries.push(entry);
     ledger
 }
 
@@ -91,6 +109,88 @@ fn a_missing_decision_log_still_flags_an_escalated_entry() {
     assert_eq!(
         blocked_reason(&ledger, &[], "worker-1"),
         Some("worker blocked".into())
+    );
+}
+
+#[test]
+fn checks_waiting_reads_as_checks_running() {
+    let ledger = pr_opened_ledger("worker-1", "#359", Some("checks_waiting"));
+    assert_eq!(
+        merge_lifecycle(&ledger, "worker-1"),
+        Some(MergeLifecycle::ChecksRunning)
+    );
+}
+
+#[test]
+fn checks_not_green_reads_as_checks_failing() {
+    let ledger = pr_opened_ledger("worker-1", "#359", Some("checks_not_green"));
+    assert_eq!(
+        merge_lifecycle(&ledger, "worker-1"),
+        Some(MergeLifecycle::ChecksFailing)
+    );
+}
+
+#[test]
+fn a_merge_error_reads_as_checks_failing() {
+    let ledger = pr_opened_ledger("worker-1", "#359", Some("merge_error:conflict"));
+    assert_eq!(
+        merge_lifecycle(&ledger, "worker-1"),
+        Some(MergeLifecycle::ChecksFailing)
+    );
+}
+
+#[test]
+fn a_cleared_hold_on_an_open_pr_reads_as_waiting_on_the_judge() {
+    // `overseer::daemon::merge` clears `merge_hold` on `Outcome::Pending`
+    // (the judge queued the request but has not answered yet) — the
+    // deterministic gate has nothing left to hold on, so an unset reason
+    // on a still-open pull request means the judge is what is pending.
+    let ledger = pr_opened_ledger("worker-1", "#359", None);
+    assert_eq!(
+        merge_lifecycle(&ledger, "worker-1"),
+        Some(MergeLifecycle::WaitingJudge)
+    );
+}
+
+#[test]
+fn an_unrecognised_hold_reason_falls_back_to_on_hold() {
+    let ledger = pr_opened_ledger("worker-1", "#359", Some("behind_branch_updated"));
+    assert_eq!(
+        merge_lifecycle(&ledger, "worker-1"),
+        Some(MergeLifecycle::OnHold)
+    );
+}
+
+#[test]
+fn a_merged_pull_request_has_no_lifecycle_of_its_own() {
+    // Genuinely finished; the plain `Status::Done` glyph already tells the
+    // truth, so `merge_lifecycle` stays out of the way.
+    let mut ledger = escalated_ledger("worker-1", "#359");
+    ledger.entries[0].phase = LedgerPhase::Merged;
+    assert_eq!(merge_lifecycle(&ledger, "worker-1"), None);
+}
+
+#[test]
+fn no_ledger_entry_has_no_lifecycle() {
+    let ledger = Ledger::default();
+    assert_eq!(merge_lifecycle(&ledger, "worker-1"), None);
+}
+
+#[test]
+fn merge_hold_detail_is_the_raw_reason_verbatim() {
+    let ledger = pr_opened_ledger("worker-1", "#359", Some("checks_not_green"));
+    assert_eq!(
+        merge_hold_detail(&ledger, "worker-1"),
+        Some("checks_not_green".into())
+    );
+}
+
+#[test]
+fn merge_hold_detail_names_the_judge_when_no_reason_is_recorded() {
+    let ledger = pr_opened_ledger("worker-1", "#359", None);
+    assert_eq!(
+        merge_hold_detail(&ledger, "worker-1"),
+        Some("waiting on merge judge".into())
     );
 }
 

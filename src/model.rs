@@ -308,6 +308,40 @@ impl Status {
     }
 }
 
+/// Where a worker's pull request actually stands once the AI session itself
+/// has gone quiet (`Status::Done`) — the session finishing a turn says
+/// nothing about whether the branch merged, so this is read from the
+/// Overseer ledger entry instead. See
+/// `crate::ui::overseer::OverseerSnapshot::merge_lifecycle`.
+///
+/// Deliberately excludes an actually-merged pull request: that case is
+/// genuinely finished, so it keeps rendering as the plain `Status::Done`
+/// glyph rather than a lifecycle glyph of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MergeLifecycle {
+    /// The auto-merge gate is waiting on CI checks to finish.
+    ChecksRunning,
+    /// CI checks came back red.
+    ChecksFailing,
+    /// Checks are clean; the pull request is waiting on the merge judge.
+    WaitingJudge,
+    /// Held for a reason outside the three above (behind its base branch,
+    /// missing branch protection, and the like). The detail lives in the
+    /// Info pane rather than in the glyph vocabulary.
+    OnHold,
+}
+
+impl MergeLifecycle {
+    pub fn glyph(self) -> &'static str {
+        match self {
+            MergeLifecycle::ChecksRunning => "↻",
+            MergeLifecycle::ChecksFailing => "‼",
+            MergeLifecycle::WaitingJudge => "⚖",
+            MergeLifecycle::OnHold => "⏸",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +355,37 @@ mod tests {
         assert_eq!(Status::Idle.glyph(), "·");
         assert_eq!(Status::Dead.glyph(), "✗");
         assert_eq!(Status::BranchOnly.glyph(), "⎇");
+    }
+
+    #[test]
+    fn merge_lifecycle_glyphs_are_stable_and_distinct_from_status_glyphs() {
+        let status_glyphs = [
+            Status::Idle.glyph(),
+            Status::Running.glyph(),
+            Status::Waiting.glyph(),
+            Status::Done.glyph(),
+            Status::Dead.glyph(),
+            Status::BranchOnly.glyph(),
+        ];
+        let lifecycle_glyphs = [
+            MergeLifecycle::ChecksRunning.glyph(),
+            MergeLifecycle::ChecksFailing.glyph(),
+            MergeLifecycle::WaitingJudge.glyph(),
+            MergeLifecycle::OnHold.glyph(),
+        ];
+        for glyph in lifecycle_glyphs {
+            assert!(
+                !status_glyphs.contains(&glyph),
+                "{glyph} collides with a Status glyph"
+            );
+        }
+        let mut seen = std::collections::HashSet::new();
+        for glyph in lifecycle_glyphs {
+            assert!(
+                seen.insert(glyph),
+                "{glyph} is not unique among MergeLifecycle glyphs"
+            );
+        }
     }
 
     #[test]
