@@ -52,7 +52,10 @@ pub(crate) fn create_agent_with_launch(
     let task_number = leading_task_number(name_slug);
     let slug = naming_slug(title, name_slug);
     let branch = worker_branch_name(config, &repo.name, title, name_slug);
-    let base_commit = git::head_commit(&repo.path)?;
+    // Base new work on `origin/main`, fetched fresh — not on whatever happens
+    // to be checked out in the primary worktree, which may be an operator's
+    // own branch mid-work.
+    let base_commit = git::remote_branch_commit(&repo.path, "main")?;
     let worktree_path = config
         .worktree_root
         .join(format!("{}_{}_{}", repo.name, slug, &id[..6]));

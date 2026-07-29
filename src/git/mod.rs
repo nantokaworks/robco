@@ -44,13 +44,6 @@ pub fn remote_url(repo: &Path) -> Result<String> {
     command_output(output, "git remote get-url origin")
 }
 
-pub fn head_commit(repo: &Path) -> Result<String> {
-    let mut command = Command::new("git");
-    command.args(["-C"]).arg(repo).args(["rev-parse", "HEAD"]);
-    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
-    command_output(output, "git rev-parse HEAD")
-}
-
 pub fn branch_exists(repo: &Path, branch: &str) -> Result<bool> {
     let mut command = Command::new("git");
     command

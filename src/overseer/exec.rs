@@ -114,9 +114,9 @@ fn kill_agent_session(agent_id: &str) -> Result<()> {
 
 /// Runs the post-merge cleanup for one merged agent and drops its registry row.
 ///
-/// The cleanup touches the same base branch and working tree an interactive or
-/// MCP merge does, so it runs under the repository's merge lock — the daemon is
-/// the third surface that has to take it for the other two to mean anything.
+/// The cleanup runs the same sequence an interactive or MCP merge does, so it
+/// runs under the repository's merge lock — the daemon is the third surface
+/// that has to take it for the other two to mean anything.
 ///
 /// It does not *wait* for the lock. A daemon pass covers every repository it
 /// watches, and blocking one of them on however long a merge takes would stall
