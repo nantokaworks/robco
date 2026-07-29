@@ -614,17 +614,17 @@ impl OverseerCategory {
         }
     }
 
-    /// Whether the category expands into rows of its own. Inbox alone does: its
-    /// items are selection targets the operator answers, approves, or dismisses
-    /// from the sidebar. The other three expand into read-only text the Info
-    /// preview already shows in full, so an arrow there would buy duplicated
-    /// content at the cost of a nesting level the 24-column sidebar cannot
-    /// afford.
+    /// Whether the category expands into rows of its own. Inbox and Discord
+    /// do: Inbox's items are selection targets the operator answers, approves,
+    /// or dismisses, and Discord's (dropr:371) are per-channel rows Enter can
+    /// attach. The other two expand into read-only text the Info preview
+    /// already shows in full, so an arrow there would buy duplicated content
+    /// at the cost of a nesting level the 24-column sidebar cannot afford.
     ///
     /// The single source of truth for the render, the input handling, and the
     /// persisted expansion state — none of them re-spell `matches!(_, Inbox)`.
     pub fn has_children(self) -> bool {
-        matches!(self, Self::Inbox)
+        matches!(self, Self::Inbox | Self::Discord)
     }
 }
 
@@ -641,6 +641,13 @@ pub enum Selection {
     /// inbox list. Present only while the Inbox category is expanded, so the
     /// operator answers an escalation from the same cursor that walks the tree.
     OverseerInbox(usize),
+    /// One retained per-channel Discord ops agent, indexing into the same
+    /// newest-active-first channel order the Discord category's detail rows
+    /// render (dropr:371). Present only while the Discord category is
+    /// expanded, so Enter can attach the channel's live tmux session — a
+    /// session that exists only while a turn is running, torn down at the
+    /// end of each turn.
+    DiscordChannel(usize),
     Repo(usize),
     Agent {
         repo: usize,

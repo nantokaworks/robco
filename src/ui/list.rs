@@ -32,6 +32,17 @@ impl App {
                 || "overseer-inbox:missing".to_string(),
                 |item| format!("overseer-inbox:{}:{}", item.kind.code(), item.target_id),
             ),
+            // Keyed on the channel id, not the index: `ordered_channel_ids`
+            // re-sorts newest-first on every refresh, so an index would slide
+            // the cursor onto whatever channel a new turn displaced.
+            Selection::DiscordChannel(index) => {
+                super::overseer::ordered_channel_ids(&self.overseer_snapshot.discord_channels)
+                    .get(index)
+                    .map_or_else(
+                        || "discord-channel:missing".to_string(),
+                        |id| format!("discord-channel:{id}"),
+                    )
+            }
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
             }
@@ -191,10 +202,22 @@ impl App {
             visible.push(Selection::OverseerAi);
             for category in OverseerCategory::ALL {
                 visible.push(Selection::OverseerCategory(category));
-                // The Inbox is the one category whose detail is acted on rather
-                // than read, so its items are rows of their own under it.
+                // Inbox and Discord are the categories whose detail is acted
+                // on rather than read, so their items are rows of their own
+                // under the category.
                 if category.has_children() && self.overseer_category_expanded(category) {
-                    visible.extend((0..self.overseer_inbox.len()).map(Selection::OverseerInbox));
+                    match category {
+                        OverseerCategory::Inbox => visible
+                            .extend((0..self.overseer_inbox.len()).map(Selection::OverseerInbox)),
+                        OverseerCategory::Discord => {
+                            let count = super::overseer::ordered_channel_ids(
+                                &self.overseer_snapshot.discord_channels,
+                            )
+                            .len();
+                            visible.extend((0..count).map(Selection::DiscordChannel));
+                        }
+                        _ => {}
+                    }
                 }
             }
         }

@@ -37,6 +37,19 @@ pub fn control_session_name(prefix: &str) -> String {
     format!("{prefix}{CONTROL_SESSION_NAME}")
 }
 
+/// Per-channel Discord ops-agent tmux session name (dropr:371), stable across
+/// a channel's turns so a running turn is discoverable and attachable from
+/// the TUI. Reserved with the same `@` marker `control_session_name` uses, so
+/// `tmux::sanitize_target_part` strips it from a channel id that happens to
+/// collide with the literal string, and so the name reads as robco-owned
+/// rather than a repo/agent session.
+pub fn discord_channel_session_name(prefix: &str, channel_id: &str) -> String {
+    format!(
+        "{prefix}@discord-{}",
+        crate::tmux::sanitize_target_part(channel_id)
+    )
+}
+
 pub fn ensure_control_session(config: &Config, cwd: &Path) -> Result<String> {
     let session = control_session_name(&config.tmux_session_prefix);
     if !tmux::has_session(&session)?
@@ -200,7 +213,10 @@ pub fn discord_ops_dir() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{control_session_name, is_overseer_child, migrate_overseer_home};
+    use super::{
+        control_session_name, discord_channel_session_name, is_overseer_child,
+        migrate_overseer_home,
+    };
     use crate::tmux;
 
     #[test]
@@ -214,6 +230,34 @@ mod tests {
         let reserved_suffix = control.strip_prefix(prefix).unwrap();
         assert!(reserved_suffix.contains('@'));
         assert!(!tmux::sanitize_target_part(reserved_suffix).contains('@'));
+    }
+
+    #[test]
+    fn discord_channel_session_name_is_stable_and_disjoint_from_worker_and_control_names() {
+        let prefix = "robco_";
+        let a = discord_channel_session_name(prefix, "123456789");
+        let b = discord_channel_session_name(prefix, "123456789");
+        let other = discord_channel_session_name(prefix, "987654321");
+
+        // Deterministic: the same channel id always derives the same session
+        // name, so the daemon (spawning it) and the TUI (attaching to it)
+        // agree without any shared state beyond the channel id itself.
+        assert_eq!(a, b);
+        assert_ne!(a, other);
+        assert_ne!(a, control_session_name(prefix));
+        assert_ne!(a, tmux::session_name(prefix, "123456789", "agent"));
+
+        let reserved_suffix = a.strip_prefix(prefix).unwrap();
+        assert!(reserved_suffix.contains('@'));
+        assert!(!tmux::sanitize_target_part(reserved_suffix).contains('@'));
+    }
+
+    #[test]
+    fn discord_channel_session_name_sanitizes_a_hostile_channel_id() {
+        let prefix = "robco_";
+        let session = discord_channel_session_name(prefix, "../../etc passwd");
+        assert!(!session.contains('/'));
+        assert!(!session.contains(' '));
     }
 
     #[test]

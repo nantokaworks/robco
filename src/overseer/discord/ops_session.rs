@@ -1,21 +1,21 @@
-use super::{
-    ops_agent::{PendingSession, SessionRequest, SessionSpawner},
-    ops_result,
-};
+use super::ops_agent::{PendingSession, SessionRequest, SessionSpawner};
 use crate::{
-    config::Config,
+    config::{Config, Profile},
     overseer::{
+        self,
         discord_channels::ChannelTurn,
         ledger::Ledger,
         logging,
-        session::{
-            BRIEFING_PROMPT, EphemeralSession, SessionHandle, SessionResult, auth, env::SessionEnv,
-        },
+        session::{BRIEFING_PROMPT, SessionHandle, SessionResult, auth, env::SessionEnv},
         triage::{recent_worker_capture, triage_profile},
     },
 };
 use nanoid::nanoid;
+use ops_session_tmux::run_in_tmux;
 use std::{fs, path::PathBuf, sync::mpsc::TryRecvError, time::Duration};
+
+#[path = "ops_session_tmux.rs"]
+mod ops_session_tmux;
 
 pub(super) struct SystemSessionSpawner {
     root: PathBuf,
@@ -37,19 +37,31 @@ impl SessionSpawner for SystemSessionSpawner {
             .join(format!("{}-{}", chrono::Utc::now().timestamp(), nanoid!(8)));
         let language = config.language.clone();
         let env = SessionEnv::resolve(&config);
-        let handle = spawn_session(request, case_dir, profile, timeout, env, move |request| {
-            briefing(request, language.as_deref())
-        });
+        let session_name = overseer::discord_channel_session_name(
+            &config.tmux_session_prefix,
+            &request.channel_id,
+        );
+        let handle = spawn_session(
+            request,
+            case_dir,
+            profile,
+            timeout,
+            env,
+            session_name,
+            move |request| briefing(request, language.as_deref()),
+        );
         Ok(Box::new(SystemPending(handle)))
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_session(
     request: SessionRequest,
     case_dir: PathBuf,
-    profile: crate::config::Profile,
+    profile: Profile,
     timeout: Duration,
     env: SessionEnv,
+    session_name: String,
     build_briefing: impl FnOnce(&SessionRequest) -> String + Send + 'static,
 ) -> SessionHandle {
     SessionHandle::spawn(move |control| {
@@ -59,17 +71,14 @@ fn spawn_session(
         {
             return SessionResult::LaunchFailed(error.to_string());
         }
-        EphemeralSession {
-            profile: &profile,
-            case_dir: &case_dir,
+        run_in_tmux(
+            &case_dir,
+            &profile,
             timeout,
-            env: &env,
-            prompt: BRIEFING_PROMPT,
-        }
-        .run_controlled(
-            &ops_result::is_complete,
+            &env,
+            BRIEFING_PROMPT,
+            &session_name,
             &control,
-            Some(&case_dir.join("session.pid")),
         )
     })
 }

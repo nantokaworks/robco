@@ -231,6 +231,9 @@ impl App {
                     Some(selection) if self.toggle_selected_tree_header(selection) => {}
                     Some(Selection::OverseerAi) => self.attach_control_selected(),
                     Some(Selection::OverseerInbox(index)) => self.answer_inbox_selected(index),
+                    Some(Selection::DiscordChannel(index)) => {
+                        self.attach_discord_channel_selected(index);
+                    }
                     Some(Selection::Orphan(_)) => self.attach_orphan_selected(),
                     _ => match self.preview {
                         PreviewPane::Terminal => self.attach_shell_selected()?,

@@ -64,6 +64,22 @@ pub(crate) struct SessionControl {
     pid: Arc<Mutex<Option<u32>>>,
 }
 
+impl SessionControl {
+    /// Whether the owning [`SessionHandle`] has been dropped. Exposed for
+    /// callers outside this module — the tmux-backed Discord ops-agent runner
+    /// polls this the same way [`EphemeralSession::poll`] does for a bare
+    /// child process.
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    /// Record the pid a non-`EphemeralSession` runner should fall back to
+    /// killing on drop, since it has no `Child` handle of its own.
+    pub(crate) fn set_pid(&self, pid: Option<u32>) {
+        *self.pid.lock().expect("session pid lock") = pid;
+    }
+}
+
 pub(crate) struct SessionHandle {
     receiver: Receiver<SessionResult>,
     control: SessionControl,
@@ -185,7 +201,12 @@ impl EphemeralSession<'_> {
     /// says so, and record the finding. Only the resultless outcomes are
     /// reclassified: a session that answered has already authenticated, and a
     /// launch that never started has no log to read.
-    fn classify(&self, result: SessionResult, log_path: &Path) -> SessionResult {
+    ///
+    /// `pub(crate)` so a runner that does not go through [`Self::run_controlled`]
+    /// — the tmux-backed Discord ops-agent runner, which still redirects
+    /// stderr to the same `session.log` — can reuse the same reclassification
+    /// instead of re-detecting auth failures on its own.
+    pub(crate) fn classify(&self, result: SessionResult, log_path: &Path) -> SessionResult {
         if !matches!(result, SessionResult::Missing | SessionResult::TimedOut) {
             return result;
         }

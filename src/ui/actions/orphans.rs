@@ -16,6 +16,7 @@ impl App {
             &self.registry.repos,
             &self.config.tmux_session_prefix,
             &self.config.worktree_root,
+            &self.overseer_snapshot.discord_channels,
         ) else {
             return;
         };
@@ -50,10 +51,18 @@ pub(super) fn discover_orphans(
     repos: &[crate::model::RepoNode],
     prefix: &str,
     worktree_root: &std::path::Path,
+    discord_channels: &crate::overseer::discord_channels::DiscordChannels,
 ) -> Option<Vec<OrphanSession>> {
     let sessions = tmux::list_sessions_with_cwd().ok()?;
     let mut known: HashSet<String> = HashSet::new();
     known.insert(overseer::control_session_name(prefix));
+    // A channel's tmux session exists only while a turn is running, but its
+    // name is stable and derived the same way for every channel that has
+    // ever talked to the ops agent — exclude all of them, live or not, the
+    // same way the control session is excluded unconditionally (dropr:371).
+    for channel_id in discord_channels.channels.keys() {
+        known.insert(overseer::discord_channel_session_name(prefix, channel_id));
+    }
     for repo in repos {
         known.insert(agent::repo_claude_session_name(prefix, repo));
         known.insert(agent::repo_shell_session_name(prefix, repo));

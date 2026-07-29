@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 61;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 65;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -33,6 +33,10 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  d              on an item row: dismiss it (hides the row only)"),
         Line::from("  D              on an item or Inbox row: clear the inbox (confirms)"),
         Line::from("                 also: robco overseer clear-inbox"),
+        Line::from("Overseer discord"),
+        Line::from("  l              expand OVERSEER > Discord to reach its channel rows"),
+        Line::from("  enter          on a channel row: attach its tmux session (live"),
+        Line::from("                 only while a turn is running for that channel)"),
         Line::from("Repo"),
         Line::from("  a              clone <git-url> [branch], or add local repo path"),
         Line::from("  m              merge agent: merge PR + pull main (commit + PR needed)"),

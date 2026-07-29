@@ -18,6 +18,15 @@ pub(in crate::ui) fn live_session(app: &App) -> Option<String> {
         // The row's Info tab mirrors the control session live — see
         // `panes_for`'s comment on `Selection::OverseerAi`.
         (PreviewPane::Info, Selection::OverseerAi) => Some(overseer::control_session_name(prefix)),
+        // Mirrors the channel's tmux session live while a turn is running
+        // (dropr:371); `None` once the turn ends and the session tears down,
+        // which falls back to the "no live session" message `preview::draw`
+        // renders for this selection.
+        (PreviewPane::Info, Selection::DiscordChannel(index)) => {
+            crate::ui::overseer::ordered_channel_ids(&app.overseer_snapshot.discord_channels)
+                .get(index)
+                .map(|channel_id| overseer::discord_channel_session_name(prefix, channel_id))
+        }
         (PreviewPane::Claude, Selection::Repo(repo)) => Some(agent::repo_claude_session_name(
             prefix,
             &app.registry.repos[repo],

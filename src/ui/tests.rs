@@ -97,6 +97,44 @@ fn overseer_instruction_key_opens_prompt() {
 }
 
 #[test]
+fn expanding_discord_and_selecting_a_channel_row_routes_enter_to_attach() {
+    let mut app = test_app();
+    app.overseer_visible = true;
+    app.orphans = Vec::new();
+    let now = chrono::Utc::now();
+    app.overseer_snapshot.discord_channels.channels.insert(
+        "channel-under-test".into(),
+        crate::overseer::discord_channels::ChannelAgent {
+            first_seen_at: now,
+            last_active_at: now,
+            turn_count: 1,
+            status: crate::overseer::discord_channels::ChannelAgentStatus::Idle,
+            last_error: None,
+            history: Vec::new(),
+        },
+    );
+
+    app.set_overseer_category_expanded(OverseerCategory::Discord, true);
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::DiscordChannel(0)))
+        .expect("no discord channel row after expanding the category");
+    assert_eq!(app.selected_item(), Some(Selection::DiscordChannel(0)));
+
+    // No turn is running for this fabricated channel, so there is no tmux
+    // session to attach to. Enter must say so explicitly rather than doing
+    // nothing (dropr:371) — not fall through to the generic attach path, and
+    // not toggle the category the way an `OverseerCategory` selection would.
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(app.overseer_category_expanded(OverseerCategory::Discord));
+    let (message, _) = app.message.expect("Enter on the row must report something");
+    assert!(message.contains("no live session"), "{message}");
+}
+
+#[test]
 fn visible_message_does_not_swallow_next_key() {
     let mut app = test_app();
     app.show_message("done");

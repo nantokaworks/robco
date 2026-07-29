@@ -57,6 +57,26 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         (_, Some(Selection::OverseerInbox(index))) => {
             super::overseer::inbox_item_preview(app, index)
         }
+        // The row's one tab mirrors the channel's tmux session live while a
+        // turn is running (dropr:371) — see `scrollback::live_session`. When
+        // no turn is running there is nothing to mirror, so this falls back
+        // to an explicit message rather than a blank pane.
+        (_, Some(Selection::DiscordChannel(index))) => {
+            let ids = super::overseer::ordered_channel_ids(&app.overseer_snapshot.discord_channels);
+            let Some(channel_id) = ids.get(index) else {
+                return;
+            };
+            let title = format!("Discord / {channel_id}");
+            let session = crate::overseer::discord_channel_session_name(tmux_prefix, channel_id);
+            let text = app.cached_tmux(&session).unwrap_or_else(|| {
+                vec![Line::from(Span::styled(
+                    "no live session — a turn is not running for this channel",
+                    THEME.muted_style(),
+                ))]
+                .into()
+            });
+            (title, text)
+        }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let title = format!("{} / main", repo.name);

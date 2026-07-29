@@ -11,8 +11,7 @@ use crate::{
 use super::{
     App, active_worker_management,
     decisions::{DETAIL_LIMIT, append_decisions},
-    discord_agents::append_discord,
-    inbox_rows,
+    discord_agents, inbox_rows,
     render::{append_health, append_ledger, append_worker_management},
 };
 
@@ -49,7 +48,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         OverseerCategory::Decisions => {
             append_decisions(&mut lines, &snapshot.decisions);
         }
-        OverseerCategory::Discord => append_discord(&mut lines, &snapshot.discord_channels),
+        OverseerCategory::Discord => lines.extend(discord_agents::detail_lines(app)),
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {
         lines.pop();
