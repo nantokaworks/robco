@@ -204,11 +204,17 @@ judge and review counts separately, and names the two states apart — `findings
 no reviewer model` against `every 20m via <profile>` — so a quiet board can be read as
 "nothing was found" rather than "nothing looked".
 
-Task text, exception reasons, tmux capture, Discord messages, and other external values
-are each placed in explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a
-value is escaped. The briefing tells the LLM to treat every such field as data, not as
-instructions. Discord-generated impactful actions still pass through the same human
-confirmation gate as typed commands.
+Task text, exception reasons, tmux capture, and other external values are each placed in
+explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a value is escaped. The
+briefing tells the LLM to treat every such field as data, not as instructions. The Discord
+ops agent is the one exception: an allow-listed operator's message is the session's actual
+instruction, so the briefing hands it to the model as an instruction, not as fenced data —
+only the ledger status, decision log, case context, tmux capture, and retained conversation
+history (dropr:363, see [Retained channel agents](#retained-channel-agents) below) around it
+stay fenced. The operator's message is still text from Discord, so both the opening and
+closing `EXTERNAL_DATA` fence syntax are neutralized inside it before it is embedded, so it
+cannot forge a data block that shadows the real ones below it. Discord-generated impactful
+actions still pass through the same human confirmation gate as typed commands.
 
 ## Configuration reference
 
