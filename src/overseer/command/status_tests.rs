@@ -1,5 +1,9 @@
+use chrono::Utc;
+
 use super::*;
-use crate::overseer::autonomy::AutonomyLevel;
+use crate::model::ManagementMode;
+use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
+use crate::ui::inbox::{InboxItem, InboxKind};
 
 fn repo(name: &str, management: ManagementMode) -> crate::model::RepoNode {
     let mut repo = crate::discover::repo_node(format!("/tmp/{name}").into(), false);
@@ -8,162 +12,182 @@ fn repo(name: &str, management: ManagementMode) -> crate::model::RepoNode {
     repo
 }
 
-#[test]
-fn repos_line_reports_every_repo_watched_when_none_opted_out() {
-    let registry = Registry {
-        version: 1,
-        repos: vec![
-            repo("one", ManagementMode::Auto),
-            repo("two", ManagementMode::Auto),
-        ],
-    };
-    assert_eq!(repos_line(&registry), "repos: 2 watched, 0 opted out");
+fn registry_with(repos: Vec<crate::model::RepoNode>) -> Registry {
+    Registry { version: 1, repos }
 }
 
-#[test]
-fn repos_line_names_the_repos_that_opted_out() {
-    // Naming them, not just counting them, is what lets an operator spot a repo
-    // they forgot was switched off without opening the TUI.
-    let registry = Registry {
-        version: 1,
-        repos: vec![
-            repo("watched", ManagementMode::Auto),
-            repo("manual-repo", ManagementMode::Manual),
-        ],
-    };
-    assert_eq!(
-        repos_line(&registry),
-        "repos: 1 watched, 1 opted out: manual-repo"
-    );
+fn ledger_entry(phase: LedgerPhase) -> LedgerEntry {
+    LedgerEntry {
+        task_id: "task-1".into(),
+        display_id: "#12".into(),
+        repo: "/tmp/robco".into(),
+        agent_id: "agent-1".into(),
+        branch: "branch".into(),
+        phase,
+        dispatched_at: Utc::now(),
+        settled_at: None,
+        retries: 0,
+        pr_url: None,
+        branch_updates: 0,
+        merge_recovery: Default::default(),
+        merge_hold: Default::default(),
+        manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
+    }
 }
 
-#[test]
-fn toggle_line_reports_no_switch_the_daemon_ignores() {
-    let config = OverseerConfig::default();
-    assert!(config.dispatch_enabled);
-    let line = toggle_line(&config, false, 0);
-    assert_eq!(
-        line,
-        "dispatch: on  auto-merge: off (protection: required)  autonomy: conservative  merge-recovery: off  circuit: closed"
-    );
-    // A dispatching daemon must never be described as switched off.
-    assert!(!line.contains("overseer: off"));
+fn question_item() -> InboxItem {
+    InboxItem {
+        kind: InboxKind::Question,
+        target_session: Some("session".into()),
+        target_id: "agent-1".into(),
+        label: "agent-1 — worker title".into(),
+        detail: "worker is waiting on a confirmation prompt".into(),
+        at: Utc::now(),
+    }
 }
 
-#[test]
-fn toggle_line_reports_the_merge_recovery_budget_with_its_switch() {
-    // A worker handback is a worker turn, so an operator reading the status line
-    // has to see how many are left before a stuck pull request reaches them.
-    let config = OverseerConfig {
-        merge_recovery_enabled: true,
-        max_merge_recoveries: 3,
-        ..OverseerConfig::default()
-    };
-    assert!(toggle_line(&config, false, 0).contains("merge-recovery: on (max 3)"));
-}
-
-#[test]
-fn toggle_line_reports_what_a_switched_off_recovery_has_dropped() {
-    // `off` on its own is a flag. What an operator needs in order to decide
-    // whether to switch it on is what the flag has cost — failures a worker could
-    // have fixed that reached nobody.
-    let config = OverseerConfig::default();
-    assert!(!config.merge_recovery_enabled);
-    assert!(toggle_line(&config, false, 4).contains("merge-recovery: off (4 dropped)"));
-    // Nothing dropped is not an exception worth a number.
-    assert!(toggle_line(&config, false, 0).contains("merge-recovery: off  "));
-}
-
-#[test]
-fn toggle_line_reports_the_autonomy_level_the_envelope_runs_under() {
-    // The level decides how much the merge envelope clears on its own, so a
-    // status line that omits it leaves a widened envelope indistinguishable from
-    // the default one.
-    for (level, label) in [
-        (AutonomyLevel::ApprovalOnly, "approval_only"),
-        (AutonomyLevel::Conservative, "conservative"),
-        (AutonomyLevel::FullAuto, "full_auto"),
-    ] {
-        let config = OverseerConfig {
-            autonomy_level: level,
-            ..OverseerConfig::default()
-        };
-        assert!(
-            toggle_line(&config, false, 0).contains(&format!("autonomy: {label}")),
-            "expected autonomy: {label}"
-        );
+fn watch_only_escalation() -> InboxItem {
+    InboxItem {
+        kind: InboxKind::Escalation,
+        target_session: Some("session".into()),
+        target_id: "#99".into(),
+        label: "#99 — checks_waiting".into(),
+        detail: "checks_waiting".into(),
+        at: Utc::now(),
     }
 }
 
 #[test]
-fn toggle_line_reports_dispatch_off_when_dispatch_is_disabled() {
+fn summarize_reason_leaves_a_short_single_line_reason_untouched() {
+    assert_eq!(summarize_reason("checks_waiting"), "checks_waiting");
+}
+
+#[test]
+fn summarize_reason_keeps_only_the_first_line_of_a_multi_paragraph_verdict() {
+    // A judge escalation reason can run to several paragraphs; the CLI answer
+    // has to stay scannable even when the underlying reason does not.
+    let verdict = "line one of the verdict\nline two continues here\nline three";
+    let summarized = summarize_reason(verdict);
+    assert_eq!(summarized, "line one of the verdict…");
+    assert!(!summarized.contains("line two"));
+}
+
+#[test]
+fn summarize_reason_caps_an_overlong_single_line() {
+    let reason = "x".repeat(REASON_LINE_LIMIT * 2);
+    let summarized = summarize_reason(&reason);
+    assert_eq!(summarized.chars().count(), REASON_LINE_LIMIT + 1);
+    assert!(summarized.ends_with('…'));
+}
+
+#[test]
+fn waiting_summary_reads_as_none_when_nothing_needs_a_decision() {
+    assert_eq!(waiting_summary(&[]), "waiting on you: none");
+}
+
+#[test]
+fn waiting_summary_counts_what_it_lists() {
+    let reasons = vec!["[ANSWER] agent-1 — worker title".to_string()];
+    assert_eq!(waiting_summary(&reasons), "waiting on you: 1");
+}
+
+#[test]
+fn waiting_reasons_includes_only_actionable_inbox_items() {
+    let ledger = Ledger::default();
+    let registry = registry_with(vec![]);
+    let items = vec![question_item(), watch_only_escalation()];
+    let reasons = waiting_reasons(&ledger, &items, &registry);
+    assert_eq!(reasons.len(), 1);
+    assert!(reasons[0].contains("agent-1"));
+}
+
+#[test]
+fn waiting_reasons_names_pull_requests_the_merge_gate_is_holding_for_a_human() {
+    // This is the fix for the bug the task exists to close: a raw ledger
+    // phase tally cannot tell a pull request still needing a decision apart
+    // from a task an operator already resolved elsewhere, but the manual
+    // merge skip marker can.
+    let mut entry = ledger_entry(LedgerPhase::PrOpened);
+    entry.manual_merge_skip = Some("worker manual".into());
+    let ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+    let registry = registry_with(vec![repo("robco", ManagementMode::Manual)]);
+    let reasons = waiting_reasons(&ledger, &[], &registry);
+    assert_eq!(reasons.len(), 1);
+    assert!(reasons[0].contains("#12"));
+    assert!(reasons[0].contains("robco"));
+    assert!(!reasons[0].contains("/tmp/robco"));
+}
+
+#[test]
+fn waiting_reasons_excludes_a_manual_skip_that_already_settled() {
+    let mut entry = ledger_entry(LedgerPhase::Merged);
+    entry.manual_merge_skip = Some("worker manual".into());
+    let ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+    let registry = registry_with(vec![]);
+    assert!(waiting_reasons(&ledger, &[], &registry).is_empty());
+}
+
+#[test]
+fn stuck_summary_reads_as_none_when_nothing_is_broken() {
+    assert_eq!(stuck_summary(&[]), "stuck: none");
+}
+
+#[test]
+fn stuck_reasons_names_an_offline_daemon() {
+    let config = OverseerConfig::default();
+    let reasons = stuck_reasons(&config, false, false, None, None, 0);
+    assert!(
+        reasons
+            .iter()
+            .any(|reason| reason.contains("offline or its heartbeat has gone stale"))
+    );
+}
+
+#[test]
+fn stuck_reasons_is_empty_for_a_healthy_daemon_with_nothing_open() {
     let config = OverseerConfig {
-        dispatch_enabled: false,
+        auto_merge: false,
         ..OverseerConfig::default()
     };
-    assert!(toggle_line(&config, true, 0).starts_with("dispatch: off"));
+    assert!(stuck_reasons(&config, true, false, Some("0.1.83"), None, 0).is_empty());
 }
 
 #[test]
-fn the_review_line_separates_the_pass_from_its_reviewer_model() {
-    // The findings pass runs on its interval either way, so a missing profile is
-    // "no model read the digest", not "nothing looked". Printing one word for
-    // both is what let an inert review pass read as a quiet board.
-    let mut config = OverseerConfig::default();
-    assert!(config.review_profile.is_none());
-    let without = review_state(&config);
-    assert!(without.contains("findings every 20m"));
-    assert!(without.contains("no reviewer model"));
-    assert!(!without.contains("disabled"));
-
-    config.review_profile = Some("claude".into());
-    assert_eq!(review_state(&config), "every 20m via claude");
-}
-
-#[test]
-fn daemon_line_names_the_build_the_daemon_started_from() {
-    // The whole point of the field: `healthy` says the daemon is up, never that
-    // it carries what has been merged since it started.
-    let line = daemon_line(
-        true,
-        Some(1234),
-        Some(Duration::from_secs(4)),
-        Some("0.1.66"),
-    );
-    assert_eq!(line, "daemon: healthy pid=1234 heartbeat=4s version=0.1.66");
-}
-
-#[test]
-fn daemon_line_survives_a_heartbeat_from_before_version_recording() {
-    // An older daemon leaves the field out entirely; the line must still render
-    // rather than fail the status command.
-    let line = daemon_line(false, None, None, None);
+fn running_line_reports_no_active_workers_plainly() {
+    let active = ActiveWorkers::default();
+    let registry = registry_with(vec![]);
+    let line = running_line(&active, &registry, 3, "10", &[]);
     assert_eq!(
         line,
-        "daemon: down/stale pid=- heartbeat=missing version=unknown"
+        "running now: no active workers · dispatched today 3/10"
     );
 }
 
 #[test]
-fn session_auth_is_reported_even_before_a_probe_has_run() {
-    // An absent record is the state a freshly installed service is in, and it is
-    // exactly when an operator wants to look — a line that only appears on
-    // failure cannot be checked ahead of one.
+fn running_line_names_repos_and_active_judgments() {
+    let mut active = ActiveWorkers {
+        count: 1,
+        ..ActiveWorkers::default()
+    };
+    active.repos.insert("/tmp/robco".into(), 1);
+    let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
+    let line = running_line(&active, &registry, 5, "∞", &["merge:task-1".to_string()]);
     assert_eq!(
-        session_auth_line(None),
-        "session auth: unknown (no preflight recorded)"
+        line,
+        "running now: 1 worker(s) (robco=1) · dispatched today 5/∞ · judging merge:task-1"
     );
-}
-
-#[test]
-fn a_recorded_probe_is_reported_verbatim() {
-    use crate::overseer::session::health::{SessionHealth, SessionHealthState};
-
-    let health = SessionHealth::new(SessionHealthState::AuthFailed, None)
-        .with_detail("Failed to authenticate");
-
-    assert_eq!(session_auth_line(Some(&health)), health.summary());
-    assert!(session_auth_line(Some(&health)).starts_with("session auth: failed"));
+    assert!(!line.contains("/tmp"));
 }
 
 #[test]

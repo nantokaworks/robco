@@ -199,9 +199,9 @@ no field through which the reviewer can dispatch, merge, unblock, or write the l
 exhausted budget stops the session but not the deterministic findings, and records
 `review_budget_exhausted` so a quiet reviewer does not read as a healthy board. A missing
 profile stops the session too, and records nothing: no budget is charged and no session is
-spawned, because there is no model to run. `robco overseer status` reports the judge and
-review counts separately, and names the two states apart — `findings every 20m, no
-reviewer model` against `every 20m via <profile>` — so a quiet board can be read as
+spawned, because there is no model to run. `robco overseer status --debug` reports the
+judge and review counts separately, and names the two states apart — `findings every 20m,
+no reviewer model` against `every 20m via <profile>` — so a quiet board can be read as
 "nothing was found" rather than "nothing looked".
 
 Task text, exception reasons, tmux capture, Discord messages, and other external values
@@ -436,7 +436,7 @@ chmod 600 ~/.robco/env
 robco overseer install-service           # rewrites the plist
 launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
-robco overseer status                    # check the `session auth:` line
+robco overseer status --debug            # check the `session auth:` line
 ```
 
 `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are recognised the same way; the three names are
@@ -494,12 +494,16 @@ its own (see
 
 With `session_preflight` on (the default) the daemon spawns one probe session at start-up
 and records the verdict in `~/.robco/overseer/session_health.json`. Any live session that is
-refused on credentials overwrites the same record. `robco overseer status` prints it:
+refused on credentials overwrites the same record. `robco overseer status --debug` prints
+it:
 
 ```
 session auth: ok (CLAUDE_CODE_OAUTH_TOKEN via session env file, checked 3m ago)
 session auth: failed (no credential configured, checked 0m ago) — Failed to authenticate: OAuth session expired and could not be refreshed
 ```
+
+A failed probe also lands in the default (non-`--debug`) `stuck:` reasons — an operator
+never has to know to pass `--debug` to learn a worker cannot authenticate.
 
 A failed state also prints a warning naming the recovery. Each session's stderr is captured
 to `session.log` in its case directory, which is where the detail comes from.
@@ -738,8 +742,8 @@ would loop forever. A spent budget escalates with `merge_recovery_cap_reached`.
 With `merge_recovery_enabled` off — the default — nothing is handed back, and the
 classification above is inert. It is not silent, though: a failure that classified as
 worker-fixable is recorded once per (entry, head sha) as
-`merge_recovery_disabled:<reason>`, and `robco overseer status` reports the running total
-beside the switch as `merge-recovery: off (N dropped)`. The entry keeps its phase and no
+`merge_recovery_disabled:<reason>`, and `robco overseer status --debug` reports the
+running total beside the switch as `merge-recovery: off (N dropped)`. The entry keeps its phase and no
 worker is touched, so the daemon behaves exactly as it did before; what changes is that
 the setting now reads as a consequence rather than a flag. Operator-only failures record
 nothing either way — they were never a worker's to fix. Whether to switch the setting on
@@ -757,7 +761,8 @@ session is gone, escalates under
 `merge_recovery_skipped:send_failed:<error>` when the prompt did not reach the session, and
 `merge_recovery_cap_reached` when the budget runs out. Each handback also posts a scribble
 on the dropr task; a scribble that fails to land is logged and does not abort the merge
-pass. `robco overseer status` and the TUI OVERSEER frame both report the switch and its cap.
+pass. `robco overseer status --debug` and the TUI OVERSEER frame both report the switch and
+its cap.
 
 ### Discord rails
 
@@ -839,14 +844,15 @@ envelope stops escalating.
 The daemon executes the image it started from until the service restarts, so a fix that
 is merged, released, and installed does not reach the board until the daemon is restarted
 too. Each pass therefore records its own version in the heartbeat, and
-`robco overseer status` reports it as `version=` beside `pid` and `heartbeat`. When that
-version differs from the `robco` binary answering the command — the exact
+`robco overseer status --debug` reports it as `version=` beside `pid` and `heartbeat`. When
+that version differs from the `robco` binary answering the command — the exact
 "installed but not restarted" state — both the status command and the TUI Health frame
 warn and name the two builds; the OVERSEER header carries it as a `stale build` warning
-row. A heartbeat written before the daemon recorded its build reads as `unknown` and
-warns the same way, because only a release older than this one leaves the field out.
-Restart the daemon (`robco overseer stop` then `robco overseer run`, or restart the
-installed service) to clear it; nothing restarts it automatically on drift.
+row, and the plain (non-`--debug`) `robco overseer status` lists it under `stuck:`. A
+heartbeat written before the daemon recorded its build reads as `unknown` and warns the
+same way, because only a release older than this one leaves the field out. Restart the
+daemon (`robco overseer stop` then `robco overseer run`, or restart the installed service)
+to clear it; nothing restarts it automatically on drift.
 
 ### Discord application
 
@@ -1104,9 +1110,11 @@ never reached, and the two used to look identical from `decisions.jsonl`. The pa
 a `manual` skip under source `auto_merge` carrying the pull request URL. It is recorded
 once per pull request rather than once per poll pass: management is a standing state, so a
 per-pass entry would bury the log the way the silent skip hid in it. While the state
-stands, `robco overseer status` and the OVERSEER ledger detail both report
-`merge-eligible, manual: N`. Cycling the worker back to Auto clears the marker, so a later
-switch to Manual is recorded again. The skip happens before the gate reads the pull
+stands, `robco overseer status --debug` and the OVERSEER ledger detail both report
+`merge-eligible, manual: N`; the plain `robco overseer status` lists the same pull request
+by name under `waiting on you:`, since it needs the same decision an escalation does — a
+human choosing to merge it by hand. Cycling the worker back to Auto clears the marker, so a
+later switch to Manual is recorded again. The skip happens before the gate reads the pull
 request, so a Manual worker's pull request is never handed back by merge recovery either.
 
 Detaching does free one, because it ends Overseer ownership entirely. The next daemon
@@ -1164,9 +1172,9 @@ worker row's own marker is shown only when it *diverges* from its repo's: a work
 Auto under an Auto repo repeats what the repo row already said and renders blank, while a
 worker explicitly set to Manual under an Auto repo (or vice versa after `G`) keeps its own
 glyph. A Manual repo's name and every worker row under it render dimmed, so the opted-out
-state reads at a glance without hunting for the marker cell. `robco overseer status`
-reports a `repos: N watched, M opted out: <names>` line so the same state is visible
-without opening the TUI.
+state reads at a glance without hunting for the marker cell. `robco overseer status
+--debug` reports a `repos: N watched, M opted out: <names>` line so the same state is
+visible without opening the TUI.
 
 The triage queue is atomically persisted. At startup pending cases are loaded; an
 unreadable queue is moved aside as `queue.json.corrupt`, logged, and restarted empty.

@@ -620,7 +620,14 @@ fn stale_dispatch_counter_renders_zero() {
     ledger.counters.date = today.pred_opt();
     ledger.counters.dispatched_today = 7;
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &OverseerConfig::default(), &ledger, &[], &[]);
+    append_ledger(
+        &mut lines,
+        &OverseerConfig::default(),
+        &ledger,
+        &[],
+        &[],
+        &Registry::default(),
+    );
     let rendered = lines[0]
         .spans
         .iter()
@@ -638,6 +645,7 @@ fn empty_ledger_hides_empty_detail_lines() {
         &Ledger::default(),
         &[],
         &[],
+        &Registry::default(),
     );
     let rendered = lines
         .iter()
@@ -699,7 +707,14 @@ fn active_phases_excludes_terminal_entries() {
         ..Ledger::default()
     };
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &OverseerConfig::default(), &ledger, &[], &[]);
+    append_ledger(
+        &mut lines,
+        &OverseerConfig::default(),
+        &ledger,
+        &[],
+        &[],
+        &Registry::default(),
+    );
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -709,4 +724,56 @@ fn active_phases_excludes_terminal_entries() {
     assert!(rendered.contains("active phases"));
     assert!(rendered.contains("working=1"));
     assert!(!rendered.contains("merged"));
+}
+
+#[test]
+fn workers_by_repo_names_the_repo_not_its_absolute_path() {
+    let ledger = Ledger {
+        entries: vec![LedgerEntry {
+            task_id: "task".into(),
+            display_id: "#1".into(),
+            repo: "/Users/operator/repos/robco".into(),
+            agent_id: "agent".into(),
+            branch: "branch".into(),
+            phase: LedgerPhase::Working,
+            dispatched_at: Utc::now(),
+            settled_at: None,
+            retries: 0,
+            pr_url: None,
+            branch_updates: 0,
+            merge_recovery: Default::default(),
+            merge_hold: Default::default(),
+            manual_merge_skip: None,
+            merge_judge_fail_safes: 0,
+            merge_hold_cap_escalated: false,
+            merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
+        }],
+        ..Ledger::default()
+    };
+    let mut repo = crate::discover::repo_node("/Users/operator/repos/robco".into(), false);
+    repo.name = "robco".into();
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo],
+    };
+    let mut lines = Vec::new();
+    append_ledger(
+        &mut lines,
+        &OverseerConfig::default(),
+        &ledger,
+        &[],
+        &[],
+        &registry,
+    );
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(rendered.contains("workers by repo"));
+    assert!(rendered.contains("robco=1"));
+    assert!(!rendered.contains("/Users/operator"));
 }

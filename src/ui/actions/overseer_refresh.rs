@@ -28,6 +28,7 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
         &decisions,
         &reports,
         &Dismissals::load().unwrap_or_default(),
+        registry,
     );
     let heartbeat = crate::overseer::heartbeat_path().ok();
     let heartbeat_age = heartbeat
@@ -148,7 +149,13 @@ mod tests {
 
         fn refresh(app: &mut App, decisions: &[DecisionEntry]) {
             app.apply_overseer(OverseerResult {
-                inbox: inbox::aggregate(&Ledger::default(), decisions, &[], &Dismissals::default()),
+                inbox: inbox::aggregate(
+                    &Ledger::default(),
+                    decisions,
+                    &[],
+                    &Dismissals::default(),
+                    &Registry::default(),
+                ),
                 snapshot: OverseerSnapshot::default(),
             });
         }

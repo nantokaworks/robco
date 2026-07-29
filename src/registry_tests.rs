@@ -343,3 +343,25 @@ fn save_under_lock_round_trips() {
     assert_eq!(loaded.version, 7);
     assert_eq!(loaded.repos.len(), 1);
 }
+
+#[test]
+fn repo_label_prefers_the_registered_name_over_the_path() {
+    let mut node = repo("/Users/operator/repos/robco", Vec::new());
+    node.name = "robco".into();
+    let registry = Registry {
+        version: 1,
+        repos: vec![node],
+    };
+    assert_eq!(registry.repo_label("/Users/operator/repos/robco"), "robco");
+}
+
+#[test]
+fn repo_label_falls_back_to_the_last_path_component_never_the_full_path() {
+    let registry = Registry {
+        version: 1,
+        repos: Vec::new(),
+    };
+    let label = registry.repo_label("/Users/operator/repos/orphaned-entry");
+    assert_eq!(label, "orphaned-entry");
+    assert!(!label.contains('/'));
+}

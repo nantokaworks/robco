@@ -81,8 +81,8 @@ pub struct OverseerArgs {
 pub enum OverseerCommand {
     /// Run the Overseer daemon in the foreground.
     Run,
-    /// Show daemon, capacity, ledger, and decision status.
-    Status,
+    /// Answer whether anything needs you, is stuck, or is running.
+    Status(OverseerStatusArgs),
     /// Gracefully stop the running daemon.
     Stop,
     /// Persist a runtime toggle in RobCo's JSON config.
@@ -113,6 +113,16 @@ pub struct OverseerSetArgs {
     pub setting: OverseerSetting,
     #[arg(value_enum)]
     pub value: OnOff,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OverseerStatusArgs {
+    /// Also print internal bookkeeping: the raw ledger phase tally, `workers by
+    /// repo` keyed by absolute path, the skip list, and the recent decision-log
+    /// tail. Nothing here is deleted from the daemon's records — this only
+    /// changes what the command prints by default.
+    #[arg(long)]
+    pub debug: bool,
 }
 
 #[derive(Debug, ClapArgs)]

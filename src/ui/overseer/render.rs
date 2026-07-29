@@ -12,6 +12,7 @@ use crate::overseer::{
     ledger::{Ledger, LedgerPhase},
     logging::DecisionEntry,
 };
+use crate::registry::Registry;
 
 use super::WorkerManagement;
 use crate::ui::theme::DEFAULT as THEME;
@@ -109,6 +110,7 @@ pub(super) fn append_ledger(
     ledger: &Ledger,
     decisions: &[DecisionEntry],
     management: &[WorkerManagement],
+    registry: &Registry,
 ) {
     let active = ledger
         .entries
@@ -118,7 +120,9 @@ pub(super) fn append_ledger(
     let mut repos = BTreeMap::new();
     let mut phases = BTreeMap::new();
     for entry in &active {
-        *repos.entry(entry.repo.as_str()).or_insert(0usize) += 1;
+        *repos
+            .entry(registry.repo_label(&entry.repo))
+            .or_insert(0usize) += 1;
     }
     for entry in &active {
         *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
