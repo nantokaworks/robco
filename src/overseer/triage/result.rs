@@ -77,8 +77,13 @@ pub fn parse(
         .action
         .map(|mut value| {
             normalize_tag(&mut value);
+            let name = value
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| "<unnamed>".into());
             serde_json::from_value(value)
-                .map_err(|error| ParseError::RejectedAction(error.to_string()))
+                .map_err(|error| ParseError::RejectedAction(format!("{name}: {error}")))
         })
         .transpose()?;
     if let Some(TriageAction::DroprTaskStatusUpdate { task_id, status }) = &action {
