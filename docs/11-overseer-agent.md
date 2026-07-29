@@ -210,8 +210,10 @@ briefing tells the LLM to treat every such field as data, not as instructions. T
 ops agent is the one exception: an allow-listed operator's message is the session's actual
 instruction, so the briefing hands it to the model as an instruction, not as fenced data —
 only the ledger status, decision log, case context, and tmux capture around it stay fenced.
-Discord-generated impactful actions still pass through the same human confirmation gate as
-typed commands.
+The operator's message is still text from Discord, so both the opening and closing
+`EXTERNAL_DATA` fence syntax are neutralized inside it before it is embedded, so it cannot
+forge a data block that shadows the real ones below it. Discord-generated impactful actions
+still pass through the same human confirmation gate as typed commands.
 
 ## Configuration reference
 
