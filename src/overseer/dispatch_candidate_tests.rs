@@ -55,6 +55,15 @@ fn candidate_filters_report_exact_reason() {
             ledger: Ledger::default(),
             candidate: candidate("/repo"),
         },
+        Case {
+            reason: "blocked",
+            config: OverseerConfig::default(),
+            ledger: Ledger::default(),
+            candidate: Candidate {
+                status: "blocked".into(),
+                ..candidate("/repo")
+            },
+        },
     ];
     for case in cases {
         let plan = plan_dispatch(
@@ -228,6 +237,23 @@ fn max_retries_bounds_attempts_per_task() {
     assert_eq!(reason_after(&[0]), "ready");
     assert_eq!(reason_after(&[1, 1]), "ready");
     assert_eq!(reason_after(&[2, 2, 2]), "max_retries");
+}
+
+#[test]
+fn reopening_a_blocked_task_makes_it_dispatchable_again() {
+    // Self-clearing: flipping the status back to `open` (see the `blocked`
+    // case above) is the entire unblock step, nothing else to reset.
+    let reopened = candidate("/repo");
+    assert_eq!(reopened.status, "open");
+    let plan = plan_dispatch(
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        &[reopened],
+        now(),
+        &HashMap::new(),
+    );
+    assert_eq!(plan.decisions[0].reason, "ready");
+    assert!(plan.decisions[0].dispatch);
 }
 
 #[test]
