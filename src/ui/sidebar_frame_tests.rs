@@ -155,7 +155,7 @@ fn overseer_popup_opens_immediately_below_rendered_selections() {
     app.selected = 0;
     assert_eq!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Health))
+        Some(Selection::OverseerCategory(OverseerCategory::Inbox))
     );
     assert_overseer_popup_anchor(&app);
 

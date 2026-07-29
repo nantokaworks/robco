@@ -13,7 +13,14 @@ fn items(
     decisions: &[DecisionEntry],
     reports: &[AgentQuestionReport],
 ) -> Vec<InboxItem> {
-    aggregate(ledger, decisions, reports, &Dismissals::default()).items
+    aggregate(
+        ledger,
+        decisions,
+        reports,
+        &Dismissals::default(),
+        &Registry::default(),
+    )
+    .items
 }
 
 fn report(awaiting_confirmation: bool) -> AgentQuestionReport {
@@ -103,6 +110,29 @@ fn global_and_stale_escalations_are_display_only() {
 }
 
 #[test]
+fn a_ledger_parked_escalation_names_the_repo_never_its_absolute_path() {
+    // The Inbox row's `label` reaches an operator directly — the CLI's
+    // "waiting on you" line prints it verbatim (dropr:357) — so the raw path
+    // the ledger records a worker's repository under must never leak through.
+    let mut ledger = escalated_ledger();
+    ledger.entries[0].repo = "/Users/operator/repos/robco".into();
+    let mut repo = crate::discover::repo_node("/Users/operator/repos/robco".into(), false);
+    repo.name = "robco".into();
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo],
+    };
+
+    let inbox = aggregate(&ledger, &[], &[], &Dismissals::default(), &registry);
+
+    assert_eq!(inbox.items.len(), 1);
+    assert!(inbox.items[0].label.contains("robco"));
+    assert!(inbox.items[0].detail.contains("robco"));
+    assert!(!inbox.items[0].label.contains("/Users/operator"));
+    assert!(!inbox.items[0].detail.contains("/Users/operator"));
+}
+
+#[test]
 fn escalation_requires_a_live_target_session() {
     for status in [Status::Dead, Status::BranchOnly] {
         let items = items(&escalated_ledger(), &[], &[report_with_status(status)]);
@@ -133,7 +163,13 @@ fn a_dismissed_item_is_filtered_out_but_still_counts_as_a_live_target() {
     let mut dismissals = Dismissals::default();
     dismissals.dismiss("ESC", "#159", at(1));
 
-    let inbox = aggregate(&escalated_ledger(), &[], &[], &dismissals);
+    let inbox = aggregate(
+        &escalated_ledger(),
+        &[],
+        &[],
+        &dismissals,
+        &Registry::default(),
+    );
 
     assert!(inbox.items.is_empty());
     // The identity has to survive the filter, otherwise the next dismissal's
@@ -158,6 +194,7 @@ fn a_newer_escalation_for_a_dismissed_target_comes_back() {
         &[escalation("escalated again", 9)],
         &[],
         &dismissals,
+        &Registry::default(),
     );
 
     assert_eq!(inbox.items.len(), 1);

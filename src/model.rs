@@ -566,31 +566,40 @@ mod tests {
     }
 }
 
+/// The four rows of the OVERSEER frame, ordered by the question they answer
+/// (dropr:357). `Inbox` and `Health` answer the two questions an operator
+/// actually asks — is anything waiting on me, is anything stuck — and sit
+/// first. `Ledger` and `Decisions` are the daemon's own bookkeeping: reachable
+/// for debugging, never deleted, but demoted below the two rows an operator
+/// reads for a decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverseerCategory {
+    Inbox,
     Health,
     Ledger,
-    Inbox,
     Decisions,
 }
 
 impl OverseerCategory {
-    pub const ALL: [Self; 4] = [Self::Health, Self::Ledger, Self::Inbox, Self::Decisions];
+    pub const ALL: [Self; 4] = [Self::Inbox, Self::Health, Self::Ledger, Self::Decisions];
 
+    /// "Waiting on you" rather than "Inbox": the row answers a question, and an
+    /// operator scanning the sidebar for what needs them should not have to
+    /// know dropr/robco jargon for a mail metaphor to find it.
     pub fn label(self) -> &'static str {
         match self {
+            Self::Inbox => "Waiting on you",
             Self::Health => "Health",
             Self::Ledger => "Ledger",
-            Self::Inbox => "Inbox",
             Self::Decisions => "Decisions",
         }
     }
 
     pub fn index(self) -> usize {
         match self {
-            Self::Health => 0,
-            Self::Ledger => 1,
-            Self::Inbox => 2,
+            Self::Inbox => 0,
+            Self::Health => 1,
+            Self::Ledger => 2,
             Self::Decisions => 3,
         }
     }

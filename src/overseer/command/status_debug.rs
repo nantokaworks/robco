@@ -1,0 +1,211 @@
+//! The internal bookkeeping `robco overseer status --debug` prints: the raw
+//! ledger phase tally, `workers by repo` keyed by absolute path, the skip
+//! list, the decision-log tail, and the toggle/budget lines the three-question
+//! default output moved out from under (see `status.rs`'s module doc). Kept
+//! in its own file — split from `status.rs` per the project's file-size
+//! limit — because it is a distinct concern: rendering the daemon's raw
+//! records verbatim, not answering an operator's question about them.
+
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use crate::{
+    Result,
+    config::Config,
+    model::ManagementMode,
+    overseer::{
+        command::on_off, config::OverseerConfig, judge::JudgmentQueue, ledger::Ledger, logging,
+        review::ReviewPass, session::health::SessionHealth,
+    },
+    registry::Registry,
+};
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn print_debug_section(
+    config: &Config,
+    ledger: &Ledger,
+    judgments: &JudgmentQueue,
+    registry: &Registry,
+    session_health: Option<&SessionHealth>,
+    healthy: bool,
+    pid: Option<u32>,
+    heartbeat_age: Option<Duration>,
+    daemon_version: Option<&str>,
+    circuit_open: bool,
+) -> Result<()> {
+    println!();
+    println!("--- debug ---");
+    println!(
+        "{}",
+        daemon_line(healthy, pid, heartbeat_age, daemon_version)
+    );
+    println!(
+        "{}",
+        toggle_line(
+            &config.overseer,
+            circuit_open,
+            ledger.merge_recovery_drops()
+        )
+    );
+    println!(
+        "today: {}/{}  workers: {}/{}  per-repo cap: {}",
+        ledger.counters.dispatched_today,
+        crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
+        ledger.active_workers().count,
+        config.overseer.max_workers,
+        config.overseer.per_repo_limit
+    );
+    println!("{}", llm_line(config, judgments)?);
+    println!("{}", session_auth_line(session_health));
+    println!("{}", judgments.snapshot().summary());
+    println!("workers by repo: {:?}", ledger.active_workers().repos);
+    println!("{}", repos_line(registry));
+    let mut phases = BTreeMap::new();
+    for entry in &ledger.entries {
+        *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
+    }
+    println!("phases: {phases:?}");
+    let manual_merges = ledger.manual_merge_skips();
+    if manual_merges != 0 {
+        println!("merge-eligible, manual: {manual_merges}");
+    }
+    println!("skip list: {:?}", ledger.skip_list);
+    println!("recent decisions:");
+    for entry in logging::tail(10)? {
+        println!(
+            "  {} {:?} task={} repo={} {}",
+            entry.at.to_rfc3339(),
+            entry.kind,
+            entry.task.as_deref().unwrap_or("-"),
+            entry.repo.as_deref().unwrap_or("-"),
+            entry.reason
+        );
+    }
+    Ok(())
+}
+
+/// Whether a session the daemon spawns can authenticate.
+///
+/// Reported unconditionally, including when no probe has ever run: an absent
+/// record is itself the answer an operator needs after installing the service,
+/// and a line that appears only on failure cannot be checked before the failure.
+fn session_auth_line(health: Option<&SessionHealth>) -> String {
+    health.map_or_else(
+        || "session auth: unknown (no preflight recorded)".to_string(),
+        SessionHealth::summary,
+    )
+}
+
+/// Today's LLM spend, per surface.
+///
+/// The board reviewer runs on a clock and would consume most of a shared budget
+/// on its own, so it carries its own. Reporting the two counts separately is
+/// what lets an operator see which surface exhausted which budget instead of
+/// inferring it from a single number.
+fn llm_line(config: &Config, judgments: &JudgmentQueue) -> Result<String> {
+    let judge = judgments.llm_calls_today();
+    let review = ReviewPass::load()?.calls_today();
+    Ok(format!(
+        "llm today: judge {judge}/{}  review {review}/{} ({})",
+        config.overseer.daily_llm_budget,
+        config.overseer.daily_review_budget,
+        review_state(&config.overseer)
+    ))
+}
+
+/// How the board review is running.
+///
+/// The pass itself always runs on its interval, and its deterministic findings
+/// with it; `review_profile` decides only whether a reviewer model reads the same
+/// digest afterwards. The line used to print `disabled` for a missing profile,
+/// which read as "the review is off" — and was, which is the bug this wording
+/// outlived. The two states are now named separately, because an operator seeing a
+/// quiet board needs to know whether nothing was found or nothing looked.
+fn review_state(config: &OverseerConfig) -> String {
+    let interval = config.review_interval_mins;
+    config.review_profile.as_deref().map_or_else(
+        || format!("findings every {interval}m, no reviewer model"),
+        |profile| format!("every {interval}m via {profile}"),
+    )
+}
+
+/// The daemon's identity line: whether it is up, which process it is, when it
+/// last reported, and — the one thing a running daemon cannot otherwise be
+/// asked — which build it started from. A daemon keeps that build until the
+/// service restarts, so `healthy` alone never says whether a merged fix is live.
+fn daemon_line(
+    healthy: bool,
+    pid: Option<u32>,
+    heartbeat_age: Option<Duration>,
+    daemon_version: Option<&str>,
+) -> String {
+    format!(
+        "daemon: {} pid={} heartbeat={} version={}",
+        if healthy { "healthy" } else { "down/stale" },
+        pid.map_or_else(|| "-".into(), |pid| pid.to_string()),
+        heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs())),
+        daemon_version.unwrap_or("unknown")
+    )
+}
+
+/// Which registered repos the Overseer actually looks at (`#306`). Dispatch and
+/// auto-merge already gate on `RepoNode::management` in the passes themselves;
+/// this line is the one place that state is visible without opening the TUI or
+/// digging through `decisions.jsonl` for a `overseer_unmanaged` skip.
+fn repos_line(registry: &Registry) -> String {
+    let opted_out: Vec<&str> = registry
+        .repos
+        .iter()
+        .filter(|repo| repo.management == ManagementMode::Manual)
+        .map(|repo| repo.name.as_str())
+        .collect();
+    if opted_out.is_empty() {
+        return format!("repos: {} watched, 0 opted out", registry.repos.len());
+    }
+    format!(
+        "repos: {} watched, {} opted out: {}",
+        registry.repos.len() - opted_out.len(),
+        opted_out.len(),
+        opted_out.join(", ")
+    )
+}
+
+/// Render the toggle summary line of `robco overseer status --debug`.
+///
+/// Every toggle reported here must be one the daemon actually honours; a switch
+/// that is only displayed invites the reader to blame it for an outage it has no
+/// part in.
+fn toggle_line(config: &OverseerConfig, circuit_open: bool, recovery_drops: u32) -> String {
+    format!(
+        "dispatch: {}  auto-merge: {} (protection: {})  autonomy: {}  merge-recovery: {}  circuit: {}",
+        on_off(config.dispatch_enabled),
+        on_off(config.auto_merge),
+        config.protection_mode.label(),
+        config.autonomy_level.label(),
+        merge_recovery_state(config, recovery_drops),
+        if circuit_open { "open" } else { "closed" }
+    )
+}
+
+/// Merge recovery reads as one setting, so its cap travels with its switch: an
+/// operator who sees only `on` cannot tell how many handbacks a stuck pull
+/// request still has before it reaches them.
+///
+/// Switched off, the number that matters is the opposite one — how many failures
+/// a worker could have fixed went to nobody. Without it `off` is a flag; with it
+/// the flag has a consequence attached, which is what an operator needs to decide
+/// whether to switch it on. It is omitted while nothing has been dropped, so the
+/// line names an exception rather than a permanent zero.
+fn merge_recovery_state(config: &OverseerConfig, drops: u32) -> String {
+    if config.merge_recovery_enabled {
+        return format!("on (max {})", config.max_merge_recoveries);
+    }
+    if drops == 0 {
+        return "off".into();
+    }
+    format!("off ({drops} dropped)")
+}
+
+#[cfg(test)]
+#[path = "status_debug_tests.rs"]
+mod tests;

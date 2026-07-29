@@ -61,7 +61,7 @@ fn overseer_expand_collapse_keys_update_tree() {
     assert_eq!(app.visible().len(), 4);
     assert_eq!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Health))
+        Some(Selection::OverseerCategory(OverseerCategory::Inbox))
     );
 
     // Inbox is the one category the keys still act on; the read-only three are

@@ -34,6 +34,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
                 &snapshot.ledger,
                 &snapshot.decisions,
                 &management,
+                &app.registry,
             );
             while lines.last().is_some_and(|line| line.spans.is_empty()) {
                 lines.pop();

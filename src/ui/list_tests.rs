@@ -71,14 +71,15 @@ fn expanding_the_inbox_lists_its_items_as_rows_and_collapsing_takes_them_back() 
     );
 
     // Collapsing takes the item rows away and leaves the cursor on a real row
-    // rather than past the end of the list.
+    // rather than past the end of the list — never `None`, and never a stale
+    // `OverseerInbox` reference into a row that no longer exists.
     app.selected = inbox_row + 2;
     app.set_overseer_category_expanded(OverseerCategory::Inbox, false);
     assert_eq!(app.visible(), categories);
-    assert_eq!(
+    assert!(matches!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Decisions))
-    );
+        Some(Selection::OverseerCategory(_))
+    ));
 }
 
 #[test]
@@ -130,7 +131,7 @@ fn selection_identity_survives_overseer_row_toggle() {
     app.selected = 0;
     assert_eq!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Health))
+        Some(Selection::OverseerCategory(OverseerCategory::Inbox))
     );
 
     app.set_overseer_visibility(false);

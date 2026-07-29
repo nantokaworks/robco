@@ -197,6 +197,23 @@ impl Registry {
                 .filter(|repo| !repo.agents.is_empty() || repo.pinned),
         );
     }
+
+    /// The name a registered repository is known by, falling back to the last
+    /// path component — never the full absolute path a ledger entry or
+    /// decision-log record keeps a repository under (dropr:357) — for one the
+    /// registry no longer lists.
+    pub fn repo_label<'a>(&'a self, path: &'a str) -> &'a str {
+        self.repos
+            .iter()
+            .find(|repo| repo.path.to_string_lossy() == path)
+            .map(|repo| repo.name.as_str())
+            .unwrap_or_else(|| {
+                Path::new(path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(path)
+            })
+    }
 }
 
 #[cfg(test)]

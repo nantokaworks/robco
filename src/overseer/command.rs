@@ -40,7 +40,7 @@ pub(crate) use super::ledger::terminal;
 pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
     match args.command {
         OverseerCommand::Run => unreachable!("async overseer run handled by main"),
-        OverseerCommand::Status => status(config),
+        OverseerCommand::Status(args) => status(config, args.debug),
         OverseerCommand::Stop => stop(),
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         OverseerCommand::DailyLimit(args) => daily_limit(args.value),

@@ -118,6 +118,7 @@ pub(crate) fn aggregate(
     decisions: &[DecisionEntry],
     reports: &[AgentQuestionReport],
     dismissals: &Dismissals,
+    registry: &Registry,
 ) -> Inbox {
     let agents = reports
         .iter()
@@ -170,19 +171,20 @@ pub(crate) fn aggregate(
             .get(entry.agent_id.as_str())
             .filter(|report| !matches!(report.status, Status::Dead | Status::BranchOnly))
             .map(|report| report.tmux_session.clone());
+        let repo = registry.repo_label(&entry.repo);
         items.push(InboxItem {
             kind: InboxKind::Escalation,
             target_session: session,
             target_id: entry.display_id.clone(),
-            label: format!("{} — {} / {}", entry.display_id, entry.repo, entry.agent_id),
+            label: format!("{} — {repo} / {}", entry.display_id, entry.agent_id),
             // The ledger records no reason, so name what the row actually is:
             // an entry parked at `escalated`, which nothing ages out. The
             // leading `LEDGER_PARKED_MARKER` is what `InboxItem::remedy` reads
             // to route this row to `remedy::LEDGER_PARKED` instead of trying
             // to resolve the descriptive text that follows as a reason.
             detail: format!(
-                "{LEDGER_PARKED_MARKER} — repo {}, agent {}, branch {}",
-                entry.repo, entry.agent_id, entry.branch
+                "{LEDGER_PARKED_MARKER} — repo {repo}, agent {}, branch {}",
+                entry.agent_id, entry.branch
             ),
             at: entry.dispatched_at,
         });
@@ -222,6 +224,7 @@ pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
         &logging::tail(super::overseer::DECISION_SNAPSHOT_LIMIT)?,
         &question_reports(registry),
         &Dismissals::load()?,
+        registry,
     ))
 }
 
