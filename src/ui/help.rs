@@ -22,7 +22,7 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("                 on a repo row: any Auto -> all Manual, else all Auto"),
         Line::from("  G              on a repo row: toggle Overseer opt-out for the whole repo"),
         Line::from("                 (opted out: no dispatch/merge; running workers untouched)"),
-        Line::from("  S              stop overseer (dispatch off + kill workers)"),
+        Line::from("  S              stop overseer (kill workers); off: start dispatch"),
         Line::from("  R              reset dispatch circuit (when open)"),
         Line::from("Overseer inbox"),
         Line::from("  l              expand OVERSEER > Inbox to reach its item rows"),
