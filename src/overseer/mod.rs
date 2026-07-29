@@ -56,7 +56,7 @@ pub const DISPATCH_WITHOUT_DAEMON_HINT: &str = "dispatch is on but the Overseer 
 
 /// Shown after an operator stops dispatch while leaving the daemon alive.
 pub const DISPATCH_STOPPED_HINT: &str =
-    "dispatch is off — overseer is stopped; re-enable with `robco overseer set dispatch on`";
+    "dispatch is off — overseer is stopped; press S here to turn dispatch back on";
 
 /// Shown when the failure circuit has latched dispatch off after repeated worker
 /// failures. The circuit disables dispatch and persists it, so the state

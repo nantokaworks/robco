@@ -23,17 +23,23 @@ pub(super) fn prompt_action(input: &mut TextInput, key: KeyEvent) -> PromptActio
 }
 
 pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
-    // Stop is an overseer-wide action, so it is reachable from any row while
-    // the overseer panel is active — including worker rows (Selection::Agent),
-    // not just the OVERSEER header / category rows. The ConfirmOverseerPanic
-    // dialog still gates the destructive step, and it works from any preview
+    // S is an overseer-wide toggle, so it is reachable from any row while the
+    // overseer panel is active — including worker rows (Selection::Agent), not
+    // just the OVERSEER header / category rows. Turning dispatch off kills
+    // workers, so that half still goes through ConfirmOverseerPanic; turning
+    // it back on does not, since it starts nothing running before the next
+    // dispatch tick and kills no workers. Both halves work from any preview
     // tab.
     if code == KeyCode::Char('S') {
-        if app.overseer_visible {
-            app.mode = Mode::ConfirmOverseerPanic;
-            return true;
+        if !app.overseer_visible {
+            return false;
         }
-        return false;
+        if app.overseer_snapshot.overseer.dispatch_enabled {
+            app.mode = Mode::ConfirmOverseerPanic;
+        } else {
+            app.start_overseer();
+        }
+        return true;
     }
     if code == KeyCode::Char('R') {
         if !app.overseer_visible {
@@ -192,6 +198,28 @@ impl App {
         let result = crate::overseer::command::panic_stop_attributed("ui", None);
         self.refresh_overseer_snapshot();
         self.response_message(result, "overseer stopped: dispatch off, workers killed");
+    }
+
+    /// Turn dispatch back on from a stop, independent of circuit state.
+    /// Reuses the same write as the `R` circuit reset
+    /// (`set_runtime(Dispatch, true)`) since re-arming the failure counter is
+    /// harmless when it is already at zero. Unlike `panic_overseer`, this is
+    /// never gated behind a confirmation: it starts nothing running before
+    /// the next dispatch tick and kills no workers.
+    pub(in crate::ui) fn start_overseer(&mut self) {
+        let result =
+            crate::overseer::command::set_runtime(crate::cli::OverseerSetting::Dispatch, true);
+        self.refresh_overseer_snapshot();
+        match result {
+            Ok(()) if self.overseer_snapshot.daemon_alive => {
+                self.show_message("overseer dispatch enabled");
+            }
+            Ok(()) => self.show_message(format!(
+                "overseer dispatch enabled; warning: {}",
+                crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT
+            )),
+            Err(error) => self.show_message(error.to_string()),
+        }
     }
 
     /// Request an overseer dispatch circuit reset: re-enable dispatch now and

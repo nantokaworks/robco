@@ -262,3 +262,55 @@ fn stop_key_opens_panic_confirm_off_the_overseer_rows() {
     assert!(handle_normal(&mut app, KeyCode::Char('S')));
     assert!(matches!(app.mode, Mode::ConfirmOverseerPanic));
 }
+
+#[test]
+fn stop_key_still_confirms_when_dispatch_is_on() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = true;
+    app.overseer_snapshot.overseer.dispatch_enabled = true;
+
+    assert!(handle_normal(&mut app, KeyCode::Char('S')));
+    assert!(matches!(app.mode, Mode::ConfirmOverseerPanic));
+}
+
+#[test]
+fn stop_key_enables_dispatch_directly_when_off_and_circuit_closed() {
+    // Dispatch off + circuit closed is exactly the state a plain `S` leaves
+    // behind: `R` refuses here (see `reset_key_reports_when_circuit_is_closed`),
+    // so this is the toggle's job. Turning dispatch back on kills no workers
+    // and starts nothing running before the next dispatch tick, so it must not
+    // go through ConfirmOverseerPanic.
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = true;
+    app.overseer_snapshot.overseer.dispatch_enabled = false;
+    assert!(!app.overseer_snapshot.circuit_open());
+
+    assert!(handle_normal(&mut app, KeyCode::Char('S')));
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(app.overseer_snapshot.overseer.dispatch_enabled);
+    // No daemon runs in the test process, so the refreshed snapshot always
+    // reports dead — exercising the no-daemon hint on every run.
+    assert!(!app.overseer_snapshot.daemon_alive);
+    let message = app
+        .message
+        .as_ref()
+        .map(|(message, _)| message.as_str())
+        .unwrap_or_default();
+    assert!(message.contains("overseer dispatch enabled"));
+    assert!(message.contains(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
+}
+
+#[test]
+fn stop_key_start_path_is_ignored_when_overseer_inactive() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = false;
+    app.overseer_snapshot.overseer.dispatch_enabled = false;
+
+    assert!(!handle_normal(&mut app, KeyCode::Char('S')));
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(!app.overseer_snapshot.overseer.dispatch_enabled);
+}
