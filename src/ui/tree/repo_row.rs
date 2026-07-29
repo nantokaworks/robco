@@ -72,7 +72,11 @@ pub(super) fn build(
         projects_width,
         vec![
             Span::styled(format!("{marker} {prefix} "), style),
-            label::repo_management_glyph(repo.management, THEME.management_marker_style(selected)),
+            label::repo_management_glyph(
+                repo.management,
+                app.config.project_icon,
+                THEME.management_marker_style(selected),
+            ),
             Span::styled(" ", style),
         ],
         primary,

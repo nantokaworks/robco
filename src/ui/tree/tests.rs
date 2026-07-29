@@ -51,18 +51,20 @@ fn app_with_managed_workers() -> App {
 }
 
 /// The repo in `app_with_managed_workers` carries no `management` field, so it
-/// serde-defaults to Auto. An agent row's own marker is blanked whenever it
-/// matches that repo state (`ManagementMarker::unless_matching`) — the repo
-/// row already said it — so only `man-agt`, which diverges, keeps its hollow
-/// glyph; `auto-agt` inherits blank and `hand-made` (never the Overseer's)
-/// was always blank. `auto-agt` and `man-agt` are not the repo's last agent,
-/// so both draw the `├` connector; `hand-made` is last and draws `└`.
+/// serde-defaults to Auto. `#362`: `auto-agt` matching that Auto repo state no
+/// longer blanks its marker — an Auto agent is always drawn now, since a
+/// repo in Auto mode is the common case and blanking every Auto agent under
+/// it used to render it identically to `hand-made`, an unmanaged worktree.
+/// `man-agt` still diverges from the repo and keeps its hollow glyph;
+/// `hand-made` (never the Overseer's) was always blank. `auto-agt` and
+/// `man-agt` are not the repo's last agent, so both draw the `├` connector;
+/// `hand-made` is last and draws `└`.
 #[test]
 fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
     let rows = rendered_rows(&app_with_managed_workers());
 
     for (title, expected) in [
-        ("auto-agt", "  ├──   "),
+        ("auto-agt", "  ├── ● "),
         ("man-agt", "  ├── ○ "),
         ("hand-made", "  └──   "),
     ] {
@@ -74,12 +76,35 @@ fn the_indented_marker_tells_auto_manual_and_unmanaged_apart() {
     }
 }
 
-/// Once the repo itself is switched to Manual (the `G` toggle), the repo row's
-/// own state no longer says "Auto" for `auto-agt` — so that worker's own
-/// marker starts diverging from its repo and reappears, while `man-agt` now
-/// matches the repo and goes blank instead.
+/// `#362`: with `project_icon = "nerdfont"` the same three-way distinction
+/// holds, but through the bolt/hand pictograph pair instead of the round
+/// fallback — the acceptance criterion is the marker set, not the specific
+/// glyphs.
 #[test]
-fn an_agent_marker_reappears_when_it_stops_matching_its_repo() {
+fn the_nerdfont_marker_set_also_tells_the_three_states_apart() {
+    let mut app = app_with_managed_workers();
+    app.config.project_icon = crate::config::ProjectIcon::Nerdfont;
+    let rows = rendered_rows(&app);
+
+    for (title, expected) in [
+        ("auto-agt", "  ├── \u{f0e7} "),
+        ("man-agt", "  ├── \u{f256} "),
+        ("hand-made", "  └──   "),
+    ] {
+        assert!(
+            row_containing(&rows, title).starts_with(expected),
+            "{title} row does not start with {expected:?}: {:?}",
+            row_containing(&rows, title)
+        );
+    }
+}
+
+/// Once the repo itself is switched to Manual (the `G` toggle), `auto-agt`
+/// diverges from the repo and keeps showing its marker (as it already did
+/// before the switch — Auto never blanks), while `man-agt` now matches the
+/// Manual repo and goes blank instead.
+#[test]
+fn a_manual_agent_marker_blanks_when_it_starts_matching_its_repo() {
     let mut app = app_with_managed_workers();
     app.registry.repos[0].management = crate::model::ManagementMode::Manual;
     let rows = rendered_rows(&app);
@@ -123,8 +148,10 @@ fn an_agent_title_starts_right_of_its_repo_name() {
     let mut widest = app_with_managed_workers();
     widest.config.project_icon = crate::config::ProjectIcon::Emoji;
     widest.registry.repos[0].main_status = Some(Status::Idle);
+    let mut nerdfont = app_with_managed_workers();
+    nerdfont.config.project_icon = crate::config::ProjectIcon::Nerdfont;
 
-    for app in [app_with_managed_workers(), widest] {
+    for app in [app_with_managed_workers(), widest, nerdfont] {
         let rows = rendered_rows(&app);
         let repo = title_column(&rows, "repo");
 

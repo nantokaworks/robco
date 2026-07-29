@@ -1,6 +1,7 @@
-//! The agent row's prefix: the management marker's three states, the layering
-//! that keeps the marker from reading as one more expand handle, and the
-//! box-drawing connector each row draws under its ancestors.
+//! The agent row's prefix layout: where the marker cell sits relative to the
+//! row's indentation, and the box-drawing connector each row draws under its
+//! ancestors. Marker *semantics* (glyph choice, blanking rule, Nerdfont
+//! gating) live in `marker_tests.rs`.
 
 use ratatui::{
     style::{Color, Modifier, Style},
@@ -11,7 +12,9 @@ use unicode_width::UnicodeWidthStr;
 use super::*;
 
 /// The two prefix styles a text assertion does not care about, so a prefix
-/// reads as one string rather than as three spans.
+/// reads as one string rather than as three spans. Defaults to
+/// `ProjectIcon::None` — the round-glyph fallback — since these tests care
+/// about structure/placement, not the Nerdfont pair.
 fn prefix(
     cursor: &str,
     management: ManagementMarker,
@@ -22,6 +25,7 @@ fn prefix(
     agent_row_prefix(
         cursor,
         management,
+        ProjectIcon::None,
         ancestor_continues,
         is_last,
         handle,
@@ -33,48 +37,11 @@ fn prefix(
     .collect()
 }
 
-/// Auto, Manual, and unmanaged are three distinguishable renderings — the old
-/// prefix drew Manual and unmanaged identically even though `g` treats them as
-/// separate steps.
-#[test]
-fn the_three_management_states_render_three_distinct_markers() {
-    assert_eq!(
-        prefix(">", ManagementMarker::Auto, &[], true, TreeHandle::Leaf),
-        "> └── ● "
-    );
-    assert_eq!(
-        prefix(">", ManagementMarker::Manual, &[], true, TreeHandle::Leaf),
-        "> └── ○ "
-    );
-    assert_eq!(
-        prefix(
-            ">",
-            ManagementMarker::Unmanaged,
-            &[],
-            true,
-            TreeHandle::Leaf
-        ),
-        "> └──   "
-    );
-}
-
-/// Ownership and mode are read together: a worktree adopted from
-/// `worktree_root` carries a stale `Manual` while nobody owns it.
-#[test]
-fn only_an_overseer_owned_row_reads_its_management_mode() {
-    let overseer = Some(crate::overseer::OVERSEER_AGENT_ID);
-    let of = ManagementMarker::of;
-    assert_eq!(of(overseer, ManagementMode::Auto), ManagementMarker::Auto);
-    assert_eq!(
-        of(overseer, ManagementMode::Manual),
-        ManagementMarker::Manual
-    );
-    for unowned in [None, Some("some-other-agent")] {
-        for mode in [ManagementMode::Auto, ManagementMode::Manual] {
-            assert_eq!(of(unowned, mode), ManagementMarker::Unmanaged);
-        }
-    }
-}
+const ALL: [ManagementMarker; 3] = [
+    ManagementMarker::Auto,
+    ManagementMarker::Manual,
+    ManagementMarker::Unmanaged,
+];
 
 /// The marker rides the indentation, so a deeper row carries it further right.
 #[test]
@@ -88,20 +55,11 @@ fn the_marker_moves_right_with_the_row_depth() {
             true,
             TreeHandle::Leaf,
         )
-        .find(ManagementMarker::Auto.glyph())
+        .find(ManagementMarker::Auto.glyph(ProjectIcon::None))
         .expect("marked prefix carries the marker")
     };
     assert!(column(1) > column(0));
     assert!(column(2) > column(1));
-}
-
-/// Every state spends exactly one column, so the cell the prefix reserves is
-/// the same width whichever state lands in it.
-#[test]
-fn every_management_marker_spends_exactly_one_column() {
-    for management in ALL {
-        assert_eq!(UnicodeWidthStr::width(management.glyph()), 1);
-    }
 }
 
 /// The marker spends a cell the prefix already reserved, so the title starts at
@@ -134,6 +92,7 @@ fn a_child_worktree_row_shares_its_owning_agents_connector_column() {
     let agent = agent_row_prefix(
         ">",
         ManagementMarker::Unmanaged,
+        ProjectIcon::None,
         &ancestors,
         is_last,
         TreeHandle::Expanded,
@@ -155,12 +114,6 @@ fn a_child_worktree_row_shares_its_owning_agents_connector_column() {
         child.content
     );
 }
-
-const ALL: [ManagementMarker; 3] = [
-    ManagementMarker::Auto,
-    ManagementMarker::Manual,
-    ManagementMarker::Unmanaged,
-];
 
 /// A leaf spends the same handle column an expandable row does — with a plain
 /// dash instead of a triangle — so neither the marker nor the title drifts
@@ -262,6 +215,7 @@ fn the_structure_and_the_state_marker_are_drawn_in_different_styles() {
     let spans: Vec<Span<'static>> = agent_row_prefix(
         ">",
         ManagementMarker::Auto,
+        ProjectIcon::None,
         &[true],
         false,
         TreeHandle::Collapsed,
