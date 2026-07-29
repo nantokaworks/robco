@@ -14,6 +14,7 @@ fn candidate(repo: &str) -> Candidate {
         priority: "medium".into(),
         workspace: "workspace-1".into(),
         priority_score: None,
+        status: "open".into(),
     }
 }
 

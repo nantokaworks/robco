@@ -253,6 +253,7 @@ fn gather_candidates() -> Result<Option<Vec<Candidate>>> {
                 priority: task.task.priority,
                 workspace: workspace.id.clone(),
                 priority_score: task.task.priority_score,
+                status: task.task.status,
             });
         }
     }
