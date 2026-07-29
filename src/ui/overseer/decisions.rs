@@ -10,6 +10,7 @@
 
 use ratatui::text::{Line, Span};
 
+use crate::overseer::ledger::{Ledger, LedgerPhase};
 use crate::overseer::logging::{DecisionEntry, DecisionKind};
 use crate::ui::theme::DEFAULT as THEME;
 
@@ -58,6 +59,41 @@ const _: () = assert!(DETAIL_LIMIT < super::DECISION_SNAPSHOT_LIMIT);
 /// knowable here — only that they exist.
 const MORE_HINT: &str = "  older entries stay in the decision log";
 
+/// The reason `agent_id`'s worker still needs a human decision, or `None`
+/// once the Overseer has closed the loop on its own.
+///
+/// `LedgerPhase::Escalated` is terminal and never reverts on its own
+/// (`overseer::ledger`) — including when the triage judge resolves the
+/// exception itself (e.g. answering the worker's question), which logs a
+/// `Hold` decision but leaves the phase exactly where the original
+/// `--kind blocked` report set it (`overseer::triage::completion`). So the
+/// ledger phase alone cannot distinguish "still needs a person" from
+/// "the Overseer already handled it" — the most recent Escalate / Hold / Skip
+/// decision for the entry's task is the tie-breaker, the same way `standoffs`
+/// above tracks the latest state per task by walking the oldest-first log.
+pub(super) fn blocked_reason(
+    ledger: &Ledger,
+    decisions: &[DecisionEntry],
+    agent_id: &str,
+) -> Option<String> {
+    let entry = ledger
+        .entries
+        .iter()
+        .find(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::Escalated)?;
+    let mut reason = Some("worker blocked".to_string());
+    for decision in decisions {
+        if decision.task.as_deref() != Some(entry.task_id.as_str()) {
+            continue;
+        }
+        reason = match decision.kind {
+            DecisionKind::Escalate => Some(decision.reason.clone()),
+            DecisionKind::Hold | DecisionKind::Skip => None,
+            _ => reason,
+        };
+    }
+    reason
+}
+
 pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[DecisionEntry]) {
     lines.push(Line::from(Span::styled(
         "recent decisions",
@@ -92,116 +128,5 @@ pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[Deci
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn decision(kind: DecisionKind, task: &str, reason: &str) -> DecisionEntry {
-        let mut entry = DecisionEntry::new(kind, reason);
-        entry.task = Some(task.into());
-        entry
-    }
-
-    fn decisions(count: usize) -> Vec<DecisionEntry> {
-        (0..count)
-            .map(|index| {
-                decision(
-                    DecisionKind::Dispatch,
-                    &format!("#{index}"),
-                    "worker spawned",
-                )
-            })
-            .collect()
-    }
-
-    fn rendered(decisions: &[DecisionEntry]) -> Vec<String> {
-        let mut lines = Vec::new();
-        append_decisions(&mut lines, decisions);
-        lines
-            .iter()
-            .map(|line| {
-                line.spans
-                    .iter()
-                    .map(|span| span.content.as_ref())
-                    .collect()
-            })
-            .collect()
-    }
-
-    fn entry_rows(lines: &[String]) -> usize {
-        lines
-            .iter()
-            .filter(|line| line.starts_with("  · ") || line.starts_with("  ! "))
-            .count()
-    }
-
-    #[test]
-    fn a_complete_list_carries_no_notice() {
-        let lines = rendered(&decisions(DETAIL_LIMIT));
-        assert_eq!(entry_rows(&lines), DETAIL_LIMIT);
-        assert!(!lines.iter().any(|line| line.contains("older entries")));
-    }
-
-    #[test]
-    fn an_empty_log_says_none_and_stops() {
-        let lines = rendered(&[]);
-        assert_eq!(lines, ["recent decisions", "  none"]);
-    }
-
-    #[test]
-    fn a_truncated_list_points_at_the_log_without_counting() {
-        // A snapshot filled to its own limit says nothing about how much
-        // history sits behind it, so the notice states only that it exists.
-        let lines = rendered(&decisions(super::super::DECISION_SNAPSHOT_LIMIT));
-        assert_eq!(entry_rows(&lines), DETAIL_LIMIT);
-        assert_eq!(
-            lines.last().unwrap(),
-            "  older entries stay in the decision log"
-        );
-        assert!(!lines.iter().any(|line| line.contains("more")));
-    }
-
-    #[test]
-    fn the_newest_decision_is_listed_first() {
-        let lines = rendered(&decisions(DETAIL_LIMIT + 1));
-        assert!(lines[1].contains(&format!("#{}", DETAIL_LIMIT)));
-    }
-
-    #[test]
-    fn an_external_claim_names_the_holder() {
-        let decisions = [decision(
-            DecisionKind::Hold,
-            "#216",
-            "claimed_elsewhere:manual-run",
-        )];
-        assert_eq!(standoffs(&decisions), ["#216 → manual-run"]);
-    }
-
-    #[test]
-    fn a_later_dispatch_clears_the_standoff() {
-        // The operator's manual run finished and the overseer picked the task
-        // up; the frame must stop reporting a stand-off that ended.
-        let decisions = [
-            decision(DecisionKind::Hold, "#216", "claimed_elsewhere:manual-run"),
-            decision(DecisionKind::Dispatch, "#216", "worker spawned"),
-        ];
-        assert!(standoffs(&decisions).is_empty());
-    }
-
-    #[test]
-    fn a_repeated_standoff_is_reported_once() {
-        let decisions = [
-            decision(DecisionKind::Hold, "#216", "claimed_elsewhere:manual-run"),
-            decision(DecisionKind::Hold, "#216", "claimed_elsewhere:other-agent"),
-        ];
-        assert_eq!(standoffs(&decisions), ["#216 → other-agent"]);
-    }
-
-    #[test]
-    fn unrelated_decisions_are_ignored() {
-        let decisions = [
-            decision(DecisionKind::Skip, "#216", "daily_limit"),
-            DecisionEntry::new(DecisionKind::Hold, "claimed_elsewhere:no-task"),
-        ];
-        assert!(standoffs(&decisions).is_empty());
-    }
-}
+#[path = "decisions_tests.rs"]
+mod tests;
