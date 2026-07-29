@@ -810,6 +810,14 @@ log with Discord user attribution. Rate-limit refusals and rejected ops-agent ac
 are audited too. Channel/user filtering is intentionally silent, and an invalid or
 expired `CONFIRM` reply is rejected in-channel without a decision-log entry.
 
+An allow-listed operator can also ask the ops agent to file a dropr task
+(`dropr_task_create`, taking a robco-registered repo name, a title, and an optional
+description). It resolves the repo the same way `robco spawn --repo` does, maps it onto
+the dropr workspace RobCo's registry already associates with that repository's remote,
+and creates the task there. Like every other impactful action it is queued behind the
+confirmation prompt, counts against the mutating-action rate limit, and is audited on
+both success and refusal — there is no separate bypass for it.
+
 ## Setup runbook
 
 For first-time setup, run the interactive wizard from a terminal:

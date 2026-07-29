@@ -247,6 +247,7 @@ fn describe_command(command: &Command) -> String {
         Command::Tasks => "tasks".into(),
         Command::Skip(task) => format!("skip {task}"),
         Command::Retry(task) => format!("retry {task}"),
+        Command::TaskCreate { repo, title, .. } => format!("create task \"{title}\" in {repo}"),
         Command::Answer { agent, .. } => format!("answer {agent}"),
         Command::Approve(agent) => format!("approve {agent}"),
         Command::Kill(agent) => format!("kill {agent}"),
@@ -269,6 +270,7 @@ fn impactful(command: &Command) -> bool {
             | Command::Approve(_)
             | Command::Answer { .. }
             | Command::Dispatch(true)
+            | Command::TaskCreate { .. }
     )
     // Risk-reducing `dispatch off` and `automerge off` remain immediate so an
     // incident responder is never delayed by the confirmation round trip.

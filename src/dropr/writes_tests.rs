@@ -32,6 +32,35 @@ fn a_status_update_names_the_claim_holder() {
     );
 }
 
+#[test]
+fn a_task_create_names_the_workspace_author_and_title() {
+    assert_eq!(
+        task_create_arguments("Xdin9xDHmhuOohKzCBmZX", "file the follow-up", None),
+        json!({
+            "items": [{
+                "workspace_id": "Xdin9xDHmhuOohKzCBmZX",
+                "agent_id": "overseer",
+                "title": "file the follow-up",
+            }],
+        })
+    );
+    assert_eq!(
+        task_create_arguments(
+            "Xdin9xDHmhuOohKzCBmZX",
+            "file the follow-up",
+            Some("more detail"),
+        ),
+        json!({
+            "items": [{
+                "workspace_id": "Xdin9xDHmhuOohKzCBmZX",
+                "agent_id": "overseer",
+                "title": "file the follow-up",
+                "description": "more detail",
+            }],
+        })
+    );
+}
+
 /// dropr has no `ready` status and rejects the transition outright, so triage's
 /// word for "released" has to become dropr's before the call goes out.
 #[test]

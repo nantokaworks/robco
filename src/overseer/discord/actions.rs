@@ -1,4 +1,7 @@
-use super::{commands::Command, handler::CommandExecutor, ledger_requests::LedgerRequest};
+use super::{
+    commands::Command, handler::CommandExecutor, ledger_requests::LedgerRequest,
+    task_create::create_task,
+};
 use crate::{
     cli::OverseerSetting,
     config::Config,
@@ -84,6 +87,11 @@ fn execute(
             },
             task,
         ),
+        Command::TaskCreate {
+            repo,
+            title,
+            description,
+        } => create_task(repo, title, description.as_deref()),
         Command::Answer { agent, text } => {
             let session = agent_session(agent)?;
             tmux(&["send-keys", "-t", &format!("={session}:"), "-l", "--", text])?;

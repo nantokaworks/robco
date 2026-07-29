@@ -74,6 +74,20 @@ pub(crate) fn task_status_update_timeout(
     )
 }
 
+/// Files a new task onto a workspace's board.
+pub(crate) fn task_create_timeout(
+    workspace_id: &str,
+    title: &str,
+    description: Option<&str>,
+    timeout: Duration,
+) -> WriteResult {
+    write(
+        "task_create",
+        task_create_arguments(workspace_id, title, description),
+        timeout,
+    )
+}
+
 fn scribble_arguments(task_id: &str, body: &str) -> Value {
     json!({
         "items": [{
@@ -95,6 +109,18 @@ fn status_arguments(task_id: &str, status: &str) -> Value {
             "status": lifecycle_status(status),
         }],
     })
+}
+
+fn task_create_arguments(workspace_id: &str, title: &str, description: Option<&str>) -> Value {
+    let mut item = json!({
+        "workspace_id": workspace_id,
+        "agent_id": OVERSEER_AGENT_ID,
+        "title": title,
+    });
+    if let Some(description) = description {
+        item["description"] = Value::String(description.to_string());
+    }
+    json!({ "items": [item] })
 }
 
 /// Triage spells the released state `ready`; dropr's lifecycle has no such
