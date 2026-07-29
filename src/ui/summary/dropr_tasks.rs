@@ -25,17 +25,34 @@ const TASK_DISPLAY_LIMIT: usize = 8;
 // while the display cap bites before the fetch limit does.
 const _: () = assert!(TASK_DISPLAY_LIMIT < TASK_FETCH_LIMIT);
 
-/// Splits the rows into the panel's two sections.
+/// Splits the rows into the panel's three sections.
 ///
-/// The split is on `in_progress` because that is the distinction an operator
-/// acts on — work already running versus work waiting to be picked up — and it
-/// survives the source change: both sections now come from the same `task_list`
-/// query, so membership is decided by the task's own status rather than by
-/// which endpoint happened to return it.
+/// `blocked` is split off first and never folded in with `next`: a blocked
+/// task is not available work, and rendering it as though it were would
+/// reintroduce the exact confusion the `blocked` status exists to remove.
+/// What is left splits on `in_progress`, the distinction an operator acts on
+/// for everything that remains — work already running versus work waiting to
+/// be picked up. All three sections come from the same `task_list` query, so
+/// membership is decided by the task's own status rather than by which
+/// endpoint happened to return it.
 fn partition_tasks(
     tasks: &[DroprTaskCandidate],
-) -> (Vec<&DroprTaskCandidate>, Vec<&DroprTaskCandidate>) {
-    tasks.iter().partition(|task| task.status == "in_progress")
+) -> (
+    Vec<&DroprTaskCandidate>,
+    Vec<&DroprTaskCandidate>,
+    Vec<&DroprTaskCandidate>,
+) {
+    let mut blocked = Vec::new();
+    let mut in_progress = Vec::new();
+    let mut next = Vec::new();
+    for task in tasks {
+        match task.status.as_str() {
+            "blocked" => blocked.push(task),
+            "in_progress" => in_progress.push(task),
+            _ => next.push(task),
+        }
+    }
+    (blocked, in_progress, next)
 }
 
 pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch) -> Vec<Line<'static>> {
@@ -45,21 +62,26 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch) -> Vec<Line<'static>> {
         return problem_lines("tasks unavailable", &fetch.problems);
     }
 
-    let (in_progress, next) = partition_tasks(&fetch.tasks);
+    let (blocked, in_progress, next) = partition_tasks(&fetch.tasks);
     let mut lines = task_section(
         Span::styled("next tasks", THEME.accent_style()),
         &next,
-        |task| format!("{}  {}", task.display_id, task.title),
+        |task| vec![Line::from(format!("{}  {}", task.display_id, task.title))],
     );
     lines.extend(task_section(
         Span::styled("in progress", THEME.subagent_style()),
         &in_progress,
-        |task| format!("▸ {}  {}", task.display_id, task.title),
+        |task| vec![Line::from(format!("▸ {}  {}", task.display_id, task.title))],
+    ));
+    lines.extend(task_section(
+        Span::styled("blocked", THEME.needs_decision_style(false)),
+        &blocked,
+        blocked_row,
     ));
     if lines.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "no open or in-progress tasks",
+            "no open, in-progress, or blocked tasks",
             THEME.muted_style(),
         )));
     }
@@ -67,6 +89,43 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch) -> Vec<Line<'static>> {
         lines.extend(problem_lines("this list is incomplete", &fetch.problems));
     }
     lines
+}
+
+/// One blocked task's row: the task itself, styled so it reads as needing a
+/// decision rather than as available work, plus — when the fetch found one —
+/// the reason from its `blocker` scribble. That second line is what makes the
+/// unblock condition reachable without leaving robco for dropr.
+fn blocked_row(task: &DroprTaskCandidate) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(Span::styled(
+        format!("✖ {}  {}", task.display_id, task.title),
+        THEME.needs_decision_style(false),
+    ))];
+    if let Some(reason) = task
+        .blocked_reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|reason| !reason.is_empty())
+    {
+        lines.push(Line::from(Span::styled(
+            format!("  {}", squash_reason(reason)),
+            THEME.muted_style(),
+        )));
+    }
+    lines
+}
+
+/// Longest reason line the panel will hold before it stops being scannable.
+const REASON_DISPLAY_LIMIT: usize = 100;
+
+/// Squashes a scribble body onto the single line a blocked row can spend on it.
+fn squash_reason(reason: &str) -> String {
+    reason
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(REASON_DISPLAY_LIMIT)
+        .collect()
 }
 
 /// The block that keeps a short list from reading as a whole one.
@@ -86,7 +145,7 @@ fn problem_lines(heading: &str, problems: &[String]) -> Vec<Line<'static>> {
 fn task_section(
     heading: Span<'static>,
     tasks: &[&DroprTaskCandidate],
-    row: impl Fn(&DroprTaskCandidate) -> String,
+    row: impl Fn(&DroprTaskCandidate) -> Vec<Line<'static>>,
 ) -> Vec<Line<'static>> {
     if tasks.is_empty() {
         return Vec::new();
@@ -96,7 +155,7 @@ fn task_section(
         tasks
             .iter()
             .take(TASK_DISPLAY_LIMIT)
-            .map(|task| Line::from(row(task))),
+            .flat_map(|task| row(task)),
     );
     if let Some(notice) = truncation_notice(tasks.len()) {
         lines.push(Line::from(Span::styled(notice, THEME.muted_style())));

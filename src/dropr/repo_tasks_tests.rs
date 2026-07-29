@@ -37,6 +37,7 @@ fn row(display_id: &str, status: &str, priority: &str, children: usize) -> TaskR
             priority: priority.to_owned(),
             status: status.to_owned(),
             priority_score: None,
+            blocked_reason: None,
         },
     }
 }
@@ -86,7 +87,7 @@ fn the_root_query_asks_for_the_statuses_the_pane_renders() {
     let (_, recorder) = run(vec![Ok(vec![Ok(Vec::new())])]);
 
     let roots = &recorder.asked[0][0];
-    assert_eq!(roots["status"], "open,in_progress");
+    assert_eq!(roots["status"], "open,in_progress,blocked");
     assert_eq!(roots["limit"], TASK_FETCH_LIMIT);
     assert!(roots.get("parent_task_id").is_none());
 }
