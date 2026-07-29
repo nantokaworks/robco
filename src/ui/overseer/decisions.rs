@@ -10,6 +10,7 @@
 
 use ratatui::text::{Line, Span};
 
+use crate::model::MergeLifecycle;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
 use crate::overseer::logging::{DecisionEntry, DecisionKind};
 use crate::ui::theme::DEFAULT as THEME;
@@ -92,6 +93,55 @@ pub(super) fn blocked_reason(
         };
     }
     reason
+}
+
+/// Where `agent_id`'s pull request stands, read straight off its ledger
+/// entry — no decision-log tie-breaker needed, unlike [`blocked_reason`]:
+/// `merge_hold` is live and self-clearing on the very next auto-merge pass,
+/// so the entry's current state already says what is true right now.
+///
+/// `None` covers both "no pull request open for this agent" (the entry is
+/// missing, or in a phase before or after `PrOpened`) and "checks are clean
+/// and no hold is recorded, i.e. the pull request already merged" — both
+/// fall back to the plain session-status glyph. A pull request that merged
+/// is `LedgerPhase::Merged`, not `PrOpened`, so it is excluded here on
+/// purpose: it is genuinely finished and keeps its ordinary `Status::Done`
+/// glyph rather than a lifecycle glyph.
+pub(super) fn merge_lifecycle(ledger: &Ledger, agent_id: &str) -> Option<MergeLifecycle> {
+    let entry = ledger
+        .entries
+        .iter()
+        .find(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::PrOpened)?;
+    Some(match entry.merge_hold.reason.as_deref() {
+        Some("checks_waiting") => MergeLifecycle::ChecksRunning,
+        Some("checks_not_green") => MergeLifecycle::ChecksFailing,
+        Some(reason) if reason.starts_with("merge_error:") => MergeLifecycle::ChecksFailing,
+        // The deterministic gate (protection, checks, branch position) has
+        // nothing to hold on; the only step left that clears its hold on
+        // `Pending` rather than recording one is the merge judge
+        // (`overseer::daemon::merge`), so an unset reason on an open pull
+        // request reads as "waiting on the judge".
+        None => MergeLifecycle::WaitingJudge,
+        Some(_) => MergeLifecycle::OnHold,
+    })
+}
+
+/// The raw gate reason behind `merge_lifecycle`'s bucket, for the Info pane.
+/// Deliberately verbatim rather than remapped to a friendlier label — the
+/// same convention `blocked_reason` and the decision list already follow for
+/// operator-facing reason text (see `crate::ui::inbox`).
+pub(super) fn merge_hold_detail(ledger: &Ledger, agent_id: &str) -> Option<String> {
+    let entry = ledger
+        .entries
+        .iter()
+        .find(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::PrOpened)?;
+    Some(
+        entry
+            .merge_hold
+            .reason
+            .clone()
+            .unwrap_or_else(|| "waiting on merge judge".to_string()),
+    )
 }
 
 pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[DecisionEntry]) {

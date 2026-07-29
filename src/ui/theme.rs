@@ -1,6 +1,6 @@
 use ratatui::style::{Color, Modifier, Style};
 
-use crate::model::Status;
+use crate::model::{MergeLifecycle, Status};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Theme {
@@ -155,6 +155,21 @@ impl Theme {
 
     pub fn status_style(self, status: Status) -> Style {
         Style::default().fg(self.status_color(status))
+    }
+
+    /// Style for a merge-lifecycle glyph. Checks failing reuses `dead`'s
+    /// colour — both mean "something is wrong, look at this" — while the two
+    /// pending states and the generic hold reuse `waiting`'s: all three mean
+    /// "nothing is wrong, something else has to happen first". The glyphs
+    /// carry the distinction the colour does not.
+    pub fn merge_lifecycle_style(self, lifecycle: MergeLifecycle) -> Style {
+        let color = match lifecycle {
+            MergeLifecycle::ChecksFailing => self.dead,
+            MergeLifecycle::ChecksRunning
+            | MergeLifecycle::WaitingJudge
+            | MergeLifecycle::OnHold => self.waiting,
+        };
+        Style::default().fg(color)
     }
 
     pub fn worktree_missing_style(self, selected: bool) -> Style {

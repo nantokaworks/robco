@@ -31,6 +31,10 @@ pub(in crate::ui::tree) fn primary_span(
             crate::ui::spinner::frame(elapsed).to_string(),
             THEME.hint_style(),
         ),
+        Some(Indicator::MergeLifecycle(lifecycle)) => (
+            lifecycle.glyph().to_string(),
+            THEME.merge_lifecycle_style(lifecycle),
+        ),
         None => (String::new(), THEME.accent_style()),
     };
     // On a selected row every indicator glyph — including the empty `None`
@@ -94,6 +98,7 @@ pub(in crate::ui::tree) fn supplementary_spans(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::MergeLifecycle;
 
     #[test]
     fn selected_empty_indicator_carries_selection_background() {
@@ -124,6 +129,18 @@ mod tests {
             assert_eq!(span.style.bg, Some(THEME.selection_bg));
             assert_eq!(span.style.fg, Some(THEME.selection_fg));
         }
+    }
+
+    #[test]
+    fn merge_lifecycle_renders_its_own_glyph_not_the_done_glyph() {
+        let span = primary_span(
+            Some(Indicator::MergeLifecycle(MergeLifecycle::ChecksFailing)),
+            false,
+            std::time::Duration::ZERO,
+            2,
+        );
+        assert_eq!(span.content.trim(), MergeLifecycle::ChecksFailing.glyph());
+        assert_ne!(span.content.trim(), Status::Done.glyph());
     }
 
     #[test]
