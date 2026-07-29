@@ -43,6 +43,14 @@ const REPO_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
+const OVERSEER_AI_HINTS: Hints = &[
+    ("↵", "attach"),
+    ("i", "instruct"),
+    ("R", "reset"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
 const INBOX_CATEGORY_HINTS: Hints = &[
     ("l", "expand"),
     ("D", "clear"),
@@ -85,6 +93,7 @@ fn hints_for(selection: Option<Selection>) -> Hints {
         None => NONE_HINTS,
         Some(Selection::Agent { .. }) => AGENT_HINTS,
         Some(Selection::Repo(_)) => REPO_HINTS,
+        Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::OverseerCategory(OverseerCategory::Inbox)) => INBOX_CATEGORY_HINTS,
         Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
         Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
@@ -165,6 +174,12 @@ mod tests {
             line,
             "[n] NEW [a] ADD [r] RELOAD [g] MANAGE [?] HELP [q] QUIT"
         );
+    }
+
+    #[test]
+    fn overseer_ai_row_advertises_attach_and_instruct() {
+        let line = hints_line(None, Some(Selection::OverseerAi), false).to_string();
+        assert_eq!(line, "[↵] ATTACH [i] INSTRUCT [?] HELP [q] QUIT");
     }
 
     #[test]

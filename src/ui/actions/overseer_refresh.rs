@@ -2,11 +2,13 @@ use std::{fs, time::Instant, time::SystemTime};
 
 use crate::{
     config::Config,
+    model::Status,
     overseer::{
         discord_channels::DiscordChannels, dismissals::Dismissals, ledger::Ledger, logging,
         other_prs::OtherPrs,
     },
     registry::Registry,
+    tmux,
 };
 
 use crate::ui::{
@@ -61,6 +63,13 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
     let daemon_version = heartbeat
         .as_ref()
         .and_then(|path| crate::overseer::heartbeat::recorded_version(path));
+    // A cheap existence probe, not the full capture/classify pipeline an agent
+    // or repo main session gets: the row only needs to say whether Enter would
+    // attach or create, not track spinner motion.
+    let control_session = crate::overseer::control_session_name(&config.tmux_session_prefix);
+    let control_status = tmux::has_session(&control_session)
+        .ok()
+        .and_then(|exists| exists.then_some(Status::Running));
     OverseerResult {
         inbox,
         snapshot: OverseerSnapshot {
@@ -72,6 +81,7 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
             daemon_alive,
             heartbeat_age,
             daemon_version,
+            control_status,
         },
     }
 }

@@ -21,6 +21,7 @@ impl App {
     /// path and agents on their unique id.
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
+            Selection::OverseerAi => "overseer:control-ai".to_string(),
             Selection::OverseerCategory(category) => {
                 format!("overseer:{}", category.label().to_lowercase())
             }
@@ -187,6 +188,7 @@ impl App {
             // These focus entries map to the dedicated OVERSEER frame; tree
             // rendering excludes them from the PROJECTS frame. The OVERSEER
             // header itself is a plain label, so it never becomes a row here.
+            visible.push(Selection::OverseerAi);
             for category in OverseerCategory::ALL {
                 visible.push(Selection::OverseerCategory(category));
                 // The Inbox is the one category whose detail is acted on rather

@@ -229,6 +229,7 @@ impl App {
                 KeyCode::Char('?') => self.mode = Mode::Help { scroll: 0 },
                 KeyCode::Enter => match self.selected_item() {
                     Some(selection) if self.toggle_selected_tree_header(selection) => {}
+                    Some(Selection::OverseerAi) => self.attach_control_selected(),
                     Some(Selection::OverseerInbox(index)) => self.answer_inbox_selected(index),
                     Some(Selection::Orphan(_)) => self.attach_orphan_selected(),
                     _ => match self.preview {

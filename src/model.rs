@@ -630,6 +630,12 @@ impl OverseerCategory {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Selection {
+    /// The Overseer's own control AI: a row of its own rather than a preview
+    /// tab, so Enter can attach it (creating the tmux session when absent) the
+    /// same way Enter attaches any other AI session. Sits above the categories
+    /// — it is the one OVERSEER row that owns a session to attach to, not a
+    /// read-only summary of one (dropr:370).
+    OverseerAi,
     OverseerCategory(OverseerCategory),
     /// One aggregated Overseer Inbox item, indexing into [`crate::ui::App`]'s
     /// inbox list. Present only while the Inbox category is expanded, so the
