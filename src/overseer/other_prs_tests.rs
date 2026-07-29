@@ -8,6 +8,7 @@ fn pr(number: u64, state: &str) -> OtherPr {
         url: format!("https://example.test/pull/{number}"),
         head_ref_name: format!("dependabot/{number}"),
         mergeable_state: state.into(),
+        closes_task: None,
     }
 }
 
@@ -47,4 +48,49 @@ fn a_corrupt_file_loads_as_empty() {
     let path = temp.path().join("other_prs.json");
     fs::write(&path, "not json").unwrap();
     assert_eq!(OtherPrs::load_from(&path).unwrap(), OtherPrs::default());
+}
+
+#[test]
+fn closing_finds_the_pull_request_naming_the_task() {
+    let mut other_prs = OtherPrs::default();
+    let mut named = pr(598, "CLEAN");
+    named.closes_task = Some("#803".into());
+    other_prs.repos.insert(
+        "/repos/nex".into(),
+        RepoOtherPrs {
+            polled_at: Utc::now(),
+            prs: vec![pr(742, "UNSTABLE"), named],
+        },
+    );
+    let found = other_prs.closing("/repos/nex", "#803").unwrap();
+    assert_eq!(found.number, 598);
+}
+
+#[test]
+fn closing_ignores_a_different_repo_or_task() {
+    let mut other_prs = OtherPrs::default();
+    let mut named = pr(598, "CLEAN");
+    named.closes_task = Some("#803".into());
+    other_prs.repos.insert(
+        "/repos/nex".into(),
+        RepoOtherPrs {
+            polled_at: Utc::now(),
+            prs: vec![named],
+        },
+    );
+    assert!(other_prs.closing("/repos/other", "#803").is_none());
+    assert!(other_prs.closing("/repos/nex", "#1").is_none());
+}
+
+#[test]
+fn closing_ignores_a_pull_request_with_no_directive() {
+    let mut other_prs = OtherPrs::default();
+    other_prs.repos.insert(
+        "/repos/nex".into(),
+        RepoOtherPrs {
+            polled_at: Utc::now(),
+            prs: vec![pr(742, "UNSTABLE")],
+        },
+    );
+    assert!(other_prs.closing("/repos/nex", "#742").is_none());
 }

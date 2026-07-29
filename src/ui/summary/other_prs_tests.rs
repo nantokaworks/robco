@@ -9,6 +9,7 @@ fn pr(number: u64, state: &str) -> OtherPr {
         url: format!("https://example.test/pull/{number}"),
         head_ref_name: format!("dependabot/{number}"),
         mergeable_state: state.into(),
+        closes_task: None,
     }
 }
 
