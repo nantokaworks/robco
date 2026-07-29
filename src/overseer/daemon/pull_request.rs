@@ -16,7 +16,7 @@ use crate::overseer::exec::run_timeout;
 /// Base branch used when the pull request does not report one.
 pub(super) const DEFAULT_BASE_BRANCH: &str = "main";
 
-const FIELDS: &str = "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid,baseRefName,mergeStateStatus";
+const FIELDS: &str = "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid,baseRefName,baseRefOid,mergeStateStatus";
 
 /// Reads the pull request, or the hold reason its read failed under.
 pub(super) fn read(repo: &str, url: &str) -> Result<Value, String> {
@@ -43,11 +43,26 @@ pub(super) fn base_branch(value: &Value) -> &str {
 
 /// The revision the gate decided on, or an empty string when GitHub did not report one.
 ///
-/// It is the deduplication key for merge recovery: a failure on a head already handed
-/// back is the same failure, and a new head is the worker's answer to the last one.
+/// Half of the deduplication key for merge recovery: a failure on a (head, base) pair
+/// already handed back is the same failure, and a new head is the worker's answer to
+/// the last one.
 pub(super) fn head_sha(value: &Value) -> &str {
     value
         .get("headRefOid")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+/// The base branch's commit the gate decided on, or an empty string when GitHub did not
+/// report one.
+///
+/// The other half of merge recovery's deduplication key: `merge_state:dirty` and
+/// `merge_state:blocked` are properties of the pull request's (head, base) pair, not of
+/// the head alone, so a base that moved under a stationary head is a genuinely new
+/// failure the same way a new head is — see `merge_recovery::plan`.
+pub(super) fn base_sha(value: &Value) -> &str {
+    value
+        .get("baseRefOid")
         .and_then(Value::as_str)
         .unwrap_or_default()
 }
@@ -123,6 +138,14 @@ mod tests {
             DEFAULT_BASE_BRANCH
         );
         assert_eq!(base_branch(&json!({})), DEFAULT_BASE_BRANCH);
+    }
+
+    #[test]
+    fn base_sha_reads_the_base_commit_and_falls_back_to_empty() {
+        assert_eq!(base_sha(&json!({"baseRefOid": "deadbeef"})), "deadbeef");
+        // Absent the same way `head_sha` is: a read GitHub did not answer must not
+        // be mistaken for a real, empty-string revision.
+        assert_eq!(base_sha(&json!({})), "");
     }
 
     #[test]

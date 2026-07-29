@@ -20,8 +20,13 @@ use crate::{
 pub(super) enum Outcome {
     /// GitHub accepted the merge.
     Merged,
-    /// The pass stopped under `halt`, on the revision named by `head`.
-    Halted { halt: Halt, head: String },
+    /// The pass stopped under `halt`, on the revision named by `head` against
+    /// the base named by `base`.
+    Halted {
+        halt: Halt,
+        head: String,
+        base: String,
+    },
     /// The pass stopped without a decision of its own, because the merge judgment
     /// is still queued. There is no failure yet, so nothing is handed back.
     Pending,
@@ -74,10 +79,11 @@ impl Halt {
         }
     }
 
-    pub(super) fn on(self, head: &str) -> Outcome {
+    pub(super) fn on(self, head: &str, base: &str) -> Outcome {
         Outcome::Halted {
             halt: self,
             head: head.to_owned(),
+            base: base.to_owned(),
         }
     }
 }
