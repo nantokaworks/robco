@@ -21,7 +21,13 @@ poll then performs the same ordered pass:
    request state. Pull request state is read for every entry that is still live, and
    also for an escalated entry that already has a pull request — an escalation is a
    question put to an operator, and the answer is often the merge itself. The
-   observation is appended to `~/.robco/overseer/observations.jsonl`.
+   observation is appended to `~/.robco/overseer/observations.jsonl`. Separately, each
+   watched repository's open pull requests are listed and diffed against the ledger, so
+   ones Overseer never dispatched (a Dependabot bump, a human's own branch) still surface
+   in the TUI's repository INFO pane instead of staying invisible. This listing backs off
+   per repository — five minutes between re-lists — rather than running every poll, and
+   is cached in `~/.robco/overseer/other_prs.json`, kept apart from the ledger since it
+   records nothing Overseer dispatched.
 3. Reconcile those facts with `~/.robco/overseer/ledger.json`. The monitor drops entries
    for workers that are no longer Overseer children, advances phases, detects dead or
    stuck workers, escalates released task locks, and cleans up merged workers.

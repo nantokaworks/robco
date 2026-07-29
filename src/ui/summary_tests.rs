@@ -45,7 +45,13 @@ fn rendered(repo: &RepoNode) -> Vec<String> {
 }
 
 fn rendered_with(repo: &RepoNode, ledger: &Ledger) -> Vec<String> {
-    let (_, text) = repo_summary(repo, std::path::Path::new("/repos"), ledger, 40);
+    let (_, text) = repo_summary(
+        repo,
+        std::path::Path::new("/repos"),
+        ledger,
+        &crate::overseer::other_prs::OtherPrs::default(),
+        40,
+    );
     text.lines
         .iter()
         .map(|line| {

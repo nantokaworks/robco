@@ -10,7 +10,9 @@ use ratatui::text::Text;
 
 use crate::{
     model::{ManagementMode, OverseerCategory, Status},
-    overseer::{config::OverseerConfig, ledger::Ledger, logging::DecisionEntry},
+    overseer::{
+        config::OverseerConfig, ledger::Ledger, logging::DecisionEntry, other_prs::OtherPrs,
+    },
 };
 
 use super::App;
@@ -51,6 +53,9 @@ pub(in crate::ui) const DECISION_SNAPSHOT_LIMIT: usize = 200;
 pub(in crate::ui) struct OverseerSnapshot {
     pub(in crate::ui) overseer: OverseerConfig,
     pub(in crate::ui) ledger: Ledger,
+    /// Pull requests discovered in a watched repository that Overseer did not
+    /// dispatch. Reloaded the same way `ledger` is — see its doc.
+    pub(in crate::ui) other_prs: OtherPrs,
     pub(in crate::ui) decisions: Vec<DecisionEntry>,
     pub(in crate::ui) daemon_alive: bool,
     pub(in crate::ui) heartbeat_age: Option<Duration>,
