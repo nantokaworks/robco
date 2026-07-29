@@ -5,7 +5,9 @@ use crate::git::{
 };
 
 /// The whole point of the task: after a squash merge the daemon's cleanup
-/// leaves the primary worktree at the merge commit and no branch behind.
+/// removes the worktree and the branch, from knowing about `origin/main`
+/// alone — it never needs the primary worktree itself to reach the merge
+/// commit.
 #[test]
 fn squash_merged_branch_and_worktree_are_removed() {
     let repo = TestRepo::new();
@@ -28,7 +30,36 @@ fn squash_merged_branch_and_worktree_are_removed() {
     assert_eq!(outcome.branch, BranchOutcome::Deleted);
     assert!(!worktree.exists());
     assert!(!branch_exists(repo.path(), "task").unwrap());
-    assert!(head_contains(&repo, "task.txt"));
+}
+
+/// Cleanup must never touch whatever the operator has checked out in the
+/// primary worktree, uncommitted work included — knowing about `origin/main`
+/// is enough to decide the branch's fate.
+#[test]
+fn an_operators_dirty_checkout_survives_cleanup() {
+    let repo = TestRepo::new();
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    let worktree = repo.worktree("task");
+    repo.land_squash("task");
+
+    // The operator is mid-work on a branch of their own, uncommitted.
+    git(repo.path(), &["checkout", "-qb", "operator-wip"]);
+    std::fs::write(repo.path().join("wip.txt"), "not yet committed").unwrap();
+
+    let outcome = cleanup(&repo, &worktree, OnFailure::Continue)
+        .run(|_| ())
+        .unwrap();
+
+    assert_eq!(outcome.branch, BranchOutcome::Deleted);
+    assert_eq!(current_branch(&repo), "operator-wip");
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("wip.txt")).unwrap(),
+        "not yet committed"
+    );
+    // The squash landed on `origin/main`, but the primary worktree's own
+    // files never moved off `operator-wip` to receive it.
+    assert!(!repo.path().join("task.txt").exists());
 }
 
 /// A branch whose changes never landed is the one case where deleting would
@@ -52,10 +83,10 @@ fn unmerged_branch_is_kept_with_a_reason() {
     assert!(branch_exists(repo.path(), "task").unwrap());
 }
 
-/// A fast-forward that cannot run must not strand the worktree: the daemon has
-/// nobody to report to, so it logs and finishes the sequence.
+/// A base-branch fetch that cannot run must not strand the worktree: the
+/// daemon has nobody to report to, so it logs and finishes the sequence.
 #[test]
-fn continue_records_a_failed_fast_forward_and_cleans_up_anyway() {
+fn continue_records_a_failed_base_fetch_and_cleans_up_anyway() {
     let repo = TestRepo::new();
     repo.feature_branch("task", "task.txt");
     repo.push("task");
@@ -70,19 +101,19 @@ fn continue_records_a_failed_fast_forward_and_cleans_up_anyway() {
     assert!(outcome.worktree_removed);
     assert!(!worktree.exists());
     assert!(
-        outcome.notes[0].starts_with("fast-forwarding the primary worktree failed:"),
+        outcome.notes[0].starts_with("fetching the base branch failed:"),
         "unexpected notes: {:?}",
         outcome.notes
     );
-    // `main` never advanced, so the landed change is not visible here and the
-    // branch is held back rather than deleted on a stale answer.
+    // `origin/main` never advanced, so the landed change is not visible here
+    // and the branch is held back rather than deleted on a stale answer.
     assert_eq!(outcome.branch, BranchOutcome::Kept);
 }
 
 /// The interactive path keeps its own contract: the first failure is the
 /// caller's, and nothing after it runs.
 #[test]
-fn abort_stops_at_a_failed_fast_forward() {
+fn abort_stops_at_a_failed_base_fetch() {
     let repo = TestRepo::new();
     repo.feature_branch("task", "task.txt");
     let worktree = repo.worktree("task");
@@ -93,7 +124,7 @@ fn abort_stops_at_a_failed_fast_forward() {
         .unwrap_err();
 
     assert!(
-        error.to_string().contains("git pull --ff-only"),
+        error.to_string().contains("git fetch origin"),
         "unexpected error: {error}"
     );
     assert!(worktree.exists());
@@ -128,6 +159,12 @@ fn cleanup<'a>(repo: &'a TestRepo, worktree: &'a Path, on_failure: OnFailure) ->
     }
 }
 
-fn head_contains(repo: &TestRepo, file: &str) -> bool {
-    repo.path().join(file).exists()
+fn current_branch(repo: &TestRepo) -> String {
+    let output = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(repo.path())
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
 }

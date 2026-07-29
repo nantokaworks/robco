@@ -21,6 +21,10 @@ pub struct Theme {
     pub term: Color,
     pub mcp: Color,
     pub subagent: Color,
+    /// Colour of the "needs a human decision" badge — deliberately not
+    /// `waiting`'s or `dead`'s colour, since neither meaning applies: the
+    /// worker is not sitting at an interactive prompt and it is not broken.
+    pub needs_decision: Color,
 }
 
 pub const DEFAULT: Theme = Theme {
@@ -40,6 +44,7 @@ pub const DEFAULT: Theme = Theme {
     term: Color::Blue,
     mcp: Color::Magenta,
     subagent: Color::LightCyan,
+    needs_decision: Color::LightMagenta,
 };
 
 impl Theme {
@@ -163,6 +168,17 @@ impl Theme {
 
     pub fn merge_failed_style(self, selected: bool) -> Style {
         let style = Style::default().fg(Color::Red);
+        if selected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
+        }
+    }
+
+    /// Style for the "needs a human decision" badge. See
+    /// [`Theme::needs_decision`] for why it is its own colour.
+    pub fn needs_decision_style(self, selected: bool) -> Style {
+        let style = Style::default().fg(self.needs_decision);
         if selected {
             style.add_modifier(Modifier::BOLD)
         } else {

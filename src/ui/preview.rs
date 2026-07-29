@@ -129,6 +129,16 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     ]));
                 }
             }
+            // Matches the tree row's gating (`ui::tree`): a worker that has
+            // resumed real work has moved past whatever report put it here.
+            if agent.status != Status::Running
+                && let Some(reason) = app.overseer_snapshot.blocked_reason(&agent.id)
+            {
+                details.push(Line::from(vec![
+                    Span::styled("blocked: ", THEME.muted_style()),
+                    Span::styled(reason, THEME.needs_decision_style(false)),
+                ]));
+            }
             text.lines.splice(3..3, details);
             (title, text)
         }

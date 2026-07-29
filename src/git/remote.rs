@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::{
-    GIT_NETWORK_TIMEOUT, command_output, command_unit,
+    GIT_LOCAL_TIMEOUT, GIT_NETWORK_TIMEOUT, command_output, command_unit,
     merge_failure::{command_failure_text, explain_merge_failure},
 };
 use crate::{Error, Result, config::MergeStrategy, exec::run_timeout};
@@ -113,19 +113,75 @@ fn refusal_detail(strategy: MergeStrategy, output: &Output) -> String {
     }
 }
 
-pub fn pull_ff_only(main_worktree: &Path) -> Result<()> {
+/// Updates the repository's knowledge of `origin/<branch>` without touching
+/// whatever the repository has checked out.
+///
+/// Unlike `git pull`, `git fetch` never reads or writes the working tree, the
+/// index, or `HEAD` — only `refs/remotes/origin/*` and `FETCH_HEAD` — so it
+/// stays safe to run against a checkout an operator or another robco process
+/// may be sitting in, dirty or on any branch, at any time.
+pub fn fetch_branch(repo: &Path, branch: &str) -> Result<()> {
     let mut command = Command::new("git");
     command
         .args(["-C"])
-        .arg(main_worktree)
-        .args(["pull", "--ff-only"]);
+        .arg(repo)
+        .args(["fetch", "origin", branch]);
     let output = run_timeout(command, GIT_NETWORK_TIMEOUT)?;
-    command_unit(output, "git pull --ff-only")
+    command_unit(output, "git fetch origin")
+}
+
+/// The commit `origin/<branch>` points to, after fetching it fresh. Never
+/// touches the working tree — see [`fetch_branch`].
+pub fn remote_branch_commit(repo: &Path, branch: &str) -> Result<String> {
+    fetch_branch(repo, branch)?;
+    let mut command = Command::new("git");
+    command
+        .args(["-C"])
+        .arg(repo)
+        .args(["rev-parse"])
+        .arg(format!("origin/{branch}"));
+    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    command_output(output, "git rev-parse origin branch")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::test_repo::TestRepo;
+
+    /// The point of routing dispatch and cleanup through this function rather
+    /// than a plain `git pull`: it learns the remote branch's commit without
+    /// ever moving whatever the repository has checked out.
+    #[test]
+    fn remote_branch_commit_fetches_without_touching_the_checkout() {
+        let repo = TestRepo::new();
+        let branch_before = branch_name(repo.path());
+
+        let commit = remote_branch_commit(repo.path(), "main").unwrap();
+
+        assert_eq!(commit, rev_parse(repo.path(), "origin/main"));
+        assert_eq!(branch_name(repo.path()), branch_before);
+    }
+
+    fn branch_name(repo: &Path) -> String {
+        let output = Command::new("git")
+            .args(["-C"])
+            .arg(repo)
+            .args(["symbolic-ref", "--short", "HEAD"])
+            .output()
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    fn rev_parse(repo: &Path, reference: &str) -> String {
+        let output = Command::new("git")
+            .args(["-C"])
+            .arg(repo)
+            .args(["rev-parse", reference])
+            .output()
+            .unwrap();
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
 
     #[test]
     fn a_branch_without_pull_requests_is_absent() {
