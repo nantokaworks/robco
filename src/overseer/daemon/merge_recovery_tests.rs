@@ -94,11 +94,12 @@ fn an_unrecognised_reason_is_never_handed_to_a_worker() {
 fn a_disabled_recovery_records_the_failure_it_did_not_hand_back() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-1", false, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-1", false, 2),
         RecoveryPlan::Dropped
     );
     assert_eq!(entry.merge_recovery.dropped, 1);
     assert_eq!(entry.merge_recovery.dropped_head.as_deref(), Some("sha-1"));
+    assert_eq!(entry.merge_recovery.dropped_base.as_deref(), Some("base-1"));
     // Nothing is charged and no worker is chosen: the switch still decides
     // whether anything happens, only the silence is gone.
     assert_eq!(entry.merge_recovery.charged, 0);
@@ -107,15 +108,23 @@ fn a_disabled_recovery_records_the_failure_it_did_not_hand_back() {
     // One decision per revision, not one per poll. A new head is a new failure.
     for reason in ["merge_state:dirty", "judge_veto:still not right"] {
         assert_eq!(
-            plan(&mut entry, reason, "sha-1", false, 2),
+            plan(&mut entry, reason, "sha-1", "base-1", false, 2),
             RecoveryPlan::Idle
         );
     }
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-2", false, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-2", "base-1", false, 2),
         RecoveryPlan::Dropped
     );
     assert_eq!(entry.merge_recovery.dropped, 2);
+
+    // A base that moved under the same head is a new failure too, the same way
+    // it is when recovery is switched on.
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-2", "base-2", false, 2),
+        RecoveryPlan::Dropped
+    );
+    assert_eq!(entry.merge_recovery.dropped, 3);
 }
 
 /// The drop is a consequence of the setting, so a failure no worker could fix
@@ -129,7 +138,7 @@ fn a_disabled_recovery_records_nothing_for_an_operator_only_failure() {
         "missing_pr_url",
     ] {
         assert_eq!(
-            plan(&mut entry, reason, "sha-1", false, 2),
+            plan(&mut entry, reason, "sha-1", "base-1", false, 2),
             RecoveryPlan::Idle
         );
     }
@@ -165,7 +174,14 @@ fn the_ledger_totals_the_failures_the_switch_dropped() {
 fn an_operator_only_failure_is_never_charged() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "unprotected:unknown_remote", "sha-1", true, 2),
+        plan(
+            &mut entry,
+            "unprotected:unknown_remote",
+            "sha-1",
+            "base-1",
+            true,
+            2
+        ),
         RecoveryPlan::Idle
     );
     assert_eq!(entry.merge_recovery.charged, 0);
@@ -175,15 +191,15 @@ fn an_operator_only_failure_is_never_charged() {
 fn the_same_failure_on_the_same_head_is_handed_back_once() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-1", true, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-1", true, 2),
         RecoveryPlan::Dispatch
     );
     assert_eq!(entry.merge_recovery.charged, 1);
-    // The next poll interval finds the same revision failing the same way; the
-    // worker is already working on it.
+    // The next poll interval finds the same revision failing the same way against
+    // the same base; the worker is already working on it.
     for reason in ["merge_state:dirty", "judge_veto:still not right"] {
         assert_eq!(
-            plan(&mut entry, reason, "sha-1", true, 2),
+            plan(&mut entry, reason, "sha-1", "base-1", true, 2),
             RecoveryPlan::Idle
         );
     }
@@ -194,28 +210,59 @@ fn the_same_failure_on_the_same_head_is_handed_back_once() {
 fn a_new_head_resets_the_dedupe_but_never_the_budget() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-1", true, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-1", true, 2),
         RecoveryPlan::Dispatch
     );
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-2", true, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-2", "base-1", true, 2),
         RecoveryPlan::Dispatch
     );
     assert_eq!(entry.merge_recovery.charged, 2);
     // A worker that pushes a broken fix each round would otherwise loop forever.
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-3", true, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-3", "base-1", true, 2),
         RecoveryPlan::CapReached
     );
     assert_eq!(entry.merge_recovery.charged, 2);
     assert_eq!(entry.merge_recovery.head.as_deref(), Some("sha-2"));
+    assert_eq!(entry.merge_recovery.base.as_deref(), Some("base-1"));
+}
+
+/// #368: the live incident this test exists to catch. A pull request was
+/// mergeable when its handback was delivered, and the same head then conflicted
+/// again only because a later merge advanced the base branch — the worker never
+/// touched anything. The dedup key must not mistake a stationary head for a
+/// steady state when the base underneath it moved.
+#[test]
+fn a_moved_base_resets_the_dedupe_but_never_the_budget() {
+    let mut entry = entry();
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-1", true, 2),
+        RecoveryPlan::Dispatch
+    );
+    // The head never moved, but a later merge to the base branch left it
+    // conflicting again — a genuinely new failure the worker was never told
+    // about.
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-2", true, 2),
+        RecoveryPlan::Dispatch
+    );
+    assert_eq!(entry.merge_recovery.charged, 2);
+    // A busy base that keeps moving would otherwise re-arm the handback forever.
+    assert_eq!(
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-3", true, 2),
+        RecoveryPlan::CapReached
+    );
+    assert_eq!(entry.merge_recovery.charged, 2);
+    assert_eq!(entry.merge_recovery.head.as_deref(), Some("sha-1"));
+    assert_eq!(entry.merge_recovery.base.as_deref(), Some("base-2"));
 }
 
 #[test]
 fn a_zero_budget_escalates_without_ever_prompting() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "judge_veto:no", "sha-1", true, 0),
+        plan(&mut entry, "judge_veto:no", "sha-1", "base-1", true, 0),
         RecoveryPlan::CapReached
     );
     assert_eq!(entry.merge_recovery.charged, 0);
@@ -227,7 +274,7 @@ fn a_failure_without_a_head_sha_is_left_alone() {
     // re-prompt the worker on every pass.
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "", true, 2),
+        plan(&mut entry, "merge_state:dirty", "", "base-1", true, 2),
         RecoveryPlan::Idle
     );
     assert_eq!(entry.merge_recovery.charged, 0);
@@ -252,10 +299,19 @@ fn a_disabled_recovery_never_reaches_a_worker() {
         "unprotected:unknown_remote",
     ] {
         for head in ["sha-1", "sha-2", ""] {
-            assert!(matches!(
-                plan(&mut entry, reason, head, false, config.max_merge_recoveries),
-                RecoveryPlan::Idle | RecoveryPlan::Dropped
-            ));
+            for base in ["base-1", "base-2", ""] {
+                assert!(matches!(
+                    plan(
+                        &mut entry,
+                        reason,
+                        head,
+                        base,
+                        false,
+                        config.max_merge_recoveries
+                    ),
+                    RecoveryPlan::Idle | RecoveryPlan::Dropped
+                ));
+            }
         }
     }
     assert_eq!(entry.phase, LedgerPhase::PrOpened);
@@ -320,19 +376,22 @@ fn every_recorded_reason_names_the_merge_recovery_step() {
 fn an_unconfirmed_delivery_refunds_the_charge_and_clears_the_dedupe_key() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-1", true, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-1", true, 2),
         RecoveryPlan::Dispatch
     );
     assert_eq!(entry.merge_recovery.charged, 1);
     assert_eq!(entry.merge_recovery.head.as_deref(), Some("sha-1"));
+    assert_eq!(entry.merge_recovery.base.as_deref(), Some("base-1"));
 
     refund(&mut entry);
 
     assert_eq!(entry.merge_recovery.charged, 0);
     assert_eq!(entry.merge_recovery.head, None);
-    // Un-charged and un-deduped: the same head is a fresh candidate again.
+    assert_eq!(entry.merge_recovery.base, None);
+    // Un-charged and un-deduped: the same (head, base) pair is a fresh candidate
+    // again.
     assert_eq!(
-        plan(&mut entry, "merge_state:dirty", "sha-1", true, 2),
+        plan(&mut entry, "merge_state:dirty", "sha-1", "base-1", true, 2),
         RecoveryPlan::Dispatch
     );
     assert_eq!(entry.merge_recovery.charged, 1);
@@ -344,4 +403,5 @@ fn refund_never_underflows_a_charge_that_was_never_taken() {
     refund(&mut entry);
     assert_eq!(entry.merge_recovery.charged, 0);
     assert_eq!(entry.merge_recovery.head, None);
+    assert_eq!(entry.merge_recovery.base, None);
 }

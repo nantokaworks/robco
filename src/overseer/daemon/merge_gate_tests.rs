@@ -64,7 +64,7 @@ fn a_conflicting_pull_request_with_no_checks_holds_on_the_conflict_not_the_wait(
     // act on. Asserting that here is what proves the masked-reason half of #343 is
     // actually fixed, not just the label: a `checks_waiting` reason would have
     // classified as `FailureClass::Operator` and never reached this dispatch.
-    let plan = merge_recovery::plan(&mut e, &halt.reason, "sha", true, 2);
+    let plan = merge_recovery::plan(&mut e, &halt.reason, "sha", "base-sha", true, 2);
     assert_eq!(plan, merge_recovery::RecoveryPlan::Dispatch);
 }
 
@@ -100,7 +100,7 @@ fn an_unstable_pull_request_with_a_failed_check_holds_on_the_check_not_the_state
     // And that reason is the one `merge_recovery` already hands back to the worker —
     // proving the handback `merge_state:unstable` used to block now actually fires.
     use crate::overseer::daemon::merge_recovery;
-    let plan = merge_recovery::plan(&mut e, &halt.reason, "sha", true, 2);
+    let plan = merge_recovery::plan(&mut e, &halt.reason, "sha", "base-sha", true, 2);
     assert_eq!(plan, merge_recovery::RecoveryPlan::Dispatch);
 }
 

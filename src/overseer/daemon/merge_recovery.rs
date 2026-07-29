@@ -76,12 +76,18 @@ pub(super) enum RecoveryPlan {
 /// The attempt is charged before it runs, mirroring `merge_state::plan_update`,
 /// so a handback that never reaches its worker still consumes budget instead of
 /// retrying forever. A new head resets the deduplication — the worker pushed, so
-/// the next failure is a genuinely new one — but never the budget, or a worker
-/// that pushes a broken fix each round would loop indefinitely.
+/// the next failure is a genuinely new one — and so does a base that moved under
+/// a stationary head: `merge_state:dirty` and `merge_state:blocked` are
+/// properties of the (head, base) pair, not of the head alone, so a later merge
+/// to the base branch that leaves this head conflicting again is just as
+/// genuinely new a failure as a pushed fix would be. Neither ever resets the
+/// budget, or a worker that pushes a broken fix each round — or a busy base that
+/// keeps moving — would loop indefinitely.
 pub(super) fn plan(
     entry: &mut LedgerEntry,
     reason: &str,
     head_sha: &str,
+    base_sha: &str,
     enabled: bool,
     max_recoveries: u32,
 ) -> RecoveryPlan {
@@ -91,9 +97,11 @@ pub(super) fn plan(
         return RecoveryPlan::Idle;
     }
     if !enabled {
-        return dropped(entry, head_sha);
+        return dropped(entry, head_sha, base_sha);
     }
-    if entry.merge_recovery.head.as_deref() == Some(head_sha) {
+    if entry.merge_recovery.head.as_deref() == Some(head_sha)
+        && entry.merge_recovery.base.as_deref() == Some(base_sha)
+    {
         return RecoveryPlan::Idle;
     }
     if entry.merge_recovery.charged >= max_recoveries {
@@ -101,22 +109,26 @@ pub(super) fn plan(
     }
     entry.merge_recovery.charged = entry.merge_recovery.charged.saturating_add(1);
     entry.merge_recovery.head = Some(head_sha.to_owned());
+    entry.merge_recovery.base = Some(base_sha.to_owned());
     RecoveryPlan::Dispatch
 }
 
 /// Counts one failure the disabled setting left unhanded, at most once per
 /// revision.
 ///
-/// The deduplication key is the head sha the handback would have used, so the
-/// cost is one decision per revision rather than one per poll — the same shape
-/// the enabled path already has. The count is kept on the entry so
+/// The deduplication key is the (head, base) pair the handback would have used,
+/// so the cost is one decision per revision rather than one per poll — the same
+/// shape the enabled path already has. The count is kept on the entry so
 /// `robco overseer status` can report the setting's consequence beside the
 /// setting itself.
-fn dropped(entry: &mut LedgerEntry, head_sha: &str) -> RecoveryPlan {
-    if entry.merge_recovery.dropped_head.as_deref() == Some(head_sha) {
+fn dropped(entry: &mut LedgerEntry, head_sha: &str, base_sha: &str) -> RecoveryPlan {
+    if entry.merge_recovery.dropped_head.as_deref() == Some(head_sha)
+        && entry.merge_recovery.dropped_base.as_deref() == Some(base_sha)
+    {
         return RecoveryPlan::Idle;
     }
     entry.merge_recovery.dropped_head = Some(head_sha.to_owned());
+    entry.merge_recovery.dropped_base = Some(base_sha.to_owned());
     entry.merge_recovery.dropped = entry.merge_recovery.dropped.saturating_add(1);
     RecoveryPlan::Dropped
 }
@@ -140,6 +152,7 @@ pub(super) fn consider(
     entry: &mut LedgerEntry,
     reason: &str,
     head_sha: &str,
+    base_sha: &str,
     config: &crate::overseer::config::OverseerConfig,
     registry: &Registry,
     language: Option<&str>,
@@ -148,6 +161,7 @@ pub(super) fn consider(
         entry,
         reason,
         head_sha,
+        base_sha,
         config.merge_recovery_enabled,
         config.max_merge_recoveries,
     ) {
@@ -216,12 +230,13 @@ fn dispatch(
 }
 
 /// Un-charges a dispatch attempt whose delivery could not be confirmed, and
-/// clears the dedup key so the same head is a candidate again on the next
-/// pass — a handback nobody received must not spend the budget it exists to
-/// protect, nor must it look like this revision was already handled.
+/// clears the dedup key so the same (head, base) pair is a candidate again on
+/// the next pass — a handback nobody received must not spend the budget it
+/// exists to protect, nor must it look like this revision was already handled.
 fn refund(entry: &mut LedgerEntry) {
     entry.merge_recovery.charged = entry.merge_recovery.charged.saturating_sub(1);
     entry.merge_recovery.head = None;
+    entry.merge_recovery.base = None;
 }
 
 /// The worker's tmux session, when it is both registered and still running.
