@@ -31,6 +31,15 @@ pub(super) fn evaluate(state: Option<&TaskClaim>, agent: &str, now: DateTime<Utc
     let Some(state) = state else {
         return ClaimGate::Hold("claim_unreadable".into());
     };
+    // Checked before any holder logic: a task closed out from under the
+    // overseer must stand off whether nobody holds the claim, a stranger's
+    // claim on it just expired, or the overseer holds it itself — dropr task
+    // #354 dispatched a worker for exactly the last case, because the branches
+    // below proceed on a self-held or lapsed claim without ever looking at
+    // `status`.
+    if state.status == "closed" {
+        return ClaimGate::Hold(format!("task_not_open:{}", state.status));
+    }
     if let Some(holder) = state.holder(agent) {
         if state.held_by_other(agent, now) {
             return ClaimGate::Hold(format!("claimed_elsewhere:{holder}"));
@@ -194,6 +203,36 @@ mod tests {
     fn a_task_that_left_open_without_a_claim_stands_off() {
         assert_eq!(
             evaluate(Some(&state("closed", None, None)), "overseer", at(0)),
+            ClaimGate::Hold("task_not_open:closed".into())
+        );
+    }
+
+    #[test]
+    fn a_task_closed_while_still_claimed_by_us_stands_off() {
+        // dropr task #354: the overseer's own claim from an earlier pass was
+        // still on the task when a pull request from outside the overseer
+        // closed it. Without the status check ahead of the holder logic, this
+        // read as "our own claim, safe to proceed" and dispatched anyway.
+        assert_eq!(
+            evaluate(
+                Some(&state("closed", Some("overseer"), Some(30))),
+                "overseer",
+                at(10),
+            ),
+            ClaimGate::Hold("task_not_open:closed".into())
+        );
+    }
+
+    #[test]
+    fn a_closed_task_stands_off_even_with_a_lapsed_foreign_claim() {
+        // The other half of the same bug: a stranger's claim lapsing must not
+        // read as permission to proceed when the task closed in the meantime.
+        assert_eq!(
+            evaluate(
+                Some(&state("closed", Some("manual-run"), Some(30))),
+                "overseer",
+                at(31),
+            ),
             ClaimGate::Hold("task_not_open:closed".into())
         );
     }

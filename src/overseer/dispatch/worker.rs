@@ -5,6 +5,7 @@ use crate::overseer::{
     OVERSEER_AGENT_ID,
     ledger::{Ledger, LedgerEntry, LedgerPhase},
     logging::DecisionKind,
+    other_prs::OtherPrs,
     templates::worker_prompt,
 };
 use crate::{Result, config::Config, spawn};
@@ -34,6 +35,14 @@ pub(super) fn spawn_candidate(
     // one just claimed.
     if super::has_active_worker(ledger, &task.task_id, &task.display_id) {
         return Ok(SpawnOutcome::Held("active_worker".into()));
+    }
+    // The ledger only knows what the overseer itself dispatched, so a task an
+    // outside agent already finished never shows up as `active_worker` above.
+    // This is the same blind spot dropr task #350 surfaces for display — here
+    // it stops a worker from starting on work a pull request already covers,
+    // whatever the dropr task's own status still says (dropr task #354).
+    if let Some(reason) = closed_elsewhere(&OtherPrs::load()?, task) {
+        return Ok(SpawnOutcome::Held(reason));
     }
     // A prior attempt at this same task can leave its branch behind — most
     // commonly the escalated case, where the worker finished and opened a pull
@@ -151,6 +160,16 @@ fn name_slug(task: &Candidate) -> Option<String> {
     naming::name_slug(TaskSource::Dropr, &task.display_id, &task.title)
 }
 
+/// A skip reason, named after the pull request, when `other_prs` already
+/// carries one that closes `task` — separated from `spawn_candidate` so this
+/// decision is tested against an in-memory fixture rather than the real
+/// `~/.robco/overseer/other_prs.json`.
+fn closed_elsewhere(other_prs: &OtherPrs, task: &Candidate) -> Option<String> {
+    other_prs
+        .closing(&task.repo, &task.display_id)
+        .map(|pr| format!("pr_closes_task:{}", pr.url))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,6 +253,56 @@ mod tests {
             Some("295-dropr-Add-a-top-level-language-config")
         );
         assert_eq!(name_slug(&candidate("", "Add a config")), None);
+    }
+
+    fn other_pr(display_id: &str, url: &str) -> crate::overseer::other_prs::OtherPr {
+        crate::overseer::other_prs::OtherPr {
+            number: 598,
+            title: "fix the bug".into(),
+            author: "someone-else".into(),
+            url: url.into(),
+            head_ref_name: "someone-else/fix".into(),
+            mergeable_state: "CLEAN".into(),
+            closes_task: Some(display_id.into()),
+        }
+    }
+
+    #[test]
+    fn a_pull_request_naming_the_task_names_itself_in_the_hold_reason() {
+        // dropr task #354: #803 was already covered by pull request #598,
+        // opened by an agent outside the overseer.
+        let mut other_prs = OtherPrs::default();
+        other_prs.repos.insert(
+            "/repo".into(),
+            crate::overseer::other_prs::RepoOtherPrs {
+                polled_at: Utc::now(),
+                prs: vec![other_pr("#803", "https://github.com/example/repo/pull/598")],
+            },
+        );
+        assert_eq!(
+            closed_elsewhere(&other_prs, &candidate("#803", "task")),
+            Some("pr_closes_task:https://github.com/example/repo/pull/598".into())
+        );
+    }
+
+    #[test]
+    fn an_unrelated_pull_request_does_not_hold_the_candidate() {
+        let mut other_prs = OtherPrs::default();
+        other_prs.repos.insert(
+            "/repo".into(),
+            crate::overseer::other_prs::RepoOtherPrs {
+                polled_at: Utc::now(),
+                prs: vec![other_pr("#1", "https://github.com/example/repo/pull/1")],
+            },
+        );
+        assert_eq!(
+            closed_elsewhere(&other_prs, &candidate("#803", "task")),
+            None
+        );
+        assert_eq!(
+            closed_elsewhere(&OtherPrs::default(), &candidate("#803", "task")),
+            None
+        );
     }
 
     #[test]

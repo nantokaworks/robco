@@ -98,3 +98,44 @@ fn a_repository_polled_before_the_refresh_interval_is_due_again() {
     };
     assert!(is_due(Some(&cached), now()));
 }
+
+#[test]
+fn closes_task_reads_the_directive_worker_prompts_are_told_to_write() {
+    assert_eq!(
+        closes_task("Fixes the bug.\n\nClose Dropr: #803\n"),
+        Some("#803".into())
+    );
+}
+
+#[test]
+fn closes_task_is_case_insensitive() {
+    assert_eq!(closes_task("close dropr: #803"), Some("#803".into()));
+    assert_eq!(closes_task("CLOSE DROPR: #803"), Some("#803".into()));
+}
+
+#[test]
+fn closes_task_tolerates_a_missing_hash() {
+    assert_eq!(closes_task("Close Dropr: 803"), Some("#803".into()));
+}
+
+#[test]
+fn closes_task_is_none_without_the_directive() {
+    assert_eq!(closes_task("Bumps foo from 1.0 to 1.1."), None);
+}
+
+#[test]
+fn closes_task_is_none_when_no_number_follows() {
+    assert_eq!(closes_task("Close Dropr: nothing here"), None);
+}
+
+#[test]
+fn closes_task_does_not_panic_on_multibyte_text_before_the_directive() {
+    // A body with non-ASCII text ahead of the marker must not shift the byte
+    // offset `closes_task` slices `body` at — `to_ascii_lowercase` guards
+    // this, but a regression back to `to_lowercase()` could reintroduce a
+    // char-boundary panic here.
+    assert_eq!(
+        closes_task("日本語のコメント İstanbul\n\nClose Dropr: #803"),
+        Some("#803".into())
+    );
+}
