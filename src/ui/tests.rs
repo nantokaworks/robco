@@ -57,8 +57,8 @@ fn overseer_expand_collapse_keys_update_tree() {
     app.orphans = Vec::new();
 
     // The header is not a row of its own, so the first row is already a
-    // category and the four categories are always listed.
-    assert_eq!(app.visible().len(), 4);
+    // category and the five categories are always listed.
+    assert_eq!(app.visible().len(), 5);
     assert_eq!(
         app.selected_item(),
         Some(Selection::OverseerCategory(OverseerCategory::Inbox))

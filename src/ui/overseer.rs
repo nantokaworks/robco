@@ -11,7 +11,8 @@ use ratatui::text::Text;
 use crate::{
     model::{ManagementMode, MergeLifecycle, OverseerCategory, Status},
     overseer::{
-        config::OverseerConfig, ledger::Ledger, logging::DecisionEntry, other_prs::OtherPrs,
+        config::OverseerConfig, discord_channels::DiscordChannels, ledger::Ledger,
+        logging::DecisionEntry, other_prs::OtherPrs,
     },
 };
 
@@ -19,6 +20,7 @@ use super::App;
 
 mod categories;
 mod decisions;
+mod discord_agents;
 mod inbox_rows;
 mod render;
 
@@ -56,6 +58,10 @@ pub(in crate::ui) struct OverseerSnapshot {
     /// Pull requests discovered in a watched repository that Overseer did not
     /// dispatch. Reloaded the same way `ledger` is — see its doc.
     pub(in crate::ui) other_prs: OtherPrs,
+    /// Retained per-channel Discord ops agents (dropr:363), read straight off
+    /// disk the same way `ledger` and `other_prs` are — the gateway that
+    /// writes this file runs inside the daemon, out of reach of this process.
+    pub(in crate::ui) discord_channels: DiscordChannels,
     pub(in crate::ui) decisions: Vec<DecisionEntry>,
     pub(in crate::ui) daemon_alive: bool,
     pub(in crate::ui) heartbeat_age: Option<Duration>,

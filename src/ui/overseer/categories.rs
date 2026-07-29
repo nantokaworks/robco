@@ -2,12 +2,16 @@ use ratatui::text::Line;
 
 use crate::{
     model::OverseerCategory,
-    overseer::ledger::{Ledger, LedgerPhase},
+    overseer::{
+        discord_channels::{ChannelAgentStatus, DiscordChannels},
+        ledger::{Ledger, LedgerPhase},
+    },
 };
 
 use super::{
     App, active_worker_management,
     decisions::{DETAIL_LIMIT, append_decisions},
+    discord_agents::append_discord,
     inbox_rows,
     render::{append_health, append_ledger, append_worker_management},
 };
@@ -45,6 +49,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         OverseerCategory::Decisions => {
             append_decisions(&mut lines, &snapshot.decisions);
         }
+        OverseerCategory::Discord => append_discord(&mut lines, &snapshot.discord_channels),
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {
         lines.pop();
@@ -83,6 +88,24 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
             format!("{} recent", snapshot.decisions.len().min(DETAIL_LIMIT)),
             false,
         ),
+        OverseerCategory::Discord => discord_summary_from(&snapshot.discord_channels),
+    }
+}
+
+pub(super) fn discord_summary_from(channels: &DiscordChannels) -> (String, bool) {
+    let failed = channels
+        .channels
+        .values()
+        .filter(|agent| agent.status == ChannelAgentStatus::Failed)
+        .count();
+    let total = channels.channels.len();
+    if total == 0 {
+        return ("no retained channels".into(), false);
+    }
+    if failed == 0 {
+        (format!("{total} retained"), false)
+    } else {
+        (format!("{total} retained, {failed} failed"), true)
     }
 }
 

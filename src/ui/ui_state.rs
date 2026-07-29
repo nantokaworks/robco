@@ -59,7 +59,7 @@ impl UiState {
 
     /// Expanded flags for the OVERSEER categories, in [`OverseerCategory::ALL`]
     /// order — the order `App::overseer_expanded` is indexed in.
-    pub(in crate::ui) fn overseer_expanded(&self) -> [bool; 4] {
+    pub(in crate::ui) fn overseer_expanded(&self) -> [bool; 5] {
         OverseerCategory::ALL
             .map(|category| self.expanded_overseer_categories.contains(category.label()))
     }
