@@ -9,6 +9,7 @@ pub(crate) mod config_write;
 pub mod daemon;
 pub(crate) mod daily;
 pub mod discord;
+pub mod discord_channels;
 pub mod dismissals;
 pub mod dispatch;
 pub mod exec;

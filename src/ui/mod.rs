@@ -213,7 +213,7 @@ pub struct App {
     /// Absence means collapsed, including for newly discovered owners.
     expanded_children: HashSet<String>,
     overseer_visible: bool,
-    overseer_expanded: [bool; 4],
+    overseer_expanded: [bool; 5],
     /// Whether the "other locations" section (off-launch-dir repos that still
     /// have agents) is collapsed to its header row.
     other_collapsed: bool,

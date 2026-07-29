@@ -566,22 +566,30 @@ mod tests {
     }
 }
 
-/// The four rows of the OVERSEER frame, ordered by the question they answer
+/// The rows of the OVERSEER frame, ordered by the question they answer
 /// (dropr:357). `Inbox` and `Health` answer the two questions an operator
 /// actually asks — is anything waiting on me, is anything stuck — and sit
 /// first. `Ledger` and `Decisions` are the daemon's own bookkeeping: reachable
 /// for debugging, never deleted, but demoted below the two rows an operator
-/// reads for a decision.
+/// reads for a decision. `Discord` (dropr:363) lists the retained per-channel
+/// ops agents and sits last, alongside the other read-only bookkeeping rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverseerCategory {
     Inbox,
     Health,
     Ledger,
     Decisions,
+    Discord,
 }
 
 impl OverseerCategory {
-    pub const ALL: [Self; 4] = [Self::Inbox, Self::Health, Self::Ledger, Self::Decisions];
+    pub const ALL: [Self; 5] = [
+        Self::Inbox,
+        Self::Health,
+        Self::Ledger,
+        Self::Decisions,
+        Self::Discord,
+    ];
 
     /// "Waiting on you" rather than "Inbox": the row answers a question, and an
     /// operator scanning the sidebar for what needs them should not have to
@@ -592,6 +600,7 @@ impl OverseerCategory {
             Self::Health => "Health",
             Self::Ledger => "Ledger",
             Self::Decisions => "Decisions",
+            Self::Discord => "Discord",
         }
     }
 
@@ -601,6 +610,7 @@ impl OverseerCategory {
             Self::Health => 1,
             Self::Ledger => 2,
             Self::Decisions => 3,
+            Self::Discord => 4,
         }
     }
 

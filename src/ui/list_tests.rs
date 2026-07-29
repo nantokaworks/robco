@@ -119,14 +119,14 @@ fn selection_identity_survives_overseer_row_toggle() {
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
     app.set_overseer_visibility(true);
-    assert_eq!(app.selected, 4);
+    assert_eq!(app.selected, 5);
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
     // Moving up off the first repo row lands on the last OVERSEER category —
     // never on the header, which is no longer a row.
     app.move_selection_up();
     assert_eq!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Decisions))
+        Some(Selection::OverseerCategory(OverseerCategory::Discord))
     );
     app.selected = 0;
     assert_eq!(

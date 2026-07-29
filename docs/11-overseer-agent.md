@@ -209,11 +209,12 @@ explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a value is es
 briefing tells the LLM to treat every such field as data, not as instructions. The Discord
 ops agent is the one exception: an allow-listed operator's message is the session's actual
 instruction, so the briefing hands it to the model as an instruction, not as fenced data —
-only the ledger status, decision log, case context, and tmux capture around it stay fenced.
-The operator's message is still text from Discord, so both the opening and closing
-`EXTERNAL_DATA` fence syntax are neutralized inside it before it is embedded, so it cannot
-forge a data block that shadows the real ones below it. Discord-generated impactful actions
-still pass through the same human confirmation gate as typed commands.
+only the ledger status, decision log, case context, tmux capture, and retained conversation
+history (dropr:363, see [Retained channel agents](#retained-channel-agents) below) around it
+stay fenced. The operator's message is still text from Discord, so both the opening and
+closing `EXTERNAL_DATA` fence syntax are neutralized inside it before it is embedded, so it
+cannot forge a data block that shadows the real ones below it. Discord-generated impactful
+actions still pass through the same human confirmation gate as typed commands.
 
 ## Configuration reference
 
@@ -385,6 +386,27 @@ poll intervals on its own.
 - **Resolving membership.** A Discord `MESSAGE_CREATE` payload carries no `parent_id`, so membership is resolved with an HTTP `GET /channels/:id` on first sight of a channel, cached in-process (5 minute TTL, oldest-evicted past a bounded size) so a busy category does not re-fetch on every message. No gateway intent is added for this — the existing message-content intent is enough, and the same `channel(id).model()` fetch the triage-thread reconciler already makes. An empty `chat_category_ids` skips the cache and the fetch entirely; a channel that is already the parent channel or a known triage thread skips it too, since both already qualify on their own.
 - **Threads are out of scope.** A thread under a category channel is two hops from the category (thread → channel → category); this feature resolves only the first hop, so a thread inside a category channel does not itself inherit chat access. A triage thread still works exactly as before, through its own `is_thread` mechanism, unrelated to categories.
 - **Concurrency.** Conversational sessions used to share one global slot; scoping chat to a whole category means people in two different channels can now talk to the agent at the same time, so the slot became a per-channel map bounded by `chat_concurrency_cap`. Each session is a spawned OS thread running an agent CLI, so the cap is a real resource bound, not just a Discord-noise knob. A channel beyond the cap gets the existing "handling another request" reply instead of a dropped message.
+
+### Retained channel agents
+
+Every channel that has ever talked to the ops agent gets a retained record under
+`~/.robco/overseer/discord-ops/channels.json` (dropr:363): first contact, last activity, a
+turn count, the outcome of the most recent turn, and a bounded rolling transcript (the six
+most recent exchanges). Retention here means identity plus conversation continuity, not a
+resident process — each turn is still the same spawned, `EphemeralSession`-backed OS thread
+described above, bounded by `chat_concurrency_cap` exactly as before. What survives between
+turns is the record on disk, not a running process: the next turn's briefing folds the
+retained transcript in as a `CONVERSATION_HISTORY` block, fenced and escaped the same way
+every other externally-sourced field is, so the agent can refer to what it just said or did
+without a person having to restate context every message. A `Running` status left behind by
+a daemon that died mid-turn is cleared back to `Idle` the next time the state loads, since
+nothing about that turn survives the restart.
+
+The Overseer TUI's INFO pane lists these under its own `Discord` category, one row per
+channel — status, turn count, and how long since it last spoke — sorted newest-activity
+first. The gateway that writes `channels.json` runs inside the daemon process; the TUI is a
+separate process with no access to the daemon's memory, so the pane can only ever show what
+made it to disk.
 
 Profiles have an `autonomous_args` array. The built-in defaults are:
 
