@@ -298,6 +298,39 @@ fn queue_tick_starts_session_without_blocking_daemon() {
     assert_eq!(ledger.skip_list, ["task-1"]);
 }
 
+/// A payload missing a required field must name which action it was, not
+/// just the missing field — otherwise an operator has to read the source to
+/// tell `dropr_scribble_create` and `dropr_task_status_update` apart.
+#[test]
+fn missing_content_field_names_the_action_in_the_rejection() {
+    let raw = br#"{
+        "outcome":"resolved",
+        "action":{"name":"dropr_scribble_create","task_id":"task-1"},
+        "reason":"note the block"
+    }"#;
+    let rejected = parse(raw, "task-1", "worker-1", &|_| false);
+    assert!(
+        matches!(&rejected, Err(ParseError::RejectedAction(message))
+            if message.contains("dropr_scribble_create") && message.contains("content")),
+        "{rejected:?}"
+    );
+}
+
+#[test]
+fn missing_task_id_field_names_the_action_in_the_rejection() {
+    let raw = br#"{
+        "outcome":"resolved",
+        "action":{"name":"dropr_task_status_update","status":"open"},
+        "reason":"release lock"
+    }"#;
+    let rejected = parse(raw, "task-1", "worker-1", &|_| false);
+    assert!(
+        matches!(&rejected, Err(ParseError::RejectedAction(message))
+            if message.contains("dropr_task_status_update") && message.contains("task_id")),
+        "{rejected:?}"
+    );
+}
+
 #[test]
 fn live_worker_prevents_task_lock_release() {
     let raw = br#"{

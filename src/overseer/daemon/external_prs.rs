@@ -36,7 +36,7 @@ use crate::{
 /// `repos * 288` calls a day while keeping the list fresh enough to matter.
 const REFRESH_INTERVAL: chrono::Duration = chrono::Duration::minutes(5);
 
-const PR_FIELDS: &str = "number,title,author,url,headRefName,mergeStateStatus";
+const PR_FIELDS: &str = "number,title,author,url,headRefName,mergeStateStatus,body";
 
 #[derive(Deserialize)]
 struct RawPr {
@@ -48,6 +48,8 @@ struct RawPr {
     head_ref_name: String,
     #[serde(rename = "mergeStateStatus")]
     merge_state_status: String,
+    #[serde(default)]
+    body: String,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +85,7 @@ pub(super) fn refresh_pass(ledger: &Ledger, now: DateTime<Utc>) -> Result<()> {
                         url: pr.url,
                         head_ref_name: pr.head_ref_name,
                         mergeable_state: pr.merge_state_status,
+                        closes_task: closes_task(&pr.body),
                     })
                     .collect();
                 state.repos.insert(
@@ -117,6 +120,32 @@ fn dispatched_by_overseer(ledger: &Ledger, repo: &str, head_ref_name: &str) -> b
         .entries
         .iter()
         .any(|entry| entry.repo == repo && entry.branch == head_ref_name)
+}
+
+/// Extracts the dropr display id a pull request body names in a
+/// `Close Dropr: #N` directive — the same phrase `templates::worker_prompt`
+/// instructs every worker to write, so a task already covered by somebody
+/// else's pull request can be told apart from one still needing a worker
+/// (dropr task #354). Matching is case-insensitive since the directive is
+/// free text in a human- or agent-authored body, not a machine format.
+fn closes_task(body: &str) -> Option<String> {
+    // `to_ascii_lowercase` only folds `A`-`Z`, one byte for one byte, so the
+    // byte offset it finds still lands on the same position in `body` — a
+    // full Unicode `to_lowercase()` can change a string's byte length (e.g.
+    // `İ`) and would risk slicing `body` off a char boundary.
+    let lower = body.to_ascii_lowercase();
+    let after_marker = lower.find("close dropr:")? + "close dropr:".len();
+    let digits: String = body[after_marker..]
+        .trim_start()
+        .trim_start_matches('#')
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    if digits.is_empty() {
+        None
+    } else {
+        Some(format!("#{digits}"))
+    }
 }
 
 fn list_open_prs(repo: &Path) -> std::result::Result<Vec<RawPr>, String> {

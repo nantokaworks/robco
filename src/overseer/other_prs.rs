@@ -26,6 +26,12 @@ pub struct OtherPr {
     /// `BLOCKED`, …), kept as-is so an operator triaging sees the same word
     /// GitHub's own UI shows.
     pub mergeable_state: String,
+    /// The dropr display id (`#N`) this pull request's body names in a
+    /// `Close Dropr: #N` directive — the same phrase every worker is
+    /// instructed to write (`templates::worker_prompt`) — parsed once at
+    /// refresh time so dispatch can tell a task is already covered without
+    /// re-reading GitHub itself (dropr task #354).
+    pub closes_task: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -79,6 +85,18 @@ impl OtherPrs {
             return Err(error.into());
         }
         Ok(())
+    }
+
+    /// The pull request in `repo`, if any, whose body already names
+    /// `display_id` in a `Close Dropr:` directive — dispatch's answer to "is
+    /// this task already covered", the same question task #350 answers for
+    /// display.
+    pub fn closing(&self, repo: &str, display_id: &str) -> Option<&OtherPr> {
+        self.repos
+            .get(repo)?
+            .prs
+            .iter()
+            .find(|pr| pr.closes_task.as_deref() == Some(display_id))
     }
 }
 
