@@ -160,7 +160,17 @@ fn stuck_reasons_is_empty_for_a_healthy_daemon_with_nothing_open() {
         auto_merge: false,
         ..OverseerConfig::default()
     };
-    assert!(stuck_reasons(&config, true, false, Some("0.1.83"), None, 0).is_empty());
+    assert!(
+        stuck_reasons(
+            &config,
+            true,
+            false,
+            Some(env!("CARGO_PKG_VERSION")),
+            None,
+            0
+        )
+        .is_empty()
+    );
 }
 
 #[test]
