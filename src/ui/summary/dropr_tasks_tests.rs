@@ -8,6 +8,14 @@ fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
         priority: String::new(),
         status: status.to_string(),
         priority_score: None,
+        blocked_reason: None,
+    }
+}
+
+fn blocked_task(display_id: &str, reason: Option<&str>) -> DroprTaskCandidate {
+    DroprTaskCandidate {
+        blocked_reason: reason.map(str::to_owned),
+        ..task(display_id, "blocked")
     }
 }
 
@@ -43,11 +51,27 @@ fn rendered_lines(tasks: &[DroprTaskCandidate]) -> Vec<String> {
 }
 
 #[test]
-fn partitions_in_progress_from_next_tasks() {
-    let tasks = [task("#1", "in_progress"), task("#2", "open")];
-    let (in_progress, next) = partition_tasks(&tasks);
+fn partitions_blocked_and_in_progress_from_next_tasks() {
+    let tasks = [
+        task("#1", "in_progress"),
+        task("#2", "open"),
+        task("#3", "blocked"),
+    ];
+    let (blocked, in_progress, next) = partition_tasks(&tasks);
+    assert_eq!(blocked[0].display_id, "#3");
     assert_eq!(in_progress[0].display_id, "#1");
     assert_eq!(next[0].display_id, "#2");
+}
+
+/// The defect this rendering exists for: `open` and `blocked` are both "not
+/// running", but only `open` is available work. Folding them together read as
+/// the task being pickable when it was not.
+#[test]
+fn a_blocked_task_does_not_land_under_next_tasks() {
+    let tasks = [task("#1", "open"), task("#2", "blocked")];
+    let (blocked, _, next) = partition_tasks(&tasks);
+    assert_eq!(next.len(), 1);
+    assert_eq!(blocked.len(), 1);
 }
 
 /// The fetch now returns real dropr statuses rather than whatever the dispatch
@@ -155,7 +179,7 @@ fn a_failed_fetch_says_so_instead_of_showing_an_empty_list() {
     assert!(
         !lines
             .iter()
-            .any(|line| line == "no open or in-progress tasks")
+            .any(|line| line == "no open, in-progress, or blocked tasks")
     );
 }
 
@@ -166,9 +190,66 @@ fn an_empty_board_is_stated_rather_than_left_blank() {
     assert!(
         lines
             .iter()
-            .any(|line| line == "no open or in-progress tasks")
+            .any(|line| line == "no open, in-progress, or blocked tasks")
     );
     assert!(!lines.iter().any(|line| line == "tasks unavailable"));
+}
+
+/// The `blocked` section reads as its own thing: distinct heading, distinct
+/// row glyph, placed apart from the work an operator can actually pick up.
+#[test]
+fn a_blocked_task_gets_its_own_section() {
+    let lines = rendered(&complete(vec![
+        task("#1", "open"),
+        blocked_task("#2", None),
+    ]));
+
+    let blocked_heading = lines.iter().position(|line| line == "blocked").unwrap();
+    let next_heading = lines.iter().position(|line| line == "next tasks").unwrap();
+    assert!(next_heading < blocked_heading);
+    assert!(lines.iter().any(|line| line == "✖ #2  Task #2"));
+    assert!(!lines.iter().any(|line| line == "#2  Task #2"));
+}
+
+/// The task's own blocker reason is what makes the unblock condition
+/// reachable without opening dropr — see the task acceptance criteria.
+#[test]
+fn a_blocked_task_shows_its_reason() {
+    let lines = rendered(&complete(vec![blocked_task(
+        "#2",
+        Some("waiting on an upstream release"),
+    )]));
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "  waiting on an upstream release")
+    );
+}
+
+#[test]
+fn a_blocked_task_without_a_reason_renders_without_a_second_line() {
+    let lines = rendered(&complete(vec![blocked_task("#2", None)]));
+
+    assert_eq!(
+        lines.iter().filter(|line| line.contains("#2")).count(),
+        1,
+        "no reason line should follow a task the lookup found nothing for"
+    );
+}
+
+#[test]
+fn a_blocked_reason_is_squashed_onto_one_line() {
+    let lines = rendered(&complete(vec![blocked_task(
+        "#2",
+        Some("line one\n  line two\tand more"),
+    )]));
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "  line one line two and more")
+    );
 }
 
 /// Half an answer rendered as a whole one is the failure mode that made the
@@ -205,7 +286,7 @@ fn a_partial_fetch_with_no_rows_reports_the_problem_not_an_empty_board() {
     assert!(
         lines
             .iter()
-            .any(|line| line == "no open or in-progress tasks")
+            .any(|line| line == "no open, in-progress, or blocked tasks")
     );
     assert!(lines.iter().any(|line| line == "this list is incomplete"));
 }

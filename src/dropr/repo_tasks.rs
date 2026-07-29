@@ -26,10 +26,14 @@ use super::{
     mcp::{self, ToolOutcome},
 };
 
+mod blocker;
+
 /// Statuses the summary renders. `draft` is left out on purpose: an unpublished
 /// task is not work the pane should claim exists. `closed` is left out because
-/// the pane is about what is outstanding.
-const DISPLAY_STATUSES: &str = "open,in_progress";
+/// the pane is about what is outstanding. `blocked` is included, but the pane
+/// (`ui::summary::dropr_tasks`) renders it as its own section so it is never
+/// folded in with tasks that are actually available to pick up.
+const DISPLAY_STATUSES: &str = "open,in_progress,blocked";
 
 /// Rows one `task_list` query asks for. Bounds the pane's input: the display
 /// cap in `ui::summary::dropr_tasks` is what keeps it scannable, and this is
@@ -90,7 +94,15 @@ struct TaskRow {
 }
 
 pub fn fetch(workspace_id: &str) -> DroprTaskFetch {
-    fetch_within(workspace_id, FETCH_BUDGET, mcp_asker)
+    let deadline = Instant::now() + FETCH_BUDGET;
+    let mut fetch = fetch_within(workspace_id, FETCH_BUDGET, mcp_asker);
+    blocker::attach_blocked_reasons(
+        &mut fetch,
+        workspace_id,
+        deadline,
+        blocker::mcp_scribble_asker,
+    );
+    fetch
 }
 
 /// Answers to one batch of `task_list` calls. The outer `Err` is the session
@@ -200,9 +212,13 @@ fn one_answer(answers: Answers) -> Result<Vec<TaskRow>, String> {
 
 /// Runs a batch with whatever is left of the budget, and reports a spent budget
 /// as the deadline it is rather than letting a doomed query fail as a fault.
-fn ask_within<F>(ask: &mut F, queries: Vec<Value>, deadline: Instant) -> Answers
+///
+/// Generic over the answer shape so the `blocker` submodule's own
+/// `scribble_list` batches share this deadline bookkeeping instead of
+/// duplicating it.
+fn ask_within<F, T>(ask: &mut F, queries: Vec<Value>, deadline: Instant) -> Result<T, String>
 where
-    F: FnMut(Vec<Value>, Duration) -> Answers,
+    F: FnMut(Vec<Value>, Duration) -> Result<T, String>,
 {
     let timeout = deadline.saturating_duration_since(Instant::now());
     if timeout < MIN_QUERY_TIME {
