@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 59;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 61;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -17,6 +17,8 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("Sessions"),
         l("  n              new agent under selected repo (title | initial prompt)"),
         l("  enter          attach Claude/terminal (agent shell or main worktree)"),
+        l("                 on OVERSEER: attach the control AI, creating it if absent"),
+        l("  i              on the OVERSEER control AI row: send it an instruction"),
         l("  ctrl-q         return from attached tmux session"),
         l("  r              on a repo row: reload dropr tasks; else restart agent"),
         l("  x              remove selected agent worktree or pinned repo"),

@@ -40,7 +40,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         };
 
         match *item {
-            Selection::OverseerCategory(_) | Selection::OverseerInbox(_) => continue,
+            Selection::OverseerAi
+            | Selection::OverseerCategory(_)
+            | Selection::OverseerInbox(_) => continue,
             Selection::Repo(repo_idx) => {
                 lines.extend(repo_row::build(
                     app,

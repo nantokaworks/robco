@@ -176,7 +176,13 @@ pub enum PreviewPane {
 /// tab bar and tab cycling read — this list alone is not the whole tab bar.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        Some(Selection::OverseerCategory(_)) => &[PreviewPane::Info, PreviewPane::Claude],
+        // The control AI is a row of its own now (dropr:370), so none of the
+        // five categories own a session to show behind a second tab.
+        Some(Selection::OverseerCategory(_)) => &[PreviewPane::Info],
+        // The row is acted on from the left frame (Enter attaches, `i`
+        // instructs), so its one tab is the live control session capture
+        // itself and there is no second tab to cycle to.
+        Some(Selection::OverseerAi) => &[PreviewPane::Info],
         // The inbox row is acted on from the left frame, so its preview is the
         // Inbox listing itself and there is no second tab to cycle to.
         Some(Selection::OverseerInbox(_)) => &[PreviewPane::Info],

@@ -68,6 +68,11 @@ pub(in crate::ui) struct OverseerSnapshot {
     /// The build the running daemon started from, as recorded in the heartbeat.
     /// `None` for a heartbeat written before the daemon recorded it.
     pub(in crate::ui) daemon_version: Option<String>,
+    /// Whether the Overseer's own control tmux session is up, probed off the UI
+    /// thread the same way every other session-backed status is. `None` means no
+    /// session exists yet (the row shows no badge); `Some(Status::Running)`
+    /// means Enter would attach rather than create.
+    pub(in crate::ui) control_status: Option<Status>,
 }
 
 impl OverseerSnapshot {

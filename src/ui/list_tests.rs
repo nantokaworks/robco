@@ -29,8 +29,9 @@ fn overseer_categories_are_always_listed_and_the_header_is_not_a_row() {
     // Ignore any live robco tmux sessions the host discovers as orphans so the
     // tree contents are deterministic across environments.
     app.orphans = Vec::new();
-    let expected = OverseerCategory::ALL.map(Selection::OverseerCategory);
-    assert_eq!(app.visible(), expected.to_vec());
+    let mut expected = vec![Selection::OverseerAi];
+    expected.extend(OverseerCategory::ALL.map(Selection::OverseerCategory));
+    assert_eq!(app.visible(), expected);
 }
 
 fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
@@ -51,15 +52,16 @@ fn expanding_the_inbox_lists_its_items_as_rows_and_collapsing_takes_them_back() 
     app.orphans = Vec::new();
     app.overseer_inbox = vec![inbox_item("#1"), inbox_item("#2")];
 
-    // Collapsed, the categories are still the only OVERSEER rows: an item the
-    // operator cannot see is not one the cursor can land on.
-    let categories = OverseerCategory::ALL
-        .map(Selection::OverseerCategory)
-        .to_vec();
+    // Collapsed, the control AI row and the categories are still the only
+    // OVERSEER rows: an item the operator cannot see is not one the cursor can
+    // land on.
+    let mut categories = vec![Selection::OverseerAi];
+    categories.extend(OverseerCategory::ALL.map(Selection::OverseerCategory));
     assert_eq!(app.visible(), categories);
 
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
-    let inbox_row = OverseerCategory::Inbox.index();
+    // +1: the control AI row sits ahead of every category in `categories`.
+    let inbox_row = OverseerCategory::Inbox.index() + 1;
     assert_eq!(
         app.visible(),
         [
@@ -119,7 +121,7 @@ fn selection_identity_survives_overseer_row_toggle() {
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
     app.set_overseer_visibility(true);
-    assert_eq!(app.selected, 5);
+    assert_eq!(app.selected, 6);
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
     // Moving up off the first repo row lands on the last OVERSEER category —
     // never on the header, which is no longer a row.
@@ -129,10 +131,7 @@ fn selection_identity_survives_overseer_row_toggle() {
         Some(Selection::OverseerCategory(OverseerCategory::Discord))
     );
     app.selected = 0;
-    assert_eq!(
-        app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Inbox))
-    );
+    assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
 
     app.set_overseer_visibility(false);
     assert_eq!(app.selected, 0);

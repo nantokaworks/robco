@@ -22,6 +22,12 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  enter          attach Claude/terminal (agent shell or main worktree)" => {
             "  enter          Claude/terminalへアタッチ（エージェントshell/main）"
         }
+        "                 on OVERSEER: attach the control AI, creating it if absent" => {
+            "                 OVERSEER：制御AIにアタッチ（未作成なら新規作成）"
+        }
+        "  i              on the OVERSEER control AI row: send it an instruction" => {
+            "  i              OVERSEER制御AI行：指示を送信"
+        }
         "  ctrl-q         return from attached tmux session" => {
             "  ctrl-q         アタッチ中のtmuxセッションから戻る"
         }

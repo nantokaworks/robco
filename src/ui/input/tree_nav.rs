@@ -72,3 +72,36 @@ impl App {
         true
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{config::Config, registry::Registry};
+
+    #[test]
+    fn the_control_ai_row_is_not_a_toggleable_header() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.selected = 0;
+        assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
+
+        // Unlike a category or section header, Enter on this row must fall
+        // through to the attach action rather than being swallowed here —
+        // the bug this row exists to fix (dropr:370).
+        assert!(!app.toggle_selected_tree_header(Selection::OverseerAi));
+    }
+
+    #[test]
+    fn h_and_l_do_not_touch_the_control_ai_row() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.selected = 0;
+        assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
+
+        app.expand_selected_tree_item();
+        app.collapse_selected_tree_item();
+        assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
+    }
+}

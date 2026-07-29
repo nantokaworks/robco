@@ -40,10 +40,12 @@ fn prompt_repo_word_deletion_reaches_the_shared_buffer() {
 }
 
 #[test]
-fn overseer_category_panes_show_info_then_claude() {
+fn overseer_category_panes_show_info_only() {
+    // The control AI moved to its own row (dropr:370): none of the five
+    // categories own a session, so none offers a second tab to cycle to.
     assert_eq!(
         panes_for(Some(Selection::OverseerCategory(OverseerCategory::Health))),
-        &[PreviewPane::Info, PreviewPane::Claude]
+        &[PreviewPane::Info]
     );
 }
 
@@ -56,17 +58,18 @@ fn overseer_expand_collapse_keys_update_tree() {
     // tree contents are deterministic across environments.
     app.orphans = Vec::new();
 
-    // The header is not a row of its own, so the first row is already a
-    // category and the five categories are always listed.
-    assert_eq!(app.visible().len(), 5);
+    // The header is not a row of its own, so the first row is the control AI,
+    // followed by the five categories, which are always listed.
+    assert_eq!(app.visible().len(), 6);
+    assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
+
+    // Inbox is the one category the keys still act on; the read-only three are
+    // covered by `overseer_frame::tests::a_leaf_category_cannot_be_expanded_by_any_key`.
+    app.selected = OverseerCategory::Inbox.index() + 1;
     assert_eq!(
         app.selected_item(),
         Some(Selection::OverseerCategory(OverseerCategory::Inbox))
     );
-
-    // Inbox is the one category the keys still act on; the read-only three are
-    // covered by `overseer_frame::tests::a_leaf_category_cannot_be_expanded_by_any_key`.
-    app.selected = OverseerCategory::Inbox.index();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
     assert!(app.overseer_category_expanded(OverseerCategory::Inbox));
@@ -82,8 +85,10 @@ fn overseer_expand_collapse_keys_update_tree() {
 fn overseer_instruction_key_opens_prompt() {
     let mut app = test_app();
     app.overseer_visible = true;
+    // The control AI row (index 0) is the one place `i` opens the prompt now;
+    // it has only one preview tab, so unlike before the tab is irrelevant.
     app.selected = 0;
-    app.preview = PreviewPane::Claude;
+    assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
 
     app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
         .unwrap();

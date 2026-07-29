@@ -85,18 +85,26 @@ impl App {
         Ok(())
     }
 
+    /// Attach the Overseer's own control session, creating it when absent.
+    /// This is the row's Enter action (see `Selection::OverseerAi`); unlike
+    /// `attach_claude_selected` it is not gated on the current preview tab,
+    /// since the row's one tab is Info, not Claude.
+    pub(in crate::ui) fn attach_control_selected(&mut self) {
+        if !matches!(self.selected_item(), Some(Selection::OverseerAi)) {
+            return;
+        }
+        let cwd = self
+            .ephemeral_root
+            .clone()
+            .unwrap_or_else(|| self.config.repos_root.clone());
+        match overseer::ensure_control_session(&self.config, &cwd) {
+            Ok(session) => self.attach_session(&session),
+            Err(err) => self.show_message(err.to_string()),
+        }
+    }
+
     pub(in crate::ui) fn attach_claude_selected(&mut self) -> Result<()> {
         match self.selected_item() {
-            Some(Selection::OverseerCategory(_)) => {
-                let cwd = self
-                    .ephemeral_root
-                    .clone()
-                    .unwrap_or_else(|| self.config.repos_root.clone());
-                match overseer::ensure_control_session(&self.config, &cwd) {
-                    Ok(session) => self.attach_session(&session),
-                    Err(err) => self.show_message(err.to_string()),
-                }
-            }
             Some(Selection::Agent {
                 repo,
                 agent: agent_idx,

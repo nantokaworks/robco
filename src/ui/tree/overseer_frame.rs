@@ -69,10 +69,19 @@ fn build_content_with_warnings(
     let summaries =
         OverseerCategory::ALL.map(|category| crate::ui::overseer::category_summary(app, category));
     // The header is a plain label, never a selection target, so the selected
-    // row only ever tracks a category row below it.
+    // row only ever tracks a row below it.
     let mut lines = vec![header_line(app, health_warnings.len(), width)];
     lines.extend(warning_lines(health_warnings));
     let mut selected_row = 0;
+
+    // The control AI sits above the categories: it is the one OVERSEER row
+    // that owns a session to attach to (dropr:370), not a read-only summary of
+    // one, so it reads as the frame's entry point rather than a sixth category.
+    let control_selected = selected == Some(Selection::OverseerAi);
+    if control_selected {
+        selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    }
+    lines.push(control_ai_line(app, control_selected));
 
     for category in OverseerCategory::ALL {
         let category_selected = selected == Some(Selection::OverseerCategory(category));
@@ -173,6 +182,26 @@ fn warning_lines<'a>(warnings: &'a [&'static str]) -> impl Iterator<Item = Line<
     warnings
         .iter()
         .map(|warning| Line::styled(format!("⚠ {warning}"), warning_style(false)))
+}
+
+/// The control AI row: same column layout as a category row — marker, a blank
+/// arrow cell (this row never expands), the label, then a value — but the
+/// value is the live status glyph rather than a summary string, since this is
+/// the row an operator attaches to rather than reads.
+fn control_ai_line(app: &App, selected: bool) -> Line<'static> {
+    let indicator_state = IndicatorState::with_status(app.overseer_snapshot.control_status);
+    let glyph =
+        indicator::primary_span(select(indicator_state), selected, app.started.elapsed(), 1);
+    Line::from(vec![
+        // Three spaces, not the "{arrow}" `category_line` interpolates: the
+        // arrow cell this row reserves is always blank, so it is spelled out
+        // here instead of threading a literal space through as an argument.
+        Span::styled(
+            format!("{}   Control AI{GAP}", marker(selected)),
+            row_style(selected),
+        ),
+        glyph,
+    ])
 }
 
 fn category_line(
