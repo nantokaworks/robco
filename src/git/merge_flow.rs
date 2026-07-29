@@ -7,8 +7,11 @@
 //! differently is what they do with the progress steps: the TUI renders them on
 //! a banner, the MCP tool collects them into its result.
 //!
-//! The sequence races on the repository's base branch and working tree, so it
-//! runs under [`with_merge_lock`], which serialises it across processes.
+//! The sequence still races across concurrent robco processes merging the
+//! same repository at once, so it runs under [`with_merge_lock`], which
+//! serialises it across processes. It never touches the repository's own
+//! working tree — see [`crate::git::post_merge`] — so an operator's checkout
+//! is not part of what it races on.
 
 use std::path::Path;
 

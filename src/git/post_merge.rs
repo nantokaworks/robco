@@ -1,23 +1,32 @@
 //! The post-merge cleanup sequence, shared by the interactive merge action and
 //! the Overseer daemon.
 //!
-//! Both paths run the same steps in the same order — fast-forward the primary
-//! worktree, remove the task worktree, delete the local branch, delete the
-//! remote branch — and differ only in what a failing step means. An interactive
+//! Both paths run the same steps in the same order — fetch the base branch,
+//! remove the task worktree, delete the local branch, delete the remote
+//! branch — and differ only in what a failing step means. An interactive
 //! merge is watched, so it stops at the first failure and reports it. The daemon
 //! is not watched, so it records the failure and runs the remaining steps: a
-//! `main` that cannot fast-forward must not strand a worktree and a branch
+//! base branch fetch that fails must not strand a worktree and a branch
 //! forever.
+//!
+//! None of these steps touch the repository's own checked-out branch or
+//! working tree — see [`git::fetch_branch`] — so they stay safe to run
+//! against a checkout an operator or another process may be using at the same
+//! time.
 
 use std::path::Path;
 
 use crate::{Error, Result, git};
 
-/// The ref the branch's content is looked for in. The primary worktree tracks
-/// the base branch and was just fast-forwarded, so its `HEAD` is the merge
-/// commit. Reading the branch name from the repository instead would only add a
-/// way to disagree with the worktree that was actually pulled.
-const BASE: &str = "HEAD";
+/// Every merge in this repository lands on `main` — the same assumption
+/// `agent.rs` and `overseer/daemon/pull_request.rs` make.
+const BASE_BRANCH: &str = "main";
+
+/// The ref the branch's content is looked for in: `origin/main`, fetched
+/// fresh at the top of the sequence. Never the repository's own checked-out
+/// branch — that may not even be `main`, and reading it would make this
+/// depend on whatever an operator or another process left it on.
+const BASE: &str = "origin/main";
 
 /// Progress markers, so a caller with a UI can name the running step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,13 +54,12 @@ pub struct Cleanup<'a> {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CleanupOutcome {
-    /// Whether `git pull --ff-only` brought the primary worktree up to the
-    /// merge. Reported separately from [`Self::notes`] because a caller has to
-    /// be able to *act* on it: under [`OnFailure::Continue`] a failed pull is
-    /// only a note among the others, and the Overseer merge gate needs to know
-    /// whether the base it is about to merge onto has caught up. Always true
-    /// under [`OnFailure::Abort`], which returns the failure instead of
-    /// finishing.
+    /// Whether fetching `origin/main` succeeded. Reported separately from
+    /// [`Self::notes`] because a caller has to be able to *act* on it: under
+    /// [`OnFailure::Continue`] a failed fetch is only a note among the
+    /// others, and the Overseer merge gate needs to know whether the base it
+    /// is about to merge onto has caught up. Always true under
+    /// [`OnFailure::Abort`], which returns the failure instead of finishing.
     pub base_pulled: bool,
     pub worktree_removed: bool,
     pub branch: BranchOutcome,
@@ -75,10 +83,10 @@ impl Cleanup<'_> {
     pub fn run(&self, mut step: impl FnMut(CleanupStep)) -> Result<CleanupOutcome> {
         let mut outcome = CleanupOutcome::default();
         step(CleanupStep::PullingMain);
-        match git::pull_ff_only(self.repo) {
+        match git::fetch_branch(self.repo, BASE_BRANCH) {
             Ok(()) => outcome.base_pulled = true,
             Err(error) => {
-                self.record(&mut outcome, "fast-forwarding the primary worktree", error)?;
+                self.record(&mut outcome, "fetching the base branch", error)?;
             }
         }
         step(CleanupStep::CleaningUp);
