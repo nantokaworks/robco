@@ -1,6 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::{Result, model::Selection};
+use crate::{
+    Result,
+    locale::{fmt, t},
+    model::Selection,
+};
 
 use super::super::{App, Mode, PreviewPane, text_input::TextInput};
 
@@ -49,7 +53,7 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
             app.mode = Mode::ConfirmOverseerReset;
             return true;
         }
-        app.show_message("circuit is closed; nothing to reset");
+        app.show_message(t(app.locale, "circuit is closed; nothing to reset"));
         return true;
     }
     match app.selected_item() {
@@ -90,7 +94,7 @@ fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
                 .and_then(|item| item.target_session.clone())
             {
                 Some(session) => app.approve_inbox(&session),
-                None => app.show_message(DISPLAY_ONLY),
+                None => app.show_message(t(app.locale, DISPLAY_ONLY)),
             }
             true
         }
@@ -98,7 +102,10 @@ fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
         // the global add-repository key. Claiming it here keeps that muscle
         // memory from opening a clone prompt, and says where answering went.
         KeyCode::Char('a') => {
-            app.show_message("press enter to answer the selected inbox item");
+            app.show_message(t(
+                app.locale,
+                "press enter to answer the selected inbox item",
+            ));
             true
         }
         // Dismissing one row is undoable by hand (delete the entry) and hides a
@@ -142,11 +149,11 @@ impl App {
     /// session of its own to attach to.
     pub(in crate::ui) fn answer_inbox_selected(&mut self, index: usize) {
         let Some(item) = self.overseer_inbox.get(index) else {
-            self.show_message("inbox item is no longer listed");
+            self.show_message(t(self.locale, "inbox item is no longer listed"));
             return;
         };
         let Some(target_session) = item.target_session.clone() else {
-            self.show_message(DISPLAY_ONLY);
+            self.show_message(t(self.locale, DISPLAY_ONLY));
             return;
         };
         let label = item.label.clone();
@@ -177,9 +184,9 @@ impl App {
         self.response_message(result, "approval sent");
     }
 
-    fn response_message(&mut self, result: Result<()>, success: &str) {
+    fn response_message(&mut self, result: Result<()>, success: &'static str) {
         match result {
-            Ok(()) => self.show_message(success),
+            Ok(()) => self.show_message(t(self.locale, success)),
             Err(error) => self.show_message(error.to_string()),
         }
     }
@@ -205,11 +212,15 @@ impl App {
         self.refresh_overseer_snapshot();
         match result {
             Ok(()) if self.overseer_snapshot.daemon_alive => {
-                self.show_message("overseer dispatch enabled");
+                self.show_message(t(self.locale, "overseer dispatch enabled"));
             }
-            Ok(()) => self.show_message(format!(
+            Ok(()) => self.show_message(fmt(
+                self.locale,
                 "overseer dispatch enabled; warning: {}",
-                crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT
+                &[t(
+                    self.locale,
+                    crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT,
+                )],
             )),
             Err(error) => self.show_message(error.to_string()),
         }
@@ -223,13 +234,18 @@ impl App {
         self.refresh_overseer_snapshot();
         match result {
             Ok(()) if self.overseer_snapshot.daemon_alive => {
-                self.show_message(
+                self.show_message(t(
+                    self.locale,
                     "dispatch circuit reset requested: dispatch on, failures clearing on next tick",
-                );
+                ));
             }
-            Ok(()) => self.show_message(format!(
+            Ok(()) => self.show_message(fmt(
+                self.locale,
                 "dispatch circuit reset requested: dispatch on, failures pending; warning: {}",
-                crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT
+                &[t(
+                    self.locale,
+                    crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT,
+                )],
             )),
             Err(error) => self.show_message(error.to_string()),
         }

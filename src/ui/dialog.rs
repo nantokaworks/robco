@@ -43,7 +43,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
 
     let (title, scroll) = match app.mode {
         Mode::Help { scroll } => (
-            help::scroll_title(scroll, frame.area().height).unwrap_or(title),
+            help::scroll_title(scroll, frame.area().height, app.locale).unwrap_or(title),
             help::clamp_scroll(scroll, frame.area().height),
         ),
         // A dialog taller than the body it must fit into scrolls just far enough

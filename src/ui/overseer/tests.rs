@@ -1,5 +1,6 @@
 use super::render::append_ledger;
 use super::*;
+use crate::locale::Locale;
 use crate::overseer::autonomy::AutonomyLevel;
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 use crate::{
@@ -210,7 +211,16 @@ fn open_circuit_shows_recovery_hint() {
     let mut open = Ledger::default();
     open.counters.consecutive_failures = 3;
     let mut lines = Vec::new();
-    super::render::append_health(&mut lines, &config, &open, false, None, None, None);
+    super::render::append_health(
+        &mut lines,
+        &config,
+        &open,
+        false,
+        None,
+        None,
+        None,
+        Locale::En,
+    );
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -233,7 +243,16 @@ fn open_circuit_shows_recovery_hint() {
     let mut closed = Ledger::default();
     closed.counters.consecutive_failures = 2;
     let mut lines = Vec::new();
-    super::render::append_health(&mut lines, &config, &closed, false, None, None, None);
+    super::render::append_health(
+        &mut lines,
+        &config,
+        &closed,
+        false,
+        None,
+        None,
+        None,
+        Locale::En,
+    );
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -259,6 +278,7 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
             None,
             None,
             None,
+            Locale::En,
         );
         lines
             .iter()
@@ -305,6 +325,7 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
         None,
         None,
         None,
+        Locale::En,
     );
     assert_eq!(
         lines
@@ -347,6 +368,7 @@ fn health_frame_shows_merge_recovery_and_flags_it_when_it_cannot_fire() {
             None,
             None,
             None,
+            Locale::En,
         );
         lines
     };
@@ -398,6 +420,7 @@ fn health_frame_reports_the_build_the_daemon_started_from() {
         None,
         Some("0.1.66"),
         None,
+        Locale::En,
     );
     let rendered = lines
         .iter()
@@ -430,6 +453,7 @@ fn health_frame_flags_a_daemon_running_another_build() {
         None,
         Some("0.1.66"),
         Some("daemon is running 0.1.66 but this binary is 0.1.67"),
+        Locale::En,
     );
     let rendered = lines
         .iter()
@@ -466,6 +490,7 @@ fn a_heartbeat_without_a_build_still_renders_the_health_frame() {
         None,
         None,
         None,
+        Locale::En,
     );
     let rendered = lines
         .iter()

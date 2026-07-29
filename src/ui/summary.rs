@@ -6,6 +6,7 @@ use ratatui::{
 use std::time::{Duration, SystemTime};
 
 use crate::{
+    locale::{Locale, t},
     model::{AgentNode, ChildWorktree, RepoNode},
     overseer::{ledger::Ledger, other_prs::OtherPrs},
     subagents::SubagentStatus,
@@ -26,6 +27,7 @@ pub(in crate::ui) fn repo_summary(
     ledger: &Ledger,
     other_prs: &OtherPrs,
     width: u16,
+    locale: Locale,
 ) -> (String, Text<'static>) {
     let rendered_name = blockfont::render_fitting(&repo.name, usize::from(width));
     let name_style = if rendered_name.is_some() {
@@ -67,7 +69,7 @@ pub(in crate::ui) fn repo_summary(
         ]),
     ]);
 
-    lines.extend(dropr_section(repo, width));
+    lines.extend(dropr_section(repo, width, locale));
     lines.extend(history_section(ledger, &repo.path, width));
     lines.extend(other_prs_section(other_prs, &repo.path, width));
 
@@ -80,7 +82,7 @@ pub(in crate::ui) fn repo_summary(
 /// looks identical to a linked repo whose task list happens to be empty — so
 /// the operator could not tell "no tasks" from "robco never found a workspace
 /// for this repo".
-fn dropr_section(repo: &RepoNode, width: u16) -> Vec<Line<'static>> {
+fn dropr_section(repo: &RepoNode, width: u16, locale: Locale) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::from(""),
         Line::from(Span::styled(
@@ -91,7 +93,10 @@ fn dropr_section(repo: &RepoNode, width: u16) -> Vec<Line<'static>> {
     ];
     let Some(dropr) = &repo.dropr else {
         lines.push(Line::from(Span::styled(
-            "no workspace resolved for this repo, so no tasks can be listed",
+            t(
+                locale,
+                "no workspace resolved for this repo, so no tasks can be listed",
+            ),
             THEME.muted_style(),
         )));
         return lines;

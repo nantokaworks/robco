@@ -196,7 +196,11 @@ fn category_line(
     };
     Line::from(vec![
         Span::styled(
-            format!("{} {arrow} {}{GAP}", marker(selected), category.label()),
+            format!(
+                "{} {arrow} {}{GAP}",
+                marker(selected),
+                category.display_label(app.locale)
+            ),
             row_style(selected),
         ),
         Span::styled(

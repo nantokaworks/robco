@@ -7,6 +7,7 @@ mod dropr;
 mod exec;
 mod git;
 mod loading;
+mod locale;
 mod mcp;
 mod model;
 mod new_agent;
