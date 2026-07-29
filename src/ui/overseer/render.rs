@@ -278,6 +278,7 @@ fn map_text<K: std::fmt::Display>(map: &BTreeMap<K, usize>) -> String {
             .join(", ")
     }
 }
+
 pub(super) fn terminal(phase: LedgerPhase) -> bool {
     matches!(
         phase,

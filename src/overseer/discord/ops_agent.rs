@@ -6,7 +6,10 @@ use super::{
     ops_state::{DeliveryOutcome, OpsState, ResolutionState},
     reactions::ReactionStage,
 };
-use crate::overseer::triage::ExceptionCase;
+use crate::overseer::{
+    discord_channels::{ChannelTurn, DiscordChannels},
+    triage::ExceptionCase,
+};
 use std::path::PathBuf;
 
 /// Concurrent conversational sessions `OpsAgent` runs before further routing
@@ -30,6 +33,10 @@ pub(super) struct SessionRequest {
     pub case: Option<ExceptionCase>,
     pub message: String,
     pub message_id: String,
+    /// Recent turns for this channel's retained agent, oldest first — folded
+    /// into the briefing as conversation continuity. Empty for a channel's
+    /// first message. See `crate::overseer::discord_channels`.
+    pub history: Vec<ChannelTurn>,
 }
 
 pub(super) struct OpsAgent {
@@ -38,6 +45,10 @@ pub(super) struct OpsAgent {
     triage_root: PathBuf,
     state_path: PathBuf,
     state: OpsState,
+    /// Retained per-channel agent records (dropr:363) — sibling file to
+    /// `state_path`, derived from it so callers keep passing one path.
+    channels_path: PathBuf,
+    channels: DiscordChannels,
     sessions: SessionSlots,
 }
 
@@ -49,12 +60,17 @@ impl OpsAgent {
         state_path: PathBuf,
     ) -> Result<Self, String> {
         let state = OpsState::load(&state_path)?;
+        let channels_path = state_path.with_file_name("channels.json");
+        let mut channels = DiscordChannels::load(&channels_path)?;
+        channels.reconcile_restart(&channels_path)?;
         Ok(Self {
             parent_channel,
             allowed_users,
             triage_root,
             state_path,
             state,
+            channels_path,
+            channels,
             sessions: SessionSlots::new(DEFAULT_CONCURRENCY_CAP),
         })
     }
@@ -160,6 +176,7 @@ impl OpsAgent {
             case,
             message: message.into(),
             message_id: message_id.into(),
+            history: self.channels.history(channel_id).to_vec(),
         };
         let acknowledged = react_effect(channel_id, message_id, ReactionStage::Acknowledged);
         let busy = Effect::Post {
@@ -167,10 +184,15 @@ impl OpsAgent {
             text: "The ops agent is handling another request; please retry shortly.".into(),
         };
         match self.sessions.start(channel_id, request, spawner) {
-            StartOutcome::Started => RouteOutcome::Started(vec![
-                acknowledged,
-                react_effect(channel_id, message_id, ReactionStage::Working),
-            ]),
+            StartOutcome::Started => {
+                if let Err(error) = self.channels.begin_turn(&self.channels_path, channel_id) {
+                    eprintln!("overseer: failed to record Discord channel state: {error}");
+                }
+                RouteOutcome::Started(vec![
+                    acknowledged,
+                    react_effect(channel_id, message_id, ReactionStage::Working),
+                ])
+            }
             StartOutcome::Busy | StartOutcome::AtCapacity => RouteOutcome::Immediate(vec![
                 acknowledged,
                 react_effect(channel_id, message_id, ReactionStage::Refused),
@@ -188,7 +210,7 @@ impl OpsAgent {
     }
 
     pub fn poll(&mut self) -> Vec<Effect> {
-        self.sessions.poll()
+        self.sessions.poll(&mut self.channels, &self.channels_path)
     }
 
     /// Channel ids with a chat session still outstanding, for the typing
