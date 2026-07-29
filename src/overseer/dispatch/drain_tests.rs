@@ -15,6 +15,7 @@ fn candidate(id: &str) -> Candidate {
         priority: "medium".into(),
         workspace: "workspace".into(),
         priority_score: None,
+        status: "open".into(),
     }
 }
 
