@@ -160,7 +160,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             "stop overseer?",
             vec![
                 Line::from("disable dispatch + kill all overseer workers"),
-                Line::from("daemon stays alive; re-enable with `robco overseer set dispatch on`"),
+                Line::from("daemon stays alive; press S again to turn dispatch back on"),
                 hint_line("y stop   n/esc cancel"),
             ],
             None,
