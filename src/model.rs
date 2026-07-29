@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     dropr::{DroprTaskFetch, DroprWorkspace},
+    locale::{self, Locale},
     subagents::TaskSubagent,
 };
 
@@ -347,6 +348,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_inbox_localizes_the_other_four_categories_stay_english_in_every_locale() {
+        assert_eq!(
+            OverseerCategory::Inbox.display_label(Locale::En),
+            "Waiting on you"
+        );
+        assert_ne!(
+            OverseerCategory::Inbox.display_label(Locale::Ja),
+            "Waiting on you"
+        );
+        for category in [
+            OverseerCategory::Health,
+            OverseerCategory::Ledger,
+            OverseerCategory::Decisions,
+            OverseerCategory::Discord,
+        ] {
+            assert_eq!(category.display_label(Locale::En), category.label());
+            assert_eq!(category.display_label(Locale::Ja), category.label());
+        }
+    }
+
+    #[test]
+    fn label_never_changes_with_locale_since_it_is_a_persisted_key() {
+        for category in OverseerCategory::ALL {
+            assert_eq!(category.label(), category.label());
+        }
+        // Regression guard for the persisted `ui_state.json` key and the
+        // `item_key` preview-tab memory: `label()` takes no locale parameter
+        // at all, so it cannot vary by config — this test exists to fail loudly
+        // if a future edit adds one.
+        let _: fn(OverseerCategory) -> &'static str = OverseerCategory::label;
+    }
+
+    #[test]
     fn status_badges_and_glyphs_are_stable() {
         assert_eq!(Status::Running.badge(), "run");
         assert_eq!(Status::Running.glyph(), "⠿");
@@ -594,6 +628,12 @@ impl OverseerCategory {
     /// "Waiting on you" rather than "Inbox": the row answers a question, and an
     /// operator scanning the sidebar for what needs them should not have to
     /// know dropr/robco jargon for a mail metaphor to find it.
+    ///
+    /// English, always — this is a stable identifier, not display text: it is
+    /// persisted verbatim in `ui_state.json` (`expanded_overseer_categories`)
+    /// and used as an `item_key` for preview-tab memory, so localizing it
+    /// would silently reset that state on a language change. [`Self::display_label`]
+    /// is the localized string for actual rendering.
     pub fn label(self) -> &'static str {
         match self {
             Self::Inbox => "Waiting on you",
@@ -601,6 +641,16 @@ impl OverseerCategory {
             Self::Ledger => "Ledger",
             Self::Decisions => "Decisions",
             Self::Discord => "Discord",
+        }
+    }
+
+    /// The label as rendered in the TUI. Only `Inbox` localizes — `Health` /
+    /// `Ledger` / `Decisions` / `Discord` are short structural category names
+    /// (like `OVERSEER` itself) and stay English in every language by design.
+    pub fn display_label(self, locale: Locale) -> &'static str {
+        match self {
+            Self::Inbox => locale::t(locale, self.label()),
+            _ => self.label(),
         }
     }
 

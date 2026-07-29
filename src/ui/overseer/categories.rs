@@ -29,6 +29,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             snapshot.heartbeat_age,
             snapshot.daemon_version.as_deref(),
             snapshot.version_drift().as_deref(),
+            app.locale,
         ),
         OverseerCategory::Ledger => {
             let management = active_worker_management(app);
@@ -49,7 +50,9 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         OverseerCategory::Decisions => {
             append_decisions(&mut lines, &snapshot.decisions);
         }
-        OverseerCategory::Discord => append_discord(&mut lines, &snapshot.discord_channels),
+        OverseerCategory::Discord => {
+            append_discord(&mut lines, &snapshot.discord_channels, app.locale)
+        }
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {
         lines.pop();

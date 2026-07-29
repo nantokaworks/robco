@@ -165,7 +165,7 @@ pub(super) fn active_worker_management(app: &App) -> Vec<WorkerManagement> {
 
 pub(super) fn category_preview(app: &App, category: OverseerCategory) -> (String, Text<'static>) {
     (
-        format!("OVERSEER / {}", category.label()),
+        format!("OVERSEER / {}", category.display_label(app.locale)),
         category_detail(app, category).into(),
     )
 }

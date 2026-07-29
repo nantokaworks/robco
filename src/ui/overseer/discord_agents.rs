@@ -9,16 +9,21 @@ use ratatui::text::Line;
 use crate::overseer::discord_channels::{ChannelAgentStatus, DiscordChannels};
 
 use super::render::{flags_line, warning};
+use crate::locale::{Locale, t};
 use crate::ui::theme::DEFAULT as THEME;
 
 /// Lists the retained per-channel Discord ops agents, newest activity first —
 /// the same ordering `append_ledger`'s active-worker rows use for the same
 /// reason: the channel an operator is most likely checking on belongs at the
 /// top.
-pub(super) fn append_discord(lines: &mut Vec<Line<'static>>, channels: &DiscordChannels) {
+pub(super) fn append_discord(
+    lines: &mut Vec<Line<'static>>,
+    channels: &DiscordChannels,
+    locale: Locale,
+) {
     if channels.channels.is_empty() {
         lines.push(Line::styled(
-            "no retained channel agents yet",
+            t(locale, "no retained channel agents yet"),
             THEME.muted_style(),
         ));
         return;
@@ -84,7 +89,7 @@ mod tests {
     #[test]
     fn no_channels_renders_an_explicit_empty_state() {
         let mut lines = Vec::new();
-        append_discord(&mut lines, &DiscordChannels::default());
+        append_discord(&mut lines, &DiscordChannels::default(), Locale::En);
         assert_eq!(lines.len(), 1);
         assert!(text_of(&lines[0]).contains("no retained channel agents"));
     }
@@ -100,7 +105,7 @@ mod tests {
             .insert("newer".into(), agent(ChannelAgentStatus::Idle, 1, 1));
 
         let mut lines = Vec::new();
-        append_discord(&mut lines, &channels);
+        append_discord(&mut lines, &channels, Locale::En);
 
         assert_eq!(lines.len(), 2);
         assert!(text_of(&lines[0]).contains("newer"));
@@ -115,7 +120,7 @@ mod tests {
         channels.channels.insert("c1".into(), failing);
 
         let mut lines = Vec::new();
-        append_discord(&mut lines, &channels);
+        append_discord(&mut lines, &channels, Locale::En);
 
         assert_eq!(lines.len(), 2);
         assert!(text_of(&lines[0]).contains("failed"));

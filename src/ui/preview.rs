@@ -6,6 +6,7 @@ use ratatui::{
 
 use crate::{
     agent,
+    locale::t,
     model::{Selection, Status},
     ui::{
         App, PreviewPane, layout, merge_dialog, scrollback,
@@ -63,7 +64,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let session = agent::repo_shell_session_name(tmux_prefix, repo);
             let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
-                    "No shell session. Press enter to open one.",
+                    t(app.locale, "No shell session. Press enter to open one."),
                     THEME.muted_style(),
                 ))]
                 .into()
@@ -76,7 +77,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let session = agent::repo_claude_session_name(tmux_prefix, repo);
             let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
-                    "No AI session. Press enter to open one.",
+                    t(app.locale, "No AI session. Press enter to open one."),
                     THEME.muted_style(),
                 ))]
                 .into()
@@ -92,6 +93,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             &app.overseer_snapshot.ledger,
             &app.overseer_snapshot.other_prs,
             panes.preview.width.saturating_sub(4),
+            app.locale,
         ),
         // Rendered as a tab rather than an overlay so reading the failure never
         // costs the operator sight of the tab bar.
@@ -150,7 +152,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let session = agent::shell_session_name(agent);
             let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
-                    "No shell session. Press enter to open one.",
+                    t(app.locale, "No shell session. Press enter to open one."),
                     THEME.muted_style(),
                 ))]
                 .into()
