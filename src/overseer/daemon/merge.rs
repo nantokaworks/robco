@@ -10,7 +10,7 @@ use super::{
     merge_queue, merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection::ProtectionCache,
-    pull_request::{self, head_sha},
+    pull_request::{self, base_sha, head_sha},
 };
 use crate::{
     Result,
@@ -103,7 +103,14 @@ pub(super) fn auto_merge_pass(
             // The gate stops before it can read a revision, so the budget is keyed
             // on the reason alone. It still ends the repetition, which is the only
             // thing an entry with no pull request ever produced.
-            hold(entry, &Halt::hold(MISSING_PR_URL), "", config, &registry)?;
+            hold(
+                entry,
+                &Halt::hold(MISSING_PR_URL),
+                "",
+                "",
+                config,
+                &registry,
+            )?;
             continue;
         };
         let outcome = evaluate(
@@ -125,7 +132,7 @@ pub(super) fn auto_merge_pass(
             }
             // The one outcome the recheck budget is for: this pass re-read the
             // gate and the gate still holds, so the look it was granted is spent.
-            Outcome::Halted { halt, head } => {
+            Outcome::Halted { halt, head, base } => {
                 if recheck && merge_hold_recheck::charge(entry, &halt.reason, &head, max_rechecks) {
                     // Recorded on the pass that spends the last look, so the log
                     // says once — and only once — that nothing will reconsider
@@ -137,7 +144,7 @@ pub(super) fn auto_merge_pass(
                         &merge_hold_recheck::exhausted(&halt.reason),
                     )?;
                 }
-                hold(entry, &halt, &head, config, &registry)?;
+                hold(entry, &halt, &head, &base, config, &registry)?;
             }
             // The deterministic gate cleared and only the judgment is outstanding,
             // so whatever this entry was last held on is no longer what is holding
@@ -162,6 +169,7 @@ fn hold(
     entry: &mut LedgerEntry,
     halt: &Halt,
     head: &str,
+    base: &str,
     config: &Config,
     registry: &Registry,
 ) -> Result<()> {
@@ -170,7 +178,15 @@ fn hold(
             let overseer = &config.overseer;
             let language = config.language.as_deref();
             log_halt(entry, halt, overseer.protection_mode)?;
-            merge_recovery::consider(entry, &halt.reason, head, overseer, registry, language)
+            merge_recovery::consider(
+                entry,
+                &halt.reason,
+                head,
+                base,
+                overseer,
+                registry,
+                language,
+            )
         }
         HoldPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
@@ -216,9 +232,10 @@ fn evaluate(
     let value = match pull_request::read(&entry.repo, url) {
         Ok(value) => value,
         // The read failed, so there is no revision to attribute a failure to.
-        Err(reason) => return Ok(Halt::hold(reason).on("")),
+        Err(reason) => return Ok(Halt::hold(reason).on("", "")),
     };
     let head = head_sha(&value).to_owned();
+    let base = base_sha(&value).to_owned();
     // A pull request GitHub no longer reports as open is a fact rather than
     // something to wait for, and it is read first because everything below costs
     // GitHub calls that cannot change the answer. The judge's terminal verdict is
@@ -227,14 +244,14 @@ fn evaluate(
     // nothing left to re-judge.
     if let Some(conclusion) = pull_request::conclusion(&value) {
         judgments.forget_terminal_merge(&entry.task_id, url)?;
-        return Ok(merge_decision::concluded(entry, conclusion).on(&head));
+        return Ok(merge_decision::concluded(entry, conclusion).on(&head, &base));
     }
     if let Some(halt) = merge_gate::gate(entry, url, &value, config, cache, registry, heads) {
-        return Ok(halt.on(&head));
+        return Ok(halt.on(&head, &base));
     }
     match judge_allows(entry, url, &value, config, judgments, consecutive_failures)? {
         Judgment::Allow => {}
-        Judgment::Halt(halt) => return Ok(halt.on(&head)),
+        Judgment::Halt(halt) => return Ok(halt.on(&head, &base)),
         Judgment::Queued => return Ok(Outcome::Pending),
     }
     Ok(
@@ -245,7 +262,7 @@ fn evaluate(
             config.overseer.protection_mode,
         )? {
             Ok(()) => Outcome::Merged,
-            Err(halt) => halt.on(&head),
+            Err(halt) => halt.on(&head, &base),
         },
     )
 }
