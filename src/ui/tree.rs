@@ -110,15 +110,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 } else {
                     label::TreeHandle::Collapsed
                 };
-                // Blank out a marker that only repeats what the repo row above
-                // already shows, so the ones that remain are the agents whose
-                // management actually diverges from their repo's.
+                // Blank a Manual marker that only repeats what the repo row
+                // above already shows (see `ManagementMarker::unless_matching`).
+                // Auto is always drawn, even when it matches its repo's own
+                // Auto state — the common case, and the one this exemption
+                // exists to keep from reading as an unmanaged worktree.
                 let agent_marker =
                     label::ManagementMarker::of(agent.parent_agent_id.as_deref(), agent.management)
                         .unless_matching(label::ManagementMarker::of_repo(repo.management));
                 let prefix = label::agent_row_prefix(
                     marker,
                     agent_marker,
+                    app.config.project_icon,
                     &row.ancestor_continues,
                     row.is_last,
                     handle,

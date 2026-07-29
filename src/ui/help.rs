@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 57;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 59;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -53,7 +53,9 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("  ⟳ manual dropr reload (r key)"),
         Line::from("  ✓ done   · idle   ⎇ branch only (static fallback)"),
         Line::from("  ● overseer Auto   ○ overseer Manual   blank unmanaged (rides indent)"),
-        Line::from("  Repo row always shows its own ●/○; agent rows blank unless they differ"),
+        Line::from("  nerdfont project_icon swaps in a bolt/hand pictograph pair instead"),
+        Line::from("  Repo row always shows its own marker; Auto agent rows always show"),
+        Line::from("  theirs too; a Manual agent row blanks only when its repo is Manual"),
         Line::from("  Opted-out repo (○): name and its agent rows render dimmed"),
         Line::from("  Collapsed repos: N ⠿ is running; status glyphs/N ⌦ are child counts"),
         Line::from("  Child rows: * uncommitted changes   ⌁ tmux session"),
