@@ -323,7 +323,8 @@ fn a_leaf_category_cannot_be_expanded_by_any_key() {
         .into_iter()
         .filter(|c| !c.has_children())
     {
-        app.selected = category.index();
+        // +1: the control AI row sits ahead of every category in `visible()`.
+        app.selected = category.index() + 1;
         assert_eq!(
             app.selected_item(),
             Some(Selection::OverseerCategory(category))
@@ -386,11 +387,73 @@ fn a_leaf_categorys_detail_is_still_reachable_in_the_preview() {
 fn warning_rows_are_included_in_selected_category_scroll_position() {
     let (warnings, mut app) = warning_state();
     app.overseer_visible = true;
-    app.selected = OverseerCategory::Decisions.index();
+    // +1: the control AI row sits ahead of every category in `visible()`.
+    app.selected = OverseerCategory::Decisions.index() + 1;
 
     let content = build_content_with_warnings(&app, Some(23), &warnings);
 
-    assert_eq!(content.selected_row, 7);
-    assert_eq!(content.scroll_offset(6), 2);
+    assert_eq!(content.selected_row, 8);
+    assert_eq!(content.scroll_offset(6), 3);
     assert!(content.selected_row - content.scroll_offset(6) < 6);
+}
+
+#[test]
+fn the_control_ai_row_sits_above_every_category() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+
+    let control_row = content
+        .lines
+        .iter()
+        .position(|line| line.to_string().contains("Control AI"))
+        .expect("no Control AI row");
+    let inbox_row = content
+        .lines
+        .iter()
+        .position(|line| line.to_string().contains(OverseerCategory::Inbox.label()))
+        .expect("no Inbox category row");
+    assert!(control_row < inbox_row);
+
+    app.selected = 0;
+    assert_eq!(
+        app.selected_item(),
+        Some(crate::model::Selection::OverseerAi)
+    );
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+    assert_eq!(usize::from(content.selected_row), control_row);
+}
+
+#[test]
+fn the_control_ai_row_shows_no_badge_until_the_session_exists() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+
+    app.overseer_snapshot.control_status = None;
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+    let row = content
+        .lines
+        .iter()
+        .find(|line| line.to_string().contains("Control AI"))
+        .expect("no Control AI row")
+        .to_string();
+    let after_label = row.split("Control AI").nth(1).unwrap_or_default();
+    assert!(
+        after_label.trim().is_empty(),
+        "no session should draw no badge: {row:?}"
+    );
+
+    app.overseer_snapshot.control_status = Some(crate::model::Status::Running);
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+    let row = content
+        .lines
+        .iter()
+        .find(|line| line.to_string().contains("Control AI"))
+        .expect("no Control AI row")
+        .to_string();
+    let after_label = row.split("Control AI").nth(1).unwrap_or_default();
+    assert!(
+        !after_label.trim().is_empty(),
+        "a running session should draw the spinner glyph: {row:?}"
+    );
 }

@@ -2,7 +2,7 @@ use ratatui::text::{Line, Span};
 
 use super::theme::DEFAULT as THEME;
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 59;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 61;
 
 pub(crate) fn lines() -> Vec<Line<'static>> {
     vec![
@@ -15,6 +15,8 @@ pub(crate) fn lines() -> Vec<Line<'static>> {
         Line::from("Sessions"),
         Line::from("  n              new agent under selected repo (title | initial prompt)"),
         Line::from("  enter          attach Claude/terminal (agent shell or main worktree)"),
+        Line::from("                 on OVERSEER: attach the control AI, creating it if absent"),
+        Line::from("  i              on the OVERSEER control AI row: send it an instruction"),
         Line::from("  ctrl-q         return from attached tmux session"),
         Line::from("  r              on a repo row: reload dropr tasks; else restart agent"),
         Line::from("  x              remove selected agent worktree or pinned repo"),

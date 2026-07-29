@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
-use crate::{config::Config, model::OverseerCategory, registry::Registry};
+use crate::{config::Config, model::OverseerCategory, registry::Registry, ui::PreviewPane};
 
 #[test]
 fn enter_submits_trimmed_instruction() {
@@ -183,7 +183,7 @@ fn stop_key_opens_panic_confirm_from_any_overseer_tab() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
-    app.selected = 0; // First OVERSEER category row.
+    app.selected = 0; // First OVERSEER row (the control AI).
     // Works regardless of the active preview tab.
     app.preview = PreviewPane::Claude;
 

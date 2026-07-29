@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::{Result, model::Selection};
 
-use super::super::{App, Mode, PreviewPane, text_input::TextInput};
+use super::super::{App, Mode, text_input::TextInput};
 
 pub(super) enum PromptAction {
     Stay,
@@ -47,13 +47,20 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         return true;
     }
     match app.selected_item() {
-        Some(Selection::OverseerCategory(category)) => {
-            if code == KeyCode::Char('i') && app.preview == PreviewPane::Claude {
+        // The control AI row is the one place `i` sends an instruction: it is
+        // the row that owns the session the instruction goes into. Not gated
+        // on the preview tab — the row has only one (Info), unlike the old
+        // Claude-tab gate this replaced.
+        Some(Selection::OverseerAi) => {
+            if code == KeyCode::Char('i') {
                 app.mode = Mode::PromptOverseer {
                     input: TextInput::new(),
                 };
                 return true;
             }
+            false
+        }
+        Some(Selection::OverseerCategory(category)) => {
             // Clear-all is offered from the category row whether or not it is
             // expanded: the row's own summary already says how many items the
             // operator is about to clear.

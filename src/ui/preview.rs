@@ -45,12 +45,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
     let panes = layout::panes(root.body, app.overseer_frame_height());
 
     let (title, text) = match (pane, selection) {
-        (PreviewPane::Info, Some(Selection::OverseerCategory(category))) => {
+        (_, Some(Selection::OverseerCategory(category))) => {
             super::overseer::category_preview(app, category)
         }
-        (PreviewPane::Claude, Some(Selection::OverseerCategory(_))) => {
-            overseer::control_preview(app)
-        }
+        // The row's one tab is the live control session capture itself — see
+        // `panes_for`'s comment on `Selection::OverseerAi`.
+        (_, Some(Selection::OverseerAi)) => overseer::control_preview(app),
         // An item row previews itself, not the list it belongs to: the other
         // items are already on screen in the left frame. `panes_for` gives this
         // selection a single Info tab, so the catch-all pane is that one tab.
