@@ -7,7 +7,8 @@
 use std::{collections::HashSet, path::PathBuf, time::SystemTime};
 
 use crate::{
-    config::Config, discover, git, model::OrphanSession, registry::Registry,
+    config::Config, discover, git, model::OrphanSession,
+    overseer::discord_channels::DiscordChannels, registry::Registry,
     subagents::claude::ClaudeSubagentReader,
 };
 
@@ -92,10 +93,20 @@ pub(super) fn capture_discovery(
             SystemTime::now(),
         );
     }
+    // Reloaded fresh rather than threaded in from the caller: this pass runs
+    // off-thread on its own `Config`/`Registry` snapshot, and discord channel
+    // session names are the one thing orphan discovery needs from a source
+    // this pass otherwise never touches. See `overseer_refresh::capture_overseer`
+    // for the same reload pattern applied to the OVERSEER frame's snapshot.
+    let discord_channels = crate::overseer::discord_ops_dir()
+        .ok()
+        .and_then(|dir| DiscordChannels::load(&dir.join("channels.json")).ok())
+        .unwrap_or_default();
     let found_orphans = orphans::discover_orphans(
         &registry.repos,
         &config.tmux_session_prefix,
         &config.worktree_root,
+        &discord_channels,
     );
     DiscoveryResult {
         registry,

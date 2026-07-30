@@ -196,7 +196,12 @@ pub(in crate::ui) fn popup_area(
     // OVERSEER starts with its content header; PROJECTS has a separate header row.
     let anchor_row = if matches!(
         app.selected_item(),
-        Some(Selection::OverseerAi | Selection::OverseerCategory(_) | Selection::OverseerInbox(_))
+        Some(
+            Selection::OverseerAi
+                | Selection::OverseerCategory(_)
+                | Selection::OverseerInbox(_)
+                | Selection::DiscordChannel(_)
+        )
     ) {
         let content = super::tree::overseer_frame::content_lines(app);
         let inner_height = panes.overseer.height.saturating_sub(1);
@@ -239,7 +244,10 @@ fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
         }
         if matches!(
             item,
-            Selection::OverseerAi | Selection::OverseerCategory(_) | Selection::OverseerInbox(_)
+            Selection::OverseerAi
+                | Selection::OverseerCategory(_)
+                | Selection::OverseerInbox(_)
+                | Selection::DiscordChannel(_)
         ) {
             continue;
         }

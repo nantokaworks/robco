@@ -59,6 +59,20 @@ const INBOX_CATEGORY_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
+const DISCORD_CATEGORY_HINTS: Hints = &[
+    ("l", "expand"),
+    ("R", "reset"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
+const DISCORD_CHANNEL_HINTS: Hints = &[
+    ("↵", "attach"),
+    ("R", "reset"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
 const OTHER_CATEGORY_HINTS: Hints = &[("R", "reset"), ("?", "help"), ("q", "quit")];
 
 const INBOX_ITEM_HINTS: Hints = &[
@@ -95,8 +109,10 @@ fn hints_for(selection: Option<Selection>) -> Hints {
         Some(Selection::Repo(_)) => REPO_HINTS,
         Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::OverseerCategory(OverseerCategory::Inbox)) => INBOX_CATEGORY_HINTS,
+        Some(Selection::OverseerCategory(OverseerCategory::Discord)) => DISCORD_CATEGORY_HINTS,
         Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
         Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
+        Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,
         Some(Selection::ChildWorktree { .. }) => CHILD_WORKTREE_HINTS,
         Some(Selection::Orphan(_)) => ORPHAN_HINTS,
         Some(Selection::OtherHeader) | Some(Selection::OrphanHeader) => HEADER_HINTS,

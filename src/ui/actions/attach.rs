@@ -149,6 +149,33 @@ impl App {
         }
     }
 
+    /// Attach the selected Discord channel's tmux session (dropr:371). Unlike
+    /// the control AI row there is nothing to create here: a channel session
+    /// exists only while a turn is running and is torn down at the end of
+    /// it, so an absent session means "no turn is running right now" rather
+    /// than "not created yet" — and is said explicitly instead of silently
+    /// doing nothing.
+    pub(in crate::ui) fn attach_discord_channel_selected(&mut self, index: usize) {
+        if !matches!(self.selected_item(), Some(Selection::DiscordChannel(_))) {
+            return;
+        }
+        let ids =
+            crate::ui::overseer::ordered_channel_ids(&self.overseer_snapshot.discord_channels);
+        let Some(channel_id) = ids.get(index) else {
+            self.show_message("channel is no longer listed");
+            return;
+        };
+        let session =
+            overseer::discord_channel_session_name(&self.config.tmux_session_prefix, channel_id);
+        match tmux::has_session(&session) {
+            Ok(true) => self.attach_session(&session),
+            Ok(false) => {
+                self.show_message("no live session — a turn is not running for this channel");
+            }
+            Err(err) => self.show_message(err.to_string()),
+        }
+    }
+
     pub(in crate::ui) fn attach_orphan_selected(&mut self) {
         let Some(Selection::Orphan(orphan)) = self.selected_item() else {
             return;

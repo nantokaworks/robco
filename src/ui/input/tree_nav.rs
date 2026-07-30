@@ -104,4 +104,20 @@ mod tests {
         app.collapse_selected_tree_item();
         assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
     }
+
+    #[test]
+    fn a_discord_channel_row_is_not_a_toggleable_header() {
+        // Same shape as `the_control_ai_row_is_not_a_toggleable_header`
+        // (dropr:371): a channel row owns a session to attach to, not a
+        // header to expand, so Enter must fall through to the attach action
+        // rather than being swallowed here.
+        assert!(
+            !App::new(
+                Registry::default(),
+                Config::default(),
+                tempfile::tempdir().unwrap().path().into(),
+            )
+            .toggle_selected_tree_header(Selection::DiscordChannel(0))
+        );
+    }
 }

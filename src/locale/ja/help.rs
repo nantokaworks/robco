@@ -74,6 +74,16 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 also: robco overseer clear-inbox" => {
             "                 同等コマンド: robco overseer clear-inbox"
         }
+        "Overseer discord" => "Overseer Discord",
+        "  l              expand OVERSEER > Discord to reach its channel rows" => {
+            "  l              OVERSEER > Discordを展開しチャンネル行を表示"
+        }
+        "  enter          on a channel row: attach its tmux session (live" => {
+            "  enter          チャンネル行：tmuxセッションへアタッチ（ライブなのは"
+        }
+        "                 only while a turn is running for that channel)" => {
+            "                 そのチャンネルでターン実行中のみ）"
+        }
         "Repo" => "リポジトリ",
         "  a              clone <git-url> [branch], or add local repo path" => {
             "  a              <git-url> [branch] をclone、またはローカルパスを追加"

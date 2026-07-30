@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 61;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 65;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -35,6 +35,10 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  d              on an item row: dismiss it (hides the row only)"),
         l("  D              on an item or Inbox row: clear the inbox (confirms)"),
         l("                 also: robco overseer clear-inbox"),
+        l("Overseer discord"),
+        l("  l              expand OVERSEER > Discord to reach its channel rows"),
+        l("  enter          on a channel row: attach its tmux session (live"),
+        l("                 only while a turn is running for that channel)"),
         l("Repo"),
         l("  a              clone <git-url> [branch], or add local repo path"),
         l("  m              merge agent: merge PR + pull main (commit + PR needed)"),

@@ -106,13 +106,17 @@ fn build_content_with_warnings(
                     .into_iter()
                     .map(indent_detail),
             );
-            // Inbox items are rows, not read-only detail: when the cursor is on
-            // one, it — not the category above it — is what the frame scrolls to
-            // keep on screen. The detail builder draws the marker itself, and
-            // emits nothing ahead of the items, so item `n` is detail row `n`.
-            if let Some(Selection::OverseerInbox(index)) = selected
-                && category == OverseerCategory::Inbox
-            {
+            // Item rows (Inbox, Discord channels) are rows, not read-only
+            // detail: when the cursor is on one, it — not the category above
+            // it — is what the frame scrolls to keep on screen. Each detail
+            // builder draws the marker itself and emits nothing ahead of its
+            // items, so item `n` is detail row `n`.
+            let item_index = match (category, selected) {
+                (OverseerCategory::Inbox, Some(Selection::OverseerInbox(index))) => Some(index),
+                (OverseerCategory::Discord, Some(Selection::DiscordChannel(index))) => Some(index),
+                _ => None,
+            };
+            if let Some(index) = item_index {
                 selected_row = u16::try_from(first_detail + index).unwrap_or(u16::MAX);
             }
         }

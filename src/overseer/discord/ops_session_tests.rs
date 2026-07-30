@@ -182,6 +182,7 @@ fn briefing_collection_does_not_block_spawn_caller() {
         profile,
         Duration::from_secs(1),
         SessionEnv::default(),
+        "robco_test_ops-session-tmux-non-blocking".into(),
         move |_| {
             blocked.recv().unwrap();
             "briefing".into()
