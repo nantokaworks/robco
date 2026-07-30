@@ -112,12 +112,21 @@ pub(super) fn exhausted(reason: &str) -> String {
     format!("merge_hold_recheck_exhausted:{reason}")
 }
 
-/// Retires the marker once the entry leaves `Escalated` for good by merging.
+/// Retires the marker once the entry leaves `Escalated` for good by merging,
+/// or once the deterministic gate clears and a real judge verdict becomes
+/// the entry's authority instead (see `merge_judge_gate::judge_allows`).
+///
+/// Also retires `settled_at` and `merge_hold_stuck_notified` —
+/// `merge_escalation::sweep_stuck`'s own markers for the same escalation —
+/// so a verdict or a merge that resolves this condition does not leave a
+/// stale age behind for whatever the entry does next.
 pub(super) fn settle(entry: &mut LedgerEntry) {
     entry.merge_hold_cap_escalated = false;
     entry.merge_hold_rechecks = 0;
     entry.merge_hold_recheck_reason = None;
     entry.merge_hold_recheck_head = None;
+    entry.settled_at = None;
+    entry.merge_hold_stuck_notified = false;
 }
 
 #[cfg(test)]

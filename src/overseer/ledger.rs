@@ -80,6 +80,16 @@ pub struct LedgerEntry {
     /// Head sha the last charged (or escalating) reconsideration pass saw.
     #[serde(default)]
     pub merge_hold_recheck_head: Option<String>,
+    /// Whether `daemon::merge_escalation::sweep_stuck` has already notified
+    /// once about this entry's current escalation sitting past the stuck
+    /// threshold. Kept apart from `merge_hold_cap_escalated` because that
+    /// flag grants free reconsideration passes forever — it never sets this
+    /// one, and the daemon's own age tracking must not repeat once it has
+    /// spoken. Reset alongside `settled_at` wherever the entry leaves this
+    /// escalation behind: `merge_hold_recheck::settle` and a successful
+    /// `merge_recovery` handback.
+    #[serde(default)]
+    pub merge_hold_stuck_notified: bool,
 }
 
 /// What the merge gate remembers about handing this pull request's failures back

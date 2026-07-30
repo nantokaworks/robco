@@ -222,8 +222,14 @@ fn dispatch(
     }
     // The worker now owns the failure, so the entry returns to the phase the
     // merge pass reads. A judge veto had already escalated it; that escalation
-    // is superseded rather than left to strand the pull request.
+    // is superseded rather than left to strand the pull request. Whatever
+    // escalation the entry is leaving behind is over too, so its age marker
+    // and stuck notice go with it — a later re-escalation starts a fresh
+    // clock rather than inheriting one that already ran most of the way to
+    // `merge_escalation::STUCK_AFTER`.
     entry.phase = LedgerPhase::PrOpened;
+    entry.settled_at = None;
+    entry.merge_hold_stuck_notified = false;
     log(entry, DecisionKind::Hold, &dispatched(reason))?;
     note_on_task(entry, reason);
     Ok(())
@@ -283,6 +289,7 @@ fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
     decision.repo = Some(entry.repo.clone());
     decision.pr_url = entry.pr_url.clone();
     decision.source = Some("merge_recovery".into());
+    decision.escalation_notify = super::merge_escalation::notify(kind, reason);
     logging::append(&decision)
 }
 

@@ -41,6 +41,15 @@ pub struct DecisionEntry {
     /// Auto-merge branch-protection strictness in force when the decision was taken.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protection_mode: Option<String>,
+    /// Whether an `Escalate` decision belongs to `daemon::merge_escalation`'s
+    /// terminal/transient vocabulary, and if so, which half: `Some(true)` for
+    /// one nothing will reconsider (notify), `Some(false)` for one the
+    /// merge-hold recheck loop may still resolve on its own (suppress until
+    /// it crosses the stuck threshold). `None` for every decision outside
+    /// that vocabulary — those notify exactly as they did before this field
+    /// existed, via `notifications::from_decision`'s pre-existing match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub escalation_notify: Option<bool>,
 }
 
 impl DecisionEntry {
@@ -55,6 +64,7 @@ impl DecisionEntry {
             user_id: None,
             pr_url: None,
             protection_mode: None,
+            escalation_notify: None,
         }
     }
 }

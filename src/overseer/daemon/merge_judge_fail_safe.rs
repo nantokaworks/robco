@@ -89,6 +89,7 @@ fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
     decision.repo = Some(entry.repo.clone());
     decision.pr_url = entry.pr_url.clone();
     decision.source = Some("merge_judge_fail_safe".into());
+    decision.escalation_notify = super::merge_escalation::notify(kind, reason);
     logging::append(&decision)
 }
 
