@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{agent, model::OrphanSession, overseer, tmux};
+use crate::{agent, locale::fmt, model::OrphanSession, overseer, tmux};
 
 use super::super::App;
 
@@ -39,7 +39,7 @@ impl App {
         match tmux::kill_session(session) {
             Ok(()) => {
                 self.orphans.retain(|orphan| orphan.name != session);
-                self.show_message(format!("killed {session}"));
+                self.show_message(fmt(self.locale, "killed {}", &[session]));
                 self.clamp_selection();
             }
             Err(err) => self.show_message(err.to_string()),

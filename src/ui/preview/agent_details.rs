@@ -38,7 +38,7 @@ pub(in crate::ui) fn lines(app: &App, agent: &AgentNode) -> Vec<Line<'static>> {
     // Both gated the same way: a worker that has resumed real work (spinner
     // motion) has moved past whatever the ledger still records for it.
     if agent.status != Status::Running {
-        if let Some(reason) = app.overseer_snapshot.blocked_reason(&agent.id) {
+        if let Some(reason) = app.overseer_snapshot.blocked_reason(app.locale, &agent.id) {
             details.push(Line::from(vec![
                 Span::styled("blocked: ", THEME.muted_style()),
                 Span::styled(reason, THEME.needs_decision_style(false)),
@@ -47,7 +47,7 @@ pub(in crate::ui) fn lines(app: &App, agent: &AgentNode) -> Vec<Line<'static>> {
         if let Some(lifecycle) = app.overseer_snapshot.merge_lifecycle(&agent.id) {
             let detail = app
                 .overseer_snapshot
-                .merge_hold_detail(&agent.id)
+                .merge_hold_detail(app.locale, &agent.id)
                 .unwrap_or_default();
             details.push(Line::from(vec![
                 Span::styled("pull request: ", THEME.muted_style()),

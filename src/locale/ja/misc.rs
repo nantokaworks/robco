@@ -38,6 +38,21 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "no workspace resolved for this repo, so no tasks can be listed" => {
             "このリポジトリに対応するワークスペースが見つからないため、タスクを表示できません"
         }
+
+        // tree/repo_row.rs
+        "(no agents)" => "(agentなし)",
+
+        // error_dialog.rs
+        "Warning:" => "警告:",
+        "f force delete   any other key dismiss" => "fで強制削除   その他のキーで閉じる",
+        "press any key to dismiss" => "何かキーを押すと閉じます",
+
+        // preview/branch_only.rs
+        "Worktree has been removed." => "worktreeは削除されました。",
+        "Press x to delete the branch." => "xを押すとブランチを削除できます。",
+
+        // actions/preview_capture.rs
+        "Could not render diff." => "diffを表示できませんでした。",
         _ => return None,
     })
 }

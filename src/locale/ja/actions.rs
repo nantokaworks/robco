@@ -1,6 +1,7 @@
 //! Japanese translations for `src/ui/actions/attach.rs`,
-//! `src/ui/actions/lifecycle.rs`, and `src/ui/input/overseer.rs` — the
-//! status messages `show_message` renders after an operator action.
+//! `src/ui/actions/lifecycle.rs`, `src/ui/actions/kill.rs`,
+//! `src/ui/actions/pr.rs`, and `src/ui/input/overseer.rs` — the status
+//! messages `show_message` renders after an operator action.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -61,6 +62,66 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "dispatch circuit reset requested: dispatch on, failures pending; warning: {}" => {
             "dispatch回路のリセットを要求しました：dispatch有効、失敗カウンタは保留中。警告: {}"
         }
+
+        // actions/kill.rs
+        "kill is not available for child worktrees" => "子worktreeではkillできません",
+        "cannot kill an agent while it is merging" => "merge中のエージェントはkillできません",
+        "remove agents first" => "先にagentを削除してください",
+        "Warning: force delete discards these files:" => {
+            "警告: 強制削除するとこれらのファイルは失われます:"
+        }
+        "... and {} more" => "…ほか{}件",
+        "kill failed" => "kill失敗",
+        "killed {}" => "killしました: {}",
+        "cannot delete a branch while its agent is merging" => {
+            "merge中のagentのブランチは削除できません"
+        }
+        "deleted branch {}" => "ブランチを削除しました: {}",
+        "branch delete failed" => "ブランチ削除失敗",
+
+        // actions/pr.rs
+        "PR request is not available for child worktrees" => "子worktreeではPRリクエストできません",
+        "select an agent to request a PR" => "PRをリクエストするagentを選択してください",
+        "agent no longer exists; PR request cancelled" => {
+            "agentが既に存在しません。PRリクエストを中止しました"
+        }
+        "PR requested: {}" => "PRをリクエストしました: {}",
+
+        // actions/merge.rs
+        "closed dialog because its agent was merged" => {
+            "agentがmergeされたためダイアログを閉じました"
+        }
+        "merge complete: {}" => "merge完了: {}",
+        "merge worker terminated unexpectedly" => "merge workerが予期せず終了しました",
+
+        // actions/pr_precheck.rs
+        "PR pre-check worker terminated unexpectedly" => {
+            "PR事前チェックworkerが予期せず終了しました"
+        }
+
+        // actions/clone.rs
+        "format: <git-url> [branch]" => "形式: <git-url> [branch]",
+        "clone already in progress: {}" => "既にcloneが進行中です: {}",
+        "cloning repository" => "リポジトリをclone中",
+        "clone worker terminated unexpectedly" => "clone workerが予期せず終了しました",
+        "repository added: {}" => "リポジトリを追加しました: {}",
+
+        // actions/dropr_tasks.rs
+        "a manual reload gave up before it answered; nothing was re-checked" => {
+            "手動再読込が応答を待たずに終了しました。再確認は行われていません"
+        }
+        "the dropr task fetch panicked" => "droprタスクの取得中にpanicが発生しました",
+
+        // actions/orphans.rs reuses "killed {}" from actions/kill.rs above.
+
+        // actions/settings.rs
+        "settings reloaded" => "設定を再読込しました",
+
+        // input/confirm.rs
+        "kept branch" => "ブランチを保持しました",
+
+        // actions/attach.rs (dropr:371 additions)
+        "channel is no longer listed" => "チャンネルは既に一覧から削除されています",
         _ => return None,
     })
 }

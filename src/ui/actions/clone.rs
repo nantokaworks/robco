@@ -3,6 +3,8 @@ use std::{
     sync::mpsc::{self, Receiver, TryRecvError},
 };
 
+use crate::locale::{fmt, t};
+
 use super::super::App;
 
 pub(in crate::ui) struct CloneJob {
@@ -17,7 +19,7 @@ impl App {
         if crate::clone::looks_like_git_url(first) {
             let branch = parts.next().map(str::to_string);
             if parts.next().is_some() {
-                self.show_message("format: <git-url> [branch]");
+                self.show_message(t(self.locale, "format: <git-url> [branch]"));
                 return;
             }
             self.start_clone(first.to_string(), branch);
@@ -28,7 +30,11 @@ impl App {
 
     fn start_clone(&mut self, url: String, branch: Option<String>) {
         if let Some(job) = &self.clone_job {
-            self.show_message(format!("clone already in progress: {}", job.url));
+            self.show_message(fmt(
+                self.locale,
+                "clone already in progress: {}",
+                &[&job.url],
+            ));
             return;
         }
         let repos_root = self.config.repos_root.clone();
@@ -41,14 +47,16 @@ impl App {
             let _ = sender.send(result);
         });
         self.clone_job = Some(CloneJob { url, receiver });
-        self.show_message("cloning repository");
+        self.show_message(t(self.locale, "cloning repository"));
     }
 
     pub(in crate::ui) fn drain_clone_events(&mut self) {
         let result = match self.clone_job.as_ref().map(|job| job.receiver.try_recv()) {
             Some(Ok(result)) => Some(result),
             Some(Err(TryRecvError::Disconnected)) => {
-                Some(Err("clone worker terminated unexpectedly".to_string()))
+                Some(Err(
+                    t(self.locale, "clone worker terminated unexpectedly").to_string()
+                ))
             }
             Some(Err(TryRecvError::Empty)) | None => None,
         };
@@ -66,7 +74,11 @@ impl App {
                         if self.registry.repos.len() > previous_len {
                             self.expanded.push(true);
                         }
-                        self.show_message(format!("repository added: {}", path.display()));
+                        self.show_message(fmt(
+                            self.locale,
+                            "repository added: {}",
+                            &[&path.display().to_string()],
+                        ));
                     }
                     Err(error) => self.show_message(error.to_string()),
                 }

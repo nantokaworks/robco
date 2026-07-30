@@ -13,6 +13,7 @@ use std::path::Path;
 use ratatui::text::{Line, Span};
 
 use crate::{
+    locale::{Locale, fmt},
     overseer::other_prs::{OtherPr, OtherPrs},
     ui::theme::DEFAULT as THEME,
 };
@@ -25,6 +26,7 @@ pub(super) fn other_prs_section(
     other_prs: &OtherPrs,
     repo_path: &Path,
     width: u16,
+    locale: Locale,
 ) -> Vec<Line<'static>> {
     let Some(repo) = other_prs
         .repos
@@ -50,7 +52,7 @@ pub(super) fn other_prs_section(
     let hidden = prs.len().saturating_sub(DISPLAY_LIMIT);
     if hidden > 0 {
         lines.push(Line::from(Span::styled(
-            format!("… and {hidden} more"),
+            fmt(locale, "… and {} more", &[&hidden.to_string()]),
             THEME.muted_style(),
         )));
     }

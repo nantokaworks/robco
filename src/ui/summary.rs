@@ -70,8 +70,8 @@ pub(in crate::ui) fn repo_summary(
     ]);
 
     lines.extend(dropr_section(repo, width, locale));
-    lines.extend(history_section(ledger, &repo.path, width));
-    lines.extend(other_prs_section(other_prs, &repo.path, width));
+    lines.extend(history_section(ledger, &repo.path, width, locale));
+    lines.extend(other_prs_section(other_prs, &repo.path, width, locale));
 
     (repo.name.clone(), lines.into())
 }
@@ -112,11 +112,15 @@ fn dropr_section(repo: &RepoNode, width: u16, locale: Locale) -> Vec<Line<'stati
         field("id", dropr.id.clone()),
         field("name", dropr.name.clone()),
     ]);
-    lines.extend(dropr_task_lines(&repo.dropr_tasks));
+    lines.extend(dropr_task_lines(&repo.dropr_tasks, locale));
     lines
 }
 
-pub(in crate::ui) fn agent_summary(repo: &RepoNode, agent: &AgentNode) -> (String, Text<'static>) {
+pub(in crate::ui) fn agent_summary(
+    repo: &RepoNode,
+    agent: &AgentNode,
+    locale: Locale,
+) -> (String, Text<'static>) {
     let field = |name: &str, value: String| {
         Line::from(vec![
             Span::styled(format!("{name}: "), THEME.muted_style()),
@@ -135,11 +139,11 @@ pub(in crate::ui) fn agent_summary(repo: &RepoNode, agent: &AgentNode) -> (Strin
                 .unwrap_or_else(|| "(none)".into()),
         ),
         Line::from(""),
-        Line::from(Span::styled("subagents", THEME.accent_style())),
+        Line::from(Span::styled(t(locale, "subagents"), THEME.accent_style())),
     ];
     if agent.subagents.is_empty() {
         lines.push(Line::from(Span::styled(
-            "(none active or recent)",
+            t(locale, "(none active or recent)"),
             THEME.muted_style(),
         )));
     } else {
@@ -183,6 +187,7 @@ pub(in crate::ui) fn child_summary(
     repo: &RepoNode,
     agent: &AgentNode,
     child: &ChildWorktree,
+    locale: Locale,
 ) -> (String, Text<'static>) {
     let unknown = || "(unknown)".to_string();
     let field = |name: &str, value: String| {
@@ -228,7 +233,10 @@ pub(in crate::ui) fn child_summary(
                 .unwrap_or_else(unknown),
         ),
         field("parent agent", format!("{} ({})", agent.title, agent.id)),
-        field("ownership signal", "nested under agent worktree".into()),
+        field(
+            "ownership signal",
+            t(locale, "nested under agent worktree").to_string(),
+        ),
         field(
             "tmux session",
             child

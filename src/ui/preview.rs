@@ -71,7 +71,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let session = crate::overseer::discord_channel_session_name(tmux_prefix, channel_id);
             let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
-                    "no live session — a turn is not running for this channel",
+                    t(
+                        app.locale,
+                        "no live session — a turn is not running for this channel",
+                    ),
                     THEME.muted_style(),
                 ))]
                 .into()
@@ -126,7 +129,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         (PreviewPane::Info, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
-            let (title, mut text) = agent_summary(repo, agent);
+            let (title, mut text) = agent_summary(repo, agent, app.locale);
             text.lines.splice(3..3, agent_details::lines(app, agent));
             (title, text)
         }
@@ -147,7 +150,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             }
             let text = app.cached_tmux(&agent.tmux_session).unwrap_or_else(|| {
                 vec![
-                    Line::from(Span::styled("No preview available.", THEME.muted_style())),
+                    Line::from(Span::styled(
+                        t(app.locale, "No preview available."),
+                        THEME.muted_style(),
+                    )),
                     Line::from(Span::styled(&agent.tmux_session, THEME.muted_style())),
                 ]
                 .into()
@@ -196,7 +202,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             }
             let text = app
                 .cached_diff(&agent.worktree_path)
-                .unwrap_or_else(loading_diff);
+                .unwrap_or_else(|| loading_diff(app.locale));
             (title, text)
         }
         (PreviewPane::Info, Some(Selection::ChildWorktree { repo, agent, child })) => {
@@ -205,6 +211,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 repo,
                 &repo.agents[agent],
                 &repo.agents[agent].children[child],
+                app.locale,
             )
         }
         (PreviewPane::Diff, Some(Selection::ChildWorktree { repo, agent, child })) => {
@@ -218,7 +225,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     .and_then(|name| name.to_str())
                     .unwrap_or("worktree")
             });
-            let text = app.cached_diff(&child.path).unwrap_or_else(loading_diff);
+            let text = app
+                .cached_diff(&child.path)
+                .unwrap_or_else(|| loading_diff(app.locale));
             (format!("{} / {} / {label}", repo.name, agent.title), text)
         }
         (_, Some(Selection::Orphan(orphan_idx))) => {
@@ -227,7 +236,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             };
             let text = app.cached_tmux(&orphan.name).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
-                    "Session is gone.",
+                    t(app.locale, "Session is gone."),
                     THEME.muted_style(),
                 ))]
                 .into()
@@ -237,7 +246,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         // `None` (no repositories) or a pane invalid for the selection.
         _ => (
             "PREVIEW".to_string(),
-            vec![Line::from("No repositories discovered.")].into(),
+            vec![Line::from(t(app.locale, "No repositories discovered."))].into(),
         ),
     };
     // Live tmux tabs already captured the scrolled-back window; scrolling the
@@ -269,9 +278,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
 }
 
 /// Placeholder shown while a worktree diff is still being captured off-thread.
-fn loading_diff() -> Text<'static> {
+fn loading_diff(locale: crate::locale::Locale) -> Text<'static> {
     vec![Line::from(Span::styled(
-        "Loading diff…",
+        t(locale, "Loading diff…"),
         THEME.muted_style(),
     ))]
     .into()

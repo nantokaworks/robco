@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use crate::config::{self, Config};
+use crate::locale::t;
 
 use super::super::{App, suspend_terminal};
 
@@ -17,7 +18,7 @@ impl App {
             Ok(()) => match Config::load() {
                 Ok(config) => {
                     self.config = config;
-                    self.show_message("settings reloaded");
+                    self.show_message(t(self.locale, "settings reloaded"));
                 }
                 Err(err) => self.show_message(err.to_string()),
             },

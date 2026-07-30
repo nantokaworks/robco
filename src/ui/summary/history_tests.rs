@@ -39,7 +39,7 @@ fn ledger(entries: Vec<LedgerEntry>) -> Ledger {
 }
 
 fn rendered(ledger: &Ledger) -> Vec<String> {
-    history_section(ledger, Path::new("/repo"), 8)
+    history_section(ledger, Path::new("/repo"), 8, Locale::En)
         .iter()
         .map(|line| {
             line.spans

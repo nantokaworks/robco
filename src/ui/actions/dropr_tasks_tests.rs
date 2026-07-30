@@ -82,8 +82,8 @@ fn failed_fetch_replaces_current_tasks_with_the_failure() {
 fn an_abandoned_manual_reload_is_reported_on_the_pane() {
     let mut current = answered(vec![task("#1")]);
 
-    note_abandoned_reload(&mut current);
-    note_abandoned_reload(&mut current);
+    note_abandoned_reload(&mut current, Locale::En);
+    note_abandoned_reload(&mut current, Locale::En);
 
     // The rows stay — they are what the pane has — but they no longer read as
     // current, and repeated sweeps do not stack the same line.

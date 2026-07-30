@@ -1,23 +1,24 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
+use std::time::Duration;
 
 use chrono::{NaiveDate, Utc};
-use ratatui::{
-    style::{Color, Style},
-    text::{Line, Span},
-};
+use ratatui::text::Line;
 
-use crate::locale::{Locale, t};
+use crate::locale::{Locale, fmt, t};
 use crate::model::ManagementMode;
 use crate::overseer::{
     CIRCUIT_OPEN_HINT, DISPATCH_STOPPED_HINT, DISPATCH_WITHOUT_DAEMON_HINT,
     config::{OverseerConfig, ProtectionMode},
-    ledger::{Ledger, LedgerPhase},
+    ledger::Ledger,
     logging::DecisionEntry,
 };
 use crate::registry::Registry;
 
 use super::WorkerManagement;
-use crate::ui::theme::DEFAULT as THEME;
+pub(super) use super::render_format::{
+    flags_line, list_text, management_name, map_text, merge_recovery_state, on_off, pair, terminal,
+    warning,
+};
 
 // `locale` pushed this past clippy's 7-argument default; each argument is
 // already an independent piece of `category_detail`'s `&App` snapshot.
@@ -40,7 +41,10 @@ pub(super) fn append_health(
         ),
         (
             "hb",
-            heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s ago", age.as_secs())),
+            heartbeat_age.map_or_else(
+                || "missing".into(),
+                |age| fmt(locale, "{}s ago", &[&age.as_secs().to_string()]),
+            ),
             !alive,
         ),
         // Reads beside the liveness it qualifies: an alive daemon still runs
@@ -211,90 +215,10 @@ pub(super) fn append_worker_management(
     }
 }
 
-/// Merge recovery as one reading: the switch and, when it is on, the number of
-/// handbacks a stuck pull request has left before it escalates to the operator.
-fn merge_recovery_state(config: &OverseerConfig) -> String {
-    if config.merge_recovery_enabled {
-        format!("on (max {})", config.max_merge_recoveries)
-    } else {
-        "off".into()
-    }
-}
-
 fn dispatches_on(ledger: &Ledger, today: NaiveDate) -> u32 {
     if ledger.counters.date == Some(today) {
         ledger.counters.dispatched_today
     } else {
         0
-    }
-}
-
-fn pair(label: &str, value: &str, warn: bool) -> Line<'static> {
-    let value_style = if warn {
-        Style::default().fg(Color::Red)
-    } else {
-        THEME.accent_style()
-    };
-    Line::from(vec![
-        Span::styled(format!("{label}: "), THEME.muted_style()),
-        Span::styled(value.to_string(), value_style),
-    ])
-}
-
-pub(super) fn flags_line(segments: &[(&str, String, bool)]) -> Line<'static> {
-    let mut spans = Vec::new();
-    for (index, (label, value, warn)) in segments.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::styled(" · ", THEME.muted_style()));
-        }
-        spans.push(Span::styled(format!("{label}: "), THEME.muted_style()));
-        let value_style = if *warn {
-            Style::default().fg(Color::Red)
-        } else {
-            THEME.accent_style()
-        };
-        spans.push(Span::styled(value.clone(), value_style));
-    }
-    Line::from(spans)
-}
-
-pub(super) fn warning(text: &str) -> Line<'static> {
-    Line::from(Span::styled(
-        text.to_string(),
-        Style::default().fg(Color::Red),
-    ))
-}
-fn on_off(value: bool) -> &'static str {
-    if value { "on" } else { "off" }
-}
-fn list_text(items: &[String]) -> String {
-    if items.is_empty() {
-        "none".into()
-    } else {
-        items.join(", ")
-    }
-}
-fn map_text<K: std::fmt::Display>(map: &BTreeMap<K, usize>) -> String {
-    if map.is_empty() {
-        "none".into()
-    } else {
-        map.iter()
-            .map(|(key, value)| format!("{key}={value}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-pub(super) fn terminal(phase: LedgerPhase) -> bool {
-    matches!(
-        phase,
-        LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
-    )
-}
-
-fn management_name(mode: ManagementMode) -> &'static str {
-    match mode {
-        ManagementMode::Auto => "Auto",
-        ManagementMode::Manual => "Manual",
     }
 }

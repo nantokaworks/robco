@@ -1,6 +1,7 @@
 use ratatui::text::Line;
 
 use crate::{
+    locale::{Locale, fmt, t},
     model::OverseerCategory,
     overseer::{
         discord_channels::{ChannelAgentStatus, DiscordChannels},
@@ -47,7 +48,7 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         }
         OverseerCategory::Inbox => lines.extend(inbox_rows::detail_lines(app)),
         OverseerCategory::Decisions => {
-            append_decisions(&mut lines, &snapshot.decisions);
+            append_decisions(&mut lines, &snapshot.decisions, app.locale);
         }
         OverseerCategory::Discord => lines.extend(discord_agents::detail_lines(app)),
     }
@@ -78,21 +79,32 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
                 .filter(|item| item.actionable())
                 .count();
             (
-                format!("{actionable}/{} actionable", app.overseer_inbox.len()),
+                fmt(
+                    app.locale,
+                    "{}/{} actionable",
+                    &[
+                        &actionable.to_string(),
+                        &app.overseer_inbox.len().to_string(),
+                    ],
+                ),
                 false,
             )
         }
         // Count what expanding the category will actually list, so the row and
         // the list below it cannot disagree about how much is on offer.
         OverseerCategory::Decisions => (
-            format!("{} recent", snapshot.decisions.len().min(DETAIL_LIMIT)),
+            fmt(
+                app.locale,
+                "{} recent",
+                &[&snapshot.decisions.len().min(DETAIL_LIMIT).to_string()],
+            ),
             false,
         ),
-        OverseerCategory::Discord => discord_summary_from(&snapshot.discord_channels),
+        OverseerCategory::Discord => discord_summary_from(app.locale, &snapshot.discord_channels),
     }
 }
 
-pub(super) fn discord_summary_from(channels: &DiscordChannels) -> (String, bool) {
+pub(super) fn discord_summary_from(locale: Locale, channels: &DiscordChannels) -> (String, bool) {
     let failed = channels
         .channels
         .values()
@@ -100,12 +112,19 @@ pub(super) fn discord_summary_from(channels: &DiscordChannels) -> (String, bool)
         .count();
     let total = channels.channels.len();
     if total == 0 {
-        return ("no retained channels".into(), false);
+        return (t(locale, "no retained channels").to_string(), false);
     }
     if failed == 0 {
-        (format!("{total} retained"), false)
+        (fmt(locale, "{} retained", &[&total.to_string()]), false)
     } else {
-        (format!("{total} retained, {failed} failed"), true)
+        (
+            fmt(
+                locale,
+                "{} retained, {} failed",
+                &[&total.to_string(), &failed.to_string()],
+            ),
+            true,
+        )
     }
 }
 

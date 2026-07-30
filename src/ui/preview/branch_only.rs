@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Padding, Paragraph, Wrap},
 };
 
+use crate::locale::t;
 use crate::model::Selection;
 
 use super::{PREVIEW_PADDING, tabs::preview_tabs_line};
@@ -21,7 +22,7 @@ pub(super) fn render(
     let (app, active, selection) = preview;
     let text = vec![
         Line::from(Span::styled(
-            "Worktree has been removed.",
+            t(app.locale, "Worktree has been removed."),
             THEME.muted_style(),
         )),
         Line::from(vec![
@@ -29,7 +30,7 @@ pub(super) fn render(
             Span::raw(branch.to_string()),
         ]),
         Line::from(Span::styled(
-            "Press x to delete the branch.",
+            t(app.locale, "Press x to delete the branch."),
             THEME.muted_style(),
         )),
     ];

@@ -1,6 +1,11 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::{Result, agent, config::Config, model::Selection};
+use crate::{
+    Result, agent,
+    config::Config,
+    locale::{fmt, t},
+    model::Selection,
+};
 
 use super::{
     App, Mode, PreviewPane,
@@ -70,13 +75,17 @@ impl App {
                                     }
                                 })?;
                                 self.show_message(if registered {
-                                    format!("created agent {title}")
+                                    fmt(self.locale, "created agent {}", &[&title])
                                 } else {
                                     // The worktree and tmux session are up; only
                                     // the repo row is gone from the stored
                                     // registry, so say so rather than reporting
                                     // a clean create that left nothing behind.
-                                    format!("created agent {title}, but its repository is no longer registered")
+                                    fmt(
+                                        self.locale,
+                                        "created agent {}, but its repository is no longer registered",
+                                        &[&title],
+                                    )
                                 });
                             }
                             Err(err) => self.show_message(err.to_string()),
@@ -143,7 +152,7 @@ impl App {
                         self.request_pr(&repo_path, &agent_id, &prompt, send)?;
                     }
                     ConfirmPrAction::Saved(result) => match result {
-                        Ok(()) => self.show_message("saved PR prompt to config"),
+                        Ok(()) => self.show_message(t(self.locale, "saved PR prompt to config")),
                         Err(err) => self.show_message(err.to_string()),
                     },
                 }
@@ -178,12 +187,13 @@ impl App {
                 KeyCode::Char('q') | KeyCode::Esc => {
                     let merging = self.merging_branches();
                     if !merging.is_empty() {
-                        self.show_message(format!(
+                        self.show_message(fmt(
+                            self.locale,
                             "merge in progress: {} — wait or ctrl-c to force quit",
-                            merging.join(", ")
+                            &[&merging.join(", ")],
                         ));
                     } else if matches!(key.code, KeyCode::Esc) && self.dismiss_merge_outcome() {
-                        self.show_message("dismissed merge notice");
+                        self.show_message(t(self.locale, "dismissed merge notice"));
                     } else {
                         return Ok(true);
                     }
@@ -249,7 +259,7 @@ impl App {
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char(',') => self.open_settings_editor(),
                 KeyCode::Char(ch) if !ch.is_ascii() => {
-                    self.show_message("IME is on; switch to ASCII input");
+                    self.show_message(t(self.locale, "IME is on; switch to ASCII input"));
                 }
                 _ => {}
             },

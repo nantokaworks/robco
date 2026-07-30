@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::{
     Result,
+    locale::{Locale, fmt, t},
     model::{AgentNode, ManagementMode, Selection},
     overseer::is_overseer_child,
 };
@@ -85,7 +86,10 @@ pub(super) fn cycle_selected(app: &mut App) -> Result<()> {
             Ok(())
         }
         _ => {
-            app.show_message("g: select a repo or a worktree to cycle overseer management");
+            app.show_message(t(
+                app.locale,
+                "g: select a repo or a worktree to cycle overseer management",
+            ));
             Ok(())
         }
     }
@@ -109,22 +113,30 @@ fn cycle_worker(app: &mut App, repo: usize, agent: usize) -> Result<()> {
             None => CycleOutcome::OtherParent,
         };
     })?;
-    app.show_message(match outcome {
-        CycleOutcome::Moved(CycleStep::Auto) => "overseer management: auto",
-        CycleOutcome::Moved(CycleStep::Manual) => "overseer management: manual",
-        CycleOutcome::Moved(CycleStep::Unmanaged) => {
-            "detached from overseer management (worker left running)"
-        }
-        CycleOutcome::OtherParent => "g: this worktree belongs to another agent, not the overseer",
-        CycleOutcome::NotFound => "g: selected worktree was not found",
-    });
+    app.show_message(t(
+        app.locale,
+        match outcome {
+            CycleOutcome::Moved(CycleStep::Auto) => "overseer management: auto",
+            CycleOutcome::Moved(CycleStep::Manual) => "overseer management: manual",
+            CycleOutcome::Moved(CycleStep::Unmanaged) => {
+                "detached from overseer management (worker left running)"
+            }
+            CycleOutcome::OtherParent => {
+                "g: this worktree belongs to another agent, not the overseer"
+            }
+            CycleOutcome::NotFound => "g: selected worktree was not found",
+        },
+    ));
     Ok(())
 }
 
 fn confirm_bulk_toggle(app: &mut App, repo: usize) {
     let repo = &app.registry.repos[repo];
     let Some((target, count)) = bulk_target(&repo.agents) else {
-        app.show_message("g: no worktrees under this repo for the overseer to manage");
+        app.show_message(t(
+            app.locale,
+            "g: no worktrees under this repo for the overseer to manage",
+        ));
         return;
     };
     app.mode = Mode::ConfirmOverseerBulkToggle {
@@ -193,16 +205,16 @@ pub(super) fn bulk_toggle_repo(
             }
         }
     })?;
-    app.show_message(bulk_message(changed, target));
+    app.show_message(bulk_message(app.locale, changed, target));
     Ok(())
 }
 
-fn bulk_message(changed: usize, target: ManagementMode) -> String {
+fn bulk_message(locale: Locale, changed: usize, target: ManagementMode) -> String {
     let action = bulk_action(target);
     match changed {
-        0 => format!("g: no workers left to {action}"),
-        1 => format!("1 worker {action}"),
-        _ => format!("{changed} workers {action}"),
+        0 => fmt(locale, "g: no workers left to {}", &[action]),
+        1 => fmt(locale, "1 worker {}", &[action]),
+        _ => fmt(locale, "{} workers {}", &[&changed.to_string(), action]),
     }
 }
 
@@ -222,7 +234,10 @@ pub(in crate::ui) fn bulk_action(target: ManagementMode) -> &'static str {
 /// honour the new state.
 pub(super) fn toggle_repo_overseer(app: &mut App) -> Result<()> {
     let Some(Selection::Repo(repo)) = app.selected_item() else {
-        app.show_message("G: select a repo to toggle overseer management");
+        app.show_message(t(
+            app.locale,
+            "G: select a repo to toggle overseer management",
+        ));
         return Ok(());
     };
     let repo_path = app.registry.repos[repo].path.clone();
@@ -241,12 +256,15 @@ pub(super) fn toggle_repo_overseer(app: &mut App) -> Result<()> {
         };
         target = repo.management;
     })?;
-    app.show_message(match target {
-        ManagementMode::Auto => "overseer management: repo back under auto",
-        ManagementMode::Manual => {
-            "overseer management: repo opted out (running workers keep going)"
-        }
-    });
+    app.show_message(t(
+        app.locale,
+        match target {
+            ManagementMode::Auto => "overseer management: repo back under auto",
+            ManagementMode::Manual => {
+                "overseer management: repo opted out (running workers keep going)"
+            }
+        },
+    ));
     Ok(())
 }
 

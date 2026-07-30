@@ -22,6 +22,7 @@ use ratatui::{layout::Rect, text::Line, text::Text};
 
 use crate::{
     git,
+    locale::{Locale, t},
     model::{Selection, Status},
     ui::{App, PreviewPane, layout, scrollback},
 };
@@ -76,7 +77,7 @@ impl PreviewCapture {
     /// Request a capture of `target`. Spawns a worker when the target changed or
     /// the refresh interval elapsed, unless one is already in flight — a single
     /// slot keeps a hung tmux/git call from piling up replacement workers.
-    fn request(&mut self, target: CaptureTarget) {
+    fn request(&mut self, target: CaptureTarget, locale: Locale) {
         if self.in_flight {
             return;
         }
@@ -92,7 +93,7 @@ impl PreviewCapture {
         let spawn = thread::Builder::new()
             .name("ui-preview-capture".into())
             .spawn(move || {
-                let text = panic::catch_unwind(AssertUnwindSafe(|| capture(&job)))
+                let text = panic::catch_unwind(AssertUnwindSafe(|| capture(&job, locale)))
                     .ok()
                     .flatten();
                 let _ = sender.send((job, text));
@@ -113,7 +114,7 @@ impl PreviewCapture {
 }
 
 /// Produce the preview text for `target` off the UI thread.
-fn capture(target: &CaptureTarget) -> Option<Text<'static>> {
+fn capture(target: &CaptureTarget, locale: Locale) -> Option<Text<'static>> {
     match target {
         CaptureTarget::Tmux {
             session,
@@ -125,7 +126,7 @@ fn capture(target: &CaptureTarget) -> Option<Text<'static>> {
             git::diff(path)
                 .unwrap_or_else(|err| err.to_string())
                 .into_text()
-                .unwrap_or_else(|_| vec![Line::from("Could not render diff.")].into()),
+                .unwrap_or_else(|_| vec![Line::from(t(locale, "Could not render diff."))].into()),
         ),
     }
 }
@@ -135,7 +136,7 @@ impl App {
     /// Called once per event-loop iteration with the full terminal area.
     pub(in crate::ui) fn schedule_preview_capture(&mut self, full_area: Rect) {
         if let Some(target) = self.current_capture_target(full_area) {
-            self.preview_capture.request(target);
+            self.preview_capture.request(target, self.locale);
         }
     }
 

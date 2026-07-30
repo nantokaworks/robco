@@ -217,14 +217,14 @@ fn bulk_target_ignores_workers_owned_by_another_agent() {
 #[test]
 fn bulk_message_reports_a_count_not_a_bare_mode() {
     assert_eq!(
-        bulk_message(4, ManagementMode::Manual),
+        bulk_message(Locale::En, 4, ManagementMode::Manual),
         "4 workers set to manual"
     );
     assert_eq!(
-        bulk_message(1, ManagementMode::Auto),
+        bulk_message(Locale::En, 1, ManagementMode::Auto),
         "1 worker put under overseer management (auto)"
     );
-    assert!(bulk_message(0, ManagementMode::Manual).starts_with("g:"));
+    assert!(bulk_message(Locale::En, 0, ManagementMode::Manual).starts_with("g:"));
 }
 
 #[test]

@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
+use crate::locale::t;
 use crate::model::{ManagementMode, Status};
 use crate::ui::{App, theme::DEFAULT as THEME};
 
@@ -91,7 +92,11 @@ pub(super) fn build(
         // separator + connector + separator + marker cell + separator), so the
         // filler text sits where an actual agent title would.
         lines.push(Line::from(Span::styled(
-            format!("        {}(no agents)", label::AGENT_INDENT),
+            format!(
+                "        {}{}",
+                label::AGENT_INDENT,
+                t(app.locale, "(no agents)")
+            ),
             THEME.muted_style(),
         )));
     }
