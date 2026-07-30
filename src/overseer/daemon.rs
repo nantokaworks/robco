@@ -5,6 +5,7 @@ mod merge;
 mod merge_apply;
 mod merge_decision;
 mod merge_delivery;
+pub(crate) mod merge_dependency;
 mod merge_escalation;
 mod merge_gate;
 mod merge_hold;
@@ -117,8 +118,13 @@ pub async fn run_daemon() -> Result<()> {
         if let Err(error) = external_prs::refresh_pass(&ledger, now) {
             logging::log_message(None, &format!("other-PR discovery failed: {error}"))?;
         }
-        let (mut next, actions) =
-            reconcile(&ledger, &observed, now, config.overseer.stuck_after_mins);
+        let (mut next, actions) = reconcile(
+            &ledger,
+            &observed,
+            now,
+            config.overseer.stuck_after_mins,
+            config.overseer.max_prerequisite_wait_hours,
+        );
         if config.overseer.discord.enabled {
             discord_events::record(&ledger, &next, &observed, now)?;
         }

@@ -15,6 +15,14 @@ use super::{
     Action, FailureOrigin, InboxObservation, LedgerEntry, LedgerPhase, Observations, terminal,
 };
 
+/// Reason recorded when a prerequisite wait outlives its bound — a worker's
+/// `waiting-prerequisite` report, or the auto-merge gate's own
+/// `daemon::merge_dependency` hold, that never cleared. Named apart from the
+/// merge gate's own `prerequisite_unmerged:<display_id>` reason: this one
+/// fires from `monitor::reconcile`, which has no pull request read to name
+/// the prerequisite from, only the ledger entry's own elapsed wait.
+const PREREQUISITE_WAIT_EXCEEDED: &str = "prerequisite_wait_exceeded";
+
 pub(super) fn apply_inbox(
     entry: &mut LedgerEntry,
     observations: &Observations,
@@ -37,12 +45,51 @@ pub(super) fn apply_inbox(
                 entry.phase = LedgerPhase::Working
             }
             "blocked" if !terminal(entry.phase) => escalate(entry, "worker blocked", actions),
-            "claimed" | "turn-done" | "waiting" | "done" => {}
+            // The worker discovered mid-implementation that this task is
+            // ordered behind another and created the dropr `blocks` edge
+            // itself (dropr:375) rather than asking the task to be marked
+            // `blocked`. Recording the wait — not escalating — is the whole
+            // point: dropr's own ready feed excludes the task until the
+            // prerequisite closes, so nothing here needs an operator. The
+            // phase is deliberately left alone: this entry's worker is
+            // stepping aside, not advancing, and `ledger::holds_capacity`
+            // (not the phase) is what tells dispatch this entry is no longer
+            // active, so a fresh dispatch onto the same task — once dropr
+            // offers it again — is a new ledger entry under a new agent id,
+            // never a further report on this one.
+            "waiting-prerequisite" if !terminal(entry.phase) => {
+                entry.prerequisite_wait.get_or_insert(report.at);
+            }
+            "claimed" | "turn-done" | "waiting" | "done" | "waiting-prerequisite" => {}
             kind => actions.push(Action::LogDecision {
                 task_id: Some(entry.task_id.clone()),
                 message: format!("ignored unknown inbox observation kind {kind:?}"),
             }),
         }
+    }
+}
+
+/// Escalates a prerequisite wait that has outlived
+/// `overseer.max_prerequisite_wait_hours`, whichever path set it: a worker's
+/// `waiting-prerequisite` report (see `apply_inbox`), or the auto-merge
+/// gate's `daemon::merge_dependency` hold on a `PrOpened` entry. Called for
+/// every entry every `monitor::reconcile` pass regardless of phase, since
+/// the merge gate runs as a separate pass and this is the one place both
+/// paths are read back.
+pub(super) fn apply_prerequisite_wait(
+    entry: &mut LedgerEntry,
+    now: DateTime<Utc>,
+    max_wait_hours: u64,
+    actions: &mut Vec<Action>,
+) {
+    let Some(since) = entry.prerequisite_wait else {
+        return;
+    };
+    if terminal(entry.phase) {
+        return;
+    }
+    if now.signed_duration_since(since) > Duration::hours(max_wait_hours as i64) {
+        escalate(entry, PREREQUISITE_WAIT_EXCEEDED, actions);
     }
 }
 pub(super) fn apply_pr(
@@ -98,7 +145,16 @@ pub(super) fn apply_task_failure(entry: &mut LedgerEntry, observations: &Observa
         .filter(|task| task.task_id == task_id)
     {
         match task.state.as_str() {
-            "open" if matches!(entry.phase, LedgerPhase::Claimed | LedgerPhase::Working) => {
+            // A worker stepping aside for a prerequisite wait releases its
+            // claim on purpose — see `apply_inbox`'s `waiting-prerequisite`
+            // arm, which always runs first in `monitor::reconcile_entry` and
+            // so has already set `prerequisite_wait` by the time this reads
+            // it — so that release must not read as the same abandonment
+            // this arm otherwise escalates.
+            "open"
+                if matches!(entry.phase, LedgerPhase::Claimed | LedgerPhase::Working)
+                    && entry.prerequisite_wait.is_none() =>
+            {
                 escalate(entry, "worker released its dropr task lock", actions);
             }
             "open" | "in_progress" | "ready" | "closed" => {}

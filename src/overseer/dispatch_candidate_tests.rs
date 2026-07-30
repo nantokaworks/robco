@@ -298,3 +298,29 @@ fn judgment_cannot_add_a_candidate_rejected_by_rust_caps() {
                 .is_some_and(|item| item.repo == "/second")
     }));
 }
+
+/// dropr:375 — a worker that stepped aside to wait on a dropr `blocks`
+/// dependency edge is not "an active worker" any more: its entry stays at a
+/// live phase (it never reached a terminal one), but `active_worker` must
+/// not hold the task on its account, or the task could never be redispatched
+/// once dropr's ready feed offers it again.
+#[test]
+fn a_prerequisite_wait_does_not_suppress_redispatch() {
+    let mut ledger = Ledger::default();
+    let mut waiting = entry(LedgerPhase::Working);
+    waiting.task_id = "task-1".into();
+    waiting.display_id = "#1".into();
+    waiting.repo = "/elsewhere".into();
+    waiting.prerequisite_wait = Some(now());
+    ledger.entries.push(waiting);
+
+    let plan = plan_dispatch(
+        &OverseerConfig::default(),
+        &ledger,
+        &[candidate("/repo")],
+        now(),
+        &HashMap::new(),
+    );
+    assert_eq!(plan.decisions[0].reason, "ready");
+    assert!(plan.decisions[0].dispatch);
+}

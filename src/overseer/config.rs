@@ -167,6 +167,17 @@ pub struct OverseerConfig {
     /// catches is otherwise only visible as merge judgments escalating.
     pub session_preflight: bool,
     pub dispatch_task_authors: Vec<String>,
+    /// Hours a ledger entry may sit waiting on a dropr `blocks` dependency
+    /// edge — a worker's `waiting-prerequisite` report, or the auto-merge
+    /// gate's own hold on a pull request whose task carries one — before it
+    /// escalates to an operator. Ordering waits are expected to run far
+    /// longer than a CI check or a review (`max_merge_holds`'s scale), since
+    /// what they wait on is another task's own implementation and review
+    /// cycle, not a few minutes of automation; the default gives that
+    /// several working days before treating the wait as a stuck or cyclical
+    /// dependency instead of the steady state it is meant to be. See
+    /// `overseer::ledger::LedgerEntry::prerequisite_wait`.
+    pub max_prerequisite_wait_hours: u64,
     pub discord: DiscordConfig,
 }
 
@@ -216,6 +227,10 @@ impl Default for OverseerConfig {
             session_env_file: None,
             session_preflight: true,
             dispatch_task_authors: Vec::new(),
+            // 72 hours: several working days, comfortably longer than any
+            // CI-scale budget in this file, and still a bound rather than
+            // "forever" — see the field's own doc for why.
+            max_prerequisite_wait_hours: 72,
             discord: DiscordConfig::default(),
         }
     }

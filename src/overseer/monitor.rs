@@ -3,11 +3,11 @@ use chrono::{DateTime, Utc};
 
 mod apply;
 mod types;
-use apply::{apply_inbox, apply_pr, apply_session, apply_task_failure};
+use apply::{apply_inbox, apply_pr, apply_prerequisite_wait, apply_session, apply_task_failure};
 pub use types::*;
 
 #[rustfmt::skip]
-pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64) -> (Ledger, Vec<Action>) {
+pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64, max_prerequisite_wait_hours: u64) -> (Ledger, Vec<Action>) {
     let mut next = ledger.clone();
     let mut actions = observation_errors(observations);
     drop_detached(&mut next, observations, &mut actions);
@@ -16,12 +16,12 @@ pub fn reconcile(ledger: &Ledger, observations: &Observations, now: DateTime<Utc
             reconcile_manual_entry(entry, observations, now, &mut actions);
             continue;
         }
-        reconcile_entry(entry, observations, now, stuck_after_mins, &mut actions);
+        reconcile_entry(entry, observations, now, stuck_after_mins, max_prerequisite_wait_hours, &mut actions);
     }
     (next, actions)
 }
 #[rustfmt::skip]
-fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64, actions: &mut Vec<Action>) {
+fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: DateTime<Utc>, stuck_after_mins: u64, max_prerequisite_wait_hours: u64, actions: &mut Vec<Action>) {
     if entry.phase == LedgerPhase::Merged {
         if still_registered(entry, observations) {
             push_cleanup(entry, actions);
@@ -30,9 +30,18 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
     }
     let original = entry.phase;
     apply_inbox(entry, observations, actions);
+    // Checked for every entry regardless of phase: the wait may have been set
+    // here (a worker's `waiting-prerequisite` report) or by the auto-merge
+    // pass finding the entry's pull request held on a `blocks` edge, and both
+    // share this one bound. See `apply_prerequisite_wait`.
+    apply_prerequisite_wait(entry, now, max_prerequisite_wait_hours, actions);
     apply_pr(entry, observations, actions);
     apply_task_failure(entry, observations, actions);
-    if is_worker_phase(entry.phase) {
+    // A worker waiting on a prerequisite is expected to have ended its turn —
+    // the same way it does on `blocked` or `done` today — so its tmux session
+    // going quiet is not the stuck-or-dead condition this check exists to
+    // catch.
+    if is_worker_phase(entry.phase) && entry.prerequisite_wait.is_none() {
         apply_session(entry, observations, now, stuck_after_mins, actions);
     }
     settle(entry, original, now);

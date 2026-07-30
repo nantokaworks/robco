@@ -94,6 +94,7 @@ fn management_app() -> App {
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
             merge_hold_recheck_head: None,
+            prerequisite_wait: None,
             merge_hold_stuck_notified: false,
         },
         LedgerEntry {
@@ -116,6 +117,7 @@ fn management_app() -> App {
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
             merge_hold_recheck_head: None,
+            prerequisite_wait: None,
             merge_hold_stuck_notified: false,
         },
     ];
@@ -708,6 +710,7 @@ fn active_phases_excludes_terminal_entries() {
                 merge_hold_rechecks: 0,
                 merge_hold_recheck_reason: None,
                 merge_hold_recheck_head: None,
+                prerequisite_wait: None,
                 merge_hold_stuck_notified: false,
             },
             LedgerEntry {
@@ -730,6 +733,7 @@ fn active_phases_excludes_terminal_entries() {
                 merge_hold_rechecks: 0,
                 merge_hold_recheck_reason: None,
                 merge_hold_recheck_head: None,
+                prerequisite_wait: None,
                 merge_hold_stuck_notified: false,
             },
         ],
@@ -778,6 +782,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
             merge_hold_recheck_head: None,
+            prerequisite_wait: None,
             merge_hold_stuck_notified: false,
         }],
         ..Ledger::default()

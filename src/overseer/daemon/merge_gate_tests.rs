@@ -24,6 +24,7 @@ fn entry() -> LedgerEntry {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        prerequisite_wait: None,
         merge_hold_stuck_notified: false,
     }
 }
@@ -57,6 +58,7 @@ fn a_conflicting_pull_request_with_no_checks_holds_on_the_conflict_not_the_wait(
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("a conflicting pull request must be held");
     assert_eq!(halt.reason, "merge_state:dirty");
@@ -94,6 +96,7 @@ fn an_unstable_pull_request_with_a_failed_check_holds_on_the_check_not_the_state
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("an unstable pull request with a failed check must be held");
     assert_eq!(halt.reason, "checks_not_green");
@@ -127,6 +130,7 @@ fn an_unstable_pull_request_with_checks_still_running_waits_not_holds_on_the_sta
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("an unstable pull request with running checks must still be held");
     assert_eq!(halt.reason, "checks_waiting");
@@ -155,6 +159,7 @@ fn a_blocked_pull_request_with_a_green_rollup_still_holds_on_the_missing_review(
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("a blocked pull request must be held even with a green rollup");
     assert_eq!(halt.reason, "merge_state:blocked");
@@ -182,6 +187,7 @@ fn a_blocked_pull_request_with_a_failed_check_holds_on_the_check_not_the_state()
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("a blocked pull request with a failed check must be held");
     assert_eq!(halt.reason, "checks_not_green");
@@ -209,6 +215,7 @@ fn a_draft_pull_request_with_a_green_rollup_still_holds_on_the_draft_state() {
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("a draft pull request must be held even with a green rollup");
     assert_eq!(halt.reason, "merge_state:draft");
@@ -236,6 +243,7 @@ fn a_draft_pull_request_with_a_failed_check_holds_on_the_check_not_the_state() {
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("a draft pull request with a failed check must be held");
     assert_eq!(halt.reason, "checks_not_green");
@@ -259,6 +267,7 @@ fn a_clean_pull_request_with_pending_checks_still_waits_on_the_checks() {
             repos: vec![],
         },
         &mut merge_queue::Heads::new(),
+        merge_dependency::Probe::Clear,
     )
     .expect("a pull request with no rollup yet must still be held");
     assert_eq!(halt.reason, "checks_waiting");

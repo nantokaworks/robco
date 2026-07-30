@@ -127,6 +127,17 @@ pub(super) const EXACT: &[(&str, Remedy)] = &[
 
 pub(super) const PREFIX: &[(&str, Remedy)] = &[
     (
+        // `daemon::merge_dependency::PREREQUISITE_UNMERGED_PREFIX` — this
+        // pull request's task carries an unresolved `blocks` dependency
+        // edge; the suffix names the prerequisite task by its display id.
+        crate::overseer::daemon::merge_dependency::PREREQUISITE_UNMERGED_PREFIX,
+        Remedy {
+            step: Move::Watch,
+            means: "this pull request's task depends on another task that has not merged yet",
+            next: "nothing to do until the prerequisite task merges",
+        },
+    ),
+    (
         // `daemon::merge_apply::merge_now` — `gh pr merge` exited non-zero;
         // the suffix is the raw exit status.
         "merge_exit:",
