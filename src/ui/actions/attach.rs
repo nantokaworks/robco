@@ -162,7 +162,7 @@ impl App {
         let ids =
             crate::ui::overseer::ordered_channel_ids(&self.overseer_snapshot.discord_channels);
         let Some(channel_id) = ids.get(index) else {
-            self.show_message("channel is no longer listed");
+            self.show_message(t(self.locale, "channel is no longer listed"));
             return;
         };
         let session =
@@ -170,7 +170,10 @@ impl App {
         match tmux::has_session(&session) {
             Ok(true) => self.attach_session(&session),
             Ok(false) => {
-                self.show_message("no live session — a turn is not running for this channel");
+                self.show_message(t(
+                    self.locale,
+                    "no live session — a turn is not running for this channel",
+                ));
             }
             Err(err) => self.show_message(err.to_string()),
         }

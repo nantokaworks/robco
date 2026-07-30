@@ -23,6 +23,7 @@ mod decisions;
 mod discord_agents;
 mod inbox_rows;
 mod render;
+mod render_format;
 
 #[cfg(test)]
 pub(in crate::ui) use categories::health_warnings_from;
@@ -114,8 +115,12 @@ impl OverseerSnapshot {
     /// once the Overseer has closed the loop on its own. See
     /// [`decisions::blocked_reason`] for why the ledger phase alone cannot
     /// answer this.
-    pub(in crate::ui) fn blocked_reason(&self, agent_id: &str) -> Option<String> {
-        decisions::blocked_reason(&self.ledger, &self.decisions, agent_id)
+    pub(in crate::ui) fn blocked_reason(
+        &self,
+        locale: crate::locale::Locale,
+        agent_id: &str,
+    ) -> Option<String> {
+        decisions::blocked_reason(locale, &self.ledger, &self.decisions, agent_id)
     }
 
     /// Where `agent_id`'s pull request stands once its AI session has gone
@@ -126,8 +131,12 @@ impl OverseerSnapshot {
 
     /// The raw gate reason behind `merge_lifecycle`'s bucket. See
     /// [`decisions::merge_hold_detail`].
-    pub(in crate::ui) fn merge_hold_detail(&self, agent_id: &str) -> Option<String> {
-        decisions::merge_hold_detail(&self.ledger, agent_id)
+    pub(in crate::ui) fn merge_hold_detail(
+        &self,
+        locale: crate::locale::Locale,
+        agent_id: &str,
+    ) -> Option<String> {
+        decisions::merge_hold_detail(locale, &self.ledger, agent_id)
     }
 }
 

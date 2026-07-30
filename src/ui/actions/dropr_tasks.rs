@@ -5,7 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{dropr, dropr::DroprTaskFetch, model::RepoNode};
+use crate::{
+    dropr,
+    dropr::DroprTaskFetch,
+    locale::{Locale, t},
+    model::RepoNode,
+};
 
 use super::super::App;
 use super::dropr_overlay::OverlayStatus;
@@ -132,9 +137,10 @@ fn apply_fetched_tasks(current: &mut DroprTaskFetch, fetched: DroprTaskFetch) {
 
 /// Records that a manual reload was abandoned, on the pane the operator is
 /// looking at. Repeated sweeps must not stack the same line.
-fn note_abandoned_reload(current: &mut DroprTaskFetch) {
-    if !current.problems.iter().any(|line| line == ABANDONED_RELOAD) {
-        current.problems.push(ABANDONED_RELOAD.to_owned());
+fn note_abandoned_reload(current: &mut DroprTaskFetch, locale: Locale) {
+    let message = t(locale, ABANDONED_RELOAD);
+    if !current.problems.iter().any(|line| line == message) {
+        current.problems.push(message.to_owned());
     }
 }
 
@@ -178,13 +184,16 @@ impl App {
             .insert(workspace_id.clone(), started);
         let sender = self.dropr_task_refresh.sender.clone();
         let worker_workspace_id = workspace_id.clone();
+        let locale = self.locale;
         let spawn_result = std::thread::Builder::new()
             .name("dropr-task-refresh".into())
             .spawn(move || {
                 let fetch = panic::catch_unwind(AssertUnwindSafe(|| {
                     dropr::fetch_repo_tasks(&worker_workspace_id)
                 }))
-                .unwrap_or_else(|_| DroprTaskFetch::failed("the dropr task fetch panicked"));
+                .unwrap_or_else(|_| {
+                    DroprTaskFetch::failed(t(locale, "the dropr task fetch panicked"))
+                });
                 let _ = sender.send((worker_workspace_id, started, fetch));
             });
         if spawn_result.is_err()
@@ -197,9 +206,10 @@ impl App {
     }
 
     fn ingest_dropr_tasks(&mut self) {
+        let locale = self.locale;
         for workspace_id in expire_stale_refreshes(&mut self.dropr_task_refresh, Instant::now()) {
             for repo in Self::repos_of(&mut self.registry.repos, &workspace_id) {
-                note_abandoned_reload(&mut repo.dropr_tasks);
+                note_abandoned_reload(&mut repo.dropr_tasks, locale);
             }
         }
         while let Ok((workspace_id, started, fetch)) = self.dropr_task_refresh.receiver.try_recv() {

@@ -14,7 +14,7 @@ fn pr(number: u64, state: &str) -> OtherPr {
 }
 
 fn rendered(other_prs: &OtherPrs) -> Vec<String> {
-    other_prs_section(other_prs, Path::new("/repo"), 40)
+    other_prs_section(other_prs, Path::new("/repo"), 40, Locale::En)
         .iter()
         .map(|line| {
             line.spans
@@ -96,7 +96,7 @@ fn a_non_clean_state_is_visibly_distinct_from_clean() {
         },
     );
 
-    let sections = other_prs_section(&other_prs, Path::new("/repo"), 40);
+    let sections = other_prs_section(&other_prs, Path::new("/repo"), 40, Locale::En);
     let unstable_style = sections
         .iter()
         .find(|line| line.spans.iter().any(|span| span.content == "  UNSTABLE"))

@@ -241,7 +241,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             force_kill,
         } => (
             title,
-            error_dialog::content(lines, force_kill.is_some()),
+            error_dialog::content(locale, lines, force_kill.is_some()),
             None,
         ),
         Mode::Help { .. } => (t(locale, "help"), help::lines(locale), None),

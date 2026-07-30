@@ -85,7 +85,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 // report put it in this state, and the pane is the more
                 // current signal at that point.
                 indicator_state.needs_decision = agent.status != Status::Running
-                    && app.overseer_snapshot.blocked_reason(&agent.id).is_some();
+                    && app
+                        .overseer_snapshot
+                        .blocked_reason(app.locale, &agent.id)
+                        .is_some();
                 // Same gating as `needs_decision` above: a worker that has
                 // resumed real work has moved past whatever the ledger
                 // still records for its last pull request.
@@ -190,6 +193,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 }
                 lines.push(Line::from(spans));
             }
+            // "OTHER LOCATIONS" / "ORPHAN SESSIONS" are all-caps section-divider
+            // chrome, the same family as "PROJECTS" and "OVERSEER" (out of
+            // scope per the task) and "DROPR" / "HISTORY" / "PULL REQUESTS" in
+            // the summary pane (left untranslated by #372) — kept structural
+            // for consistency with that convention.
             Selection::OtherHeader => {
                 let count = app.other_location_repos().len();
                 let arrow = if app.other_collapsed { "▸" } else { "▾" };

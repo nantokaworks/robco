@@ -10,11 +10,21 @@
 mod actions;
 mod dialog;
 mod help;
+mod input;
+mod merge_dialog;
 mod misc;
+mod overseer;
+mod preview;
+mod summary;
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     help::lookup(en)
         .or_else(|| dialog::lookup(en))
         .or_else(|| actions::lookup(en))
+        .or_else(|| input::lookup(en))
+        .or_else(|| summary::lookup(en))
+        .or_else(|| overseer::lookup(en))
+        .or_else(|| preview::lookup(en))
+        .or_else(|| merge_dialog::lookup(en))
         .or_else(|| misc::lookup(en))
 }

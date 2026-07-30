@@ -7,7 +7,7 @@
 use ratatui::text::{Line, Span};
 
 use crate::{
-    locale::t,
+    locale::{Locale, fmt, t},
     model::{Selection, Status},
     overseer::discord_channels::{ChannelAgent, ChannelAgentStatus, DiscordChannels},
 };
@@ -51,7 +51,12 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
         let Some(agent) = channels.channels.get(channel_id) else {
             continue;
         };
-        lines.push(channel_line(channel_id, agent, selected == Some(index)));
+        lines.push(channel_line(
+            channel_id,
+            agent,
+            selected == Some(index),
+            app.locale,
+        ));
         if let Some(error) = &agent.last_error {
             lines.push(Line::styled(
                 format!("    ⚠ {error}"),
@@ -62,7 +67,12 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
-fn channel_line(channel_id: &str, agent: &ChannelAgent, selected: bool) -> Line<'static> {
+fn channel_line(
+    channel_id: &str,
+    agent: &ChannelAgent,
+    selected: bool,
+    locale: Locale,
+) -> Line<'static> {
     let marker = if selected { ">" } else { " " };
     let row_style = if selected {
         THEME.selection_style()
@@ -86,7 +96,7 @@ fn channel_line(channel_id: &str, agent: &ChannelAgent, selected: bool) -> Line<
                 "{} · {}t · {}",
                 status.badge(),
                 agent.turn_count,
-                relative_age(agent.last_active_at)
+                relative_age(locale, agent.last_active_at)
             ),
             status_style,
         ),
@@ -97,16 +107,16 @@ fn channel_line(channel_id: &str, agent: &ChannelAgent, selected: bool) -> Line<
 /// scales past raw seconds (`overseer.rs`'s heartbeat age deliberately stays
 /// at that resolution since it is always fresh), but a channel's
 /// `last_active_at` can be days old, where raw seconds stops being readable.
-fn relative_age(at: chrono::DateTime<chrono::Utc>) -> String {
+fn relative_age(locale: Locale, at: chrono::DateTime<chrono::Utc>) -> String {
     let elapsed = (chrono::Utc::now() - at).num_seconds().max(0);
     if elapsed < 60 {
-        "just now".into()
+        t(locale, "just now").to_string()
     } else if elapsed < 3600 {
-        format!("{}m ago", elapsed / 60)
+        fmt(locale, "{}m ago", &[&(elapsed / 60).to_string()])
     } else if elapsed < 86_400 {
-        format!("{}h ago", elapsed / 3600)
+        fmt(locale, "{}h ago", &[&(elapsed / 3600).to_string()])
     } else {
-        format!("{}d ago", elapsed / 86_400)
+        fmt(locale, "{}d ago", &[&(elapsed / 86_400).to_string()])
     }
 }
 

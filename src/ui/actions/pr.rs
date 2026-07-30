@@ -2,6 +2,7 @@ use std::path::Path;
 
 use crate::{
     Result,
+    locale::{fmt, t},
     model::{RepoNode, Selection},
 };
 
@@ -56,14 +57,17 @@ impl App {
         let target = match pr_target_for_selection(&self.registry.repos, self.selected_item()) {
             Ok(target) => target,
             Err(message) => {
-                self.show_message(message);
+                self.show_message(t(self.locale, message));
                 return;
             }
         };
         let Some((repo, agent_idx)) =
             resolve_agent(&self.registry.repos, &target.repo_path, &target.agent_id)
         else {
-            self.show_message("agent no longer exists; PR request cancelled");
+            self.show_message(t(
+                self.locale,
+                "agent no longer exists; PR request cancelled",
+            ));
             return;
         };
         let repo_node = &self.registry.repos[repo];
@@ -81,7 +85,10 @@ impl App {
         send: impl FnOnce(&str, &str) -> Result<()>,
     ) -> Result<()> {
         let Some((repo, agent_idx)) = resolve_agent(&self.registry.repos, path, id) else {
-            self.show_message("agent no longer exists; PR request cancelled");
+            self.show_message(t(
+                self.locale,
+                "agent no longer exists; PR request cancelled",
+            ));
             return Ok(());
         };
         let selected = &self.registry.repos[repo].agents[agent_idx];
@@ -91,7 +98,7 @@ impl App {
             self.show_message(err.to_string());
             return Ok(());
         }
-        self.show_message(format!("PR requested: {branch}"));
+        self.show_message(fmt(self.locale, "PR requested: {}", &[&branch]));
         Ok(())
     }
 }

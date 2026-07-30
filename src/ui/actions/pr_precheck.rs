@@ -4,6 +4,8 @@ use std::{
     thread,
 };
 
+use crate::locale::t;
+
 use super::super::{App, Mode};
 
 pub(in crate::ui) struct PrPrecheckJob {
@@ -62,9 +64,11 @@ impl App {
             Some(Ok(result)) => self.finish_pr_precheck(result),
             Some(Err(TryRecvError::Empty)) | None => {}
             Some(Err(TryRecvError::Disconnected)) if self.pr_precheck_job.is_some() => self
-                .finish_pr_precheck(Err(
-                    "PR pre-check worker terminated unexpectedly".to_string()
-                )),
+                .finish_pr_precheck(Err(t(
+                    self.locale,
+                    "PR pre-check worker terminated unexpectedly",
+                )
+                .to_string())),
             Some(Err(TryRecvError::Disconnected)) => {}
         }
     }

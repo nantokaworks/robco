@@ -1,5 +1,6 @@
 use ratatui::text::{Line, Span};
 
+use crate::locale::t;
 use crate::model::Selection;
 
 use super::{App, actions::merge::MergeOutcome, spinner, theme::DEFAULT as THEME};
@@ -39,7 +40,10 @@ pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Ve
         && job.agent_id == agent_id
     {
         return vec![Line::from(vec![
-            Span::styled("MERGING ", THEME.accent_style()),
+            Span::styled(
+                format!("{} ", t(app.locale, "MERGING")),
+                THEME.accent_style(),
+            ),
             Span::raw(job.branch.clone()),
             Span::styled(
                 format!("  {} {}", spinner::frame(app.started.elapsed()), job.step),
@@ -55,11 +59,14 @@ pub(in crate::ui) fn notice_lines(app: &App, selection: Option<Selection>) -> Ve
         return Vec::new();
     };
     let mut notice = vec![Line::from(Span::styled(
-        "MERGE COMPLETE",
+        t(app.locale, "MERGE COMPLETE"),
         THEME.accent_style(),
     ))];
     notice.extend(outcome_details(outcome));
-    notice.push(Line::from(Span::styled("esc dismiss", THEME.hint_style())));
+    notice.push(Line::from(Span::styled(
+        t(app.locale, "esc dismiss"),
+        THEME.hint_style(),
+    )));
     notice
 }
 
@@ -70,7 +77,7 @@ pub(in crate::ui) fn error_lines(app: &App, selection: Option<Selection>) -> Vec
         return Vec::new();
     };
     let mut lines = vec![Line::from(Span::styled(
-        "MERGE FAILED",
+        t(app.locale, "MERGE FAILED"),
         THEME.merge_failed_style(true),
     ))];
     lines.extend(outcome_details(outcome));
@@ -84,7 +91,10 @@ pub(in crate::ui) fn error_lines(app: &App, selection: Option<Selection>) -> Vec
         }));
     }
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("esc dismiss", THEME.hint_style())));
+    lines.push(Line::from(Span::styled(
+        t(app.locale, "esc dismiss"),
+        THEME.hint_style(),
+    )));
     lines
 }
 
@@ -115,7 +125,12 @@ pub(in crate::ui) fn preview_title(
     {
         return Some(
             Line::from(Span::styled(
-                format!(" MERGING {} · {} ", job.branch, job.step),
+                format!(
+                    " {} {} · {} ",
+                    t(app.locale, "MERGING"),
+                    job.branch,
+                    job.step
+                ),
                 THEME.accent_style(),
             ))
             .left_aligned(),
@@ -126,9 +141,9 @@ pub(in crate::ui) fn preview_title(
         .filter(|outcome| outcome.agent_id == agent_id)
         .map(|outcome| {
             let status = if outcome.result.is_ok() {
-                "MERGE COMPLETE"
+                t(app.locale, "MERGE COMPLETE")
             } else {
-                "MERGE FAILED"
+                t(app.locale, "MERGE FAILED")
             };
             Line::from(Span::styled(
                 format!(" {status} {} ", outcome.branch),

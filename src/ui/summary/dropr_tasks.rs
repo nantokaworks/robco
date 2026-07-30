@@ -10,6 +10,7 @@ use ratatui::text::{Line, Span};
 
 use crate::{
     dropr::{DroprTaskCandidate, DroprTaskFetch, TASK_FETCH_LIMIT},
+    locale::{Locale, fmt, t},
     ui::theme::DEFAULT as THEME,
 };
 
@@ -55,38 +56,44 @@ fn partition_tasks(
     (blocked, in_progress, next)
 }
 
-pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch) -> Vec<Line<'static>> {
+pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Line<'static>> {
     if !fetch.answered {
         // No query answered, so there are no rows to qualify — showing an empty
         // list here would read as "this workspace has no tasks".
-        return problem_lines("tasks unavailable", &fetch.problems);
+        return problem_lines(t(locale, "tasks unavailable"), &fetch.problems);
     }
 
     let (blocked, in_progress, next) = partition_tasks(&fetch.tasks);
     let mut lines = task_section(
-        Span::styled("next tasks", THEME.accent_style()),
+        locale,
+        Span::styled(t(locale, "next tasks"), THEME.accent_style()),
         &next,
         |task| vec![Line::from(format!("{}  {}", task.display_id, task.title))],
     );
     lines.extend(task_section(
-        Span::styled("in progress", THEME.subagent_style()),
+        locale,
+        Span::styled(t(locale, "in progress"), THEME.subagent_style()),
         &in_progress,
         |task| vec![Line::from(format!("▸ {}  {}", task.display_id, task.title))],
     ));
     lines.extend(task_section(
-        Span::styled("blocked", THEME.needs_decision_style(false)),
+        locale,
+        Span::styled(t(locale, "blocked"), THEME.needs_decision_style(false)),
         &blocked,
         blocked_row,
     ));
     if lines.is_empty() {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "no open, in-progress, or blocked tasks",
+            t(locale, "no open, in-progress, or blocked tasks"),
             THEME.muted_style(),
         )));
     }
     if !fetch.problems.is_empty() {
-        lines.extend(problem_lines("this list is incomplete", &fetch.problems));
+        lines.extend(problem_lines(
+            t(locale, "this list is incomplete"),
+            &fetch.problems,
+        ));
     }
     lines
 }
@@ -143,6 +150,7 @@ fn problem_lines(heading: &str, problems: &[String]) -> Vec<Line<'static>> {
 }
 
 fn task_section(
+    locale: Locale,
     heading: Span<'static>,
     tasks: &[&DroprTaskCandidate],
     row: impl Fn(&DroprTaskCandidate) -> Vec<Line<'static>>,
@@ -157,7 +165,7 @@ fn task_section(
             .take(TASK_DISPLAY_LIMIT)
             .flat_map(|task| row(task)),
     );
-    if let Some(notice) = truncation_notice(tasks.len()) {
+    if let Some(notice) = truncation_notice(locale, tasks.len()) {
         lines.push(Line::from(Span::styled(notice, THEME.muted_style())));
     }
     lines
@@ -168,15 +176,15 @@ fn task_section(
 /// `held` is what the panel actually has; a fetch that came back full may have
 /// left more behind, so the remainder it can report is a floor rather than a
 /// count and the wording says so.
-fn truncation_notice(held: usize) -> Option<String> {
+fn truncation_notice(locale: Locale, held: usize) -> Option<String> {
     let hidden = held.saturating_sub(TASK_DISPLAY_LIMIT);
     if hidden == 0 {
         return None;
     }
     Some(if held >= TASK_FETCH_LIMIT {
-        format!("… and at least {hidden} more")
+        fmt(locale, "… and at least {} more", &[&hidden.to_string()])
     } else {
-        format!("… and {hidden} more")
+        fmt(locale, "… and {} more", &[&hidden.to_string()])
     })
 }
 

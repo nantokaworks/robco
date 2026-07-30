@@ -14,6 +14,7 @@ use std::path::Path;
 use ratatui::text::{Line, Span};
 
 use crate::{
+    locale::{Locale, fmt, t},
     overseer::ledger::{Ledger, LedgerEntry, LedgerPhase, terminal},
     ui::theme::DEFAULT as THEME,
 };
@@ -30,7 +31,12 @@ const HISTORY_DISPLAY_LIMIT: usize = 10;
 /// Always rendered, for the same reason the DROPR block is: a repository
 /// Overseer has never touched and one whose section was simply dropped look
 /// identical, and the operator cannot tell which they are looking at.
-pub(super) fn history_section(ledger: &Ledger, repo_path: &Path, width: u16) -> Vec<Line<'static>> {
+pub(super) fn history_section(
+    ledger: &Ledger,
+    repo_path: &Path,
+    width: u16,
+    locale: Locale,
+) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::from(""),
         Line::from(Span::styled(
@@ -39,7 +45,7 @@ pub(super) fn history_section(ledger: &Ledger, repo_path: &Path, width: u16) -> 
         )),
         Line::from(Span::styled("HISTORY", THEME.accent_style())),
     ];
-    lines.extend(history_lines(ledger, repo_path));
+    lines.extend(history_lines(ledger, repo_path, locale));
     lines
 }
 
@@ -49,7 +55,7 @@ pub(super) fn history_section(ledger: &Ledger, repo_path: &Path, width: u16) -> 
 /// name: two checkouts of the same repository are different working copies, and
 /// listing one's history under the other would be a lie the operator cannot see
 /// through.
-fn history_lines(ledger: &Ledger, repo_path: &Path) -> Vec<Line<'static>> {
+fn history_lines(ledger: &Ledger, repo_path: &Path, locale: Locale) -> Vec<Line<'static>> {
     let mut settled: Vec<&LedgerEntry> = ledger
         .entries
         .iter()
@@ -62,7 +68,7 @@ fn history_lines(ledger: &Ledger, repo_path: &Path) -> Vec<Line<'static>> {
 
     if settled.is_empty() {
         return vec![Line::from(Span::styled(
-            "overseer has settled no tasks in this repo",
+            t(locale, "overseer has settled no tasks in this repo"),
             THEME.muted_style(),
         ))];
     }
@@ -74,7 +80,7 @@ fn history_lines(ledger: &Ledger, repo_path: &Path) -> Vec<Line<'static>> {
     let hidden = settled.len().saturating_sub(HISTORY_DISPLAY_LIMIT);
     if hidden > 0 {
         lines.push(Line::from(Span::styled(
-            format!("… and {hidden} more"),
+            fmt(locale, "… and {} more", &[&hidden.to_string()]),
             THEME.muted_style(),
         )));
     }

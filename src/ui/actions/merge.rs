@@ -3,7 +3,10 @@ use std::{
     sync::mpsc::{Receiver, TryRecvError},
 };
 
-use crate::{Result, agent};
+use crate::{
+    Result, agent,
+    locale::{fmt, t},
+};
 
 use super::{
     super::{App, Mode},
@@ -95,8 +98,10 @@ impl App {
             .get(&repo_path)
             .map(|job| job.branch.clone())
         {
-            self.show_message(format!(
-                "merge already in progress in {repo_name}: {running}"
+            self.show_message(fmt(
+                self.locale,
+                "merge already in progress in {}: {}",
+                &[&repo_name, &running],
             ));
             return;
         }
@@ -145,7 +150,10 @@ impl App {
                 }
             }
             if disconnected && self.merge_jobs.contains_key(&repo_path) {
-                self.finish_merge(&repo_path, Err(WORKER_TERMINATED.into()))?;
+                self.finish_merge(
+                    &repo_path,
+                    Err(t(self.locale, WORKER_TERMINATED).to_string()),
+                )?;
             }
         }
         Ok(())
@@ -190,12 +198,15 @@ impl App {
                     let dialog_closed = self.remap_dialog_after_agent_removal(repo, agent);
                     save(&self.registry)?;
                     if dialog_closed {
-                        self.show_message("closed dialog because its agent was merged");
+                        self.show_message(t(
+                            self.locale,
+                            "closed dialog because its agent was merged",
+                        ));
                     } else {
-                        self.show_message(format!("merge complete: {branch}"));
+                        self.show_message(fmt(self.locale, "merge complete: {}", &[&branch]));
                     }
                 } else {
-                    self.show_message(format!("merge complete: {branch}"));
+                    self.show_message(fmt(self.locale, "merge complete: {}", &[&branch]));
                 }
                 self.clamp_selection();
             }

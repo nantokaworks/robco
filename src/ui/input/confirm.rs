@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::{Result, model::ManagementMode};
+use crate::{Result, locale::t, model::ManagementMode};
 
 use super::{App, Mode, management};
 
@@ -74,7 +74,7 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             if confirmed {
                 Some(app.delete_agent_branch(repo, agent))
             } else {
-                app.show_message("kept branch");
+                app.show_message(t(app.locale, "kept branch"));
                 Some(Ok(()))
             }
         }

@@ -1,5 +1,6 @@
 use ratatui::text::{Line, Span, Text};
 
+use crate::locale::{fmt, t};
 use crate::model::Selection;
 use crate::overseer::remedy::Move;
 use crate::ui::{App, inbox::InboxItem, theme::DEFAULT as THEME};
@@ -18,7 +19,10 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
         _ => None,
     };
     if app.overseer_inbox.is_empty() {
-        return vec![Line::from(Span::styled("none", THEME.muted_style()))];
+        return vec![Line::from(Span::styled(
+            t(app.locale, "none"),
+            THEME.muted_style(),
+        ))];
     }
     app.overseer_inbox
         .iter()
@@ -68,7 +72,7 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         return (
             "OVERSEER / Inbox".to_string(),
             vec![Line::from(Span::styled(
-                "item is no longer listed",
+                t(app.locale, "item is no longer listed"),
                 THEME.muted_style(),
             ))]
             .into(),
@@ -86,7 +90,11 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
             // leaving the operator to press them and find out.
             None => field(
                 "session",
-                format!("{DISPLAY_ONLY} — no live session to answer or approve"),
+                fmt(
+                    app.locale,
+                    "{} — no live session to answer or approve",
+                    &[DISPLAY_ONLY],
+                ),
             ),
         },
         // With the year, unlike the Decisions detail's `%m-%d %H:%M`: a stale
@@ -94,13 +102,19 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         // whose age the operator needs in order to judge it.
         field("at", item.at.format("%Y-%m-%d %H:%M UTC").to_string()),
         Line::from(""),
-        Line::from(Span::styled("what this means", THEME.muted_style())),
+        Line::from(Span::styled(
+            t(app.locale, "what this means"),
+            THEME.muted_style(),
+        )),
         Line::from(Span::styled(remedy.means, THEME.accent_style())),
         Line::from(""),
-        Line::from(Span::styled("next step", THEME.muted_style())),
+        Line::from(Span::styled(
+            t(app.locale, "next step"),
+            THEME.muted_style(),
+        )),
         Line::from(Span::styled(remedy.next, THEME.accent_style())),
         Line::from(""),
-        Line::from(Span::styled("reason", THEME.muted_style())),
+        Line::from(Span::styled(t(app.locale, "reason"), THEME.muted_style())),
     ];
     lines.extend(
         item.detail

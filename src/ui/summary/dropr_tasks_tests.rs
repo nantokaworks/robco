@@ -34,7 +34,7 @@ fn complete(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
 }
 
 fn rendered(fetch: &DroprTaskFetch) -> Vec<String> {
-    let text: Text<'static> = dropr_task_lines(fetch).into();
+    let text: Text<'static> = dropr_task_lines(fetch, Locale::En).into();
     text.lines
         .iter()
         .map(|line| {

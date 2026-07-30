@@ -10,6 +10,7 @@
 
 use ratatui::text::{Line, Span};
 
+use crate::locale::{Locale, t};
 use crate::model::MergeLifecycle;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
 use crate::overseer::logging::{DecisionEntry, DecisionKind};
@@ -58,7 +59,7 @@ const _: () = assert!(DETAIL_LIMIT < super::DECISION_SNAPSHOT_LIMIT);
 /// The wording carries no count. The log is append-only and what the UI holds
 /// is a tail of it, so how many entries lie beyond the rendered ones is not
 /// knowable here — only that they exist.
-const MORE_HINT: &str = "  older entries stay in the decision log";
+const MORE_HINT: &str = "older entries stay in the decision log";
 
 /// The reason `agent_id`'s worker still needs a human decision, or `None`
 /// once the Overseer has closed the loop on its own.
@@ -73,6 +74,7 @@ const MORE_HINT: &str = "  older entries stay in the decision log";
 /// decision for the entry's task is the tie-breaker, the same way `standoffs`
 /// above tracks the latest state per task by walking the oldest-first log.
 pub(super) fn blocked_reason(
+    locale: Locale,
     ledger: &Ledger,
     decisions: &[DecisionEntry],
     agent_id: &str,
@@ -81,7 +83,7 @@ pub(super) fn blocked_reason(
         .entries
         .iter()
         .find(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::Escalated)?;
-    let mut reason = Some("worker blocked".to_string());
+    let mut reason = Some(t(locale, "worker blocked").to_string());
     for decision in decisions {
         if decision.task.as_deref() != Some(entry.task_id.as_str()) {
             continue;
@@ -130,7 +132,7 @@ pub(super) fn merge_lifecycle(ledger: &Ledger, agent_id: &str) -> Option<MergeLi
 /// Deliberately verbatim rather than remapped to a friendlier label — the
 /// same convention `blocked_reason` and the decision list already follow for
 /// operator-facing reason text (see `crate::ui::inbox`).
-pub(super) fn merge_hold_detail(ledger: &Ledger, agent_id: &str) -> Option<String> {
+pub(super) fn merge_hold_detail(locale: Locale, ledger: &Ledger, agent_id: &str) -> Option<String> {
     let entry = ledger
         .entries
         .iter()
@@ -140,13 +142,17 @@ pub(super) fn merge_hold_detail(ledger: &Ledger, agent_id: &str) -> Option<Strin
             .merge_hold
             .reason
             .clone()
-            .unwrap_or_else(|| "waiting on merge judge".to_string()),
+            .unwrap_or_else(|| t(locale, "waiting on merge judge").to_string()),
     )
 }
 
-pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[DecisionEntry]) {
+pub(super) fn append_decisions(
+    lines: &mut Vec<Line<'static>>,
+    decisions: &[DecisionEntry],
+    locale: Locale,
+) {
     lines.push(Line::from(Span::styled(
-        "recent decisions",
+        t(locale, "recent decisions"),
         THEME.accent_bold_style(),
     )));
     // `decisions` is oldest-first (see `logging::tail`); show the newest first.
@@ -156,7 +162,10 @@ pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[Deci
         .take(DETAIL_LIMIT)
         .collect::<Vec<_>>();
     if recent.is_empty() {
-        lines.push(Line::from(Span::styled("  none", THEME.muted_style())));
+        lines.push(Line::from(Span::styled(
+            format!("  {}", t(locale, "none")),
+            THEME.muted_style(),
+        )));
         return;
     }
     let truncated = decisions.len() > recent.len();
@@ -173,7 +182,10 @@ pub(super) fn append_decisions(lines: &mut Vec<Line<'static>>, decisions: &[Deci
         )));
     }
     if truncated {
-        lines.push(Line::from(Span::styled(MORE_HINT, THEME.muted_style())));
+        lines.push(Line::from(Span::styled(
+            format!("  {}", t(locale, MORE_HINT)),
+            THEME.muted_style(),
+        )));
     }
 }
 

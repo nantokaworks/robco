@@ -1,5 +1,6 @@
 use crate::{
     Error, Result, agent, git,
+    locale::{Locale, fmt, t},
     model::{Selection, Status},
     registry::Registry,
 };
@@ -36,10 +37,15 @@ fn remove_agent(registry: &mut Registry, repo_path: &std::path::Path, agent_id: 
     }
 }
 
-fn error_lines(error: &Error, worktree: Option<&std::path::Path>, force: bool) -> Vec<String> {
+fn error_lines(
+    locale: Locale,
+    error: &Error,
+    worktree: Option<&std::path::Path>,
+    force: bool,
+) -> Vec<String> {
     let mut lines = vec![error.to_string()];
     if force {
-        lines.push("Warning: force delete discards these files:".into());
+        lines.push(t(locale, "Warning: force delete discards these files:").into());
         if let Some(worktree) = worktree
             && let Ok(status) = git::status_short(worktree)
         {
@@ -47,7 +53,11 @@ fn error_lines(error: &Error, worktree: Option<&std::path::Path>, force: bool) -
             let count = files.len();
             lines.extend(files.into_iter().take(FILE_LIMIT));
             if count > FILE_LIMIT {
-                lines.push(format!("... and {} more", count - FILE_LIMIT));
+                lines.push(fmt(
+                    locale,
+                    "... and {} more",
+                    &[&(count - FILE_LIMIT).to_string()],
+                ));
             }
         }
     }
@@ -58,13 +68,13 @@ impl App {
     pub(in crate::ui) fn confirm_kill_selected(&mut self) {
         match self.selected_item() {
             Some(Selection::ChildWorktree { .. }) => {
-                self.show_message("kill is not available for child worktrees");
+                self.show_message(t(self.locale, "kill is not available for child worktrees"));
             }
             Some(Selection::Agent { repo, agent }) => {
                 let repo_node = &self.registry.repos[repo];
                 let agent_node = &repo_node.agents[agent];
                 if self.is_merging_agent(&repo_node.path, &agent_node.id) {
-                    self.show_message("cannot kill an agent while it is merging");
+                    self.show_message(t(self.locale, "cannot kill an agent while it is merging"));
                     return;
                 }
                 if self.registry.repos[repo].agents[agent].status == Status::BranchOnly {
@@ -81,7 +91,7 @@ impl App {
                             path: repo_node.path.clone(),
                         };
                     } else {
-                        self.show_message("remove agents first");
+                        self.show_message(t(self.locale, "remove agents first"));
                     }
                 }
             }
@@ -117,7 +127,7 @@ impl App {
     fn kill_target(&mut self, target: ForceKillTarget, force: bool) -> Result<()> {
         if self.is_merging_agent(&target.repo_path, &target.agent_id) {
             self.mode = Mode::Normal;
-            self.show_message("cannot kill an agent while it is merging");
+            self.show_message(t(self.locale, "cannot kill an agent while it is merging"));
             return Ok(());
         }
         let Some((repo, agent_idx)) =
@@ -133,12 +143,13 @@ impl App {
             Err(error) => {
                 let recoverable = force_recoverable(&error);
                 let lines = error_lines(
+                    self.locale,
                     &error,
                     recoverable.then_some(selected_agent.worktree_path.as_path()),
                     recoverable,
                 );
                 self.mode = Mode::ErrorDialog {
-                    title: "kill failed".into(),
+                    title: t(self.locale, "kill failed").into(),
                     lines,
                     force_kill: recoverable.then_some(target),
                 };
@@ -169,7 +180,7 @@ impl App {
                 remove_agent(registry, &selected_repo.path, &selected_agent.id);
             })?;
             self.mode = Mode::Normal;
-            self.show_message(format!("killed {}", selected_agent.title));
+            self.show_message(fmt(self.locale, "killed {}", &[&selected_agent.title]));
         }
         Ok(())
     }
@@ -187,7 +198,10 @@ impl App {
         };
         if self.is_merging_agent(&repo_node.path, &agent_node.id) {
             self.mode = Mode::Normal;
-            self.show_message("cannot delete a branch while its agent is merging");
+            self.show_message(t(
+                self.locale,
+                "cannot delete a branch while its agent is merging",
+            ));
             return Ok(());
         }
         let selected_repo = repo_node.clone();
@@ -197,12 +211,16 @@ impl App {
                 self.locked_registry_update(|registry| {
                     remove_agent(registry, &selected_repo.path, &selected_agent.id);
                 })?;
-                self.show_message(format!("deleted branch {}", selected_agent.branch));
+                self.show_message(fmt(
+                    self.locale,
+                    "deleted branch {}",
+                    &[&selected_agent.branch],
+                ));
             }
             Err(error) => {
                 self.mode = Mode::ErrorDialog {
-                    title: "branch delete failed".into(),
-                    lines: error_lines(&error, None, false),
+                    title: t(self.locale, "branch delete failed").into(),
+                    lines: error_lines(self.locale, &error, None, false),
                     force_kill: None,
                 };
             }

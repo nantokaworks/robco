@@ -7,6 +7,8 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::locale::{fmt, t};
+
 use super::super::{App, Mode};
 
 /// One row to suppress: its `(kind, target_id)` identity and the timestamp it
@@ -21,10 +23,10 @@ impl App {
     pub(in crate::ui) fn dismiss_inbox_item(&mut self, index: usize) {
         let rows = self.inbox_dismissal_rows(Some(index));
         let Some((kind, target_id, _)) = rows.first() else {
-            self.show_message("inbox item is no longer listed");
+            self.show_message(t(self.locale, "inbox item is no longer listed"));
             return;
         };
-        let message = format!("dismissed [{kind}] {target_id}");
+        let message = fmt(self.locale, "dismissed [{}] {}", &[kind, target_id]);
         self.apply_dismissals(&rows, message);
     }
 
@@ -33,7 +35,7 @@ impl App {
     /// the same way the other bulk overseer actions are.
     pub(in crate::ui) fn confirm_dismiss_inbox(&mut self) {
         if self.overseer_inbox.is_empty() {
-            self.show_message("inbox is already empty");
+            self.show_message(t(self.locale, "inbox is already empty"));
             return;
         }
         self.mode = Mode::ConfirmInboxDismissAll {
@@ -43,7 +45,11 @@ impl App {
 
     pub(in crate::ui) fn dismiss_inbox_all(&mut self) {
         let rows = self.inbox_dismissal_rows(None);
-        let message = format!("dismissed {} inbox item(s)", rows.len());
+        let message = fmt(
+            self.locale,
+            "dismissed {} inbox item(s)",
+            &[&rows.len().to_string()],
+        );
         self.apply_dismissals(&rows, message);
     }
 

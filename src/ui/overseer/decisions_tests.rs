@@ -57,7 +57,7 @@ fn a_freshly_escalated_worker_needs_a_decision() {
     let ledger = escalated_ledger("worker-1", "#351");
     let decisions = [decision(DecisionKind::Escalate, "#351", "worker blocked")];
     assert_eq!(
-        blocked_reason(&ledger, &decisions, "worker-1"),
+        blocked_reason(Locale::En, &ledger, &decisions, "worker-1"),
         Some("worker blocked".into())
     );
 }
@@ -73,7 +73,10 @@ fn a_worker_the_overseer_resolved_itself_is_not_flagged() {
         decision(DecisionKind::Escalate, "#351", "worker blocked"),
         decision(DecisionKind::Hold, "#351", "answered via triage"),
     ];
-    assert_eq!(blocked_reason(&ledger, &decisions, "worker-1"), None);
+    assert_eq!(
+        blocked_reason(Locale::En, &ledger, &decisions, "worker-1"),
+        None
+    );
 }
 
 #[test]
@@ -83,20 +86,23 @@ fn a_skipped_case_is_not_flagged() {
         decision(DecisionKind::Escalate, "#351", "worker blocked"),
         decision(DecisionKind::Skip, "#351", "not a real blocker"),
     ];
-    assert_eq!(blocked_reason(&ledger, &decisions, "worker-1"), None);
+    assert_eq!(
+        blocked_reason(Locale::En, &ledger, &decisions, "worker-1"),
+        None
+    );
 }
 
 #[test]
 fn a_non_escalated_entry_is_not_flagged() {
     let mut ledger = escalated_ledger("worker-1", "#351");
     ledger.entries[0].phase = LedgerPhase::Working;
-    assert_eq!(blocked_reason(&ledger, &[], "worker-1"), None);
+    assert_eq!(blocked_reason(Locale::En, &ledger, &[], "worker-1"), None);
 }
 
 #[test]
 fn an_unrelated_agent_is_not_flagged() {
     let ledger = escalated_ledger("worker-1", "#351");
-    assert_eq!(blocked_reason(&ledger, &[], "worker-2"), None);
+    assert_eq!(blocked_reason(Locale::En, &ledger, &[], "worker-2"), None);
 }
 
 #[test]
@@ -107,7 +113,7 @@ fn a_missing_decision_log_still_flags_an_escalated_entry() {
     // person rather than silently dropping the marker.
     let ledger = escalated_ledger("worker-1", "#351");
     assert_eq!(
-        blocked_reason(&ledger, &[], "worker-1"),
+        blocked_reason(Locale::En, &ledger, &[], "worker-1"),
         Some("worker blocked".into())
     );
 }
@@ -180,7 +186,7 @@ fn no_ledger_entry_has_no_lifecycle() {
 fn merge_hold_detail_is_the_raw_reason_verbatim() {
     let ledger = pr_opened_ledger("worker-1", "#359", Some("checks_not_green"));
     assert_eq!(
-        merge_hold_detail(&ledger, "worker-1"),
+        merge_hold_detail(Locale::En, &ledger, "worker-1"),
         Some("checks_not_green".into())
     );
 }
@@ -189,7 +195,7 @@ fn merge_hold_detail_is_the_raw_reason_verbatim() {
 fn merge_hold_detail_names_the_judge_when_no_reason_is_recorded() {
     let ledger = pr_opened_ledger("worker-1", "#359", None);
     assert_eq!(
-        merge_hold_detail(&ledger, "worker-1"),
+        merge_hold_detail(Locale::En, &ledger, "worker-1"),
         Some("waiting on merge judge".into())
     );
 }
@@ -208,7 +214,7 @@ fn decisions(count: usize) -> Vec<DecisionEntry> {
 
 fn rendered(decisions: &[DecisionEntry]) -> Vec<String> {
     let mut lines = Vec::new();
-    append_decisions(&mut lines, decisions);
+    append_decisions(&mut lines, decisions, Locale::En);
     lines
         .iter()
         .map(|line| {
@@ -259,41 +265,9 @@ fn the_newest_decision_is_listed_first() {
     assert!(lines[1].contains(&format!("#{}", DETAIL_LIMIT)));
 }
 
-#[test]
-fn an_external_claim_names_the_holder() {
-    let decisions = [decision(
-        DecisionKind::Hold,
-        "#216",
-        "claimed_elsewhere:manual-run",
-    )];
-    assert_eq!(standoffs(&decisions), ["#216 → manual-run"]);
-}
-
-#[test]
-fn a_later_dispatch_clears_the_standoff() {
-    // The operator's manual run finished and the overseer picked the task
-    // up; the frame must stop reporting a stand-off that ended.
-    let decisions = [
-        decision(DecisionKind::Hold, "#216", "claimed_elsewhere:manual-run"),
-        decision(DecisionKind::Dispatch, "#216", "worker spawned"),
-    ];
-    assert!(standoffs(&decisions).is_empty());
-}
-
-#[test]
-fn a_repeated_standoff_is_reported_once() {
-    let decisions = [
-        decision(DecisionKind::Hold, "#216", "claimed_elsewhere:manual-run"),
-        decision(DecisionKind::Hold, "#216", "claimed_elsewhere:other-agent"),
-    ];
-    assert_eq!(standoffs(&decisions), ["#216 → other-agent"]);
-}
-
-#[test]
-fn unrelated_decisions_are_ignored() {
-    let decisions = [
-        decision(DecisionKind::Skip, "#216", "daily_limit"),
-        DecisionEntry::new(DecisionKind::Hold, "claimed_elsewhere:no-task"),
-    ];
-    assert!(standoffs(&decisions).is_empty());
-}
+// Split out once this file crossed the 300-line source limit — see the task
+// acceptance criteria. `standoffs` is a self-contained reading of the
+// decision log, unrelated to the `blocked_reason` / `merge_lifecycle` /
+// `append_decisions` coverage above, so it was the natural seam.
+#[path = "decisions_standoffs_tests.rs"]
+mod standoffs_tests;
