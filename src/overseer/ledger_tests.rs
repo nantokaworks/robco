@@ -25,6 +25,7 @@ fn save_load_round_trip() {
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
             merge_hold_recheck_head: None,
+            merge_hold_stuck_notified: false,
         }],
         skip_list: vec!["task-2".into()],
         counters: LedgerCounters {
@@ -100,6 +101,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        merge_hold_stuck_notified: false,
     };
     let ledger = Ledger {
         entries: vec![
@@ -172,6 +174,7 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        merge_hold_stuck_notified: false,
     };
     let ledger = Ledger {
         entries: vec![

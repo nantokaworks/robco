@@ -26,6 +26,7 @@ fn entry(task: &str, repo: &str, phase: LedgerPhase, minute: i64) -> LedgerEntry
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        merge_hold_stuck_notified: false,
     }
 }
 
