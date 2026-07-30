@@ -1,9 +1,10 @@
-//! Per-condition budgets a [`super::LedgerEntry`] carries alongside its
-//! phase — split out of `ledger.rs` to keep that file under this project's
-//! source file size limit. Each struct here bounds one gate's repetition
-//! (a merge hold, a handback, a repository settling) the same way, and none
-//! of them changes what phase the entry is in on its own.
+//! Small supporting types split out of `ledger.rs` to keep that file under
+//! this project's source file size limit: the per-condition budgets a
+//! [`super::LedgerEntry`] carries alongside its phase (a merge hold, a
+//! handback, a repository settling — none of which changes what phase the
+//! entry is in on its own), plus the ledger's own daily counters.
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 /// What the merge gate remembers about handing this pull request's failures back
@@ -80,4 +81,15 @@ pub struct MergeSettling {
     /// `overseer.max_merge_settle_passes`, so a pull that never succeeds does
     /// not park the repository forever.
     pub passes_held: u32,
+}
+
+/// The ledger's daily dispatch bookkeeping: today's count against
+/// `overseer.daily_dispatch_limit`, reset once `date` no longer matches, and
+/// the consecutive-failure count the dispatch/merge circuit breaker shares.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct LedgerCounters {
+    pub date: Option<NaiveDate>,
+    pub dispatched_today: u32,
+    pub consecutive_failures: u32,
 }

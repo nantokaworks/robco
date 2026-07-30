@@ -1,13 +1,13 @@
 use std::{collections::BTreeMap, fs, io::ErrorKind, path::Path};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
 mod budgets;
-pub use budgets::{MergeHold, MergeRecovery, MergeSettling};
+pub use budgets::{LedgerCounters, MergeHold, MergeRecovery, MergeSettling};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
@@ -94,6 +94,16 @@ pub struct LedgerEntry {
     /// ledgers written before the field existed still load.
     #[serde(default)]
     pub prerequisite_wait: Option<DateTime<Utc>>,
+    /// Whether `daemon::merge_escalation::sweep_stuck` has already notified
+    /// once about this entry's current escalation sitting past the stuck
+    /// threshold. Kept apart from `merge_hold_cap_escalated` because that
+    /// flag grants free reconsideration passes forever — it never sets this
+    /// one, and the daemon's own age tracking must not repeat once it has
+    /// spoken. Reset alongside `settled_at` wherever the entry leaves this
+    /// escalation behind: `merge_hold_recheck::settle` and a successful
+    /// `merge_recovery` handback.
+    #[serde(default)]
+    pub merge_hold_stuck_notified: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -106,14 +116,6 @@ pub enum LedgerPhase {
     Merged,
     Failed,
     Escalated,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct LedgerCounters {
-    pub date: Option<NaiveDate>,
-    pub dispatched_today: u32,
-    pub consecutive_failures: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

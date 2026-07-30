@@ -97,7 +97,7 @@ const MANUAL_MANAGED: &str = "manual";
 const ALREADY_MERGED: &str = "pr_already_merged";
 
 /// Reason recorded when the pull request was closed without merging.
-const CLOSED_UNMERGED: &str = "pr_closed_unmerged";
+pub(super) const CLOSED_UNMERGED: &str = "pr_closed_unmerged";
 
 /// Ends the entry on the pull request's own conclusion.
 ///
@@ -191,6 +191,7 @@ pub(super) fn decision(entry: &LedgerEntry, kind: DecisionKind, reason: &str) ->
     decision.task = Some(entry.task_id.clone());
     decision.repo = Some(entry.repo.clone());
     decision.source = Some("auto_merge".into());
+    decision.escalation_notify = super::merge_escalation::notify(kind, reason);
     decision
 }
 

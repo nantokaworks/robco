@@ -14,6 +14,12 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     if entry.source.as_deref() == Some("discord") {
         return None;
     }
+    // A merge-gate escalation the recheck loop may still resolve on its
+    // own — `daemon::merge_escalation` already decided this one stays
+    // quiet until it is stuck long enough to notify on its own account.
+    if entry.escalation_notify == Some(false) {
+        return None;
+    }
     let event = if entry.source.as_deref() == Some("daemon_event") {
         Some(entry.reason.as_str())
     } else {
@@ -55,6 +61,10 @@ pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notif
     let enabled = entries
         .iter()
         .filter(|entry| entry.source.as_deref() != Some("discord"))
+        // Same rule `from_decision` applies per-decision: a merge escalation
+        // the recheck loop may still resolve on its own must not re-surface
+        // here just because it rode into the digest alongside other alerts.
+        .filter(|entry| entry.escalation_notify != Some(false))
         .filter(|entry| match entry.kind {
             DecisionKind::CircuitOpen | DecisionKind::Escalate => {
                 config.notify_level.admits(NotifyTier::Errors)
@@ -113,6 +123,48 @@ mod tests {
         };
         assert!(from_decision(&off, &failed).is_none());
         assert!(from_decision(&off, &escalated).is_none());
+    }
+
+    /// The suppression `merge_escalation` decides at decision-write time: a
+    /// merge escalation the recheck loop may still resolve on its own must
+    /// not reach Discord, regardless of which tier it would otherwise match.
+    #[test]
+    fn a_transient_merge_escalation_is_suppressed() {
+        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "merge_hold_cap_reached:x");
+        entry.source = Some("auto_merge".into());
+        entry.escalation_notify = Some(false);
+        assert!(from_decision(&DiscordConfig::default(), &entry).is_none());
+    }
+
+    #[test]
+    fn a_terminal_merge_escalation_still_notifies() {
+        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "merge_recovery_cap_reached");
+        entry.source = Some("merge_recovery".into());
+        entry.escalation_notify = Some(true);
+        assert!(from_decision(&DiscordConfig::default(), &entry).is_some());
+    }
+
+    /// A decision outside the merge-escalation vocabulary carries no tag at
+    /// all, so it must notify exactly as it did before the tag existed.
+    #[test]
+    fn an_untagged_escalate_decision_is_unaffected() {
+        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "worker blocked");
+        entry.source = Some("reconcile".into());
+        assert_eq!(entry.escalation_notify, None);
+        assert!(from_decision(&DiscordConfig::default(), &entry).is_some());
+    }
+
+    #[test]
+    fn digest_drops_a_suppressed_transient_escalation_but_keeps_the_rest() {
+        let mut suppressed = DecisionEntry::new(DecisionKind::Escalate, "merge_hold_cap_reached:x");
+        suppressed.escalation_notify = Some(false);
+        let kept = DecisionEntry::new(DecisionKind::Escalate, "other-alert");
+        let notification = digest(&DiscordConfig::default(), &[suppressed.clone(), kept]).unwrap();
+        assert!(notification.description.contains("other-alert"));
+        assert!(!notification.description.contains("merge_hold_cap_reached"));
+
+        // Suppress every entry: nothing is left to digest.
+        assert!(digest(&DiscordConfig::default(), &[suppressed.clone(), suppressed]).is_none());
     }
 
     #[test]

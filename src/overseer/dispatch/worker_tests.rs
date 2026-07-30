@@ -25,6 +25,7 @@ fn entry(task_id: &str, retries: u32) -> LedgerEntry {
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
     }
 }
 

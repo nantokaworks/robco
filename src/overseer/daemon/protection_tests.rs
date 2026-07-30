@@ -270,6 +270,7 @@ fn off_mode_skips_the_probe_entirely() {
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
     };
     let registry = Registry::default();
     let mut cache = ProtectionCache::default();
