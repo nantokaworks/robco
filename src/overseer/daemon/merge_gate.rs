@@ -11,7 +11,7 @@ use serde_json::Value;
 use super::{
     merge_apply::merge_state_cleared,
     merge_decision::Halt,
-    merge_queue, merge_state, protection,
+    merge_dependency, merge_queue, merge_state, protection,
     protection::ProtectionCache,
     pull_request::{Checks, base_branch, checks},
 };
@@ -37,6 +37,7 @@ const CHECKS_WAITING: &str = "checks_waiting";
 /// function's doc for why letting them fall through loses no information:
 /// `merge_state_cleared` below re-reads the merge state right before a merge attempt
 /// and still holds under the state's own name whenever the rollup alone said `Green`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn gate(
     entry: &mut LedgerEntry,
     url: &str,
@@ -45,7 +46,14 @@ pub(super) fn gate(
     cache: &mut ProtectionCache,
     registry: &Registry,
     heads: &mut merge_queue::Heads,
+    dependency: merge_dependency::Probe,
 ) -> Option<Halt> {
+    // Checked first, ahead of protection and checks: a pull request held on
+    // an unresolved prerequisite never pays for probes whose answer cannot
+    // change anything (dropr:375).
+    if let Some(halt) = merge_dependency::apply(entry, dependency) {
+        return Some(halt);
+    }
     let mode = config.overseer.protection_mode;
     if let Some(unmet) =
         protection::unmet_condition(entry, registry, cache, mode, base_branch(value))

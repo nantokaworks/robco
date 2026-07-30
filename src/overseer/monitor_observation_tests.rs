@@ -20,7 +20,7 @@ fn a_failed_probe_names_the_entry_it_failed_for() {
         ..Observations::default()
     };
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
-    let (_, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (_, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     let logged: Vec<_> = actions
         .iter()
         .filter_map(|action| match action {

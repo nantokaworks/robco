@@ -124,6 +124,7 @@ pub(super) fn spawn_candidate(
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        prerequisite_wait: None,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::runtime::log_candidate(

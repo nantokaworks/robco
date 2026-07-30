@@ -24,6 +24,15 @@ Follow RUN discipline: implement the task, self-review the diff, run relevant te
 request whose body contains `Close Dropr: {display_id}`. Finally run `robco report --kind done`.
 The current report CLI carries lifecycle kind only; Overseer discovers the PR URL from your branch.
 
+If, while implementing, you discover this task cannot proceed until a *different* dropr task
+merges first, that is an ordering wait, not a blocker: do NOT mark this task `blocked`, and do NOT
+run `robco report --kind blocked`. Instead run
+`dropr task dependency create --task {task_id} --depends-on <prerequisite-task> --kind blocks`,
+then immediately `robco report --kind waiting-prerequisite`, then release your claim (set this
+task's dropr status back to `open`), and stop. dropr excludes a task behind an unresolved `blocks`
+edge from its own ready feed, so Overseer redispatches automatically once the prerequisite merges —
+no operator action, and nothing further for you to do here.
+
 {directive}Never merge. Never force push. Never push to main. Never create extra worktrees."#
     )
 }

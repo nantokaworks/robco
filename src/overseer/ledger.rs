@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 
+mod budgets;
+pub use budgets::{MergeHold, MergeRecovery, MergeSettling};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
     pub task_id: String,
@@ -80,66 +83,17 @@ pub struct LedgerEntry {
     /// Head sha the last charged (or escalating) reconsideration pass saw.
     #[serde(default)]
     pub merge_hold_recheck_head: Option<String>,
-}
-
-/// What the merge gate remembers about handing this pull request's failures back
-/// to its worker.
-///
-/// The counter is the budget — bounded by `overseer.max_merge_recoveries`, so a
-/// worker that cannot fix the failure escalates instead of being re-prompted
-/// forever. The (head, base) pair is the deduplication key: it stops the same
-/// failure on the same revision from being handed back once per poll interval,
-/// while a worker that pushed a fix presents a new head, and a base that moved
-/// under a stationary head — a later merge to the base branch conflicting with
-/// this pull request — is just as genuinely new a failure. Either alone resets
-/// the deduplication; neither resets `charged`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct MergeRecovery {
-    /// Handbacks charged so far. A new head or a moved base resets the
-    /// deduplication, never this.
-    pub charged: u32,
-    /// Head sha the last handback was charged against.
-    pub head: Option<String>,
-    /// Base sha the last handback was charged against.
-    pub base: Option<String>,
-    /// Failures the owning worker could have fixed that were left alone because
-    /// `overseer.merge_recovery_enabled` is off. Counted rather than acted on:
-    /// the setting is the operator's call, and this is the evidence they need to
-    /// make it.
-    pub dropped: u32,
-    /// Head sha the last drop was recorded against, so a standing failure costs
-    /// one decision per revision rather than one per poll.
-    pub dropped_head: Option<String>,
-    /// Base sha the last drop was recorded against.
-    pub dropped_base: Option<String>,
-}
-
-/// What the merge gate remembers about holding this pull request back.
-///
-/// Every gate exit that is not a merge records a reason, and most of those
-/// reasons describe a condition that can last hours — a check still running, a
-/// head that conflicts with its base, a base branch nobody has protected. The
-/// counter is the budget — bounded by `overseer.max_merge_holds`, so a condition
-/// that never clears reaches an operator instead of being written to
-/// `decisions.jsonl` once per poll for as long as it lasts.
-///
-/// The (reason, head sha) pair is the key: a new head is the worker's answer and
-/// a changed reason is a changed problem, so either restarts the count, while a
-/// frozen pair keeps spending it.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct MergeHold {
-    /// Gate reason the passes below were counted against.
-    pub reason: Option<String>,
-    /// Head sha that reason was recorded against. Empty for a hold decided
-    /// before the pull request itself could be read.
-    pub head: Option<String>,
-    /// Passes charged so far against this pair.
-    pub passes: u32,
-    /// Whether the budget has already escalated this pair, so the cap is
-    /// recorded once rather than on every later pass.
-    pub escalated: bool,
+    /// When this entry began waiting on a dropr `blocks` dependency edge to
+    /// resolve — a worker discovered mid-implementation that its task is
+    /// ordered behind another and reported `waiting-prerequisite`, or the
+    /// auto-merge gate found the entry's pull request held by one. `None`
+    /// while nothing holds the entry on a prerequisite. Bounded by
+    /// `overseer.max_prerequisite_wait_hours`, so a prerequisite that never
+    /// lands still escalates once instead of waiting forever — see
+    /// `overseer::monitor::apply::apply_prerequisite_wait`. Defaulted so
+    /// ledgers written before the field existed still load.
+    #[serde(default)]
+    pub prerequisite_wait: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -160,22 +114,6 @@ pub struct LedgerCounters {
     pub date: Option<NaiveDate>,
     pub dispatched_today: u32,
     pub consecutive_failures: u32,
-}
-
-/// A repository whose merge has landed but whose primary worktree has not been
-/// confirmed to hold it yet.
-///
-/// The merge gate reads this to keep a second merge out of the same repository
-/// until the post-merge `git pull --ff-only` has actually run — see
-/// `crate::overseer::daemon::merge_settle`. It lives in the ledger rather than
-/// in the pass, because the pull it waits on runs on a *later* pass.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct MergeSettling {
-    /// Auto-merge passes this repository has been held for. Bounded by
-    /// `overseer.max_merge_settle_passes`, so a pull that never succeeds does
-    /// not park the repository forever.
-    pub passes_held: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -235,6 +173,26 @@ pub fn terminal(phase: LedgerPhase) -> bool {
     )
 }
 
+/// Whether `entry` occupies a dispatch slot or a branch/worktree another
+/// worker could collide with.
+///
+/// A terminal entry never does. Nor does one waiting on a prerequisite: the
+/// worker that reported it already stepped aside (or, on the merge-gate
+/// path, never held a worker slot in the first place), and dropr's own ready
+/// feed excludes the task until the prerequisite closes — see dropr:375. So
+/// neither the dispatch gate nor `active_workers`'s capacity count has
+/// anything left to hold this entry against.
+pub fn holds_capacity(entry: &LedgerEntry) -> bool {
+    !terminal(entry.phase) && entry.prerequisite_wait.is_none()
+}
+
+/// Whether `entry` is currently idle, waiting on a dropr `blocks` dependency
+/// edge to resolve. Read by `robco overseer status --debug` and by
+/// `monitor::apply::apply_prerequisite_wait`'s escalation bound.
+pub fn waiting_on_prerequisite(entry: &LedgerEntry) -> bool {
+    entry.prerequisite_wait.is_some() && !terminal(entry.phase)
+}
+
 impl Ledger {
     /// The workers occupying capacity right now. The dispatch gate and
     /// `robco overseer status` both read this one helper, so the count that
@@ -248,7 +206,7 @@ impl Ledger {
     pub fn active_workers(&self) -> ActiveWorkers {
         let mut repos: BTreeMap<String, usize> = BTreeMap::new();
         let mut count = 0;
-        for entry in self.entries.iter().filter(|entry| !terminal(entry.phase)) {
+        for entry in self.entries.iter().filter(|entry| holds_capacity(entry)) {
             count += 1;
             *repos.entry(entry.repo.clone()).or_default() += 1;
         }

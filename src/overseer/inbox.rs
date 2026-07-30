@@ -37,6 +37,12 @@ pub enum ReportKind {
     Blocked,
     TurnDone,
     Waiting,
+    /// The task is ordered behind another dropr task that has not merged
+    /// yet — distinct from `Blocked`, which `monitor::apply::apply_inbox`
+    /// escalates to an operator. A worker reports this instead once it has
+    /// created the `blocks` dependency edge itself (dropr:375); it never
+    /// escalates on its own, only after `overseer.max_prerequisite_wait_hours`.
+    WaitingPrerequisite,
 }
 
 impl ReportKind {
@@ -47,6 +53,7 @@ impl ReportKind {
             "blocked" => Some(Self::Blocked),
             "turn-done" => Some(Self::TurnDone),
             "waiting" => Some(Self::Waiting),
+            "waiting-prerequisite" => Some(Self::WaitingPrerequisite),
             _ => None,
         }
     }

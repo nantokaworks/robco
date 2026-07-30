@@ -22,6 +22,7 @@ fn entry() -> LedgerEntry {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        prerequisite_wait: None,
     }
 }
 
@@ -93,7 +94,9 @@ fn a_zero_budget_escalates_the_first_held_pass() {
 }
 
 /// One condition must not spend two budgets: `behind_*` is already bounded by
-/// `max_branch_updates`, and a settled pull request leaves the entry terminal.
+/// `max_branch_updates`, a settled pull request leaves the entry terminal, and
+/// `prerequisite_unmerged:*` (dropr:375) carries its own bound apart from this
+/// one — `entry.prerequisite_wait`, checked in `monitor::apply::apply_prerequisite_wait`.
 #[test]
 fn the_exits_that_carry_their_own_budget_are_never_charged() {
     let mut entry = entry();
@@ -102,6 +105,10 @@ fn the_exits_that_carry_their_own_budget_are_never_charged() {
         Halt::escalate(super::super::merge_state::UPDATE_CAP_REACHED),
         Halt::hold("behind_update_exit:exit status: 1"),
         Halt::skip("pr_already_merged"),
+        Halt::hold(format!(
+            "{}#7",
+            super::super::merge_dependency::PREREQUISITE_UNMERGED_PREFIX
+        )),
     ];
     for halt in &exempt {
         for _ in 0..4 {

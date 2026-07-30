@@ -58,3 +58,12 @@ fn an_unrecognised_reason_falls_back_to_operator_review() {
     assert!(!remedy.means.is_empty());
     assert!(!remedy.next.is_empty());
 }
+
+/// dropr:375 — a pull request waiting on a prerequisite task is nothing an
+/// operator needs to act on, the same way `merge_queue::WAITING_TURN` is not.
+#[test]
+fn a_prerequisite_wait_resolves_to_watch() {
+    let remedy = resolve("prerequisite_unmerged:#7", true);
+    assert_eq!(remedy.step, Move::Watch);
+    assert!(!remedy.actionable());
+}
