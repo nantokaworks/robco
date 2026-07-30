@@ -5,6 +5,8 @@ mod merge;
 mod merge_apply;
 mod merge_decision;
 mod merge_delivery;
+pub(crate) mod merge_dependency;
+mod merge_escalation;
 mod merge_gate;
 mod merge_hold;
 mod merge_hold_recheck;
@@ -116,8 +118,13 @@ pub async fn run_daemon() -> Result<()> {
         if let Err(error) = external_prs::refresh_pass(&ledger, now) {
             logging::log_message(None, &format!("other-PR discovery failed: {error}"))?;
         }
-        let (mut next, actions) =
-            reconcile(&ledger, &observed, now, config.overseer.stuck_after_mins);
+        let (mut next, actions) = reconcile(
+            &ledger,
+            &observed,
+            now,
+            config.overseer.stuck_after_mins,
+            config.overseer.max_prerequisite_wait_hours,
+        );
         if config.overseer.discord.enabled {
             discord_events::record(&ledger, &next, &observed, now)?;
         }
@@ -139,6 +146,10 @@ pub async fn run_daemon() -> Result<()> {
             &mut judgments,
             &pulled,
         )?;
+        // After the merge pass, not before: the recheck budget it reads
+        // (`merge_hold_recheck::due`) only reflects this tick's escalations
+        // once that pass has run.
+        merge_escalation::sweep_stuck(&mut next, now, config.overseer.max_merge_hold_rechecks)?;
         dispatch_pass(&mut config, &mut next, now, &mut judgments)?;
         // Last, so every pass above reads the board it was given: retention only
         // decides how much of the settled past the *next* pass inherits, and a

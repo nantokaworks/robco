@@ -27,6 +27,8 @@ fn entry(task: &str, agent: &str, phase: LedgerPhase) -> LedgerEntry {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
     }
 }
 
@@ -84,6 +86,36 @@ fn merged_does_not_also_produce_a_finished_event() {
     let next = ledger(vec![entry("1", "worker-1", LedgerPhase::Merged)]);
     let events = transitions(&previous, &next, &Observations::default(), now());
     assert_eq!(reasons(&events), ["merged"]);
+}
+
+/// The double notification this task exists to collapse: the merge gate is
+/// the only thing that moves an entry from `PrOpened` straight into
+/// `Escalated`, and it already logs its own, more specific `Escalate`
+/// decision — classified terminal or transient by `merge_escalation` — for
+/// every one of its paths. The generic phase event must defer to that one
+/// rather than paging a second time for the same escalation.
+#[test]
+fn a_pr_opened_to_escalated_transition_defers_to_the_merge_gates_own_decision() {
+    let previous = ledger(vec![entry("1", "worker-1", LedgerPhase::PrOpened)]);
+    let next = ledger(vec![entry("1", "worker-1", LedgerPhase::Escalated)]);
+    let events = transitions(&previous, &next, &Observations::default(), now());
+    assert!(events.is_empty());
+}
+
+/// Every other route into `escalated` has no merge-gate decision of its own,
+/// so it still needs the phase event — unaffected by this task's scope.
+#[test]
+fn a_non_merge_route_into_escalated_still_fires_task_escalated() {
+    for phase in [
+        LedgerPhase::Dispatched,
+        LedgerPhase::Claimed,
+        LedgerPhase::Working,
+    ] {
+        let previous = ledger(vec![entry("1", "worker-1", phase)]);
+        let next = ledger(vec![entry("1", "worker-1", LedgerPhase::Escalated)]);
+        let events = transitions(&previous, &next, &Observations::default(), now());
+        assert_eq!(reasons(&events), ["task_escalated"], "phase {phase:?}");
+    }
 }
 
 #[test]

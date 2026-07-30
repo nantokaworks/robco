@@ -9,7 +9,7 @@ use crate::overseer::{config::OverseerConfig, ledger::Ledger};
 
 use super::{
     Candidate, DispatchPlan, GateDecision,
-    entries::{task_entries, terminal, worker_mode},
+    entries::{holds_capacity, task_entries, worker_mode},
 };
 
 pub(super) fn apply_candidate_gates(
@@ -84,7 +84,10 @@ fn candidate_skip<'a>(
     // Dispatching a second worker onto it fails in `git worktree add` on the
     // existing branch, and those failures feed the circuit until dispatch latches
     // off — so hold the candidate for as long as its worker is alive, whatever
-    // management mode owns it.
+    // management mode owns it. An entry merely waiting on a dropr `blocks`
+    // dependency edge is excluded (`holds_capacity`): its worker already
+    // stepped aside, and dropr's own ready feed will not offer this task back
+    // until the prerequisite closes anyway — see dropr:375.
     //
     // A non-terminal entry that already carries a `pr_url` is a different case
     // worth naming on its own: the worker is done and a pull request is open, so
@@ -92,7 +95,7 @@ fn candidate_skip<'a>(
     // work that already shipped. The operator's move is on the pull request, not
     // on this task, and `pr_already_open` says so instead of reading like the
     // worker is still running.
-    if let Some(entry) = recorded.iter().find(|entry| !terminal(entry.phase)) {
+    if let Some(entry) = recorded.iter().find(|entry| holds_capacity(entry)) {
         return Some(if entry.pr_url.is_some() {
             "pr_already_open"
         } else {

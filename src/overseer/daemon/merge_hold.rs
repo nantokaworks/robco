@@ -92,9 +92,20 @@ pub(super) fn cleared(entry: &mut LedgerEntry) {
 /// `merge_queue::WAITING_TURN` carries no budget of its own at all, the same
 /// way `merge_settle::SETTLING` does not — waiting for another pull request in
 /// the same repository to merge first is the expected steady state, not a
-/// condition to escalate out of.
+/// condition to escalate out of. `merge_dependency::PREREQUISITE_UNMERGED_PREFIX`
+/// joins that last group for the same reason — waiting for a *different
+/// task's* pull request to merge first is just as much the expected steady
+/// state — but it is not left unbounded altogether: it carries its own
+/// budget apart from this one, `entry.prerequisite_wait` bounded by
+/// `overseer.max_prerequisite_wait_hours` (see
+/// `overseer::monitor::apply::apply_prerequisite_wait`), so a prerequisite
+/// that never lands still escalates once instead of holding forever.
 fn bounded(halt: &Halt) -> bool {
-    halt.kind != DecisionKind::Skip && !halt.reason.starts_with("behind_")
+    halt.kind != DecisionKind::Skip
+        && !halt.reason.starts_with("behind_")
+        && !halt
+            .reason
+            .starts_with(super::merge_dependency::PREREQUISITE_UNMERGED_PREFIX)
 }
 
 #[cfg(test)]

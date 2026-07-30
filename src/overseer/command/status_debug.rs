@@ -14,8 +14,13 @@ use crate::{
     config::Config,
     model::ManagementMode,
     overseer::{
-        command::on_off, config::OverseerConfig, judge::JudgmentQueue, ledger::Ledger, logging,
-        review::ReviewPass, session::health::SessionHealth,
+        command::on_off,
+        config::OverseerConfig,
+        judge::JudgmentQueue,
+        ledger::{Ledger, waiting_on_prerequisite},
+        logging,
+        review::ReviewPass,
+        session::health::SessionHealth,
     },
     registry::Registry,
 };
@@ -65,6 +70,19 @@ pub(super) fn print_debug_section(
         *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
     }
     println!("phases: {phases:?}");
+    // Not counted anywhere in `phases` above: a prerequisite wait leaves the
+    // entry's phase untouched (`Working` or `PrOpened`), and is deliberately
+    // absent from the three-question default output — it needs no operator,
+    // so it is not "waiting on you" and it holds no capacity, so it is not
+    // "running now" either. This is its one visible trace. See dropr:375.
+    let prerequisite_waits = ledger
+        .entries
+        .iter()
+        .filter(|entry| waiting_on_prerequisite(entry))
+        .count();
+    if prerequisite_waits != 0 {
+        println!("waiting on prerequisite: {prerequisite_waits}");
+    }
     let manual_merges = ledger.manual_merge_skips();
     if manual_merges != 0 {
         println!("merge-eligible, manual: {manual_merges}");

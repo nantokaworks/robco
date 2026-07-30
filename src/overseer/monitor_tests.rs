@@ -22,6 +22,8 @@ pub(super) fn ledger() -> Ledger {
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
             merge_hold_recheck_head: None,
+            prerequisite_wait: None,
+            merge_hold_stuck_notified: false,
         }],
         ..Ledger::default()
     }
@@ -31,7 +33,7 @@ pub(super) fn replay(lines: &[&str]) -> (Ledger, Vec<Action>) {
     let mut actions = Vec::new();
     for line in lines {
         let snapshot: ObservationSnapshot = serde_json::from_str(line).unwrap();
-        (current, actions) = reconcile(&current, &snapshot.observations, snapshot.at, 30);
+        (current, actions) = reconcile(&current, &snapshot.observations, snapshot.at, 30, 72);
     }
     (current, actions)
 }
@@ -65,7 +67,7 @@ fn done_report_alone_does_not_advance_phase() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
-    let (result, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (result, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(result.entries[0].phase, LedgerPhase::Dispatched);
     assert!(result.entries[0].pr_url.is_none());
     assert!(actions.is_empty());
@@ -74,7 +76,7 @@ fn done_report_alone_does_not_advance_phase() {
 fn stuck_detection_uses_injected_now() {
     let observations: Observations = serde_json::from_str(r#"{"sessions":[{"agent_id":"worker-1","status":"running","last_activity_at":"2026-07-16T00:01:00Z"}]}"#).unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 32, 0).unwrap();
-    let (ledger, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (ledger, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Failed);
     assert!(
         actions
@@ -90,7 +92,7 @@ fn manual_worker_session_death_does_not_fail_the_entry() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (unchanged, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (unchanged, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(unchanged.entries[0].phase, LedgerPhase::Dispatched);
     assert!(actions.is_empty());
 }
@@ -101,7 +103,7 @@ fn manual_worker_with_merged_pr_is_advanced_and_cleaned_up() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (merged, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (merged, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(merged.entries[0].phase, LedgerPhase::Merged);
     assert_eq!(
         merged.entries[0].pr_url.as_deref(),
@@ -115,12 +117,12 @@ fn manual_worker_with_merged_pr_is_advanced_and_cleaned_up() {
     }));
     // Cleanup is re-emitted only while the registry row survives, so a merged
     // Manual entry does not re-kill an already-cleaned agent every poll.
-    let (_, actions) = reconcile(&merged, &observations, now, 30);
+    let (_, actions) = reconcile(&merged, &observations, now, 30, 72);
     assert!(actions.is_empty());
     let registered: Observations =
         serde_json::from_str(r#"{"manual_agents":["worker-1"],"registered_agents":["worker-1"]}"#)
             .unwrap();
-    assert_eq!(reconcile(&merged, &registered, now, 30).1.len(), 2);
+    assert_eq!(reconcile(&merged, &registered, now, 30, 72).1.len(), 2);
 }
 /// Detaching a Manual worker ends Overseer ownership, so its entry leaves the
 /// ledger instead of freezing there — the slot it held is released and the
@@ -132,7 +134,7 @@ fn detached_worker_entry_is_dropped_without_touching_the_worker() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (dropped, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (dropped, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert!(dropped.entries.is_empty());
     assert_eq!(dropped.active_workers().count, 0);
     // The drop is the only thing the pass does: the dead session it was told
@@ -156,7 +158,7 @@ fn detached_merged_entry_is_dropped_without_cleanup() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (dropped, actions) = reconcile(&merged, &observations, now, 30);
+    let (dropped, actions) = reconcile(&merged, &observations, now, 30, 72);
     assert!(dropped.entries.is_empty());
     assert!(!actions.contains(&Action::KillSession {
         agent_id: "worker-1".into(),
@@ -172,7 +174,7 @@ fn manual_worker_with_open_pr_keeps_session_and_worktree() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (open, actions) = reconcile(&ledger(), &observations, now, 30);
+    let (open, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(open.entries[0].phase, LedgerPhase::PrOpened);
     assert!(actions.is_empty());
 }
@@ -186,7 +188,7 @@ fn reaching_a_terminal_phase_stamps_the_pass_clock() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap();
-    let (failed, _) = reconcile(&ledger(), &dead, now, 30);
+    let (failed, _) = reconcile(&ledger(), &dead, now, 30, 72);
     assert_eq!(failed.entries[0].phase, LedgerPhase::Failed);
     assert_eq!(failed.entries[0].settled_at, Some(now));
 }
@@ -201,9 +203,9 @@ fn a_later_pass_does_not_restamp_a_settled_entry() {
     )
     .unwrap();
     let settled = Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap();
-    let (failed, _) = reconcile(&ledger(), &dead, settled, 30);
+    let (failed, _) = reconcile(&ledger(), &dead, settled, 30, 72);
     let later = Utc.with_ymd_and_hms(2026, 7, 16, 1, 5, 0).unwrap();
-    let (again, _) = reconcile(&failed, &dead, later, 30);
+    let (again, _) = reconcile(&failed, &dead, later, 30, 72);
     assert_eq!(again.entries[0].settled_at, Some(settled));
 }
 
@@ -216,7 +218,7 @@ fn a_worker_phase_carries_no_settled_timestamp() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
-    let (claimed, _) = reconcile(&ledger(), &observations, now, 30);
+    let (claimed, _) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(claimed.entries[0].phase, LedgerPhase::Claimed);
     assert!(claimed.entries[0].settled_at.is_none());
 }
@@ -230,10 +232,10 @@ fn a_manual_entry_is_stamped_when_its_pull_request_merges() {
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (merged, _) = reconcile(&ledger(), &observations, now, 30);
+    let (merged, _) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(merged.entries[0].settled_at, Some(now));
     let later = Utc.with_ymd_and_hms(2026, 7, 16, 2, 0, 0).unwrap();
-    let (again, _) = reconcile(&merged, &observations, later, 30);
+    let (again, _) = reconcile(&merged, &observations, later, 30, 72);
     assert_eq!(again.entries[0].settled_at, Some(now));
 }
 
@@ -247,7 +249,7 @@ fn claimed_worker_without_activity_is_not_marked_stuck() {
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
     assert_eq!(
-        reconcile(&claimed, &observations, now, 30).0.entries[0].phase,
+        reconcile(&claimed, &observations, now, 30, 72).0.entries[0].phase,
         LedgerPhase::Claimed
     );
 }
@@ -257,13 +259,13 @@ fn open_task_escalates_only_after_claim() {
         serde_json::from_str(r#"{"tasks":[{"task_id":"task-131","state":"open"}]}"#).unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
     assert_eq!(
-        reconcile(&ledger(), &observations, now, 30).0.entries[0].phase,
+        reconcile(&ledger(), &observations, now, 30, 72).0.entries[0].phase,
         LedgerPhase::Dispatched
     );
     let mut working = ledger();
     working.entries[0].phase = LedgerPhase::Working;
     assert_eq!(
-        reconcile(&working, &observations, now, 30).0.entries[0].phase,
+        reconcile(&working, &observations, now, 30, 72).0.entries[0].phase,
         LedgerPhase::Escalated
     );
 }
@@ -277,7 +279,7 @@ fn delayed_done_does_not_revive_escalated_entry() {
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 4, 0).unwrap();
     assert_eq!(
-        reconcile(&escalated, &observations, now, 30).0.entries[0].phase,
+        reconcile(&escalated, &observations, now, 30, 72).0.entries[0].phase,
         LedgerPhase::Escalated
     );
 }
@@ -287,7 +289,7 @@ fn blocked_dead_and_unknown_observations_degrade_safely() {
         r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"future-kind"}],"sessions":[{"agent_id":"worker-1","status":"future-status","last_activity_at":null}],"errors":[{"message":"gh returned malformed JSON","task_id":"task-131","repo":"/repo"}]}"#,
     ).unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
-    let (unchanged, actions) = reconcile(&ledger(), &malformed, now, 30);
+    let (unchanged, actions) = reconcile(&ledger(), &malformed, now, 30, 72);
     assert_eq!(unchanged.entries[0].phase, LedgerPhase::Dispatched);
     assert!(
         actions
@@ -301,7 +303,7 @@ fn blocked_dead_and_unknown_observations_degrade_safely() {
     )
     .unwrap();
     assert_eq!(
-        reconcile(&ledger(), &blocked, now, 30).0.entries[0].phase,
+        reconcile(&ledger(), &blocked, now, 30, 72).0.entries[0].phase,
         LedgerPhase::Escalated
     );
     let dead: Observations = serde_json::from_str(
@@ -309,7 +311,124 @@ fn blocked_dead_and_unknown_observations_degrade_safely() {
     )
     .unwrap();
     assert_eq!(
-        reconcile(&ledger(), &dead, now, 30).0.entries[0].phase,
+        reconcile(&ledger(), &dead, now, 30, 72).0.entries[0].phase,
         LedgerPhase::Failed
     );
+}
+
+/// dropr:375 — a worker that discovers an ordering constraint reports
+/// `waiting-prerequisite` instead of `blocked`. The wait is recorded, but
+/// unlike `blocked` (see `blocked_dead_and_unknown_observations_degrade_safely`
+/// above), the entry never escalates and no action fires — dropr's own ready
+/// feed is what resolves this, not an operator.
+#[test]
+fn waiting_prerequisite_report_records_the_wait_without_escalating() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"waiting-prerequisite"}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
+    let (waiting, actions) = reconcile(&ledger(), &observations, now, 30, 72);
+    assert_eq!(waiting.entries[0].phase, LedgerPhase::Dispatched);
+    assert_eq!(
+        waiting.entries[0].prerequisite_wait,
+        Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 1, 0).unwrap())
+    );
+    assert!(actions.is_empty());
+}
+
+/// The wait timestamp is set once, from the first report, so a redelivered or
+/// repeated report cannot push the escalation bound further out.
+#[test]
+fn a_second_waiting_prerequisite_report_does_not_restart_the_clock() {
+    let lines = [
+        r#"{"at":"2026-07-16T00:01:00Z","observations":{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"waiting-prerequisite"}]}}"#,
+        r#"{"at":"2026-07-16T00:05:00Z","observations":{"inbox":[{"at":"2026-07-16T00:05:00Z","agent_id":"worker-1","kind":"waiting-prerequisite"}]}}"#,
+    ];
+    let (waiting, _) = replay(&lines);
+    assert_eq!(
+        waiting.entries[0].prerequisite_wait,
+        Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 1, 0).unwrap())
+    );
+}
+
+/// A worker waiting on a prerequisite occupies no dispatch capacity: its
+/// own turn already ended, and dropr will not offer the task back until the
+/// prerequisite closes — see `ledger::holds_capacity`.
+#[test]
+fn a_waiting_entry_does_not_count_toward_active_workers() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"waiting-prerequisite"}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
+    let (waiting, _) = reconcile(&ledger(), &observations, now, 30, 72);
+    assert_eq!(waiting.active_workers().count, 0);
+}
+
+/// The worker releases its dropr claim (`open`) as part of stepping aside for
+/// the wait — `apply_task_failure`'s "worker released its dropr task lock"
+/// escalation must not fire for a release the worker made on purpose.
+#[test]
+fn a_deliberate_claim_release_during_a_prerequisite_wait_does_not_escalate() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"waiting-prerequisite"}],"tasks":[{"task_id":"task-131","state":"open"}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
+    let (waiting, actions) = reconcile(&ledger(), &observations, now, 30, 72);
+    assert_eq!(waiting.entries[0].phase, LedgerPhase::Dispatched);
+    assert!(actions.is_empty());
+}
+
+/// A worker that legitimately ended its turn to wait on a prerequisite must
+/// not be reported "stuck" or "dead" for going quiet — see the guard in
+/// `reconcile_entry` around `apply_session`.
+#[test]
+fn a_dead_session_while_waiting_on_a_prerequisite_is_not_treated_as_stuck() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"waiting-prerequisite"}],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap();
+    let (waiting, actions) = reconcile(&ledger(), &observations, now, 30, 72);
+    assert_eq!(waiting.entries[0].phase, LedgerPhase::Dispatched);
+    assert!(actions.is_empty());
+}
+
+/// A prerequisite wait that outlives its bound escalates exactly once,
+/// covering the never-landing or cyclical case the wait cannot otherwise
+/// distinguish from a genuinely long-running but still-progressing one.
+#[test]
+fn a_prerequisite_wait_past_its_bound_escalates_once() {
+    let mut waiting = ledger();
+    waiting.entries[0].prerequisite_wait =
+        Some(Utc.with_ymd_and_hms(2026, 7, 13, 0, 0, 0).unwrap());
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (escalated, actions) = reconcile(&waiting, &Observations::default(), now, 30, 72);
+    assert_eq!(escalated.entries[0].phase, LedgerPhase::Escalated);
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, Action::Escalate { .. }))
+    );
+    // Escalated is terminal, so a later pass leaves it alone rather than
+    // re-escalating on every subsequent poll.
+    let later = Utc.with_ymd_and_hms(2026, 7, 17, 1, 0, 0).unwrap();
+    let (again, actions) = reconcile(&escalated, &Observations::default(), later, 30, 72);
+    assert_eq!(again.entries[0].phase, LedgerPhase::Escalated);
+    assert!(actions.is_empty());
+}
+
+/// Within the bound, nothing happens — a prerequisite wait is a steady state,
+/// not a per-pass decision to record.
+#[test]
+fn a_prerequisite_wait_within_its_bound_is_silent() {
+    let mut waiting = ledger();
+    waiting.entries[0].prerequisite_wait =
+        Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 0, 0).unwrap());
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
+    let (still_waiting, actions) = reconcile(&waiting, &Observations::default(), now, 30, 72);
+    assert_eq!(still_waiting.entries[0].phase, LedgerPhase::Dispatched);
+    assert!(actions.is_empty());
 }

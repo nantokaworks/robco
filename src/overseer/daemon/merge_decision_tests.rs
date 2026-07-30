@@ -22,6 +22,8 @@ fn entry() -> LedgerEntry {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
     }
 }
 
@@ -127,4 +129,35 @@ fn a_closed_pull_request_stays_an_operators_problem() {
     // Nothing landed and no worker can make it land — reopening is a human act —
     // so the entry stays where `robco`'s inbox shows it to one.
     assert_eq!(entry.phase, LedgerPhase::Escalated);
+}
+
+/// `decision` is the single place every merge-gate `Escalate` passes through
+/// on its way to `decisions.jsonl`, so this is where the terminal/transient
+/// tag from `merge_escalation` has to land — see dropr:374.
+#[test]
+fn an_escalate_decision_is_tagged_by_the_merge_escalation_vocabulary() {
+    let entry = entry();
+
+    // Terminal: a closed pull request notifies immediately.
+    let terminal = decision(&entry, DecisionKind::Escalate, "pr_closed_unmerged");
+    assert_eq!(terminal.escalation_notify, Some(true));
+
+    // Transient: the hold cap alone is spent, but the recheck loop may still
+    // resolve this on its own, so it stays quiet for now.
+    let transient = decision(
+        &entry,
+        DecisionKind::Escalate,
+        "merge_hold_cap_reached:merge_state:dirty",
+    );
+    assert_eq!(transient.escalation_notify, Some(false));
+
+    // Outside the vocabulary entirely — a judge veto, say — falls back to
+    // `notifications::from_decision`'s pre-existing catch-all, untouched by
+    // this task.
+    let unclassified = decision(&entry, DecisionKind::Escalate, "judge_veto:no rollback");
+    assert_eq!(unclassified.escalation_notify, None);
+
+    // Only `Escalate` decisions carry the tag at all.
+    let hold = decision(&entry, DecisionKind::Hold, "pr_closed_unmerged");
+    assert_eq!(hold.escalation_notify, None);
 }

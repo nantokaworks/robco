@@ -3,12 +3,14 @@ use std::{process::Command, time::Duration};
 use serde::Deserialize;
 
 mod claim;
+mod dependency;
 mod mcp;
 mod repo_tasks;
 mod workspace;
 mod writes;
 
 pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
+pub use dependency::blocking_prerequisite_timeout;
 pub use repo_tasks::{DroprTaskFetch, FETCH_BUDGET, TASK_FETCH_LIMIT};
 pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
 pub use writes::{WriteError, WriteResult};

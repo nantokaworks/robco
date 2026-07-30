@@ -30,6 +30,7 @@ fn merged_snapshot_emits_cleanup_once() {
             .observations,
         Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap(),
         30,
+        72,
     );
     assert!(actions.is_empty());
 }
@@ -45,6 +46,7 @@ fn merged_entry_reemits_cleanup_while_agent_is_registered() {
         &observations,
         Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap(),
         30,
+        72,
     );
     assert!(actions.contains(&Action::KillSession {
         agent_id: "worker-1".into(),
@@ -57,6 +59,7 @@ fn merged_entry_reemits_cleanup_while_agent_is_registered() {
         &Observations::default(),
         Utc.with_ymd_and_hms(2026, 7, 16, 0, 6, 0).unwrap(),
         30,
+        72,
     );
     assert!(actions.is_empty());
 }
@@ -77,7 +80,7 @@ fn a_hand_merged_pull_request_reaches_an_escalated_or_failed_entry() {
         )
         .unwrap();
         let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 4, 0).unwrap();
-        let (merged, actions) = reconcile(&settled, &observations, now, 30);
+        let (merged, actions) = reconcile(&settled, &observations, now, 30, 72);
         assert_eq!(
             merged.entries[0].phase,
             LedgerPhase::Merged,
@@ -110,7 +113,7 @@ fn a_stale_recorded_pr_url_is_corrected_to_the_pull_request_that_actually_merged
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 4, 0).unwrap();
-    let (merged, _) = reconcile(&escalated, &observations, now, 30);
+    let (merged, _) = reconcile(&escalated, &observations, now, 30, 72);
     assert_eq!(merged.entries[0].phase, LedgerPhase::Merged);
     assert_eq!(
         merged.entries[0].pr_url.as_deref(),
@@ -136,7 +139,7 @@ fn an_unmerged_pull_request_leaves_a_settled_entry_where_it_is_and_says_nothing(
             ))
             .unwrap();
             let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 4, 0).unwrap();
-            let (unchanged, actions) = reconcile(&settled, &observations, now, 30);
+            let (unchanged, actions) = reconcile(&settled, &observations, now, 30, 72);
             assert_eq!(
                 unchanged.entries[0].phase, phase,
                 "phase {phase:?} state {state}"

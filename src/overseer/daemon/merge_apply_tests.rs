@@ -24,6 +24,8 @@ fn entry(repo: &str) -> LedgerEntry {
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
         merge_hold_recheck_head: None,
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
     }
 }
 

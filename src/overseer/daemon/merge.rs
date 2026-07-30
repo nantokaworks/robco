@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use super::{
     merge_apply::merge_now,
     merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
-    merge_gate,
+    merge_dependency, merge_gate,
     merge_hold::{self, HoldPlan},
     merge_hold_recheck,
     merge_judge_gate::{Judgment, judge_allows},
@@ -246,7 +246,10 @@ fn evaluate(
         judgments.forget_terminal_merge(&entry.task_id, url)?;
         return Ok(merge_decision::concluded(entry, conclusion).on(&head, &base));
     }
-    if let Some(halt) = merge_gate::gate(entry, url, &value, config, cache, registry, heads) {
+    let dependency = merge_dependency::probe(&entry.task_id);
+    if let Some(halt) = merge_gate::gate(
+        entry, url, &value, config, cache, registry, heads, dependency,
+    ) {
         return Ok(halt.on(&head, &base));
     }
     match judge_allows(entry, url, &value, config, judgments, consecutive_failures)? {
