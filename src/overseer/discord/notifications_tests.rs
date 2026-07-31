@@ -22,12 +22,63 @@ fn notification_puts_task_repo_and_pr_into_fields() {
         ..DiscordConfig::default()
     };
     let notification = from_decision(&config, &entry).unwrap();
-    assert_eq!(notification.description, "pr_opened");
+    assert_eq!(
+        notification.description,
+        "The worker opened a pull request."
+    );
     assert_eq!(field_value(&notification, "Task"), Some("`task-135`"));
     assert_eq!(field_value(&notification, "Repo"), Some("`acme/widgets`"));
     assert_eq!(
         field_value(&notification, "PR"),
         Some("[#1](https://example.test/pull/1)")
+    );
+    assert_eq!(field_value(&notification, "Reason"), Some("`pr_opened`"));
+}
+
+/// The humanized path: a known code becomes the sentence the localizer will
+/// translate, while the raw code moves into a `Reason` field the localizer
+/// never touches.
+#[test]
+fn a_known_reason_code_reads_as_a_sentence_with_the_raw_code_secondary() {
+    let mut entry = DecisionEntry::new(
+        DecisionKind::Escalate,
+        "merge_hold_cap_reached:checks_waiting",
+    );
+    entry.source = Some("auto_merge".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(
+        notification.description,
+        "The pull request was held on the same condition too many times."
+    );
+    assert_eq!(
+        field_value(&notification, "Reason"),
+        Some("`merge_hold_cap_reached:checks_waiting`")
+    );
+}
+
+#[test]
+fn an_unknown_reason_code_still_reads_verbatim_without_a_reason_field() {
+    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "some_future_code:detail");
+    entry.source = Some("reconcile".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(notification.description, "some_future_code:detail");
+    assert_eq!(field_value(&notification, "Reason"), None);
+}
+
+/// A judge's own words are already a sentence: the wrapper is stripped for
+/// the description and the full wrapped reason stays in the `Reason` field.
+#[test]
+fn a_judge_wrapped_reason_shows_the_judge_own_words() {
+    let mut entry = DecisionEntry::new(
+        DecisionKind::Escalate,
+        "judge_escalate:The change needs a rebase first.",
+    );
+    entry.source = Some("auto_merge".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(notification.description, "The change needs a rebase first.");
+    assert_eq!(
+        field_value(&notification, "Reason"),
+        Some("`judge_escalate:The change needs a rebase first.`")
     );
 }
 
@@ -44,10 +95,21 @@ fn a_pr_url_without_pull_segment_still_links() {
 
 #[test]
 fn a_notification_without_metadata_has_no_fields() {
+    // An unknown, prose-shaped reason: no Task/Repo/PR metadata and no
+    // humanized sentence, so nothing produces a field at all.
+    let entry = DecisionEntry::new(DecisionKind::Escalate, "stuck");
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert!(notification.fields.is_empty());
+}
+
+#[test]
+fn a_known_reason_without_metadata_carries_only_the_reason_field() {
     let mut entry = DecisionEntry::new(DecisionKind::Hold, "merged");
     entry.source = Some("daemon_event".into());
     let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
-    assert!(notification.fields.is_empty());
+    assert_eq!(notification.description, "The pull request was merged.");
+    assert_eq!(notification.fields.len(), 1);
+    assert_eq!(field_value(&notification, "Reason"), Some("`merged`"));
 }
 
 #[test]
