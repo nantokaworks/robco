@@ -1,13 +1,12 @@
-//! Japanese translations for scattered single strings: the `OverseerCategory`
-//! display label, the `src/overseer/` hint constants that surface in the
-//! TUI, and the named empty-state lines.
+//! Japanese translations for scattered single strings: the `src/overseer/`
+//! hint constants that surface in the TUI, and the named empty-state lines.
+//!
+//! UI item labels (headers, field names, status chrome — e.g. the
+//! `OverseerCategory` sidebar labels) stay English and have no entry here;
+//! only content (sentences, messages, hints) is translated (dropr:377).
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
-        // model.rs — OverseerCategory::display_label (Inbox only; the other
-        // four category names stay English on purpose, see task scope).
-        "Waiting on you" => "あなたの対応待ち",
-
         // src/overseer/mod.rs hint constants, rendered via
         // src/ui/overseer/render.rs and src/ui/input/overseer.rs.
         "dispatch is on but the Overseer daemon is not running — no tasks will be dispatched. Start it with `robco overseer run`, or install the always-on service with `robco overseer install-service`." => {

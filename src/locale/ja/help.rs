@@ -1,8 +1,12 @@
 //! Japanese translations for `src/ui/help.rs` — the `?` help screen.
+//!
+//! UI item labels (headers, field names, status chrome — e.g. the section
+//! headers like `Navigation` / `Sessions` / `General` and the title chrome)
+//! stay English and have no entry here; only content (the key-description
+//! lines and hints) is translated (dropr:377).
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
-        "Navigation" => "操作",
         "  j/k or arrows  move selection; OVERSEER rows open local control info" => {
             "  j/k または矢印  選択を移動。OVERSEER行はローカル制御情報を開く"
         }
@@ -15,7 +19,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  tab/shift-tab  cycle claude / diff / terminal view" => {
             "  tab/shift-tab  claude / diff / terminal 表示を切り替え"
         }
-        "Sessions" => "セッション",
         "  n              new agent under selected repo (title | initial prompt)" => {
             "  n              新規エージェント作成（タイトル | 初期プロンプト）"
         }
@@ -55,7 +58,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  R              reset dispatch circuit (when open)" => {
             "  R              dispatch回路をリセット（open時）"
         }
-        "Overseer inbox" => "Overseer受信箱",
         "  l              expand OVERSEER > Inbox to reach its item rows" => {
             "  l              OVERSEER > Inboxを展開し項目行を表示"
         }
@@ -74,7 +76,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 also: robco overseer clear-inbox" => {
             "                 同等コマンド: robco overseer clear-inbox"
         }
-        "Overseer discord" => "Overseer Discord",
         "  l              expand OVERSEER > Discord to reach its channel rows" => {
             "  l              OVERSEER > Discordを展開しチャンネル行を表示"
         }
@@ -84,7 +85,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 only while a turn is running for that channel)" => {
             "                 そのチャンネルでターン実行中のみ）"
         }
-        "Repo" => "リポジトリ",
         "  a              clone <git-url> [branch], or add local repo path" => {
             "  a              <git-url> [branch] をclone、またはローカルパスを追加"
         }
@@ -97,7 +97,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  p              edit and request PR from selected running agent" => {
             "  p              選択中の稼働エージェントからPRを編集・依頼"
         }
-        "Text prompts" => "テキスト入力",
         "  left/right     move the cursor within the text being typed" => {
             "  left/right     入力中テキスト内でカーソルを移動"
         }
@@ -110,7 +109,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  ctrl-w/ctrl-u  delete the previous word / back to the line start" => {
             "  ctrl-w/ctrl-u  直前の単語を削除 / 行頭まで削除"
         }
-        "Indicators" => "インジケーター",
         "  One primary per row: dead > running > waiting > TERM activity" => {
             "  行ごとの主表示は1つ：dead > running > waiting > TERM activity"
         }
@@ -154,7 +152,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  Child rows: * uncommitted changes   ⌁ tmux session" => {
             "  子行：* 未コミット変更あり   ⌁ tmuxセッションあり"
         }
-        "General" => "全般",
         "  ,              edit settings (config.json) in $EDITOR" => {
             "  ,              $EDITORで設定（config.json）を編集"
         }
@@ -163,7 +160,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "  q              エージェントを停止せずに終了"
         }
         "press any key to close" => "何かキーを押すと閉じます",
-        "help [j/k scroll {}/{}]" => "ヘルプ [j/k でスクロール {}/{}]",
         _ => return None,
     })
 }
