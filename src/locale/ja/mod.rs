@@ -6,6 +6,12 @@
 //! There is no requirement for coverage to be exhaustive: `locale::t` falls
 //! back to the English source for anything missing here, so an omission is
 //! safe, just untranslated.
+//!
+//! Label-vs-content rule (dropr:377): UI item labels — headers, field names,
+//! and status chrome — stay English and MUST NOT get a table entry; that
+//! fallback is how they render. Only content is translated: full sentences,
+//! action-result messages, hints, error text, empty-state lines, relative
+//! ages, and key-hint instructions.
 
 mod actions;
 mod dialog;

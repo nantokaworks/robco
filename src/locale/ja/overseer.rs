@@ -1,7 +1,11 @@
 //! Japanese translations for `src/ui/overseer/*.rs` — the Overseer panel's
-//! prose. The dense flag/pair rows (`daemon: alive`, `dispatch: on`, …) stay
-//! structural, per the task's carried-over judgment call; only the sentences
-//! and the relative-age wording around them are translated.
+//! prose.
+//!
+//! UI item labels (headers, field names, status chrome — e.g. `recent
+//! decisions`, `what this means` / `next step` / `reason`, and the dense
+//! flag/pair rows like `daemon: alive` / `dispatch: on`) stay English and
+//! have no entry here; only content (sentences, messages, hints, relative
+//! ages) is translated (dropr:377).
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -11,7 +15,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         // overseer/decisions.rs
         "worker blocked" => "workerがブロック中",
         "waiting on merge judge" => "merge judge待ち",
-        "recent decisions" => "最近の判断",
         "none" => "なし",
         "older entries stay in the decision log" => "それ以前の履歴はdecision logに残っています",
 
@@ -27,9 +30,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "{} — no live session to answer or approve" => {
             "{} — 回答・承認できる稼働中セッションがありません"
         }
-        "what this means" => "これはどういうことか",
-        "next step" => "次にすること",
-        "reason" => "理由",
 
         // overseer/discord_agents.rs
         "just now" => "たった今",
