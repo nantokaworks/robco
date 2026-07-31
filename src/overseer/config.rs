@@ -242,6 +242,12 @@ pub struct DiscordConfig {
     pub enabled: bool,
     pub token_env: String,
     pub channel_id: Option<String>,
+    /// Channel that receives the Overseer's reports — decision notifications
+    /// and digests. Unset, reports fall back to `channel_id`, so a config
+    /// written before this field existed keeps its single-channel behavior.
+    /// Chat replies, command responses, and confirmations never route
+    /// through this; they stay on the channel the message came from.
+    pub notify_channel_id: Option<String>,
     pub allowed_user_ids: Vec<String>,
     /// Notification verbosity baseline; the sole gate for which events post.
     pub notify_level: NotifyLevel,
@@ -275,6 +281,7 @@ impl Default for DiscordConfig {
             enabled: false,
             token_env: default_discord_token_env(),
             channel_id: None,
+            notify_channel_id: None,
             allowed_user_ids: Vec::new(),
             notify_level: NotifyLevel::default(),
             notify_localize: true,

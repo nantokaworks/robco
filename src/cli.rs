@@ -89,6 +89,9 @@ pub enum OverseerCommand {
     Set(OverseerSetArgs),
     /// Set the daily dispatch limit (0 = unlimited).
     DailyLimit(OverseerDailyLimitArgs),
+    /// Choose the channel that receives reports (decision notifications and
+    /// digests). Cleared, reports fall back to the chat channel.
+    NotifyChannel(OverseerNotifyChannelArgs),
     /// Set how strictly auto-merge requires the base branch to be protected.
     Protection(OverseerProtectionArgs),
     /// Set how much of the merge envelope the daemon may clear on its own.
@@ -129,6 +132,16 @@ pub struct OverseerStatusArgs {
 pub struct OverseerDailyLimitArgs {
     /// Maximum worker dispatches per day; 0 means unlimited.
     pub value: u32,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct OverseerNotifyChannelArgs {
+    /// Discord channel id that receives reports.
+    #[arg(required_unless_present = "clear")]
+    pub channel_id: Option<String>,
+    /// Clear the report channel; reports fall back to the chat channel.
+    #[arg(long, conflicts_with = "channel_id")]
+    pub clear: bool,
 }
 
 #[derive(Debug, ClapArgs)]

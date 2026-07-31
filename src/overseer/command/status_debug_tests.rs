@@ -106,6 +106,31 @@ fn toggle_line_reports_dispatch_off_when_dispatch_is_disabled() {
 }
 
 #[test]
+fn the_discord_line_names_where_reports_go_and_why() {
+    use crate::overseer::config::DiscordConfig;
+
+    let mut discord = DiscordConfig::default();
+    assert_eq!(discord_line(&discord), "discord: off");
+
+    discord.enabled = true;
+    assert_eq!(discord_line(&discord), "discord: on  reports -> unset");
+
+    // The parenthetical is the diagnosis: `(chat channel)` says the dedicated
+    // channel is unset, not that it happens to equal the chat one.
+    discord.channel_id = Some("100".into());
+    assert_eq!(
+        discord_line(&discord),
+        "discord: on  reports -> 100 (chat channel)"
+    );
+
+    discord.notify_channel_id = Some("200".into());
+    assert_eq!(
+        discord_line(&discord),
+        "discord: on  reports -> 200 (notify-channel)"
+    );
+}
+
+#[test]
 fn the_review_line_separates_the_pass_from_its_reviewer_model() {
     // The findings pass runs on its interval either way, so a missing profile is
     // "no model read the digest", not "nothing looked". Printing one word for

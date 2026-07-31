@@ -65,6 +65,36 @@ pub(super) fn daily_limit(value: u32) -> Result<()> {
     Ok(())
 }
 
+/// `robco overseer notify-channel <id>` / `--clear`: where reports — decision
+/// notifications and digests — are delivered. The id is validated here so a
+/// typo fails at the terminal instead of silently falling back to the chat
+/// channel on every send (see `notify::report_channel_id`).
+pub(super) fn notify_channel(value: Option<String>) -> Result<()> {
+    if let Some(raw) = value.as_deref()
+        && raw.parse::<u64>().ok().filter(|id| *id != 0).is_none()
+    {
+        return Err(std::io::Error::other(format!(
+            "invalid Discord channel id: {raw} (expected a non-zero number)"
+        ))
+        .into());
+    }
+    crate::config::ensure_robco_dir()?;
+    persist_notify_channel_at(&crate::config::config_file_path()?, value.clone())?;
+    match value {
+        Some(id) => println!("notify channel: {id}"),
+        None => println!("notify channel: unset (reports follow the chat channel)"),
+    }
+    Ok(())
+}
+
+/// Split from the printing so the round-trip can be tested against a temp file
+/// rather than the operator's own `~/.robco/config.json`.
+fn persist_notify_channel_at(path: &Path, value: Option<String>) -> Result<()> {
+    let mut config = Config::load_at(path)?;
+    config.overseer.discord.notify_channel_id = value;
+    config.save_at(path)
+}
+
 pub(super) fn protection_mode(mode: ProtectionMode) -> Result<()> {
     let mut config = Config::load()?;
     config.overseer.protection_mode = mode;
