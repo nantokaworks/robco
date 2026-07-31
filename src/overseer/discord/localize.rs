@@ -4,11 +4,15 @@
 //!
 //! Design choice: the cache key is the *whole* rendered notification
 //! (language, title, description), not the title alone. A title-only key
-//! would risk serving a cached description — with another entry's task id,
-//! repo, or PR url baked in — for a title that recurs with different data.
-//! Keying on the full content only saves a spawn for a genuine repeat (the
-//! same event redelivered after a failed send, or an identical digest), but
-//! never serves a stale identifier.
+//! would risk serving a cached description — with another entry's data baked
+//! in — for a title that recurs with different data. Keying on the full
+//! content only saves a spawn for a genuine repeat, but never serves stale
+//! text.
+//!
+//! Embed fields (task id, repo, PR link) are never translated at all: only
+//! title and description reach the session, and every resolved notification
+//! takes its fields from the live English rendering. Identifiers and links
+//! therefore survive both translation and cache hits untouched.
 
 use super::{notifications::Notification, ops_agent::PendingSession};
 use crate::{
@@ -52,6 +56,7 @@ impl TitleCache {
             title: title.clone(),
             description: description.clone(),
             color: notification.color,
+            fields: notification.fields.clone(),
         })
     }
 
@@ -102,7 +107,7 @@ pub(super) fn resolve(
     fallback: &Notification,
     result: Result<Vec<u8>, String>,
 ) -> Notification {
-    let localized = result.and_then(|raw| parse(&raw, fallback.color));
+    let localized = result.and_then(|raw| parse(&raw, fallback));
     match localized {
         Ok(notification) => {
             cache.insert(language, fallback, &notification);
@@ -211,7 +216,7 @@ fn is_complete(raw: &[u8]) -> bool {
     serde_json::from_slice::<RawLocalized>(raw).is_ok()
 }
 
-fn parse(raw: &[u8], color: u32) -> Result<Notification, String> {
+fn parse(raw: &[u8], fallback: &Notification) -> Result<Notification, String> {
     let result: RawLocalized = serde_json::from_slice(raw).map_err(|error| error.to_string())?;
     if result.title.trim().is_empty() || result.description.trim().is_empty() {
         return Err("localized title/description must not be blank".into());
@@ -219,7 +224,8 @@ fn parse(raw: &[u8], color: u32) -> Result<Notification, String> {
     Ok(Notification {
         title: result.title,
         description: result.description,
-        color,
+        color: fallback.color,
+        fields: fallback.fields.clone(),
     })
 }
 

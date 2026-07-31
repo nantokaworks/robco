@@ -1,5 +1,8 @@
 use super::{
-    commands::Command, handler::CommandExecutor, ledger_requests::LedgerRequest,
+    commands::Command,
+    handler::{CommandExecutor, describe_command},
+    ledger_requests::LedgerRequest,
+    respond::{bounded_rows, code_block},
     task_create::create_task,
 };
 use crate::{
@@ -141,16 +144,17 @@ fn status() -> crate::Result<String> {
 /// honours, so the two surfaces cannot disagree about whether the Overseer is
 /// running.
 fn status_line(config: &OverseerConfig, active: usize, dispatched_today: u32) -> String {
-    format!(
-        "dispatch={} automerge={} autonomy={} workers={}/{} today={}/{}",
-        on_off(config.dispatch_enabled),
-        on_off(config.auto_merge),
-        config.autonomy_level.label(),
-        active,
-        config.max_workers,
-        dispatched_today,
-        format_dispatch_limit(config.daily_dispatch_limit)
-    )
+    [
+        format!("**dispatch** {}", on_off(config.dispatch_enabled)),
+        format!("**automerge** {}", on_off(config.auto_merge)),
+        format!("**autonomy** {}", config.autonomy_level.label()),
+        format!("**workers** {active}/{}", config.max_workers),
+        format!(
+            "**today** {dispatched_today}/{}",
+            format_dispatch_limit(config.daily_dispatch_limit)
+        ),
+    ]
+    .join("\n")
 }
 
 fn workers() -> crate::Result<String> {
@@ -160,12 +164,12 @@ fn workers() -> crate::Result<String> {
         .iter()
         .flat_map(|repo| &repo.agents)
         .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()))
-        .map(|agent| format!("{}: {:?}", agent.id, agent.status))
+        .map(|agent| format!("`{}` {}", agent.id, agent.status.badge()))
         .collect();
     Ok(if rows.is_empty() {
         "no overseer workers".into()
     } else {
-        rows.join("\n")
+        bounded_rows(&rows)
     })
 }
 
@@ -173,12 +177,19 @@ fn tasks() -> crate::Result<String> {
     let rows: Vec<_> = Ledger::load()?
         .entries
         .into_iter()
-        .map(|entry| format!("{} {} {:?}", entry.display_id, entry.task_id, entry.phase))
+        .map(|entry| {
+            format!(
+                "{} {} {}",
+                entry.display_id,
+                entry.task_id,
+                entry.phase.label()
+            )
+        })
         .collect();
     Ok(if rows.is_empty() {
         "no tasks".into()
     } else {
-        rows.join("\n")
+        code_block(&rows)
     })
 }
 
@@ -227,9 +238,9 @@ fn format_decisions(limit: usize) -> crate::Result<String> {
         .into_iter()
         .map(|entry| {
             format!(
-                "{} {:?} {}",
+                "{} {} {}",
                 entry.at.to_rfc3339(),
-                entry.kind,
+                entry.kind.label(),
                 entry.reason
             )
         })
@@ -237,7 +248,7 @@ fn format_decisions(limit: usize) -> crate::Result<String> {
     Ok(if rows.is_empty() {
         "no decisions".into()
     } else {
-        rows.join("\n")
+        code_block(&rows)
     })
 }
 
@@ -251,7 +262,10 @@ fn audit_entry(command: &Command, user_id: &str, outcome: &str) -> DecisionEntry
         Command::Retry(_) => DecisionKind::Dispatch,
         _ => DecisionKind::Hold,
     };
-    let mut entry = DecisionEntry::new(kind, format!("command {outcome}: {command:?}"));
+    let mut entry = DecisionEntry::new(
+        kind,
+        format!("command {outcome}: {}", describe_command(command)),
+    );
     entry.source = Some("discord".into());
     entry.user_id = Some(user_id.into());
     entry.task = match command {
@@ -273,28 +287,5 @@ fn on_off(value: bool) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn audit_entries_identify_discord_user() {
-        let entry = audit_entry(&Command::Skip("task-1".into()), "user-7", "failed: denied");
-        assert_eq!(entry.source.as_deref(), Some("discord"));
-        assert_eq!(entry.user_id.as_deref(), Some("user-7"));
-        assert_eq!(entry.task.as_deref(), Some("task-1"));
-        assert!(entry.reason.contains("failed: denied"));
-    }
-
-    #[test]
-    fn status_line_reports_no_switch_the_daemon_ignores() {
-        let config = OverseerConfig::default();
-        assert!(config.dispatch_enabled);
-        let line = status_line(&config, 1, 4);
-        assert_eq!(
-            line,
-            "dispatch=on automerge=off autonomy=conservative workers=1/3 today=4/20"
-        );
-        // A dispatching daemon must never be described as switched off.
-        assert!(!line.contains("overseer=off"));
-    }
-}
+#[path = "actions_tests.rs"]
+mod tests;

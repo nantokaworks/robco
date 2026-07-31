@@ -6,6 +6,10 @@ fn notification(title: &str, description: &str) -> Notification {
         title: title.into(),
         description: description.into(),
         color: 0x123456,
+        fields: vec![super::super::notifications::NotificationField {
+            name: "Task".into(),
+            value: "`task-1`".into(),
+        }],
     }
 }
 
@@ -78,6 +82,8 @@ fn successful_localization_replaces_title_and_description() {
     assert_eq!(localized.title, "マージ済み");
     assert_eq!(localized.description, "詳細");
     assert_eq!(localized.color, 0x123456);
+    // Fields carry ids and links; they must come through untranslated.
+    assert_eq!(localized.fields, notification("Merged", "body").fields);
 }
 
 #[test]

@@ -195,11 +195,17 @@ pub(super) fn channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {
 }
 
 async fn send_embed(http: &Client, channel: Id<ChannelMarker>, notification: Notification) -> bool {
+    let fields = notification
+        .fields
+        .iter()
+        .map(|field| json!({"name": field.name, "value": field.value, "inline": true}))
+        .collect::<Vec<_>>();
     let embed: Embed = match serde_json::from_value(json!({
         "title": notification.title,
         "description": notification.description,
         "color": notification.color,
-        "type": "rich"
+        "type": "rich",
+        "fields": fields
     })) {
         Ok(embed) => embed,
         Err(error) => {
