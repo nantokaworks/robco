@@ -133,14 +133,29 @@ pub async fn run(
                                 ).await;
                             }
                         } else {
-                            match ops.route(
+                            let outcome = ops.route(
                                 &message_channel,
                                 &message.author.id.to_string(),
                                 &message.content,
                                 &message_id,
                                 &mut spawner,
                                 category_member,
-                            ) {
+                            );
+                            // A started turn refreshes the channel's stored
+                            // name (dropr:380) — MESSAGE_CREATE does not carry
+                            // it, so it costs one REST fetch, spent only when
+                            // a turn actually starts. A failed fetch keeps the
+                            // old name and never fails the turn.
+                            if matches!(outcome, RouteOutcome::Started(_)) {
+                                match fetch_channel_name(&http, message.channel_id).await {
+                                    Ok(Some(name)) => ops.record_channel_name(&message_channel, &name),
+                                    Ok(None) => {}
+                                    Err(error) => eprintln!(
+                                        "overseer: Discord channel name fetch failed: {error}"
+                                    ),
+                                }
+                            }
+                            match outcome {
                                 RouteOutcome::Ignored => {}
                                 // Both accepted outcomes carry their reaction
                                 // trail, so they are driven identically here;
@@ -213,6 +228,24 @@ async fn fetch_parent_category(
         .await
         .map_err(|error| error.to_string())?;
     Ok(channel.parent_id.map(|id| id.to_string()))
+}
+
+/// Resolves a channel's human-readable name over Discord's HTTP API
+/// (dropr:380) — the same `channel(id).model()` pattern as
+/// `fetch_parent_category`, reading `name` instead of `parent_id`. `None`
+/// for channel kinds that have no name (DMs).
+async fn fetch_channel_name(
+    http: &Client,
+    channel_id: Id<ChannelMarker>,
+) -> Result<Option<String>, String> {
+    let channel = http
+        .channel(channel_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .model()
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(channel.name)
 }
 
 pub(super) async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &str) -> bool {

@@ -111,6 +111,7 @@ fn expanding_discord_and_selecting_a_channel_row_routes_enter_to_attach() {
             status: crate::overseer::discord_channels::ChannelAgentStatus::Idle,
             last_error: None,
             history: Vec::new(),
+            channel_name: None,
         },
     );
 
@@ -165,6 +166,7 @@ fn a_channel_no_longer_listed_reports_explicitly_instead_of_doing_nothing() {
             status: crate::overseer::discord_channels::ChannelAgentStatus::Idle,
             last_error: None,
             history: Vec::new(),
+            channel_name: None,
         },
     );
     app.set_overseer_category_expanded(OverseerCategory::Discord, true);

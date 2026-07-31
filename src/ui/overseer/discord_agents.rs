@@ -52,7 +52,7 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
             continue;
         };
         lines.push(channel_line(
-            channel_id,
+            &channels.display_label(channel_id),
             agent,
             selected == Some(index),
             app.locale,
@@ -68,7 +68,7 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
 }
 
 fn channel_line(
-    channel_id: &str,
+    label: &str,
     agent: &ChannelAgent,
     selected: bool,
     locale: Locale,
@@ -90,7 +90,7 @@ fn channel_line(
         THEME.status_style(status)
     };
     Line::from(vec![
-        Span::styled(format!("{marker}   {channel_id}{GAP}"), row_style),
+        Span::styled(format!("{marker}   {label}{GAP}"), row_style),
         Span::styled(
             format!(
                 "{} · {}t · {}",
@@ -136,6 +136,7 @@ mod tests {
             status,
             last_error: None,
             history: Vec::new(),
+            channel_name: None,
         }
     }
 
@@ -188,6 +189,23 @@ mod tests {
 
         let lines = detail_lines(&app);
         assert!(text_of(&lines[0]).starts_with('>'));
+    }
+
+    #[test]
+    fn a_named_channel_renders_its_name_and_an_unnamed_one_falls_back_to_the_id() {
+        let mut channels = DiscordChannels::default();
+        let mut named = agent(ChannelAgentStatus::Idle, 1, 1);
+        named.channel_name = Some("general".into());
+        channels.channels.insert("111222333".into(), named);
+        channels
+            .channels
+            .insert("999888777".into(), agent(ChannelAgentStatus::Idle, 1, 30));
+
+        let app = app_with_channels(channels);
+        let lines = detail_lines(&app);
+        assert!(text_of(&lines[0]).contains("#general"));
+        assert!(!text_of(&lines[0]).contains("111222333"));
+        assert!(text_of(&lines[1]).contains("999888777"));
     }
 
     #[test]
