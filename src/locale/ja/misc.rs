@@ -4,8 +4,8 @@
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
-        // model.rs — OverseerCategory::display_label (Inbox only; the other
-        // four category names stay English on purpose, see task scope).
+        // model.rs — OverseerCategory::display_label (Inbox only; every other
+        // category name stays English on purpose, see task scope).
         "Waiting on you" => "あなたの対応待ち",
 
         // src/overseer/mod.rs hint constants, rendered via

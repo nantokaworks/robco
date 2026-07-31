@@ -15,12 +15,11 @@ use crate::ui::{App, theme::DEFAULT as THEME};
 /// status glyph and a category's summary both sit one of these off their label.
 const GAP: &str = "  ";
 
-/// Indent of the Inbox item rows — the only detail the frame still nests, now
-/// that the read-only categories have stopped expanding. It matches the column
-/// `category_line` puts every category label at, so the items read as sitting
-/// under the Inbox label instead of being outdented past it. On a 24-column
-/// sidebar every column spent here is a column of content lost, so the frame
-/// nests in one step and stops.
+/// Indent of every nested row — Inbox items, Discord channels, and the
+/// Details children. It matches the column `category_line` puts every category
+/// label at, so the nested rows read as sitting under their label instead of
+/// being outdented past it. On a 24-column sidebar every column spent here is
+/// a column of content lost, so the frame nests in one step and stops.
 const DETAIL_INDENT: &str = "    ";
 
 pub(in crate::ui) struct FrameContent {
@@ -96,29 +95,51 @@ fn build_content_with_warnings(
             summary,
             *warn,
         ));
-        // Only a category with rows of its own expands here. The other three
-        // keep their one-line summary; their detail stays reachable, unchanged,
-        // in the Info preview tab via `overseer::category_preview`.
-        if category.has_children() && app.overseer_category_expanded(category) {
-            let first_detail = lines.len();
-            lines.extend(
-                crate::ui::overseer::category_detail(app, category)
-                    .into_iter()
-                    .map(indent_detail),
-            );
-            // Item rows (Inbox, Discord channels) are rows, not read-only
-            // detail: when the cursor is on one, it — not the category above
-            // it — is what the frame scrolls to keep on screen. Each detail
-            // builder draws the marker itself and emits nothing ahead of its
-            // items, so item `n` is detail row `n`.
-            let item_index = match (category, selected) {
-                (OverseerCategory::Inbox, Some(Selection::OverseerInbox(index))) => Some(index),
-                (OverseerCategory::Discord, Some(Selection::DiscordChannel(index))) => Some(index),
-                _ => None,
-            };
-            if let Some(index) = item_index {
-                selected_row = u16::try_from(first_detail + index).unwrap_or(u16::MAX);
+        // Only a category with rows of its own expands here. Health keeps its
+        // one-line summary; its detail stays reachable, unchanged, in the Info
+        // preview tab via `overseer::category_preview`.
+        if !category.has_children() || !app.overseer_category_expanded(category) {
+            continue;
+        }
+        if category == OverseerCategory::Details {
+            // Details expands into the two category rows it folded away
+            // (dropr:378), not into read-only detail text: each child is a
+            // selection target with a summary of its own, drawn with the same
+            // row idiom as its parent and nested by the frame's one indent.
+            for child in OverseerCategory::DETAILS_CHILDREN {
+                let child_selected = selected == Some(Selection::OverseerCategory(child));
+                if child_selected {
+                    selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+                }
+                let (summary, warn) = crate::ui::overseer::category_summary(app, child);
+                lines.push(indent_detail(category_line(
+                    app,
+                    child,
+                    child_selected,
+                    &summary,
+                    warn,
+                )));
             }
+            continue;
+        }
+        let first_detail = lines.len();
+        lines.extend(
+            crate::ui::overseer::category_detail(app, category)
+                .into_iter()
+                .map(indent_detail),
+        );
+        // Item rows (Inbox, Discord channels) are rows, not read-only
+        // detail: when the cursor is on one, it — not the category above
+        // it — is what the frame scrolls to keep on screen. Each detail
+        // builder draws the marker itself and emits nothing ahead of its
+        // items, so item `n` is detail row `n`.
+        let item_index = match (category, selected) {
+            (OverseerCategory::Inbox, Some(Selection::OverseerInbox(index))) => Some(index),
+            (OverseerCategory::Discord, Some(Selection::DiscordChannel(index))) => Some(index),
+            _ => None,
+        };
+        if let Some(index) = item_index {
+            selected_row = u16::try_from(first_detail + index).unwrap_or(u16::MAX);
         }
     }
 

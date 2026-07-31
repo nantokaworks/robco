@@ -121,8 +121,8 @@ fn the_clear_key_is_not_offered_from_another_overseer_category() {
     app.selected = app
         .visible()
         .iter()
-        .position(|row| *row == Selection::OverseerCategory(OverseerCategory::Ledger))
-        .expect("no Ledger category row");
+        .position(|row| *row == Selection::OverseerCategory(OverseerCategory::Health))
+        .expect("no Health category row");
 
     assert!(!handle_normal(&mut app, KeyCode::Char('D')));
     assert!(matches!(app.mode, Mode::Normal));

@@ -59,11 +59,11 @@ fn overseer_expand_collapse_keys_update_tree() {
     app.orphans = Vec::new();
 
     // The header is not a row of its own, so the first row is the control AI,
-    // followed by the five categories, which are always listed.
-    assert_eq!(app.visible().len(), 6);
+    // followed by the four categories, which are always listed.
+    assert_eq!(app.visible().len(), 5);
     assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
 
-    // Inbox is the one category the keys still act on; the read-only three are
+    // Inbox is the one category these keys are asserted on; read-only Health is
     // covered by `overseer_frame::tests::a_leaf_category_cannot_be_expanded_by_any_key`.
     app.selected = OverseerCategory::Inbox.index() + 1;
     assert_eq!(
