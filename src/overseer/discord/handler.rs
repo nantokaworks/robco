@@ -238,7 +238,7 @@ impl Handler {
     }
 }
 
-fn describe_command(command: &Command) -> String {
+pub(super) fn describe_command(command: &Command) -> String {
     match command {
         Command::Status => "status".into(),
         Command::Dispatch(value) => format!("dispatch {}", on_off(*value)),

@@ -3,11 +3,31 @@ use crate::overseer::{
     logging::{DecisionEntry, DecisionKind},
 };
 
+/// Discord caps an embed description at 4096 chars.
+const DESCRIPTION_LIMIT: usize = 4096;
+/// Discord caps an embed field value at 1024 chars.
+const FIELD_VALUE_LIMIT: usize = 1024;
+/// How many digest alerts are listed before the `… and N more` tail.
+const DIGEST_ALERT_LINES: usize = 10;
+/// Room reserved inside `DESCRIPTION_LIMIT` for the `… and N more` tail.
+const TAIL_RESERVE: usize = 32;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotificationField {
+    pub name: String,
+    pub value: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Notification {
     pub title: String,
     pub description: String,
     pub color: u32,
+    /// Inline embed fields (Task / Repo / PR). Never localized: they carry
+    /// ids and links that must survive translation untouched — see
+    /// `localize.rs`, which translates only title and description and
+    /// re-attaches these from the original notification.
+    pub fields: Vec<NotificationField>,
 }
 
 pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<Notification> {
@@ -40,21 +60,49 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     if !config.notify_level.admits(tier) {
         return None;
     }
-    let mut details = vec![entry.reason.clone()];
+    let mut fields = Vec::new();
     if let Some(task) = &entry.task {
-        details.push(format!("Task: {task}"));
+        fields.push(field("Task", format!("`{task}`")));
     }
     if let Some(repo) = &entry.repo {
-        details.push(format!("Repo: {repo}"));
+        fields.push(field("Repo", format!("`{repo}`")));
     }
     if let Some(url) = &entry.pr_url {
-        details.push(format!("PR: {url}"));
+        fields.push(field("PR", pr_link(url)));
     }
     Some(Notification {
         title: title.into(),
-        description: details.join("\n"),
+        // The reason stays verbatim — operators read the raw decision text.
+        description: clip(&entry.reason, DESCRIPTION_LIMIT),
         color,
+        fields,
     })
+}
+
+fn field(name: &str, value: String) -> NotificationField {
+    NotificationField {
+        name: name.into(),
+        value: clip(&value, FIELD_VALUE_LIMIT),
+    }
+}
+
+/// A clickable markdown link for a PR url, labeled `#123` when the url has
+/// the usual `/pull/123` shape, or the raw url otherwise.
+fn pr_link(url: &str) -> String {
+    let label = url
+        .rsplit_once("/pull/")
+        .map(|(_, number)| format!("#{number}"))
+        .unwrap_or_else(|| url.to_string());
+    format!("[{label}]({url})")
+}
+
+fn clip(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.into();
+    }
+    let mut clipped: String = text.chars().take(max_chars.saturating_sub(1)).collect();
+    clipped.push('…');
+    clipped
 }
 
 pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notification> {
@@ -73,162 +121,40 @@ pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notif
         })
         .cloned()
         .collect::<Vec<_>>();
-    let description = crate::overseer::logging::coalesce_digest(&enabled)?;
+    if enabled.is_empty() {
+        return None;
+    }
     Some(Notification {
         title: "Overseer digest".into(),
-        description,
+        description: digest_description(&enabled),
         color: 0xf1c40f,
+        fields: Vec::new(),
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn notification_includes_task_and_pr_url() {
-        let mut entry = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
-        entry.source = Some("daemon_event".into());
-        entry.task = Some("task-135".into());
-        entry.pr_url = Some("https://example.test/pull/1".into());
-        // `pr_opened` is `all`-tier, above the `summary` default, so this
-        // exercises it at the level that admits it.
-        let config = DiscordConfig {
-            notify_level: crate::overseer::config::NotifyLevel::All,
-            ..DiscordConfig::default()
-        };
-        let notification = from_decision(&config, &entry).unwrap();
-        assert!(notification.description.contains("task-135"));
-        assert!(
-            notification
-                .description
-                .contains("https://example.test/pull/1")
-        );
-    }
-
-    #[test]
-    fn task_failed_and_task_escalated_are_errors_tier() {
-        let mut failed = DecisionEntry::new(DecisionKind::Hold, "task_failed");
-        failed.source = Some("daemon_event".into());
-        let mut escalated = DecisionEntry::new(DecisionKind::Escalate, "task_escalated");
-        escalated.source = Some("daemon_event".into());
-
-        let config = DiscordConfig::default();
-        assert!(from_decision(&config, &failed).is_some());
-        assert!(from_decision(&config, &escalated).is_some());
-
-        let off = DiscordConfig {
-            notify_level: crate::overseer::config::NotifyLevel::Off,
-            ..DiscordConfig::default()
-        };
-        assert!(from_decision(&off, &failed).is_none());
-        assert!(from_decision(&off, &escalated).is_none());
-    }
-
-    /// The suppression `merge_escalation` decides at decision-write time: a
-    /// merge escalation the recheck loop may still resolve on its own must
-    /// not reach Discord, regardless of which tier it would otherwise match.
-    #[test]
-    fn a_transient_merge_escalation_is_suppressed() {
-        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "merge_hold_cap_reached:x");
-        entry.source = Some("auto_merge".into());
-        entry.escalation_notify = Some(false);
-        assert!(from_decision(&DiscordConfig::default(), &entry).is_none());
-    }
-
-    #[test]
-    fn a_terminal_merge_escalation_still_notifies() {
-        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "merge_recovery_cap_reached");
-        entry.source = Some("merge_recovery".into());
-        entry.escalation_notify = Some(true);
-        assert!(from_decision(&DiscordConfig::default(), &entry).is_some());
-    }
-
-    /// A decision outside the merge-escalation vocabulary carries no tag at
-    /// all, so it must notify exactly as it did before the tag existed.
-    #[test]
-    fn an_untagged_escalate_decision_is_unaffected() {
-        let mut entry = DecisionEntry::new(DecisionKind::Escalate, "worker blocked");
-        entry.source = Some("reconcile".into());
-        assert_eq!(entry.escalation_notify, None);
-        assert!(from_decision(&DiscordConfig::default(), &entry).is_some());
-    }
-
-    #[test]
-    fn digest_drops_a_suppressed_transient_escalation_but_keeps_the_rest() {
-        let mut suppressed = DecisionEntry::new(DecisionKind::Escalate, "merge_hold_cap_reached:x");
-        suppressed.escalation_notify = Some(false);
-        let kept = DecisionEntry::new(DecisionKind::Escalate, "other-alert");
-        let notification = digest(&DiscordConfig::default(), &[suppressed.clone(), kept]).unwrap();
-        assert!(notification.description.contains("other-alert"));
-        assert!(!notification.description.contains("merge_hold_cap_reached"));
-
-        // Suppress every entry: nothing is left to digest.
-        assert!(digest(&DiscordConfig::default(), &[suppressed.clone(), suppressed]).is_none());
-    }
-
-    #[test]
-    fn escalation_digest_is_one_notification() {
-        let entries = (0..3)
-            .map(|index| DecisionEntry::new(DecisionKind::Escalate, format!("blocked-{index}")))
-            .collect::<Vec<_>>();
-        let notification = digest(&DiscordConfig::default(), &entries).unwrap();
-        assert!(notification.description.starts_with("3 overseer alert(s):"));
-        assert_eq!(notification.description.lines().count(), 1);
-    }
-
-    #[test]
-    fn summary_level_admits_task_started_finish_and_drain_but_not_pr_opened() {
-        let config = DiscordConfig::default();
-        assert_eq!(
-            config.notify_level,
-            crate::overseer::config::NotifyLevel::Summary
-        );
-
-        for (reason, kind) in [
-            ("task_started", DecisionKind::Dispatch),
-            ("merged", DecisionKind::Merge),
-            ("queue_drained", DecisionKind::Skip),
-            ("task_failed", DecisionKind::Hold),
-        ] {
-            let mut entry = DecisionEntry::new(kind, reason);
-            entry.source = Some("daemon_event".into());
-            assert!(
-                from_decision(&config, &entry).is_some(),
-                "{reason} should fire at the summary default"
-            );
+/// One markdown bullet per alert, bounded by both a line count and the embed
+/// description limit; alerts that do not fit collapse into `… and N more`.
+fn digest_description(alerts: &[DecisionEntry]) -> String {
+    let mut lines = vec![format!("**{} overseer alert(s)**", alerts.len())];
+    let mut used = lines[0].chars().count();
+    let mut shown = 0;
+    for entry in alerts.iter().take(DIGEST_ALERT_LINES) {
+        let target = entry.task.as_deref().unwrap_or("overseer");
+        let line = format!("- `{target}`: {}", clip(&entry.reason, 200));
+        if used + line.chars().count() + 1 > DESCRIPTION_LIMIT - TAIL_RESERVE {
+            break;
         }
-
-        let mut pr_opened = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
-        pr_opened.source = Some("daemon_event".into());
-        assert!(
-            from_decision(&config, &pr_opened).is_none(),
-            "pr_opened is all-tier and must stay silent at the summary default"
-        );
+        used += line.chars().count() + 1;
+        lines.push(line);
+        shown += 1;
     }
-
-    #[test]
-    fn errors_level_silences_task_started_merged_and_drain() {
-        let config = DiscordConfig {
-            notify_level: crate::overseer::config::NotifyLevel::Errors,
-            ..DiscordConfig::default()
-        };
-
-        for (reason, kind) in [
-            ("task_started", DecisionKind::Dispatch),
-            ("merged", DecisionKind::Merge),
-            ("queue_drained", DecisionKind::Skip),
-        ] {
-            let mut entry = DecisionEntry::new(kind, reason);
-            entry.source = Some("daemon_event".into());
-            assert!(
-                from_decision(&config, &entry).is_none(),
-                "{reason} is summary-tier and must stay silent at errors"
-            );
-        }
-
-        let mut failed = DecisionEntry::new(DecisionKind::Hold, "task_failed");
-        failed.source = Some("daemon_event".into());
-        assert!(from_decision(&config, &failed).is_some());
+    let remaining = alerts.len() - shown;
+    if remaining > 0 {
+        lines.push(format!("… and {remaining} more"));
     }
+    lines.join("\n")
 }
+
+#[cfg(test)]
+#[path = "notifications_tests.rs"]
+mod tests;

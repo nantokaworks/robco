@@ -23,6 +23,21 @@ pub enum DecisionKind {
     CircuitOpen,
 }
 
+impl DecisionKind {
+    /// The kind's name as the serialized log spells it, for operator-facing
+    /// text that must not leak Rust `{:?}` output.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dispatch => "dispatch",
+            Self::Skip => "skip",
+            Self::Merge => "merge",
+            Self::Hold => "hold",
+            Self::Escalate => "escalate",
+            Self::CircuitOpen => "circuit_open",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DecisionEntry {
     pub at: DateTime<Utc>,
