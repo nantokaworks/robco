@@ -45,7 +45,11 @@ impl App {
     pub(super) fn collapse_selected_tree_item(&mut self) {
         match self.selected_item() {
             Some(Selection::OverseerCategory(category)) => {
-                self.set_overseer_category_expanded(category, false);
+                // A nested category row (Ledger / Decisions under Details) has
+                // no expansion of its own to collapse, so it folds its parent
+                // away instead — the same shape as the inbox-item arm below.
+                let target = category.parent().unwrap_or(category);
+                self.set_overseer_category_expanded(target, false);
             }
             // An item row collapses the category that owns it, like a child row
             // folding away under its parent.
@@ -103,6 +107,29 @@ mod tests {
         app.expand_selected_tree_item();
         app.collapse_selected_tree_item();
         assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
+    }
+
+    #[test]
+    fn collapsing_a_details_child_folds_the_details_row_away() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = true;
+        app.set_overseer_category_expanded(crate::model::OverseerCategory::Details, true);
+        app.selected = app
+            .visible()
+            .iter()
+            .position(|row| {
+                *row == Selection::OverseerCategory(crate::model::OverseerCategory::Ledger)
+            })
+            .expect("no Ledger child row");
+
+        // A nested category row has no expansion of its own, so `h` folds its
+        // parent away — the same shape as an inbox item collapsing Inbox.
+        app.collapse_selected_tree_item();
+        assert!(!app.overseer_category_expanded(crate::model::OverseerCategory::Details));
+        assert!(!app.visible().contains(&Selection::OverseerCategory(
+            crate::model::OverseerCategory::Ledger
+        )));
     }
 
     #[test]
