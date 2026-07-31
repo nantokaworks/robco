@@ -27,28 +27,32 @@ pub(crate) fn discord<R: BufRead, W: Write>(
         return Ok(());
     }
     discord.notify_level = notify_level(input, output, discord.notify_level)?;
+    writeln!(
+        output,
+        "▌ robco ▸ NOTE ············· for the next answers: leave blank to keep the shown value, enter '-' to clear it"
+    )?;
     discord.channel_id = optional_id(
         input,
         output,
-        "Discord channel ID (blank keep, '-' clear)",
+        "Discord channel ID (leave blank to keep, enter '-' to clear)",
         discord.channel_id.as_deref().unwrap_or(""),
     )?;
     discord.notify_channel_id = optional_id(
         input,
         output,
-        "Notify channel ID for reports (blank keep, '-' clear)",
+        "Notify channel ID for reports (leave blank to keep, enter '-' to clear)",
         discord.notify_channel_id.as_deref().unwrap_or(""),
     )?;
     discord.allowed_user_ids = id_list(
         input,
         output,
-        "Allowed user IDs (comma-separated; blank keep, '-' clear)",
+        "Allowed user IDs (comma-separated; leave blank to keep, enter '-' to clear)",
         &discord.allowed_user_ids.join(","),
     )?;
     discord.chat_category_ids = id_list(
         input,
         output,
-        "Chat category IDs (comma-separated; blank keep, '-' clear)",
+        "Chat category IDs (comma-separated; leave blank to keep, enter '-' to clear)",
         &discord.chat_category_ids.join(","),
     )?;
     if discord.channel_id.is_none() && discord.chat_category_ids.is_empty() {

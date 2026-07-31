@@ -70,11 +70,11 @@ fn discord_dash_clears_optional_values_and_warns() {
     assert_eq!(discord.notify_channel_id, None);
     assert!(discord.allowed_user_ids.is_empty());
     assert!(discord.chat_category_ids.is_empty());
-    assert!(
-        String::from_utf8(output)
-            .unwrap()
-            .contains("nothing to serve")
-    );
+    let shown = String::from_utf8(output).unwrap();
+    assert!(shown.contains("nothing to serve"));
+    // The operator must be able to read how to keep and how to clear.
+    assert!(shown.contains("leave blank to keep the shown value, enter '-' to clear"));
+    assert!(shown.contains("Discord channel ID (leave blank to keep, enter '-' to clear)"));
 }
 
 #[test]
