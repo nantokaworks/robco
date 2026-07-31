@@ -52,6 +52,12 @@ pub struct ChannelAgent {
     pub last_error: Option<String>,
     #[serde(default)]
     pub history: Vec<ChannelTurn>,
+    /// Human-readable channel name fetched over REST when a turn starts —
+    /// `MESSAGE_CREATE` does not carry it. `None` for records written before
+    /// this field existed, or when every fetch so far has failed; readers
+    /// fall back to the channel id then.
+    #[serde(default)]
+    pub channel_name: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,6 +105,7 @@ impl DiscordChannels {
                 status: ChannelAgentStatus::Running,
                 last_error: None,
                 history: Vec::new(),
+                channel_name: None,
             });
         entry.last_active_at = now;
         entry.status = ChannelAgentStatus::Running;
@@ -141,6 +148,40 @@ impl DiscordChannels {
             }
         }
         self.save(path)
+    }
+
+    /// Stores the channel's human-readable name, refreshed on each turn so a
+    /// rename is picked up. A no-op for a channel `begin_turn` never saw, and
+    /// a no-op (no disk write) when the name has not changed. Fetch failures
+    /// never reach here — the caller keeps whatever name is already stored.
+    pub fn set_channel_name(
+        &mut self,
+        path: &Path,
+        channel_id: &str,
+        name: &str,
+    ) -> Result<(), String> {
+        let Some(entry) = self.channels.get_mut(channel_id) else {
+            return Ok(());
+        };
+        if entry.channel_name.as_deref() == Some(name) {
+            return Ok(());
+        }
+        entry.channel_name = Some(name.to_string());
+        self.save(path)
+    }
+
+    /// The operator-facing label for `channel_id`: `#name` when a name is
+    /// stored, the raw id otherwise (records from before names were fetched,
+    /// or channels whose every fetch failed).
+    pub fn display_label(&self, channel_id: &str) -> String {
+        match self
+            .channels
+            .get(channel_id)
+            .and_then(|entry| entry.channel_name.as_deref())
+        {
+            Some(name) => format!("#{name}"),
+            None => channel_id.to_string(),
+        }
     }
 
     /// Recent turns for `channel_id`, oldest first — the conversation history

@@ -209,6 +209,19 @@ impl OpsAgent {
         }
     }
 
+    /// Stores the channel's human-readable name (dropr:380), fetched over
+    /// REST by the caller once a turn starts — `route` itself stays free of
+    /// HTTP, like `category_member` above. A storage failure only loses the
+    /// label refresh, never the turn, so it is logged and swallowed.
+    pub fn record_channel_name(&mut self, channel_id: &str, name: &str) {
+        if let Err(error) = self
+            .channels
+            .set_channel_name(&self.channels_path, channel_id, name)
+        {
+            eprintln!("overseer: failed to record Discord channel name: {error}");
+        }
+    }
+
     pub fn poll(&mut self) -> Vec<Effect> {
         self.sessions.poll(&mut self.channels, &self.channels_path)
     }
