@@ -57,11 +57,19 @@ impl UiState {
             .collect()
     }
 
-    /// Expanded flags for the OVERSEER categories, in [`OverseerCategory::ALL`]
-    /// order — the order `App::overseer_expanded` is indexed in.
-    pub(in crate::ui) fn overseer_expanded(&self) -> [bool; 5] {
-        OverseerCategory::ALL
-            .map(|category| self.expanded_overseer_categories.contains(category.label()))
+    /// Expanded flags for the OVERSEER categories, indexed by
+    /// [`OverseerCategory::index`] — the order `App::overseer_expanded` is
+    /// indexed in. Only [`OverseerCategory::ALL`] labels are read back: a label
+    /// the current category list no longer carries top-level (a stale `Ledger`
+    /// or `Decisions` from before dropr:378 folded them under `Details`) is
+    /// silently ignored rather than a crash, and the next toggle rewrites the
+    /// file without it.
+    pub(in crate::ui) fn overseer_expanded(&self) -> [bool; OverseerCategory::COUNT] {
+        let mut flags = [false; OverseerCategory::COUNT];
+        for category in OverseerCategory::ALL {
+            flags[category.index()] = self.expanded_overseer_categories.contains(category.label());
+        }
+        flags
     }
 }
 

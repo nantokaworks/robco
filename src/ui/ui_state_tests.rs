@@ -124,13 +124,40 @@ fn expand_and_collapse_flags_survive_a_restart() {
     app.set_other_collapsed(true);
     app.set_orphans_collapsed(true);
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
+    app.set_overseer_category_expanded(OverseerCategory::Details, true);
 
     let restarted = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));
     assert_eq!(restarted.expanded, vec![true, false]);
     assert!(restarted.other_collapsed);
     assert!(restarted.orphans_collapsed);
     assert!(restarted.overseer_category_expanded(OverseerCategory::Inbox));
+    assert!(restarted.overseer_category_expanded(OverseerCategory::Details));
     assert!(!restarted.overseer_category_expanded(OverseerCategory::Health));
+}
+
+#[test]
+fn stale_ledger_and_decisions_labels_in_the_file_are_ignored_without_a_reset_of_the_rest() {
+    // Before dropr:378 folded them under `Details`, `Ledger` and `Decisions`
+    // were top-level categories whose labels could be persisted. A file written
+    // back then must load cleanly: the stale labels read as nothing, the labels
+    // the current list still carries keep working.
+    let temp = tempfile::tempdir().unwrap();
+    let mut store = UiStateStore::at(temp.path().join("ui-state.json"));
+    store.update(|state| {
+        state.expanded_overseer_categories.insert("Ledger".into());
+        state
+            .expanded_overseer_categories
+            .insert("Decisions".into());
+        state
+            .expanded_overseer_categories
+            .insert(OverseerCategory::Inbox.label().to_string());
+    });
+
+    let flags = store.state().overseer_expanded();
+    assert!(flags[OverseerCategory::Inbox.index()]);
+    assert!(!flags[OverseerCategory::Details.index()]);
+    assert!(!flags[OverseerCategory::Ledger.index()]);
+    assert!(!flags[OverseerCategory::Decisions.index()]);
 }
 
 #[test]

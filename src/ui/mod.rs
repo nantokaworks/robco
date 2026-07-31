@@ -176,8 +176,8 @@ pub enum PreviewPane {
 /// tab bar and tab cycling read — this list alone is not the whole tab bar.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
-        // The control AI is a row of its own now (dropr:370), so none of the
-        // five categories own a session to show behind a second tab.
+        // The control AI is a row of its own now (dropr:370), so no category
+        // row owns a session to show behind a second tab.
         Some(Selection::OverseerCategory(_)) => &[PreviewPane::Info],
         // The row is acted on from the left frame (Enter attaches, `i`
         // instructs), so its one tab is the live control session capture
@@ -228,7 +228,7 @@ pub struct App {
     /// Absence means collapsed, including for newly discovered owners.
     expanded_children: HashSet<String>,
     overseer_visible: bool,
-    overseer_expanded: [bool; 5],
+    overseer_expanded: [bool; crate::model::OverseerCategory::COUNT],
     /// Whether the "other locations" section (off-launch-dir repos that still
     /// have agents) is collapsed to its header row.
     other_collapsed: bool,

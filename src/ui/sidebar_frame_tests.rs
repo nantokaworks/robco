@@ -157,10 +157,10 @@ fn overseer_popup_opens_immediately_below_rendered_selections() {
     assert_overseer_popup_anchor(&app);
 
     // +1: the control AI row sits ahead of every category in `visible()`.
-    app.selected = OverseerCategory::Decisions.index() + 1;
+    app.selected = OverseerCategory::Discord.index() + 1;
     assert_eq!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Decisions))
+        Some(Selection::OverseerCategory(OverseerCategory::Discord))
     );
     assert_overseer_popup_anchor(&app);
 }

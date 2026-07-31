@@ -50,6 +50,14 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         OverseerCategory::Decisions => {
             append_decisions(&mut lines, &snapshot.decisions, app.locale);
         }
+        // The folded bookkeeping in one read (dropr:378): selecting the
+        // collapsed Details row previews everything its children carry, built
+        // from the same two arms above rather than a rewrite of them.
+        OverseerCategory::Details => {
+            lines.extend(category_detail(app, OverseerCategory::Ledger));
+            lines.push(Line::default());
+            lines.extend(category_detail(app, OverseerCategory::Decisions));
+        }
         OverseerCategory::Discord => lines.extend(discord_agents::detail_lines(app)),
     }
     while lines.last().is_some_and(|line| line.spans.is_empty()) {
@@ -90,6 +98,11 @@ pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> 
                 false,
             )
         }
+        // The collapsed row keeps the one number the folded Ledger row carried
+        // that an operator might still glance for: how much of the merge
+        // pipeline is in flight. The decisions count waits behind the expand —
+        // both numbers would not fit a 24-column sidebar row.
+        OverseerCategory::Details => ledger_summary_from(&snapshot.ledger),
         // Count what expanding the category will actually list, so the row and
         // the list below it cannot disagree about how much is on offer.
         OverseerCategory::Decisions => (
