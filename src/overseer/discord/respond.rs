@@ -2,9 +2,10 @@
 //! plain message or a code block while staying under the Discord message
 //! length limit, so truncation is always an explicit `… and N more` tail.
 
-/// Discord plain messages cap at 2000 chars and `send_text` hard-cuts at
-/// 1900. Staying under that here makes truncation explicit: dropped rows
-/// become a `… and N more` tail instead of a mid-line cut.
+/// Discord plain messages cap at 2000 chars and `send_text` splits longer
+/// text into more messages at 1900. Staying under that here keeps a command
+/// response a single message: dropped rows become a `… and N more` tail
+/// instead of a follow-up message.
 const RESPONSE_BUDGET: usize = 1800;
 
 pub(super) fn bounded_rows(rows: &[String]) -> String {

@@ -6,6 +6,7 @@ mod gateway;
 pub mod handler;
 pub(crate) mod ledger_requests;
 mod localize;
+mod message_split;
 mod notifications;
 mod notify;
 mod ops_agent;
