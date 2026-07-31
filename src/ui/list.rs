@@ -204,7 +204,8 @@ impl App {
                 visible.push(Selection::OverseerCategory(category));
                 // Inbox and Discord are the categories whose detail is acted
                 // on rather than read, so their items are rows of their own
-                // under the category.
+                // under the category. Details nests the two bookkeeping
+                // categories it folded away (dropr:378).
                 if category.has_children() && self.overseer_category_expanded(category) {
                     match category {
                         OverseerCategory::Inbox => visible
@@ -216,6 +217,9 @@ impl App {
                             .len();
                             visible.extend((0..count).map(Selection::DiscordChannel));
                         }
+                        OverseerCategory::Details => visible.extend(
+                            OverseerCategory::DETAILS_CHILDREN.map(Selection::OverseerCategory),
+                        ),
                         _ => {}
                     }
                 }

@@ -349,9 +349,35 @@ mod tests {
     #[test]
     fn category_labels_stay_english_in_every_locale() {
         use crate::locale::{Locale, t};
-        for category in OverseerCategory::ALL {
+        // Top-level and nested alike: the Details children are still category
+        // labels the sidebar renders, so they stay untranslated too.
+        for category in OverseerCategory::ALL
+            .into_iter()
+            .chain(OverseerCategory::DETAILS_CHILDREN)
+        {
             assert_eq!(t(Locale::En, category.label()), category.label());
             assert_eq!(t(Locale::Ja, category.label()), category.label());
+        }
+    }
+
+    #[test]
+    fn details_nests_ledger_and_decisions_out_of_the_top_level_rows() {
+        for child in OverseerCategory::DETAILS_CHILDREN {
+            assert!(!OverseerCategory::ALL.contains(&child), "{}", child.label());
+            assert_eq!(child.parent(), Some(OverseerCategory::Details));
+            assert!(!child.has_children(), "{}", child.label());
+        }
+        for category in OverseerCategory::ALL {
+            assert_eq!(category.parent(), None, "{}", category.label());
+        }
+        // Every flag slot is distinct and in bounds, top-level and nested alike.
+        let mut seen = std::collections::HashSet::new();
+        for category in OverseerCategory::ALL
+            .into_iter()
+            .chain(OverseerCategory::DETAILS_CHILDREN)
+        {
+            assert!(category.index() < OverseerCategory::COUNT);
+            assert!(seen.insert(category.index()), "{}", category.label());
         }
     }
 
@@ -590,27 +616,36 @@ mod tests {
 /// The rows of the OVERSEER frame, ordered by the question they answer
 /// (dropr:357). `Inbox` and `Health` answer the two questions an operator
 /// actually asks — is anything waiting on me, is anything stuck — and sit
-/// first. `Ledger` and `Decisions` are the daemon's own bookkeeping: reachable
-/// for debugging, never deleted, but demoted below the two rows an operator
-/// reads for a decision. `Discord` (dropr:363) lists the retained per-channel
-/// ops agents and sits last, alongside the other read-only bookkeeping rows.
+/// first. `Details` (dropr:378) folds the daemon's own bookkeeping away:
+/// `Ledger` and `Decisions` are reachable for debugging, never deleted, but no
+/// longer top-level rows — they nest under the collapsed `Details` row.
+/// `Discord` (dropr:363) lists the retained per-channel ops agents and sits
+/// last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverseerCategory {
     Inbox,
     Health,
-    Ledger,
-    Decisions,
+    Details,
     Discord,
+    /// Daemon bookkeeping, nested under [`Self::Details`] — never a top-level
+    /// row (absent from [`Self::ALL`]), rendered only while `Details` is
+    /// expanded.
+    Ledger,
+    /// See [`Self::Ledger`].
+    Decisions,
 }
 
 impl OverseerCategory {
-    pub const ALL: [Self; 5] = [
-        Self::Inbox,
-        Self::Health,
-        Self::Ledger,
-        Self::Decisions,
-        Self::Discord,
-    ];
+    /// The top-level rows, in display order. `Ledger` and `Decisions` are not
+    /// here on purpose: they render as children of `Details`.
+    pub const ALL: [Self; 4] = [Self::Inbox, Self::Health, Self::Details, Self::Discord];
+
+    /// The rows the expanded `Details` category nests, in display order.
+    pub const DETAILS_CHILDREN: [Self; 2] = [Self::Ledger, Self::Decisions];
+
+    /// Every variant, top-level or nested — sizes any per-category flag array
+    /// indexed by [`Self::index`].
+    pub const COUNT: usize = 6;
 
     /// "Waiting on you" rather than "Inbox": the row answers a question, and an
     /// operator scanning the sidebar for what needs them should not have to
@@ -626,33 +661,51 @@ impl OverseerCategory {
         match self {
             Self::Inbox => "Waiting on you",
             Self::Health => "Health",
+            Self::Details => "Details",
             Self::Ledger => "Ledger",
             Self::Decisions => "Decisions",
             Self::Discord => "Discord",
         }
     }
 
+    /// Slot in any per-category flag array ([`Self::COUNT`] wide). The first
+    /// [`Self::ALL`]`.len()` slots are the top-level rows in display order; the
+    /// `Details` children take the trailing slots, which stay `false` forever —
+    /// a child row has no expansion of its own.
     pub fn index(self) -> usize {
         match self {
             Self::Inbox => 0,
             Self::Health => 1,
-            Self::Ledger => 2,
-            Self::Decisions => 3,
-            Self::Discord => 4,
+            Self::Details => 2,
+            Self::Discord => 3,
+            Self::Ledger => 4,
+            Self::Decisions => 5,
+        }
+    }
+
+    /// The category a nested row folds away under, or `None` for a top-level
+    /// row. Collapsing a child row collapses this parent, the same way an
+    /// inbox item folds away under `Inbox`.
+    pub fn parent(self) -> Option<Self> {
+        match self {
+            Self::Ledger | Self::Decisions => Some(Self::Details),
+            _ => None,
         }
     }
 
     /// Whether the category expands into rows of its own. Inbox and Discord
     /// do: Inbox's items are selection targets the operator answers, approves,
     /// or dismisses, and Discord's (dropr:371) are per-channel rows Enter can
-    /// attach. The other two expand into read-only text the Info preview
-    /// already shows in full, so an arrow there would buy duplicated content
-    /// at the cost of a nesting level the 24-column sidebar cannot afford.
+    /// attach. Details (dropr:378) expands into the Ledger and Decisions child
+    /// rows it folded away. Health expands into nothing: its detail is
+    /// read-only text the Info preview already shows in full, so an arrow
+    /// there would buy duplicated content at the cost of a nesting level the
+    /// 24-column sidebar cannot afford.
     ///
     /// The single source of truth for the render, the input handling, and the
     /// persisted expansion state — none of them re-spell `matches!(_, Inbox)`.
     pub fn has_children(self) -> bool {
-        matches!(self, Self::Inbox | Self::Discord)
+        matches!(self, Self::Inbox | Self::Discord | Self::Details)
     }
 }
 
