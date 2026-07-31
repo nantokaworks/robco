@@ -2,6 +2,7 @@ use super::{
     commands::Command,
     handler::{CommandExecutor, describe_command},
     ledger_requests::LedgerRequest,
+    respond::{bounded_rows, code_block},
     task_create::create_task,
 };
 use crate::{
@@ -190,29 +191,6 @@ fn tasks() -> crate::Result<String> {
     } else {
         code_block(&rows)
     })
-}
-
-/// Discord plain messages cap at 2000 chars and `send_text` hard-cuts at
-/// 1900. Staying under that here makes truncation explicit: dropped rows
-/// become a `… and N more` tail instead of a mid-line cut.
-const RESPONSE_BUDGET: usize = 1800;
-
-fn bounded_rows(rows: &[String]) -> String {
-    let mut used = 0;
-    let mut kept = Vec::new();
-    for (index, row) in rows.iter().enumerate() {
-        if used + row.chars().count() + 1 > RESPONSE_BUDGET {
-            kept.push(format!("… and {} more", rows.len() - index));
-            break;
-        }
-        used += row.chars().count() + 1;
-        kept.push(row.clone());
-    }
-    kept.join("\n")
-}
-
-fn code_block(rows: &[String]) -> String {
-    format!("```text\n{}\n```", bounded_rows(rows))
 }
 
 fn queue_ledger(
