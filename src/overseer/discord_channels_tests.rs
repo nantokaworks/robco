@@ -115,6 +115,72 @@ fn reconcile_restart_clears_a_running_status_left_by_a_dead_daemon() {
 }
 
 #[test]
+fn set_channel_name_stores_persists_and_labels_with_a_hash_prefix() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    let mut channels = DiscordChannels::load(&path).unwrap();
+
+    channels.begin_turn(&path, "111").unwrap();
+    assert_eq!(channels.display_label("111"), "111");
+
+    channels.set_channel_name(&path, "111", "general").unwrap();
+    assert_eq!(channels.display_label("111"), "#general");
+
+    // A rename on a later turn replaces the stored name.
+    channels.set_channel_name(&path, "111", "ops").unwrap();
+    assert_eq!(channels.display_label("111"), "#ops");
+
+    let reloaded = DiscordChannels::load(&path).unwrap();
+    assert_eq!(
+        reloaded
+            .channels
+            .get("111")
+            .unwrap()
+            .channel_name
+            .as_deref(),
+        Some("ops")
+    );
+}
+
+#[test]
+fn set_channel_name_without_a_record_is_a_no_op() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    let mut channels = DiscordChannels::load(&path).unwrap();
+
+    channels
+        .set_channel_name(&path, "unknown", "general")
+        .unwrap();
+
+    assert!(channels.channels.is_empty());
+    assert!(!path.exists());
+    assert_eq!(channels.display_label("unknown"), "unknown");
+}
+
+#[test]
+fn a_record_written_before_channel_names_existed_still_loads() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    fs::write(
+        &path,
+        r#"{"channels":{"111":{
+            "first_seen_at":"2026-07-01T00:00:00Z",
+            "last_active_at":"2026-07-01T00:00:00Z",
+            "turn_count":2,
+            "status":"idle",
+            "last_error":null,
+            "history":[]
+        }}}"#,
+    )
+    .unwrap();
+
+    let channels = DiscordChannels::load(&path).unwrap();
+    let record = channels.channels.get("111").unwrap();
+    assert_eq!(record.channel_name, None);
+    assert_eq!(channels.display_label("111"), "111");
+}
+
+#[test]
 fn a_missing_file_loads_as_empty() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("channels.json");

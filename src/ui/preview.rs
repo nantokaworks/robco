@@ -67,7 +67,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             let Some(channel_id) = ids.get(index) else {
                 return;
             };
-            let title = format!("Discord / {channel_id}");
+            let title = format!(
+                "Discord / {}",
+                app.overseer_snapshot
+                    .discord_channels
+                    .display_label(channel_id)
+            );
             let session = crate::overseer::discord_channel_session_name(tmux_prefix, channel_id);
             let text = app.cached_tmux(&session).unwrap_or_else(|| {
                 vec![Line::from(Span::styled(
