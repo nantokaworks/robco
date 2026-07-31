@@ -4,6 +4,9 @@
 //! UI item labels (headers, field names, status chrome — e.g. the
 //! `OverseerCategory` sidebar labels) stay English and have no entry here;
 //! only content (sentences, messages, hints) is translated (dropr:377).
+//! Any string drawn inside a tree/sidebar row is chrome too and stays
+//! English — row placeholders like `(no agents)` or the Discord category's
+//! empty-state row belong there, not here (dropr:388).
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -29,7 +32,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "No shell session. Press enter to open one." => {
             "shellセッションがありません。enterで開始できます。"
         }
-        "no retained channel agents yet" => "保持されているチャンネルエージェントはまだありません",
 
         // summary.rs — the one clear prose sentence in the repo summary pane;
         // its surrounding field labels (path/remote/agents/...) stay as
@@ -37,9 +39,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "no workspace resolved for this repo, so no tasks can be listed" => {
             "このリポジトリに対応するワークスペースが見つからないため、タスクを表示できません"
         }
-
-        // tree/repo_row.rs
-        "(no agents)" => "(agentなし)",
 
         // error_dialog.rs
         "Warning:" => "警告:",
