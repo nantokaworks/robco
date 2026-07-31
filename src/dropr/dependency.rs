@@ -28,13 +28,20 @@ struct DependencyEdge {
     #[serde(default)]
     blocking: bool,
     #[serde(default)]
+    task_id: String,
+    #[serde(default)]
+    task_display_id: String,
+    #[serde(default)]
     depends_on_display_id: String,
 }
 
 /// The first unresolved `blocks` edge naming `task_id` as the dependent side,
 /// if any. `dropr task dependency list` returns every edge touching the task
-/// on either side; only `blocking: true` rows — a `blocks` edge whose target
-/// has not closed — hold this task back, so every other row is ignored here.
+/// on either side; an edge only holds this task back when this task is the
+/// dependent (`task_id`) side AND the row is `blocking: true` — a `blocks`
+/// edge whose target has not closed. Every other row is ignored here: in
+/// particular, an edge where this task is the prerequisite (`depends_on`)
+/// side describes some other task's wait, not this one's.
 pub fn blocking_prerequisite_timeout(
     task_id: &str,
     timeout: Duration,
@@ -47,7 +54,7 @@ pub fn blocking_prerequisite_timeout(
     if !output.status.success() {
         return Err(DependencyFetchError::Exit);
     }
-    parse_blocking(&output.stdout).ok_or(DependencyFetchError::Parse)
+    parse_blocking(&output.stdout, task_id).ok_or(DependencyFetchError::Parse)
 }
 
 /// The argv `dropr task dependency list` is invoked with, spelled once so a
@@ -57,12 +64,17 @@ fn dependency_list_args(task_id: &str) -> [&str; 6] {
     ["task", "dependency", "list", "--task", task_id, "--json"]
 }
 
-fn parse_blocking(raw: &[u8]) -> Option<Option<BlockingPrerequisite>> {
+/// `task_id` is the probed task as the caller named it — the daemon passes
+/// the nanoid, but the row carries both the nanoid (`task_id`) and the
+/// display id (`task_display_id`), so either form matches.
+fn parse_blocking(raw: &[u8], task_id: &str) -> Option<Option<BlockingPrerequisite>> {
     let edges: Vec<DependencyEdge> = serde_json::from_slice(raw).ok()?;
     Some(
         edges
             .into_iter()
-            .find(|edge| edge.blocking)
+            .find(|edge| {
+                edge.blocking && (edge.task_id == task_id || edge.task_display_id == task_id)
+            })
             .map(|edge| BlockingPrerequisite {
                 display_id: edge.depends_on_display_id,
             }),
