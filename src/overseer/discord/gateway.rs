@@ -5,6 +5,7 @@ use super::{
     handler::Handler,
     ledger_requests::LedgerRequest,
     localize::{LocalizeSpawner, SystemLocalizeSpawner, TitleCache},
+    message_split,
     notify::{self, InFlight},
     ops_agent::OpsAgent,
     ops_effect::RouteOutcome,
@@ -249,14 +250,14 @@ async fn fetch_channel_name(
 }
 
 pub(super) async fn send_text(http: &Client, channel: Id<ChannelMarker>, text: &str) -> bool {
-    let text: String = text.replace('@', "@\u{200b}").chars().take(1900).collect();
-    match http.create_message(channel).content(&text).await {
-        Ok(_) => true,
-        Err(error) => {
+    let text = text.replace('@', "@\u{200b}");
+    for chunk in message_split::split_message(&text, message_split::MESSAGE_LIMIT) {
+        if let Err(error) = http.create_message(channel).content(&chunk).await {
             eprintln!("overseer: Discord response failed: {error}");
-            false
+            return false;
         }
     }
+    true
 }
 
 async fn audit_permissions(http: &Client) {

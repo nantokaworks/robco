@@ -46,6 +46,26 @@ fn prior_turns_render_as_a_fenced_conversation_history_block() {
     assert!(text.contains("User: status\nAgent: all quiet"));
 }
 
+/// The reply lands in Discord, so the briefing must tell the model to
+/// format it as Discord markdown instead of a wall of plain text.
+#[test]
+fn the_briefing_directs_discord_markdown_replies() {
+    let request = SessionRequest {
+        user_id: "u".into(),
+        channel_id: "c".into(),
+        message: "status".into(),
+        message_id: "m".into(),
+        case: None,
+        history: Vec::new(),
+    };
+    let text = briefing(&request, None);
+    assert!(text.contains("Discord markdown"), "{text}");
+    assert!(
+        text.contains("code blocks for logs or command output"),
+        "{text}"
+    );
+}
+
 #[test]
 fn an_empty_history_says_so_explicitly() {
     let request = SessionRequest {
