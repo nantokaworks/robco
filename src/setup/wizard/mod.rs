@@ -1,6 +1,7 @@
 mod probe;
 mod prompt;
 mod steps;
+mod steps_discord;
 pub(crate) mod steps_service;
 
 use std::io::{self, IsTerminal, Write};
@@ -43,7 +44,7 @@ fn run_interactive<R: io::BufRead, W: Write>(input: &mut R, output: &mut W) -> R
     steps::registration(input, output)?;
     let mut config = Config::load()?;
     steps::overseer(input, output, &mut config)?;
-    steps::discord(input, output, &mut config)?;
+    steps_discord::discord(input, output, &mut config)?;
     let service = steps_service::configure(input, output, &config)?;
     writeln!(output, "▌ robco ▸ summary ··········· setup complete")?;
     config.save()?;
@@ -58,5 +59,7 @@ fn run_interactive<R: io::BufRead, W: Write>(input: &mut R, output: &mut W) -> R
 mod probe_tests;
 #[cfg(test)]
 mod prompt_tests;
+#[cfg(test)]
+mod steps_discord_tests;
 #[cfg(test)]
 mod steps_tests;

@@ -1,10 +1,9 @@
 use std::io::{BufRead, Write};
 
 use crate::{
-    Error, Result,
+    Result,
     cli::InstallTarget,
     config::{Config, Profile},
-    overseer::{config::NotifyLevel, session::env as session_env},
     setup::install_targets,
 };
 
@@ -128,125 +127,4 @@ fn profile<R: BufRead, W: Write>(
     }
     let selected = prompt::select(input, output, label, &choices, default)?;
     Ok(values[selected].clone())
-}
-
-pub(crate) fn discord<R: BufRead, W: Write>(
-    input: &mut R,
-    output: &mut W,
-    config: &mut Config,
-) -> Result<()> {
-    // Resolved before the mutable borrow below: the env file the token value
-    // lands in is a sibling of `overseer.discord`, not part of it.
-    let env_file = session_env::env_file_path(config);
-    let discord = &mut config.overseer.discord;
-    discord.enabled = prompt::confirm(input, output, "Configure Discord?", discord.enabled)?;
-    if !discord.enabled {
-        return Ok(());
-    }
-    discord.notify_level = notify_level(input, output, discord.notify_level)?;
-    discord.channel_id = Some(prompt::validated_text(
-        input,
-        output,
-        "Discord channel ID",
-        discord.channel_id.as_deref().unwrap_or(""),
-        "channel ID must contain digits only",
-        digits,
-    )?);
-    let users = prompt::validated_text(
-        input,
-        output,
-        "Allowed user IDs (comma-separated)",
-        &discord.allowed_user_ids.join(","),
-        "provide one or more digit-only IDs",
-        valid_user_ids,
-    )?;
-    discord.allowed_user_ids = users.split(',').map(|id| id.trim().to_string()).collect();
-    let categories = prompt::validated_text(
-        input,
-        output,
-        "Chat category IDs (comma-separated, blank to disable)",
-        &discord.chat_category_ids.join(","),
-        "leave blank, or provide one or more digit-only category IDs",
-        valid_category_ids,
-    )?;
-    discord.chat_category_ids = if categories.trim().is_empty() {
-        Vec::new()
-    } else {
-        categories
-            .split(',')
-            .map(|id| id.trim().to_string())
-            .collect()
-    };
-    discord.token_env = prompt::validated_text(
-        input,
-        output,
-        "Discord token environment variable",
-        &discord.token_env,
-        "use an environment variable name, not a token value",
-        env_name,
-    )?;
-    let token_env = discord.token_env.clone();
-    let token = prompt::secret_text(
-        input,
-        output,
-        "Discord bot token (leave blank to keep the current value)",
-    )?;
-    if token.is_empty() {
-        return Ok(());
-    }
-    let path = env_file
-        .ok_or_else(|| Error::Wizard("cannot resolve the session env file location".into()))?;
-    session_env::write_var(&path, &token_env, &token)
-}
-
-/// Offers the notification-verbosity level, the sole gate for which Discord
-/// events post — see `overseer::config::NotifyLevel::admits`.
-fn notify_level<R: BufRead, W: Write>(
-    input: &mut R,
-    output: &mut W,
-    current: NotifyLevel,
-) -> Result<NotifyLevel> {
-    const LEVELS: [NotifyLevel; 4] = [
-        NotifyLevel::Off,
-        NotifyLevel::Errors,
-        NotifyLevel::Summary,
-        NotifyLevel::All,
-    ];
-    let choices = ["off", "errors", "summary", "all"].map(str::to_string);
-    let default = LEVELS
-        .iter()
-        .position(|level| *level == current)
-        .unwrap_or(0);
-    let selected = prompt::select(
-        input,
-        output,
-        "Discord notification level",
-        &choices,
-        default,
-    )?;
-    Ok(LEVELS[selected])
-}
-
-pub(crate) fn digits(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
-}
-
-pub(crate) fn valid_user_ids(value: &str) -> bool {
-    let ids: Vec<_> = value.split(',').map(str::trim).collect();
-    !ids.is_empty() && ids.iter().all(|id| digits(id))
-}
-
-/// Unlike `valid_user_ids`, a blank answer is valid here: chat categories are
-/// an opt-in extra alongside `channel_id`, not a required allowlist, so
-/// leaving the field empty (the default) must keep the feature off.
-pub(crate) fn valid_category_ids(value: &str) -> bool {
-    value.trim().is_empty() || value.split(',').map(str::trim).all(digits)
-}
-
-pub(crate) fn env_name(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
-        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
