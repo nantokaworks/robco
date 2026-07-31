@@ -1,20 +1,16 @@
-//! Japanese translations for `src/ui/dialog/content.rs` — dialog titles,
-//! bodies, and confirmation hints.
+//! Japanese translations for `src/ui/dialog/content.rs` — dialog bodies and
+//! confirmation hints.
+//!
+//! UI item labels (headers, field names, status chrome — e.g. the input
+//! field labels like `agent` / `prompt` and the noun-phrase titles like
+//! `new agent` / `add repo` / `help`) stay English and have no entry here;
+//! only content (sentences, messages, hints) is translated (dropr:377).
+//! Question-form confirmation titles are full sentences, so they keep their
+//! translations.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
-        // Input field labels
-        "agent" => "エージェント",
-        "git URL or path" => "git URLまたはパス",
-        "instruction" => "指示",
-        "answer" => "回答",
-        "prompt" => "プロンプト",
-
-        // Titles
-        "new agent" => "新規エージェント",
-        "add repo" => "リポジトリ追加",
-        "instruct overseer control" => "Overseer制御に指示",
-        "answer overseer inbox" => "Overseer受信箱に回答",
+        // Titles (question-form confirmations only)
         "delete worktree?" => "worktreeを削除しますか？",
         "manage whole repo?" => "リポジトリ全体を管理しますか？",
         "remove repo?" => "リポジトリを削除しますか？",
@@ -26,7 +22,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "stop overseer?" => "overseerを停止しますか？",
         "reset dispatch circuit?" => "dispatch回路をリセットしますか？",
         "clear the overseer inbox?" => "overseer受信箱を消去しますか？",
-        "help" => "ヘルプ",
 
         // Body / hint text
         "Create a new agent with an optional | initial prompt." => {
@@ -37,18 +32,15 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "git format: <git-url> [branch]" => "形式: <git-url> [branch]",
         "enter add   esc cancel" => "enterで追加   escでキャンセル",
         "enter send   esc cancel" => "enterで送信   escでキャンセル",
-        "target: {}" => "対象: {}",
         "y delete   n/esc cancel" => "yで削除   n/escでキャンセル",
         "{} worker(s) {}" => "{} 個のworkerが{}",
         "y apply   n/esc cancel" => "yで適用   n/escでキャンセル",
         "y remove   n/esc cancel" => "yで削除   n/escでキャンセル",
-        "strategy: {}" => "方式: {}",
         "y merge   n/esc cancel" => "yでmerge   n/escでキャンセル",
         "already merged: pull main, remove worktree, delete branch" => {
             "merge済み：main pull、worktree削除、ブランチ削除を実行"
         }
         "y clean up   n/esc cancel" => "yでクリーンアップ   n/escでキャンセル",
-        "branch: {}" => "ブランチ: {}",
         "checking session/PR… {}" => "セッション/PR確認中… {}",
         "esc cancel" => "escでキャンセル",
         "enter send   ctrl-s save only   esc cancel" => {
