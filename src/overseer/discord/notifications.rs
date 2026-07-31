@@ -1,3 +1,4 @@
+use super::humanize;
 use crate::overseer::{
     config::{DiscordConfig, NotifyTier},
     logging::{DecisionEntry, DecisionKind},
@@ -23,10 +24,10 @@ pub struct Notification {
     pub title: String,
     pub description: String,
     pub color: u32,
-    /// Inline embed fields (Task / Repo / PR). Never localized: they carry
-    /// ids and links that must survive translation untouched — see
-    /// `localize.rs`, which translates only title and description and
-    /// re-attaches these from the original notification.
+    /// Inline embed fields (Task / Repo / PR / Reason). Never localized: they
+    /// carry ids, links, and raw reason codes that must survive translation
+    /// untouched — see `localize.rs`, which translates only title and
+    /// description and re-attaches these from the original notification.
     pub fields: Vec<NotificationField>,
 }
 
@@ -70,10 +71,20 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     if let Some(url) = &entry.pr_url {
         fields.push(field("PR", pr_link(url)));
     }
+    // A known code-shaped reason reads as a sentence, and the raw code moves
+    // into a `Reason` field — fields are never localized (`localize.rs`), so
+    // the code survives translation verbatim. Unknown reasons keep the old
+    // behavior: the raw decision text is the description.
+    let description = match humanize::sentence(&entry.reason) {
+        Some(sentence) => {
+            fields.push(field("Reason", format!("`{}`", entry.reason)));
+            clip(&sentence, DESCRIPTION_LIMIT)
+        }
+        None => clip(&entry.reason, DESCRIPTION_LIMIT),
+    };
     Some(Notification {
         title: title.into(),
-        // The reason stays verbatim — operators read the raw decision text.
-        description: clip(&entry.reason, DESCRIPTION_LIMIT),
+        description,
         color,
         fields,
     })
