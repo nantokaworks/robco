@@ -28,7 +28,7 @@ use service::install_service;
 #[cfg(target_os = "macos")]
 pub(crate) use service::write_service_plist;
 pub(crate) use settings::set_runtime;
-use settings::{autonomy_level, daily_limit, protection_mode, set};
+use settings::{autonomy_level, daily_limit, notify_channel, protection_mode, set};
 use status::status;
 
 #[cfg(target_os = "macos")]
@@ -44,6 +44,9 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Stop => stop(),
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         OverseerCommand::DailyLimit(args) => daily_limit(args.value),
+        OverseerCommand::NotifyChannel(args) => {
+            notify_channel(if args.clear { None } else { args.channel_id })
+        }
         OverseerCommand::Protection(args) => protection_mode(args.mode),
         OverseerCommand::Autonomy(args) => autonomy_level(args.level),
         OverseerCommand::Panic => panic_stop(),

@@ -53,7 +53,7 @@ pub(super) async fn deliver(
         if let Some(result) = flight.session.poll() {
             let notification =
                 localize::resolve(localize_cache, &flight.language, &flight.fallback, result);
-            let delivered = match channel_id(current) {
+            let delivered = match report_channel_id(current) {
                 Some(channel) => send_embed(http, channel, notification).await,
                 None => false,
             };
@@ -97,7 +97,7 @@ pub(super) async fn deliver(
             notification,
         ) {
             LocalizeOutcome::Ready(notification) => {
-                let delivered = match channel_id(current) {
+                let delivered = match report_channel_id(current) {
                     Some(channel) => send_embed(http, channel, notification).await,
                     None => false,
                 };
@@ -190,7 +190,21 @@ fn is_digest_entry(entry: &crate::overseer::logging::DecisionEntry) -> bool {
 }
 
 pub(super) fn channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {
-    let raw = config.channel_id.as_deref()?.parse::<u64>().ok()?;
+    parse_channel(config.channel_id.as_deref())
+}
+
+/// Where reports — decision notifications and digests — are delivered:
+/// `notify_channel_id` when it parses, otherwise `channel_id`. The fallback
+/// covers both the unset field (a config written before it existed keeps its
+/// single-channel behavior) and an unparseable value (a typo degrades to the
+/// old routing rather than silencing reports). Only this module's `deliver`
+/// reads it; chat and escalation-thread routing stay on `channel_id`.
+pub(super) fn report_channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {
+    parse_channel(config.notify_channel_id.as_deref()).or_else(|| channel_id(config))
+}
+
+fn parse_channel(raw: Option<&str>) -> Option<Id<ChannelMarker>> {
+    let raw = raw?.parse::<u64>().ok()?;
     (raw != 0).then(|| Id::new(raw))
 }
 
@@ -221,3 +235,7 @@ async fn send_embed(http: &Client, channel: Id<ChannelMarker>, notification: Not
         }
     }
 }
+
+#[cfg(test)]
+#[path = "notify_tests.rs"]
+mod tests;

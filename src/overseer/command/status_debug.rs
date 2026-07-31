@@ -61,6 +61,7 @@ pub(super) fn print_debug_section(
         config.overseer.per_repo_limit
     );
     println!("{}", llm_line(config, judgments)?);
+    println!("{}", discord_line(&config.overseer.discord));
     println!("{}", session_auth_line(session_health));
     println!("{}", judgments.snapshot().summary());
     println!("workers by repo: {:?}", ledger.active_workers().repos);
@@ -145,6 +146,25 @@ fn review_state(config: &OverseerConfig) -> String {
         || format!("findings every {interval}m, no reviewer model"),
         |profile| format!("every {interval}m via {profile}"),
     )
+}
+
+/// Where the Overseer's reports — decision notifications and digests — go.
+///
+/// The report channel is set once and then invisible: nothing else prints it,
+/// so a report landing in the wrong channel could only be diagnosed by opening
+/// `config.json`. Naming the fallback explicitly is the point — `reports ->
+/// <id> (chat channel)` tells the operator the dedicated channel is unset, not
+/// that it happens to equal the chat one.
+fn discord_line(discord: &crate::overseer::config::DiscordConfig) -> String {
+    if !discord.enabled {
+        return "discord: off".to_string();
+    }
+    let reports = match (&discord.notify_channel_id, &discord.channel_id) {
+        (Some(notify), _) => format!("{notify} (notify-channel)"),
+        (None, Some(chat)) => format!("{chat} (chat channel)"),
+        (None, None) => "unset".to_string(),
+    };
+    format!("discord: on  reports -> {reports}")
 }
 
 /// The daemon's identity line: whether it is up, which process it is, when it

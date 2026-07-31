@@ -74,6 +74,24 @@ fn discord_config_round_trips_an_explicit_level() {
 }
 
 #[test]
+fn a_discord_config_written_before_the_notify_channel_existed_leaves_it_unset() {
+    // Unset means reports keep falling back to `channel_id` — the exact
+    // single-channel behavior every existing config was written under.
+    let raw = r#"{"enabled": true, "channel_id": "1", "allowed_user_ids": ["9"]}"#;
+    let config: DiscordConfig = serde_json::from_str(raw).unwrap();
+    assert_eq!(config.notify_channel_id, None);
+}
+
+#[test]
+fn discord_config_round_trips_the_notify_channel() {
+    let raw = r#"{"enabled": true, "channel_id": "1", "notify_channel_id": "2"}"#;
+    let config: DiscordConfig = serde_json::from_str(raw).unwrap();
+    assert_eq!(config.notify_channel_id.as_deref(), Some("2"));
+    let value = serde_json::to_value(&config).unwrap();
+    assert_eq!(value["notify_channel_id"], "2");
+}
+
+#[test]
 fn serialized_config_carries_no_enabled_key() {
     let value = serde_json::to_value(OverseerConfig::default()).unwrap();
     assert!(value.get("enabled").is_none());
