@@ -7,11 +7,14 @@
 //! back to the English source for anything missing here, so an omission is
 //! safe, just untranslated.
 //!
-//! Label-vs-content rule (dropr:377): UI item labels — headers, field names,
-//! and status chrome — stay English and MUST NOT get a table entry; that
-//! fallback is how they render. Only content is translated: full sentences,
-//! action-result messages, hints, error text, empty-state lines, relative
-//! ages, and key-hint instructions.
+//! Label-vs-content rule (dropr:377, tightened by dropr:388): UI item labels
+//! — headers, field names, and status chrome — stay English and MUST NOT get
+//! a table entry; that fallback is how they render. The same holds for any
+//! string drawn inside a tree/sidebar row: row placeholders, short status
+//! words, and category summary values are chrome, not content. Only
+//! multi-word prose is translated: full sentences, action-result messages,
+//! hints, error text, dialog messages, and key-hint instructions. Relative
+//! ages ("{}m ago", …) are values, not chrome, and may stay translated.
 
 mod actions;
 mod dialog;

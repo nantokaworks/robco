@@ -121,6 +121,29 @@ mod tests {
     }
 
     #[test]
+    fn row_level_chrome_renders_english_even_in_japanese() {
+        // dropr:388 — strings drawn inside tree/sidebar rows (placeholders,
+        // short status words, category summary values) are chrome, not
+        // content, and must not gain a `ja` table entry. See `ja/mod.rs`.
+        for chrome in [
+            "(no agents)",
+            "(none active or recent)",
+            "tasks unavailable",
+            "none",
+            "worker blocked",
+            "waiting on merge judge",
+            "no retained channel agents yet",
+            "no retained channels",
+            "{}/{} actionable",
+            "{} recent",
+            "{} retained",
+            "{} retained, {} failed",
+        ] {
+            assert_eq!(t(Locale::Ja, chrome), chrome, "{chrome}");
+        }
+    }
+
+    #[test]
     fn fmt_fills_placeholders_in_order_after_translating_the_template() {
         assert_eq!(
             fmt(Locale::En, "branch remains: {}", &["main"]),

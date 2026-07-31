@@ -5,11 +5,13 @@
 //! `in progress` / `blocked` / `subagents`, and the dense field-label rows
 //! like `path:` / `branch:`) stay English and have no entry here; only
 //! content (sentences, messages, hints) is translated (dropr:377).
+//! Row-level strings are chrome too and stay English: list placeholders like
+//! `(none active or recent)` and short status headings like
+//! `tasks unavailable` belong there, not here (dropr:388).
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
         // summary/dropr_tasks.rs
-        "tasks unavailable" => "タスクを取得できません",
         "no open, in-progress, or blocked tasks" => "open・進行中・ブロック中のタスクはありません",
         "this list is incomplete" => "この一覧は不完全です",
         "… and at least {} more" => "…ほか少なくとも{}件",
@@ -20,8 +22,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "このリポジトリでoverseerが完了させたタスクはありません"
         }
 
-        // summary.rs — agent_summary / child_summary
-        "(none active or recent)" => "(稼働中・最近の実行なし)",
+        // summary.rs — child_summary
         "nested under agent worktree" => "agentのworktree配下にネストされています",
         _ => return None,
     })
