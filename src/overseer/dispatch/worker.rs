@@ -98,8 +98,11 @@ pub(super) fn spawn_candidate(
             // from any operator, so hand it straight back — and say so when the
             // hand-back itself fails, since the task is then parked invisibly.
             if !claim::release(task, OVERSEER_AGENT_ID) {
-                let _ =
-                    super::runtime::log_candidate(DecisionKind::Hold, task, "claim_release_failed");
+                let _ = super::decision_log::log_candidate(
+                    DecisionKind::Hold,
+                    task,
+                    "claim_release_failed",
+                );
             }
             return Err(error);
         }
@@ -128,7 +131,7 @@ pub(super) fn spawn_candidate(
         merge_hold_stuck_notified: false,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
-    super::runtime::log_candidate(
+    super::decision_log::log_candidate(
         DecisionKind::Dispatch,
         task,
         &format!("worker spawned:{route}"),

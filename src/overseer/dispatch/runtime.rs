@@ -1,9 +1,13 @@
 use chrono::{DateTime, Utc};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::mem;
 
 use super::{
-    Candidate, drain, plan_dispatch,
+    Candidate,
+    decision_log::{
+        log_candidate, log_global, log_ready_failure, log_repo_skip, skip_unmaterialised,
+    },
+    drain, plan_dispatch,
     route::{Route, remaining_capacity, route},
     worker::{SpawnOutcome, spawn_candidate},
 };
@@ -12,7 +16,7 @@ use crate::overseer::{
     exec::COMMAND_TIMEOUT,
     judge::JudgmentQueue,
     ledger::Ledger,
-    logging::{self, DecisionEntry, DecisionKind},
+    logging::{self, DecisionKind},
 };
 use crate::{Result, config::Config, dropr, dropr::READY_FETCH_LIMIT, registry::Registry};
 
@@ -21,6 +25,7 @@ pub fn dispatch_pass(
     ledger: &mut Ledger,
     now: DateTime<Utc>,
     judgments: &mut JudgmentQueue,
+    unmaterialised_logged: &mut BTreeSet<String>,
 ) -> Result<()> {
     let worker_modes = worker_modes()?;
     let preflight = plan_dispatch(&config.overseer, ledger, &[], now, &worker_modes);
@@ -35,7 +40,7 @@ pub fn dispatch_pass(
         return Ok(());
     }
 
-    let Some(candidates) = gather_candidates()? else {
+    let Some(candidates) = gather_candidates(unmaterialised_logged)? else {
         // The gather itself failed (e.g. `dropr_overlay_unavailable`, already
         // logged inside `gather_candidates`); an empty result here is not
         // evidence the board is quiet, so the queue-drained check must not
@@ -179,7 +184,9 @@ fn open_circuit(config: &mut Config) -> Result<()> {
 /// succeeded and simply found nothing ready. Callers that treat "no
 /// candidates" as a board signal (the queue-drained check) must tell the two
 /// apart, or an outage reads as "all done".
-fn gather_candidates() -> Result<Option<Vec<Candidate>>> {
+fn gather_candidates(
+    unmaterialised_logged: &mut BTreeSet<String>,
+) -> Result<Option<Vec<Candidate>>> {
     let registry = Registry::load()?;
     let (workspaces, overlay_ok) = dropr::DroprOverlay::load_with_status_timeout(COMMAND_TIMEOUT);
     if !overlay_ok {
@@ -213,6 +220,14 @@ fn gather_candidates() -> Result<Option<Vec<Candidate>>> {
             )?;
             continue;
         };
+        if skip_unmaterialised(
+            &repo.path.to_string_lossy(),
+            workspace,
+            unmaterialised_logged,
+            logging::append,
+        )? {
+            continue;
+        }
         if !repo.path.exists() {
             // Dispatching into a missing checkout fails the spawn and feeds
             // the failure circuit; skip stale registry entries instead.
@@ -258,46 +273,6 @@ fn gather_candidates() -> Result<Option<Vec<Candidate>>> {
         }
     }
     Ok(Some(candidates))
-}
-
-pub(super) fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) -> Result<()> {
-    let mut entry = DecisionEntry::new(kind, reason);
-    entry.task = Some(task.task_id.clone());
-    entry.repo = Some(task.repo.clone());
-    entry.source = Some("dispatch".into());
-    logging::append(&entry)
-}
-
-fn log_repo_skip<F>(repo: &str, reason: &str, append: F) -> Result<()>
-where
-    F: FnOnce(&DecisionEntry) -> Result<()>,
-{
-    let mut entry = DecisionEntry::new(DecisionKind::Skip, reason);
-    entry.repo = Some(repo.into());
-    entry.source = Some("dispatch".into());
-    append(&entry)
-}
-
-fn log_ready_failure<F>(
-    repo: &str,
-    workspace: &str,
-    error: dropr::ReadyDispatchError,
-    append: F,
-) -> Result<()>
-where
-    F: FnOnce(&DecisionEntry) -> Result<()>,
-{
-    let mut entry = DecisionEntry::new(DecisionKind::Skip, error.reason());
-    entry.repo = Some(repo.into());
-    entry.source = Some("dispatch".into());
-    entry.reason = format!("{}:{workspace}", error.reason());
-    append(&entry)
-}
-
-fn log_global(kind: DecisionKind, reason: &str) -> Result<()> {
-    let mut entry = DecisionEntry::new(kind, reason);
-    entry.source = Some("dispatch".into());
-    logging::append(&entry)
 }
 
 #[cfg(test)]

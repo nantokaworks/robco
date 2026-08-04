@@ -112,6 +112,17 @@ fn dropr_section(repo: &RepoNode, width: u16, locale: Locale) -> Vec<Line<'stati
         field("id", dropr.id.clone()),
         field("name", dropr.name.clone()),
     ]);
+    if !dropr.is_materialised() {
+        // A virtual workspace has no task board behind it, so the dispatch
+        // loop skips this repo quietly; the pane is where that state lives.
+        lines.push(Line::from(Span::styled(
+            t(
+                locale,
+                "workspace is not materialised, so the overseer does not dispatch tasks for this repo",
+            ),
+            THEME.muted_style(),
+        )));
+    }
     lines.extend(dropr_task_lines(&repo.dropr_tasks, locale));
     lines
 }
