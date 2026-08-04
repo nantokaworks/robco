@@ -3,11 +3,34 @@ use std::io::{BufRead, Write};
 use crate::{
     Result,
     cli::InstallTarget,
-    config::{Config, Profile},
+    config::{Config, Profile, default_profiles, resolve_program},
     setup::install_targets,
 };
 
 use super::prompt;
+
+/// Adds a built-in profile for each agent CLI that is installed but has no
+/// profile in the config yet. A config written before profiles existed, or
+/// saved with `profiles: []`, never offers codex in the wizard even when the
+/// codex CLI is installed — this repairs that before the profile steps run.
+/// The profile matching `default_program` is skipped because the wizard's
+/// `default_program (...)` row already covers it.
+pub(crate) fn ensure_agent_profiles(config: &mut Config) {
+    ensure_agent_profiles_with(config, |program| resolve_program(program).is_some());
+}
+
+pub(crate) fn ensure_agent_profiles_with(config: &mut Config, installed: impl Fn(&str) -> bool) {
+    for builtin in default_profiles() {
+        let covered = builtin.name == config.default_program
+            || config
+                .profiles
+                .iter()
+                .any(|profile| profile.name == builtin.name || profile.program == builtin.program);
+        if !covered && installed(&builtin.program) {
+            config.profiles.push(builtin);
+        }
+    }
+}
 
 pub(crate) fn registration<R: BufRead, W: Write>(input: &mut R, output: &mut W) -> Result<()> {
     let choices = ["all", "claude", "codex", "openclaw", "skip"].map(str::to_string);
