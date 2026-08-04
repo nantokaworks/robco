@@ -68,7 +68,8 @@ pub async fn run_daemon() -> Result<()> {
     }
     let (ledger_request_tx, ledger_request_rx) = mpsc::channel();
     let mut discord = None;
-    sync_discord(&mut discord, &config, &ledger_request_tx);
+    let mut discord_error = None;
+    sync_discord(&mut discord, &mut discord_error, &config, &ledger_request_tx);
     let mut ledger = Ledger::load()?;
     observations::adopt_registry_children(&mut ledger)?;
     ledger.save()?;
@@ -87,7 +88,7 @@ pub async fn run_daemon() -> Result<()> {
         } else {
             logging::log_message(None, "config reload failed; retaining previous config")?;
         }
-        sync_discord(&mut discord, &config, &ledger_request_tx);
+        sync_discord(&mut discord, &mut discord_error, &config, &ledger_request_tx);
         apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
         match runtime_request::drain(&mut ledger, &mut config) {
             Ok(config_changed) => {
@@ -195,14 +196,17 @@ fn persist_drained_config(dispatch_enabled: bool) -> Result<()> {
 
 fn sync_discord(
     guard: &mut Option<super::discord::BotGuard>,
+    logged_error: &mut Option<String>,
     config: &Config,
     ledger_requests: &Sender<super::discord::ledger_requests::LedgerRequest>,
 ) {
     let discord_config = &config.overseer.discord;
     if !discord_config.enabled {
         *guard = None;
+        *logged_error = None;
     } else if let Some(guard) = guard {
         guard.update_config(discord_config.clone());
+        *logged_error = None;
     } else {
         let env_file = super::session::env::env_file_path(config);
         match super::discord::start(
@@ -210,8 +214,20 @@ fn sync_discord(
             env_file.as_deref(),
             ledger_requests.clone(),
         ) {
-            Ok(started) => *guard = Some(started),
-            Err(error) => eprintln!("overseer: Discord bot disabled: {error}"),
+            Ok(started) => {
+                *guard = Some(started);
+                *logged_error = None;
+            }
+            // The start attempt repeats every pass so a config edit is picked
+            // up, but the same failure repeated is pure noise (dropr:390 saw
+            // thousands of identical lines) — log only when the reason
+            // changes.
+            Err(error) => {
+                if logged_error.as_ref() != Some(&error) {
+                    eprintln!("overseer: Discord bot disabled: {error}");
+                    *logged_error = Some(error);
+                }
+            }
         }
     }
 }
