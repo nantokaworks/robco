@@ -65,15 +65,7 @@ pub fn start(
     }
     let token = resolve_token(&config.token_env, env_file, |name| std::env::var(name).ok())
         .ok_or_else(|| format!("token environment variable {} is not set", config.token_env))?;
-    let channel = config
-        .channel_id
-        .as_deref()
-        .ok_or_else(|| "Discord channel_id is not configured".to_string())?
-        .parse::<u64>()
-        .map_err(|_| "Discord channel_id is invalid".to_string())?;
-    if channel == 0 {
-        return Err("Discord channel_id is invalid".into());
-    }
+    validate_channels(&config)?;
     if config.allowed_user_ids.is_empty() {
         return Err("Discord allowed_user_ids is empty".into());
     }
@@ -143,6 +135,40 @@ fn wait_backoff(duration: Duration, stop: &AtomicBool) {
     }
 }
 
+/// The gateway starts when at least one of `channel_id`, `notify_channel_id`,
+/// or `chat_category_ids` gives it a channel to serve; requiring `channel_id`
+/// alone would keep the whole bot down on a config that only names the other
+/// two (dropr:390). A set-but-unparseable `channel_id` is still an error, as
+/// is a set-but-unparseable `notify_channel_id` with no `channel_id` behind
+/// it — in that case `notify::report_channel_id` has no fallback and every
+/// report would be dropped silently. With `channel_id` present the typo'd
+/// value keeps degrading to the old routing, exactly as that function
+/// documents.
+fn validate_channels(config: &DiscordConfig) -> Result<(), String> {
+    let channel = match config.channel_id.as_deref() {
+        Some(raw) if !valid_channel(raw) => return Err("Discord channel_id is invalid".into()),
+        raw => raw.is_some(),
+    };
+    let notify = match config.notify_channel_id.as_deref() {
+        Some(raw) if !valid_channel(raw) && !channel => {
+            return Err("Discord notify_channel_id is invalid".into());
+        }
+        Some(raw) => valid_channel(raw),
+        None => false,
+    };
+    if !channel && !notify && config.chat_category_ids.is_empty() {
+        return Err(
+            "no Discord channel is configured (set channel_id, notify_channel_id, or chat_category_ids)"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+fn valid_channel(raw: &str) -> bool {
+    raw.parse::<u64>().is_ok_and(|id| id != 0)
+}
+
 /// Resolve the bot token: the process environment wins, exactly as it did
 /// before the env file could carry this credential too; the file is
 /// consulted only when the name is absent or blank there. `inherited` is
@@ -206,5 +232,49 @@ mod tests {
     #[test]
     fn neither_source_carrying_the_token_is_reported_as_absent() {
         assert_eq!(resolve_token("ROBCO_DISCORD_TOKEN", None, |_| None), None);
+    }
+
+    fn channels(channel: Option<&str>, notify: Option<&str>, categories: &[&str]) -> DiscordConfig {
+        DiscordConfig {
+            channel_id: channel.map(String::from),
+            notify_channel_id: notify.map(String::from),
+            chat_category_ids: categories.iter().map(|id| id.to_string()).collect(),
+            ..DiscordConfig::default()
+        }
+    }
+
+    #[test]
+    fn each_channel_source_alone_lets_the_gateway_start() {
+        assert!(validate_channels(&channels(Some("42"), None, &[])).is_ok());
+        assert!(validate_channels(&channels(None, Some("42"), &[])).is_ok());
+        assert!(validate_channels(&channels(None, None, &["7"])).is_ok());
+    }
+
+    #[test]
+    fn no_channel_source_at_all_is_an_error() {
+        let error = validate_channels(&channels(None, None, &[])).unwrap_err();
+        assert!(
+            error.contains("no Discord channel is configured"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_set_but_invalid_channel_id_is_still_an_error() {
+        for raw in ["oops", "0", ""] {
+            let error = validate_channels(&channels(Some(raw), Some("42"), &[])).unwrap_err();
+            assert_eq!(error, "Discord channel_id is invalid");
+        }
+    }
+
+    #[test]
+    fn an_invalid_notify_channel_without_fallback_is_an_error() {
+        let error = validate_channels(&channels(None, Some("oops"), &["7"])).unwrap_err();
+        assert_eq!(error, "Discord notify_channel_id is invalid");
+    }
+
+    #[test]
+    fn an_invalid_notify_channel_degrades_when_channel_id_backs_it() {
+        assert!(validate_channels(&channels(Some("42"), Some("oops"), &[])).is_ok());
     }
 }
