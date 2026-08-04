@@ -253,7 +253,10 @@ mod tests {
     #[test]
     fn no_channel_source_at_all_is_an_error() {
         let error = validate_channels(&channels(None, None, &[])).unwrap_err();
-        assert!(error.contains("no Discord channel is configured"), "{error}");
+        assert!(
+            error.contains("no Discord channel is configured"),
+            "{error}"
+        );
     }
 
     #[test]

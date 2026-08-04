@@ -69,7 +69,12 @@ pub async fn run_daemon() -> Result<()> {
     let (ledger_request_tx, ledger_request_rx) = mpsc::channel();
     let mut discord = None;
     let mut discord_error = None;
-    sync_discord(&mut discord, &mut discord_error, &config, &ledger_request_tx);
+    sync_discord(
+        &mut discord,
+        &mut discord_error,
+        &config,
+        &ledger_request_tx,
+    );
     let mut ledger = Ledger::load()?;
     observations::adopt_registry_children(&mut ledger)?;
     ledger.save()?;
@@ -88,7 +93,12 @@ pub async fn run_daemon() -> Result<()> {
         } else {
             logging::log_message(None, "config reload failed; retaining previous config")?;
         }
-        sync_discord(&mut discord, &mut discord_error, &config, &ledger_request_tx);
+        sync_discord(
+            &mut discord,
+            &mut discord_error,
+            &config,
+            &ledger_request_tx,
+        );
         apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
         match runtime_request::drain(&mut ledger, &mut config) {
             Ok(config_changed) => {
