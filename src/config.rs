@@ -141,7 +141,7 @@ pub struct Profile {
     pub backend: Option<String>,
 }
 
-fn default_profiles() -> Vec<Profile> {
+pub(crate) fn default_profiles() -> Vec<Profile> {
     vec![
         Profile {
             name: "claude".to_string(),
