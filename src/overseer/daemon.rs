@@ -41,6 +41,7 @@ use super::{
 use crate::{Result, config::Config};
 use chrono::Utc;
 use std::{
+    collections::BTreeSet,
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -87,6 +88,9 @@ pub async fn run_daemon() -> Result<()> {
     // Installed before the first pass so a wake or a signal delivered while a
     // pass is running is remembered rather than missed.
     let mut signals = Signals::install()?;
+    // Repos whose unmaterialised-workspace skip was already recorded this
+    // daemon run; deliberately in-memory so a restart logs each once more.
+    let mut unmaterialised_logged = BTreeSet::new();
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -162,7 +166,13 @@ pub async fn run_daemon() -> Result<()> {
         // (`merge_hold_recheck::due`) only reflects this tick's escalations
         // once that pass has run.
         merge_escalation::sweep_stuck(&mut next, now, config.overseer.max_merge_hold_rechecks)?;
-        dispatch_pass(&mut config, &mut next, now, &mut judgments)?;
+        dispatch_pass(
+            &mut config,
+            &mut next,
+            now,
+            &mut judgments,
+            &mut unmaterialised_logged,
+        )?;
         // Last, so every pass above reads the board it was given: retention only
         // decides how much of the settled past the *next* pass inherits, and a
         // drop must never take an entry out from under the reconcile, notify,

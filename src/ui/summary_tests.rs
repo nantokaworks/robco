@@ -147,6 +147,26 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
     );
 }
 
+/// A repo whose workspace is virtual is skipped by the dispatch loop, and the
+/// pane — not the decision log — is where that steady state must be visible.
+#[test]
+fn a_virtual_workspace_repo_says_dispatch_is_skipped() {
+    let mut virtual_workspace = workspace();
+    virtual_workspace.kind = "virtual".into();
+    let lines = rendered(&repo(Some(virtual_workspace), DroprTaskFetch::default()));
+
+    assert!(lines.iter().any(|line| line == "kind: virtual"));
+    assert!(lines.iter().any(|line| {
+        line == "workspace is not materialised, so the overseer does not dispatch tasks for this repo"
+    }));
+
+    // A materialised workspace must not carry the notice.
+    let lines = rendered(&repo(Some(workspace()), DroprTaskFetch::default()));
+    assert!(!lines.iter().any(|line| {
+        line == "workspace is not materialised, so the overseer does not dispatch tasks for this repo"
+    }));
+}
+
 /// A linked repo whose fetch failed must not read as an unlinked one, nor as an
 /// empty board: the failure is its own state.
 #[test]
