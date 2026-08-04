@@ -92,7 +92,7 @@ pub(super) fn acquire(
         ClaimAttempt::Claimed => {
             if let Some(holder) = expired_holder {
                 // Logged once the takeover is real rather than merely intended.
-                super::runtime::log_candidate(
+                super::decision_log::log_candidate(
                     DecisionKind::Dispatch,
                     candidate,
                     &format!("claim_expired:{holder}"),

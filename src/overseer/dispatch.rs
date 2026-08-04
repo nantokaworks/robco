@@ -10,6 +10,7 @@ use gate::apply_candidate_gates;
 use order::order_candidates;
 
 mod claim;
+mod decision_log;
 mod drain;
 mod entries;
 mod gate;

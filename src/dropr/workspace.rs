@@ -14,6 +14,16 @@ pub struct DroprWorkspace {
     pub repo_url: String,
 }
 
+impl DroprWorkspace {
+    /// Whether dropr has materialised this workspace. A `virtual` row is a
+    /// placeholder dropr lists for a repository it knows about but never
+    /// created a board for; task reads against it (`dropr task ready`) answer
+    /// HTTP 404 as a steady state, not a transient failure.
+    pub fn is_materialised(&self) -> bool {
+        self.kind == "materialised"
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct DroprOverlay {
     by_canonical_repo: HashMap<String, DroprWorkspace>,
