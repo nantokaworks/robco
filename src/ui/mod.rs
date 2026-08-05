@@ -83,9 +83,13 @@ enum Mode {
     PromptOverseer {
         input: TextInput,
     },
+    /// The answer prompt carries the whole row it was opened for, not just the
+    /// target session: on a successful send the row's `(kind, target_id, at)`
+    /// identity is what marks it handled (`App::answer_inbox`), and the
+    /// identity must be the one the operator was looking at, not whatever a
+    /// later refresh re-derived under the prompt.
     PromptInbox {
-        target_session: String,
-        label: String,
+        item: inbox::InboxItem,
         input: TextInput,
     },
     ConfirmKill {

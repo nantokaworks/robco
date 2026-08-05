@@ -85,24 +85,13 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
     }
 }
 
-/// Why an inbox item cannot be answered: the escalation is real, but the worker
-/// it came from is gone, so there is no session to send an answer into.
-const DISPLAY_ONLY: &str = "display-only inbox item: no live session to answer";
-
 /// Keys that act on the selected Inbox row. They work from every preview tab —
 /// the row lives in the left frame, so what the right pane shows has no say in
 /// what acting on it does.
 fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
     match code {
         KeyCode::Char('y') | KeyCode::Char('Y') => {
-            match app
-                .overseer_inbox
-                .get(index)
-                .and_then(|item| item.target_session.clone())
-            {
-                Some(session) => app.approve_inbox(&session),
-                None => app.show_message(t(app.locale, DISPLAY_ONLY)),
-            }
+            app.approve_inbox(index);
             true
         }
         // `a` answered the inbox before this became a tree row, and it is still
@@ -130,67 +119,7 @@ fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
     }
 }
 
-pub(super) enum InboxResponse<'a> {
-    Answer(&'a str),
-    Approve,
-}
-
-pub(super) fn send_response(
-    session: &str,
-    response: InboxResponse<'_>,
-    mut literal: impl FnMut(&str, &str) -> Result<()>,
-    mut keys: impl FnMut(&str, &[&str]) -> Result<()>,
-) -> Result<()> {
-    match response {
-        InboxResponse::Answer(text) => {
-            literal(session, text)?;
-            keys(session, &["Enter"])
-        }
-        InboxResponse::Approve => keys(session, &["y", "Enter"]),
-    }
-}
-
 impl App {
-    /// Open the answer prompt for the selected Inbox row, or say why the row
-    /// cannot be answered. Never falls through to an attach: an inbox row has no
-    /// session of its own to attach to.
-    pub(in crate::ui) fn answer_inbox_selected(&mut self, index: usize) {
-        let Some(item) = self.overseer_inbox.get(index) else {
-            self.show_message(t(self.locale, "inbox item is no longer listed"));
-            return;
-        };
-        let Some(target_session) = item.target_session.clone() else {
-            self.show_message(t(self.locale, DISPLAY_ONLY));
-            return;
-        };
-        let label = item.label.clone();
-        self.mode = Mode::PromptInbox {
-            target_session,
-            label,
-            input: TextInput::new(),
-        };
-    }
-
-    pub(super) fn answer_inbox(&mut self, session: &str, answer: &str) {
-        let result = send_response(
-            session,
-            InboxResponse::Answer(answer),
-            crate::tmux::send_literal_text,
-            crate::tmux::send_keys,
-        );
-        self.response_message(result, "answer sent");
-    }
-
-    fn approve_inbox(&mut self, session: &str) {
-        let result = send_response(
-            session,
-            InboxResponse::Approve,
-            crate::tmux::send_literal_text,
-            crate::tmux::send_keys,
-        );
-        self.response_message(result, "approval sent");
-    }
-
     fn response_message(&mut self, result: Result<()>, success: &'static str) {
         match result {
             Ok(()) => self.show_message(t(self.locale, success)),

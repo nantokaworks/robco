@@ -1,7 +1,6 @@
-use std::cell::RefCell;
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+use super::super::inbox_respond::DISPLAY_ONLY;
 use super::*;
 use crate::{config::Config, model::OverseerCategory, registry::Registry, ui::PreviewPane};
 
@@ -25,45 +24,6 @@ fn editing_keys_reach_the_shared_buffer_instead_of_appending() {
     }
 
     assert_eq!(input, *"peview task");
-}
-
-#[test]
-fn answer_and_approve_use_existing_tmux_sequences() {
-    let calls = RefCell::new(Vec::new());
-    send_response(
-        "target",
-        InboxResponse::Answer("ship it"),
-        |session, text| {
-            calls.borrow_mut().push(format!("literal:{session}:{text}"));
-            Ok(())
-        },
-        |session, keys| {
-            calls
-                .borrow_mut()
-                .push(format!("keys:{session}:{}", keys.join(",")));
-            Ok(())
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        calls.borrow().as_slice(),
-        ["literal:target:ship it", "keys:target:Enter"]
-    );
-
-    calls.borrow_mut().clear();
-    send_response(
-        "target",
-        InboxResponse::Approve,
-        |_, _| Ok(()),
-        |session, keys| {
-            calls
-                .borrow_mut()
-                .push(format!("keys:{session}:{}", keys.join(",")));
-            Ok(())
-        },
-    )
-    .unwrap();
-    assert_eq!(calls.borrow().as_slice(), ["keys:target:y,Enter"]);
 }
 
 fn inbox_app(target_session: Option<&str>) -> App {
@@ -149,13 +109,9 @@ fn enter_opens_the_answer_prompt_for_an_actionable_row() {
     press(&mut app, KeyCode::Enter);
 
     match &app.mode {
-        Mode::PromptInbox {
-            target_session,
-            label,
-            input,
-        } => {
-            assert_eq!(target_session, "robco-agent-1");
-            assert_eq!(label, "agent-1 — worker");
+        Mode::PromptInbox { item, input } => {
+            assert_eq!(item.target_session.as_deref(), Some("robco-agent-1"));
+            assert_eq!(item.label, "agent-1 — worker");
             assert!(input.text().is_empty());
         }
         _ => panic!("enter did not open the answer prompt"),

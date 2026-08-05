@@ -66,9 +66,9 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             lines.push(hint_line(locale, "enter send   esc cancel"));
             (t(locale, "instruct overseer control"), lines, Some(caret))
         }
-        Mode::PromptInbox { label, input, .. } => {
+        Mode::PromptInbox { item, input } => {
             let max_input_height = body.height.saturating_sub(5).clamp(1, 10) as usize;
-            let mut lines = vec![Line::from(fmt(locale, "target: {}", &[label]))];
+            let mut lines = vec![Line::from(fmt(locale, "target: {}", &[&item.label]))];
             let wrapped = input_wrap::input_lines(
                 t(locale, "answer"),
                 input,
