@@ -17,9 +17,9 @@ pub(crate) struct PendingDecision {
 impl PendingDecision {
     /// A queue entry with no real log offset, for planner tests that never
     /// touch the cursor file.
-    pub(crate) fn stub(entry: Option<DecisionEntry>) -> Self {
+    pub(crate) fn planned(entry: DecisionEntry) -> Self {
         Self {
-            entry,
+            entry: Some(entry),
             next_offset: 0,
         }
     }
@@ -122,16 +122,17 @@ fn backlog_start(path: &PathBuf, limit: usize) -> crate::Result<u64> {
 mod tests {
     use super::*;
     use crate::overseer::config::DiscordConfig;
-    use crate::overseer::discord::notify::{bounded_batch, next_notification};
+    use crate::overseer::discord::notify_plan::{bounded_batch, next_notification};
     use crate::overseer::discord::rollup::Planned;
     use crate::overseer::logging::{self, DecisionEntry, DecisionKind};
+    use std::collections::HashMap;
 
-    fn consumed(planned: Planned) -> (usize, Option<super::super::notifications::Notification>) {
+    fn consumed(planned: Planned) -> (usize, Vec<super::super::notifications::Notification>) {
         match planned {
             Planned::Consume {
                 count,
-                notification,
-            } => (count, notification),
+                notifications,
+            } => (count, notifications),
             Planned::Hold => panic!("expected a consuming plan, got a hold"),
         }
     }
@@ -177,22 +178,29 @@ mod tests {
         assert_eq!(retry.len(), 3);
         assert_eq!(retry[0].entry.as_ref().unwrap().reason, "merged");
         let now = chrono::Utc::now();
-        let (count, notification) =
-            consumed(next_notification(&DiscordConfig::default(), &retry, now));
+        let (count, notifications) = consumed(next_notification(
+            &DiscordConfig::default(),
+            &retry,
+            &HashMap::new(),
+            now,
+        ));
         assert_eq!(count, 1);
-        assert!(notification.is_some());
+        assert_eq!(notifications.len(), 1);
 
         let mut retry = retry;
         assert!(cursor.complete(retry.pop_front().unwrap(), true).unwrap());
         let escalations = VecDeque::from(cursor.next_batch(3).unwrap());
         assert_eq!(escalations.len(), 2);
-        let (count, notification) = consumed(next_notification(
+        let (count, notifications) = consumed(next_notification(
             &DiscordConfig::default(),
             &escalations,
+            &HashMap::new(),
             now,
         ));
         assert_eq!(count, 2);
-        assert!(notification.is_some());
+        // Two distinct alerts sit under the digest threshold: they render as
+        // two individual notifications, still consuming both decisions.
+        assert_eq!(notifications.len(), 2);
         for pending in escalations {
             assert!(cursor.complete(pending, true).unwrap());
         }
@@ -216,13 +224,15 @@ mod tests {
         let mut pending = bounded_batch(cursor.next_batch(500).unwrap(), 20);
 
         assert_eq!(pending.len(), 25);
-        let (count, notification) = consumed(next_notification(
+        let (count, notifications) = consumed(next_notification(
             &DiscordConfig::default(),
             &pending,
+            &HashMap::new(),
             chrono::Utc::now(),
         ));
         assert_eq!(count, 25);
-        assert!(notification.is_some());
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].title, "Overseer digest");
         let last = pending.drain(..count).next_back().unwrap();
         assert!(cursor.complete(last, true).unwrap());
         assert!(cursor.next_batch(500).unwrap().is_empty());

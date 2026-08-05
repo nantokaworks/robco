@@ -25,13 +25,13 @@ use std::collections::VecDeque;
 /// outlive its usefulness the moment the default is sane.
 const WINDOW_MINUTES: i64 = 5;
 
-/// What `notify::next_notification` decided to do with the front of the
-/// pending queue.
+/// What `notify_plan::next_notification` decided to do with the front of
+/// the pending queue.
 pub(super) enum Planned {
-    /// Consume `count` front entries, sending `notification` when present.
+    /// Consume `count` front entries, sending each of `notifications`.
     Consume {
         count: usize,
-        notification: Option<Notification>,
+        notifications: Vec<Notification>,
     },
     /// Front merged entries are still inside the rollup window with nothing
     /// notifying queued behind them; leave the cursor untouched and replan
@@ -72,13 +72,15 @@ pub(super) fn plan_merged(
     if !flush && now - oldest < Duration::minutes(WINDOW_MINUTES) {
         return Some(Planned::Hold);
     }
-    let notification = match merged.as_slice() {
-        [single] => notifications::from_decision(config, single),
-        several => Some(rolled_up(several)),
+    let notifications = match merged.as_slice() {
+        [single] => notifications::from_decision(config, single)
+            .into_iter()
+            .collect(),
+        several => vec![rolled_up(several)],
     };
     Some(Planned::Consume {
         count,
-        notification,
+        notifications,
     })
 }
 

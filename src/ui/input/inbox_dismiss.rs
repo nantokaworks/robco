@@ -13,7 +13,7 @@ use super::super::{App, Mode};
 
 /// One row to suppress: its `(kind, target_id)` identity and the timestamp it
 /// was carrying when the operator cleared it.
-type Row = (&'static str, String, DateTime<Utc>);
+pub(super) type Row = (&'static str, String, DateTime<Utc>);
 
 impl App {
     /// Hide the selected row. The escalation and ledger records it was derived
@@ -73,7 +73,10 @@ impl App {
         }
     }
 
-    fn apply_dismissals(&mut self, rows: &[Row], success: String) {
+    /// Shared by dismiss and by the approve/answer acknowledgement: suppressing
+    /// is the one mechanism that both hides the row now and keeps a newer
+    /// escalation for the same target visible later.
+    pub(super) fn apply_dismissals(&mut self, rows: &[Row], success: String) {
         let targets = rows
             .iter()
             .map(|(kind, target_id, at)| (*kind, target_id.as_str(), *at))

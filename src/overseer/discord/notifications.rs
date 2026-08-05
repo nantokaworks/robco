@@ -3,6 +3,7 @@ use crate::overseer::{
     config::{DiscordConfig, NotifyTier},
     logging::{DecisionEntry, DecisionKind},
 };
+use std::collections::HashMap;
 
 /// Discord caps an embed description at 4096 chars.
 const DESCRIPTION_LIMIT: usize = 4096;
@@ -121,13 +122,17 @@ fn clip(text: &str, max_chars: usize) -> String {
     clipped
 }
 
-pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notification> {
-    let enabled = entries
+/// The digest-eligible subset of a decision run: the same per-decision rules
+/// `from_decision` applies (Discord-sourced entries stay out, a merge
+/// escalation the recheck loop may still resolve on its own stays quiet),
+/// plus the errors-tier gate for the alert kinds a digest carries.
+pub(super) fn digest_alerts(
+    config: &DiscordConfig,
+    entries: &[DecisionEntry],
+) -> Vec<DecisionEntry> {
+    entries
         .iter()
         .filter(|entry| entry.source.as_deref() != Some("discord"))
-        // Same rule `from_decision` applies per-decision: a merge escalation
-        // the recheck loop may still resolve on its own must not re-surface
-        // here just because it rode into the digest alongside other alerts.
         .filter(|entry| entry.escalation_notify != Some(false))
         .filter(|entry| match entry.kind {
             DecisionKind::CircuitOpen | DecisionKind::Escalate => {
@@ -136,27 +141,53 @@ pub fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notif
             _ => false,
         })
         .cloned()
-        .collect::<Vec<_>>();
-    if enabled.is_empty() {
-        return None;
-    }
-    Some(Notification {
-        title: "Overseer digest".into(),
-        description: digest_description(&enabled),
-        color: 0xf1c40f,
-        fields: Vec::new(),
-    })
+        .collect()
 }
 
-/// One markdown bullet per alert, bounded by both a line count and the embed
-/// description limit; alerts that do not fit collapse into `… and N more`.
-fn digest_description(alerts: &[DecisionEntry]) -> String {
+/// Collapses repeats of the same (task, reason) pair — the merge pass
+/// re-escalates a held pull request every pass, so one stuck task can ride
+/// into a digest several times — into one entry with an occurrence count.
+/// First-seen order and first-seen metadata are kept.
+pub(super) fn dedup_alerts(alerts: Vec<DecisionEntry>) -> Vec<(DecisionEntry, usize)> {
+    let mut deduped: Vec<(DecisionEntry, usize)> = Vec::new();
+    for entry in alerts {
+        match deduped
+            .iter_mut()
+            .find(|(seen, _)| seen.task == entry.task && seen.reason == entry.reason)
+        {
+            Some((_, count)) => *count += 1,
+            None => deduped.push((entry, 1)),
+        }
+    }
+    deduped
+}
+
+/// The digest embed for an already-filtered, already-deduped alert run.
+/// `display_ids` maps task nanoids to dropr `#N` display ids, best-effort.
+pub(super) fn digest_notification(
+    alerts: &[(DecisionEntry, usize)],
+    display_ids: &HashMap<String, String>,
+) -> Notification {
+    Notification {
+        title: "Overseer digest".into(),
+        description: digest_description(alerts, display_ids),
+        color: 0xf1c40f,
+        fields: Vec::new(),
+    }
+}
+
+/// One markdown bullet per distinct alert, bounded by both a line count and
+/// the embed description limit; alerts that do not fit collapse into
+/// `… and N more`.
+fn digest_description(
+    alerts: &[(DecisionEntry, usize)],
+    display_ids: &HashMap<String, String>,
+) -> String {
     let mut lines = vec![format!("**{} overseer alert(s)**", alerts.len())];
     let mut used = lines[0].chars().count();
     let mut shown = 0;
-    for entry in alerts.iter().take(DIGEST_ALERT_LINES) {
-        let target = entry.task.as_deref().unwrap_or("overseer");
-        let line = format!("- `{target}`: {}", clip(&entry.reason, 200));
+    for (entry, count) in alerts.iter().take(DIGEST_ALERT_LINES) {
+        let line = digest_line(entry, *count, display_ids);
         if used + line.chars().count() + 1 > DESCRIPTION_LIMIT - TAIL_RESERVE {
             break;
         }
@@ -169,6 +200,59 @@ fn digest_description(alerts: &[DecisionEntry]) -> String {
         lines.push(format!("… and {remaining} more"));
     }
     lines.join("\n")
+}
+
+/// `- repo · #N [#123](url): sentence ×count` — every part optional except
+/// the task label and the reason, which humanizes exactly like a single
+/// notification's description so a digest line never reads as a bare code.
+fn digest_line(
+    entry: &DecisionEntry,
+    count: usize,
+    display_ids: &HashMap<String, String>,
+) -> String {
+    let mut line = String::from("- ");
+    if let Some(repo) = entry
+        .repo
+        .as_deref()
+        .map(repo_short_name)
+        .filter(|repo| !repo.is_empty())
+    {
+        line.push_str(repo);
+        line.push_str(" · ");
+    }
+    line.push_str(&task_label(entry, display_ids));
+    if let Some(url) = &entry.pr_url {
+        line.push(' ');
+        line.push_str(&pr_link(url));
+    }
+    line.push_str(": ");
+    let sentence = humanize::sentence(&entry.reason).unwrap_or_else(|| entry.reason.clone());
+    line.push_str(&clip(&sentence, 200));
+    if count > 1 {
+        line.push_str(&format!(" ×{count}"));
+    }
+    line
+}
+
+/// The dropr `#N` display id when the ledger still knows this task, the
+/// backticked nanoid otherwise, or `overseer` for an alert with no task.
+fn task_label(entry: &DecisionEntry, display_ids: &HashMap<String, String>) -> String {
+    match &entry.task {
+        Some(task) => display_ids
+            .get(task)
+            .cloned()
+            .unwrap_or_else(|| format!("`{task}`")),
+        None => "overseer".into(),
+    }
+}
+
+/// The last path segment: ledger repos are filesystem paths, and the digest
+/// only has room for the directory name the operator knows the repo by.
+fn repo_short_name(repo: &str) -> &str {
+    repo.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(repo)
 }
 
 #[cfg(test)]

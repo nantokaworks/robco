@@ -11,18 +11,18 @@ fn merged_entry(repo: &str, url: &str) -> DecisionEntry {
 }
 
 fn queue(entries: Vec<DecisionEntry>) -> VecDeque<PendingDecision> {
-    entries
-        .into_iter()
-        .map(|entry| PendingDecision::stub(Some(entry)))
-        .collect()
+    entries.into_iter().map(PendingDecision::planned).collect()
 }
 
 fn consumed(planned: Option<Planned>) -> (usize, Notification) {
     match planned.expect("a merge at the front must be planned here") {
         Planned::Consume {
             count,
-            notification,
-        } => (count, notification.expect("an admitted merge notifies")),
+            mut notifications,
+        } => {
+            assert_eq!(notifications.len(), 1, "a merge plan sends one message");
+            (count, notifications.remove(0))
+        }
         Planned::Hold => panic!("expected a consuming plan, got a hold"),
     }
 }
