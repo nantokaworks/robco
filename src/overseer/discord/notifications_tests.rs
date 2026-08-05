@@ -221,8 +221,11 @@ fn a_digest_of_long_reasons_stays_under_the_embed_limit() {
     assert!(notification.description.contains("more"));
 }
 
+/// The dropr:397 retuning: `summary` means milestones only — a merge and
+/// every Errors-tier event. Step-by-step narration (`task_started`,
+/// `queue_drained`, `pr_opened`) is all-tier and stays silent at the default.
 #[test]
-fn summary_level_admits_task_started_finish_and_drain_but_not_pr_opened() {
+fn summary_level_admits_merges_and_errors_but_not_step_events() {
     let config = DiscordConfig::default();
     assert_eq!(
         config.notify_level,
@@ -230,9 +233,7 @@ fn summary_level_admits_task_started_finish_and_drain_but_not_pr_opened() {
     );
 
     for (reason, kind) in [
-        ("task_started", DecisionKind::Dispatch),
         ("merged", DecisionKind::Merge),
-        ("queue_drained", DecisionKind::Skip),
         ("task_failed", DecisionKind::Hold),
     ] {
         let mut entry = DecisionEntry::new(kind, reason);
@@ -243,12 +244,38 @@ fn summary_level_admits_task_started_finish_and_drain_but_not_pr_opened() {
         );
     }
 
-    let mut pr_opened = DecisionEntry::new(DecisionKind::Hold, "pr_opened");
-    pr_opened.source = Some("daemon_event".into());
-    assert!(
-        from_decision(&config, &pr_opened).is_none(),
-        "pr_opened is all-tier and must stay silent at the summary default"
-    );
+    for (reason, kind) in [
+        ("task_started", DecisionKind::Dispatch),
+        ("queue_drained", DecisionKind::Skip),
+        ("pr_opened", DecisionKind::Hold),
+    ] {
+        let mut entry = DecisionEntry::new(kind, reason);
+        entry.source = Some("daemon_event".into());
+        assert!(
+            from_decision(&config, &entry).is_none(),
+            "{reason} is all-tier and must stay silent at the summary default"
+        );
+    }
+}
+
+#[test]
+fn all_level_admits_the_step_events_summary_silences() {
+    let config = DiscordConfig {
+        notify_level: crate::overseer::config::NotifyLevel::All,
+        ..DiscordConfig::default()
+    };
+    for (reason, kind) in [
+        ("task_started", DecisionKind::Dispatch),
+        ("queue_drained", DecisionKind::Skip),
+        ("pr_opened", DecisionKind::Hold),
+    ] {
+        let mut entry = DecisionEntry::new(kind, reason);
+        entry.source = Some("daemon_event".into());
+        assert!(
+            from_decision(&config, &entry).is_some(),
+            "{reason} should fire at all"
+        );
+    }
 }
 
 #[test]
@@ -267,7 +294,7 @@ fn errors_level_silences_task_started_merged_and_drain() {
         entry.source = Some("daemon_event".into());
         assert!(
             from_decision(&config, &entry).is_none(),
-            "{reason} is summary-tier and must stay silent at errors"
+            "{reason} is above the errors level and must stay silent"
         );
     }
 

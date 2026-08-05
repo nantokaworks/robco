@@ -20,6 +20,7 @@ mod ops_sessions;
 mod ops_state;
 mod reactions;
 mod respond;
+mod rollup;
 mod task_create;
 mod typing;
 

@@ -13,6 +13,18 @@ pub(crate) struct PendingDecision {
     next_offset: u64,
 }
 
+#[cfg(test)]
+impl PendingDecision {
+    /// A queue entry with no real log offset, for planner tests that never
+    /// touch the cursor file.
+    pub(crate) fn stub(entry: Option<DecisionEntry>) -> Self {
+        Self {
+            entry,
+            next_offset: 0,
+        }
+    }
+}
+
 pub(crate) struct DecisionCursor {
     log_path: PathBuf,
     cursor_path: PathBuf,
@@ -111,7 +123,18 @@ mod tests {
     use super::*;
     use crate::overseer::config::DiscordConfig;
     use crate::overseer::discord::notify::{bounded_batch, next_notification};
+    use crate::overseer::discord::rollup::Planned;
     use crate::overseer::logging::{self, DecisionEntry, DecisionKind};
+
+    fn consumed(planned: Planned) -> (usize, Option<super::super::notifications::Notification>) {
+        match planned {
+            Planned::Consume {
+                count,
+                notification,
+            } => (count, notification),
+            Planned::Hold => panic!("expected a consuming plan, got a hold"),
+        }
+    }
 
     #[test]
     fn cursor_only_advances_a_deliverable_entry_after_delivery() {
@@ -134,10 +157,12 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let log = temp.path().join("decisions.jsonl");
         let cursor_path = temp.path().join("discord.cursor");
-        // `task_started` rather than `pr_opened`: it fires at the
-        // `notify_level` default (`summary`), unlike `pr_opened` (`all`-tier),
-        // and this test is exercising cursor retry ordering, not gating.
-        let mut first = DecisionEntry::new(DecisionKind::Dispatch, "task_started");
+        // `merged` rather than `pr_opened`: it fires at the `notify_level`
+        // default (`summary`), unlike `pr_opened` (`all`-tier), and this test
+        // is exercising cursor retry ordering, not gating. The escalations
+        // queued behind it flush the merge rollup immediately, so the merge
+        // still plans as a single consumable notification here.
+        let mut first = DecisionEntry::new(DecisionKind::Merge, "merged");
         first.source = Some("daemon_event".into());
         logging::append_to(&log, &first).unwrap();
         for reason in ["one", "two"] {
@@ -150,8 +175,10 @@ mod tests {
         assert!(!cursor.complete(batch.remove(0), false).unwrap());
         let retry = VecDeque::from(cursor.next_batch(3).unwrap());
         assert_eq!(retry.len(), 3);
-        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "task_started");
-        let (count, notification) = next_notification(&DiscordConfig::default(), &retry);
+        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "merged");
+        let now = chrono::Utc::now();
+        let (count, notification) =
+            consumed(next_notification(&DiscordConfig::default(), &retry, now));
         assert_eq!(count, 1);
         assert!(notification.is_some());
 
@@ -159,7 +186,11 @@ mod tests {
         assert!(cursor.complete(retry.pop_front().unwrap(), true).unwrap());
         let escalations = VecDeque::from(cursor.next_batch(3).unwrap());
         assert_eq!(escalations.len(), 2);
-        let (count, notification) = next_notification(&DiscordConfig::default(), &escalations);
+        let (count, notification) = consumed(next_notification(
+            &DiscordConfig::default(),
+            &escalations,
+            now,
+        ));
         assert_eq!(count, 2);
         assert!(notification.is_some());
         for pending in escalations {
@@ -185,7 +216,11 @@ mod tests {
         let mut pending = bounded_batch(cursor.next_batch(500).unwrap(), 20);
 
         assert_eq!(pending.len(), 25);
-        let (count, notification) = next_notification(&DiscordConfig::default(), &pending);
+        let (count, notification) = consumed(next_notification(
+            &DiscordConfig::default(),
+            &pending,
+            chrono::Utc::now(),
+        ));
         assert_eq!(count, 25);
         assert!(notification.is_some());
         let last = pending.drain(..count).next_back().unwrap();

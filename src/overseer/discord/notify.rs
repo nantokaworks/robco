@@ -9,6 +9,7 @@ use super::{
     localize::{self, LocalizeOutcome, LocalizeSpawner, TitleCache},
     notifications::{Notification, digest, from_decision},
     ops_agent::PendingSession,
+    rollup::{self, Planned},
 };
 use crate::overseer::{config::DiscordConfig, logging::DecisionKind};
 use serde_json::json;
@@ -76,8 +77,16 @@ pub(super) async fn deliver(
     let pending = cursor.next_batch(500).map_err(|error| error.to_string())?;
     let mut pending = bounded_batch(pending, 20);
     let language = active_language(current);
+    let now = chrono::Utc::now();
     while !pending.is_empty() {
-        let (count, notification) = next_notification(current, &pending);
+        let (count, notification) = match next_notification(current, &pending, now) {
+            Planned::Consume {
+                count,
+                notification,
+            } => (count, notification),
+            // Held merges stay on the cursor; a later tick replans them.
+            Planned::Hold => break,
+        };
         let mut completed = None;
         for _ in 0..count {
             completed = pending.pop_front();
@@ -160,7 +169,8 @@ pub(super) fn bounded_batch(
 pub(super) fn next_notification(
     config: &DiscordConfig,
     pending: &VecDeque<PendingDecision>,
-) -> (usize, Option<Notification>) {
+    now: chrono::DateTime<chrono::Utc>,
+) -> Planned {
     let first = pending.front().expect("non-empty pending decisions");
     if first.entry.as_ref().is_some_and(is_digest_entry) {
         let entries = pending
@@ -170,15 +180,21 @@ pub(super) fn next_notification(
             .flatten()
             .cloned()
             .collect::<Vec<_>>();
-        return (entries.len(), digest(config, &entries));
+        return Planned::Consume {
+            count: entries.len(),
+            notification: digest(config, &entries),
+        };
     }
-    (
-        1,
-        first
+    if let Some(planned) = rollup::plan_merged(config, pending, now) {
+        return planned;
+    }
+    Planned::Consume {
+        count: 1,
+        notification: first
             .entry
             .as_ref()
             .and_then(|entry| from_decision(config, entry)),
-    )
+    }
 }
 
 fn is_digest_entry(entry: &crate::overseer::logging::DecisionEntry) -> bool {
