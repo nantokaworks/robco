@@ -1,5 +1,20 @@
 use super::*;
 
+/// The filter → dedup → render composition `notify_plan::next_notification`
+/// runs for a digest-sized burst, without the distinct-count gate.
+fn digest(config: &DiscordConfig, entries: &[DecisionEntry]) -> Option<Notification> {
+    digest_with_ids(config, entries, &HashMap::new())
+}
+
+fn digest_with_ids(
+    config: &DiscordConfig,
+    entries: &[DecisionEntry],
+    display_ids: &HashMap<String, String>,
+) -> Option<Notification> {
+    let alerts = dedup_alerts(digest_alerts(config, entries));
+    (!alerts.is_empty()).then(|| digest_notification(&alerts, display_ids))
+}
+
 fn field_value<'a>(notification: &'a Notification, name: &str) -> Option<&'a str> {
     notification
         .fields
@@ -213,12 +228,71 @@ fn an_overflowing_digest_ends_with_a_more_tail() {
 
 #[test]
 fn a_digest_of_long_reasons_stays_under_the_embed_limit() {
+    // Distinct reasons, so dedup keeps all fifteen lines in play.
     let entries = (0..15)
-        .map(|_| DecisionEntry::new(DecisionKind::Escalate, "y".repeat(1000)))
+        .map(|index| {
+            DecisionEntry::new(
+                DecisionKind::Escalate,
+                format!("{index}-{}", "y".repeat(1000)),
+            )
+        })
         .collect::<Vec<_>>();
     let notification = digest(&DiscordConfig::default(), &entries).unwrap();
     assert!(notification.description.chars().count() <= 4096);
     assert!(notification.description.contains("more"));
+}
+
+/// The acceptance shape: repo short name, dropr display id, clickable PR
+/// link, humanized reason, and a `×N` count instead of repeated lines.
+#[test]
+fn a_digest_line_carries_repo_display_id_pr_link_and_a_humanized_reason() {
+    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    entry.task = Some("vm04Y9jTaBcDeFgHiJkLm".into());
+    entry.repo = Some("/home/op/.robco/repos/nex".into());
+    entry.pr_url = Some("https://github.com/acme/nex/pull/766".into());
+    let entries = vec![entry.clone(), entry.clone(), entry];
+    let display_ids = HashMap::from([("vm04Y9jTaBcDeFgHiJkLm".to_string(), "#490".to_string())]);
+    let notification = digest_with_ids(&DiscordConfig::default(), &entries, &display_ids).unwrap();
+    let lines: Vec<_> = notification.description.lines().collect();
+    assert_eq!(lines[0], "**1 overseer alert(s)**");
+    assert_eq!(
+        lines[1],
+        "- nex · #490 [#766](https://github.com/acme/nex/pull/766): \
+         The autonomy policy held this merge for an operator. \
+         Approve it from the TUI inbox or with `robco_approve` on Discord. ×3"
+    );
+    assert_eq!(lines.len(), 2);
+}
+
+/// A task the ledger no longer knows falls back to the backticked nanoid;
+/// the reason still humanizes.
+#[test]
+fn a_digest_line_falls_back_to_the_nanoid_when_no_display_id_resolves() {
+    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    entry.task = Some("vm04Y9jTaBcDeFgHiJkLm".into());
+    let notification = digest(&DiscordConfig::default(), &[entry]).unwrap();
+    assert!(
+        notification
+            .description
+            .contains("- `vm04Y9jTaBcDeFgHiJkLm`: The autonomy policy held this merge")
+    );
+}
+
+/// Dedup keys on (task, reason): the same reason on two tasks stays two
+/// lines, and the header counts distinct alerts, not raw entries.
+#[test]
+fn dedup_keeps_the_same_reason_apart_across_tasks() {
+    let mut first = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    first.task = Some("task-a".into());
+    let mut second = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    second.task = Some("task-b".into());
+    let notification = digest(&DiscordConfig::default(), &[first.clone(), second, first]).unwrap();
+    let lines: Vec<_> = notification.description.lines().collect();
+    assert_eq!(lines[0], "**2 overseer alert(s)**");
+    assert!(lines[1].starts_with("- `task-a`:"));
+    assert!(lines[1].ends_with("×2"));
+    assert!(lines[2].starts_with("- `task-b`:"));
+    assert!(!lines[2].ends_with("×2"));
 }
 
 #[test]

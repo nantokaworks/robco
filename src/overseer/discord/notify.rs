@@ -2,15 +2,16 @@
 //! coalescing escalation runs into a digest, and — see `localize.rs` —
 //! optionally translating the result before it reaches Discord. Split out of
 //! `gateway.rs`, which keeps the connection loop and message-command
-//! routing.
+//! routing; batch planning lives in `notify_plan.rs`.
 
 use super::{
     cursor::{DecisionCursor, PendingDecision},
     localize::{self, LocalizeOutcome, LocalizeSpawner, TitleCache},
-    notifications::{Notification, digest, from_decision},
+    notifications::Notification,
+    notify_plan::{bounded_batch, display_ids, next_notification},
     ops_agent::PendingSession,
 };
-use crate::overseer::{config::DiscordConfig, logging::DecisionKind};
+use crate::overseer::config::DiscordConfig;
 use serde_json::json;
 use std::{collections::VecDeque, time::Duration};
 use twilight_http::Client;
@@ -19,25 +20,31 @@ use twilight_model::{
     id::{Id, marker::ChannelMarker},
 };
 
-/// A localization session started on an earlier tick, tracked across ticks
-/// exactly like `retry_at`/`retry_delay` — in-process state only. A restart
-/// mid-flight loses it harmlessly: the cursor never advanced past
-/// `completed`, so the next run re-reads the same entry from disk and starts
-/// localizing it again.
+/// Undelivered notifications for one cursor advance, tracked across ticks —
+/// in-process state only. A restart mid-flight loses it harmlessly: the
+/// cursor never advanced past `completed`, so the next run re-reads the same
+/// entries from disk and plans them again. One cursor advance can stand for
+/// several notifications (a small escalation burst delivered individually),
+/// so the whole queue is carried until every one is sent.
 pub(super) struct InFlight {
-    session: Box<dyn PendingSession>,
-    /// The English rendering, delivered if localization fails.
-    fallback: Notification,
-    language: String,
+    /// Localization session for the front of `queue`, started on an earlier
+    /// tick. `None` while nothing is being localized.
+    session: Option<Box<dyn PendingSession>>,
+    /// A front notification already rendered (localized or English) whose
+    /// send failed; retried before the queue moves on.
+    rendered: Option<Notification>,
+    /// English renderings not yet delivered; the front is the current one.
+    queue: VecDeque<Notification>,
+    language: Option<String>,
     completed: PendingDecision,
 }
 
-/// Resolves an in-flight localization first (it takes priority: the cursor
-/// has not advanced past it, so re-reading the log would only hand back the
-/// same entry alongside whatever else has since arrived), otherwise pulls a
-/// fresh batch off the decision cursor and starts localizing/sending each
-/// entry in turn. Mutates `retry_at`/`retry_delay` exactly as the inline tick
-/// loop used to, so a send failure still backs off the same way.
+/// Resolves an in-flight queue first (it takes priority: the cursor has not
+/// advanced past it, so re-reading the log would only hand back the same
+/// entries alongside whatever else has since arrived), otherwise pulls a
+/// fresh batch off the decision cursor and drives each planned notification
+/// group in turn. Mutates `retry_at`/`retry_delay` exactly as the inline
+/// tick loop used to, so a send failure still backs off the same way.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn deliver(
     http: &Client,
@@ -49,80 +56,135 @@ pub(super) async fn deliver(
     retry_at: &mut tokio::time::Instant,
     retry_delay: &mut Duration,
 ) -> Result<(), String> {
-    if let Some(mut flight) = in_flight.take() {
-        if let Some(result) = flight.session.poll() {
-            let notification =
-                localize::resolve(localize_cache, &flight.language, &flight.fallback, result);
-            let delivered = match report_channel_id(current) {
-                Some(channel) => send_embed(http, channel, notification).await,
-                None => false,
-            };
-            if delivered {
-                cursor
-                    .complete(flight.completed, true)
-                    .map_err(|error| error.to_string())?;
-                *retry_delay = Duration::from_secs(1);
-            } else {
-                *retry_at = tokio::time::Instant::now() + *retry_delay;
-                *retry_delay = (*retry_delay * 2).min(Duration::from_secs(30));
-                *in_flight = Some(flight);
-            }
-        } else {
-            *in_flight = Some(flight);
-        }
+    if let Some(flight) = in_flight.take() {
+        drive(
+            http,
+            current,
+            cursor,
+            localize_spawner,
+            localize_cache,
+            in_flight,
+            retry_at,
+            retry_delay,
+            flight,
+        )
+        .await?;
         return Ok(());
     }
 
     let pending = cursor.next_batch(500).map_err(|error| error.to_string())?;
     let mut pending = bounded_batch(pending, 20);
+    let display_ids = display_ids(&pending);
     let language = active_language(current);
     while !pending.is_empty() {
-        let (count, notification) = next_notification(current, &pending);
+        let (count, notifications) = next_notification(current, &pending, &display_ids);
         let mut completed = None;
         for _ in 0..count {
             completed = pending.pop_front();
         }
         let completed = completed.expect("planned pending decision");
-        let Some(notification) = notification else {
-            cursor
-                .complete(completed, true)
-                .map_err(|error| error.to_string())?;
-            continue;
+        let flight = InFlight {
+            session: None,
+            rendered: None,
+            queue: notifications.into(),
+            language: language.clone(),
+            completed,
         };
-        let fallback = notification.clone();
-        match localize::start(
+        let drained = drive(
+            http,
+            current,
+            cursor,
             localize_spawner,
             localize_cache,
-            language.as_deref(),
-            notification,
-        ) {
-            LocalizeOutcome::Ready(notification) => {
-                let delivered = match report_channel_id(current) {
-                    Some(channel) => send_embed(http, channel, notification).await,
-                    None => false,
-                };
-                if !delivered {
-                    *retry_at = tokio::time::Instant::now() + *retry_delay;
-                    *retry_delay = (*retry_delay * 2).min(Duration::from_secs(30));
-                    break;
-                }
-                cursor
-                    .complete(completed, true)
-                    .map_err(|error| error.to_string())?;
-                *retry_delay = Duration::from_secs(1);
-            }
-            LocalizeOutcome::Pending(session) => {
-                *in_flight = Some(InFlight {
-                    session,
-                    fallback,
-                    language: language.clone().expect("pending implies a language"),
-                    completed,
-                });
-                break;
-            }
+            in_flight,
+            retry_at,
+            retry_delay,
+            flight,
+        )
+        .await?;
+        if !drained {
+            break;
         }
     }
     Ok(())
+}
+
+/// Pushes one in-flight queue as far as it goes this tick: poll a running
+/// localization, localize and send each remaining notification, advance the
+/// cursor once the queue is empty. Returns whether the queue fully drained;
+/// otherwise the flight is parked in `in_flight` (and, on a send failure,
+/// the retry backoff is armed) for a later tick.
+#[allow(clippy::too_many_arguments)]
+async fn drive(
+    http: &Client,
+    current: &DiscordConfig,
+    cursor: &mut DecisionCursor,
+    localize_spawner: &mut dyn LocalizeSpawner,
+    localize_cache: &mut TitleCache,
+    in_flight: &mut Option<InFlight>,
+    retry_at: &mut tokio::time::Instant,
+    retry_delay: &mut Duration,
+    mut flight: InFlight,
+) -> Result<bool, String> {
+    if let Some(mut session) = flight.session.take() {
+        let Some(result) = session.poll() else {
+            flight.session = Some(session);
+            *in_flight = Some(flight);
+            return Ok(false);
+        };
+        let fallback = flight.queue.pop_front().expect("session implies a front");
+        let language = flight
+            .language
+            .as_deref()
+            .expect("session implies a language");
+        flight.rendered = Some(localize::resolve(
+            localize_cache,
+            language,
+            &fallback,
+            result,
+        ));
+    }
+    loop {
+        let notification = match flight.rendered.take() {
+            Some(notification) => notification,
+            None => {
+                let Some(front) = flight.queue.front().cloned() else {
+                    cursor
+                        .complete(flight.completed, true)
+                        .map_err(|error| error.to_string())?;
+                    *retry_delay = Duration::from_secs(1);
+                    return Ok(true);
+                };
+                match localize::start(
+                    localize_spawner,
+                    localize_cache,
+                    flight.language.as_deref(),
+                    front,
+                ) {
+                    LocalizeOutcome::Ready(notification) => {
+                        flight.queue.pop_front();
+                        notification
+                    }
+                    LocalizeOutcome::Pending(session) => {
+                        flight.session = Some(session);
+                        *in_flight = Some(flight);
+                        return Ok(false);
+                    }
+                }
+            }
+        };
+        let delivered = match report_channel_id(current) {
+            Some(channel) => send_embed(http, channel, notification.clone()).await,
+            None => false,
+        };
+        if !delivered {
+            flight.rendered = Some(notification);
+            *retry_at = tokio::time::Instant::now() + *retry_delay;
+            *retry_delay = (*retry_delay * 2).min(Duration::from_secs(30));
+            *in_flight = Some(flight);
+            return Ok(false);
+        }
+    }
 }
 
 /// The language to localize notifications into, or `None` when the pass
@@ -138,55 +200,6 @@ fn active_language(discord: &DiscordConfig) -> Option<String> {
     }
     let language = crate::config::Config::load().ok()?.language?;
     (!crate::config::language_directive(Some(&language)).is_empty()).then_some(language)
-}
-
-pub(super) fn bounded_batch(
-    pending: Vec<PendingDecision>,
-    limit: usize,
-) -> VecDeque<PendingDecision> {
-    let mut end = pending.len().min(limit);
-    if end == 0 {
-        return VecDeque::new();
-    }
-    while end < pending.len()
-        && pending[end - 1].entry.as_ref().is_some_and(is_digest_entry)
-        && pending[end].entry.as_ref().is_some_and(is_digest_entry)
-    {
-        end += 1;
-    }
-    pending.into_iter().take(end).collect()
-}
-
-pub(super) fn next_notification(
-    config: &DiscordConfig,
-    pending: &VecDeque<PendingDecision>,
-) -> (usize, Option<Notification>) {
-    let first = pending.front().expect("non-empty pending decisions");
-    if first.entry.as_ref().is_some_and(is_digest_entry) {
-        let entries = pending
-            .iter()
-            .map(|item| item.entry.as_ref())
-            .take_while(|entry| entry.is_some_and(is_digest_entry))
-            .flatten()
-            .cloned()
-            .collect::<Vec<_>>();
-        return (entries.len(), digest(config, &entries));
-    }
-    (
-        1,
-        first
-            .entry
-            .as_ref()
-            .and_then(|entry| from_decision(config, entry)),
-    )
-}
-
-fn is_digest_entry(entry: &crate::overseer::logging::DecisionEntry) -> bool {
-    entry.source.as_deref() != Some("discord")
-        && matches!(
-            entry.kind,
-            DecisionKind::Escalate | DecisionKind::CircuitOpen
-        )
 }
 
 pub(super) fn channel_id(config: &DiscordConfig) -> Option<Id<ChannelMarker>> {

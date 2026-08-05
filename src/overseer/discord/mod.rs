@@ -10,6 +10,7 @@ mod localize;
 mod message_split;
 mod notifications;
 mod notify;
+mod notify_plan;
 mod ops_agent;
 mod ops_effect;
 mod ops_gateway;

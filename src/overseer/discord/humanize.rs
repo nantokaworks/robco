@@ -62,7 +62,7 @@ const EXACT: &[(&str, &str)] = &[
     ),
     (
         "autonomy_envelope",
-        "The autonomy policy held this merge for an operator.",
+        "The autonomy policy held this merge for an operator. Approve it from the TUI inbox or with `robco_approve` on Discord.",
     ),
     // Spent budgets (`merge_recovery`, `merge_judge_fail_safe`).
     (
