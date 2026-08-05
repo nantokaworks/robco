@@ -134,8 +134,14 @@ fn confirm_pr_caret_tracks_a_mid_string_cursor() {
 fn inbox_prompt_caret_tracks_a_mid_string_cursor() {
     assert_caret_marks(
         Mode::PromptInbox {
-            target_session: "robco-agent".to_string(),
-            label: "agent — worker".to_string(),
+            item: crate::ui::inbox::InboxItem {
+                kind: crate::ui::inbox::InboxKind::Question,
+                target_session: Some("robco-agent".to_string()),
+                target_id: "agent".to_string(),
+                label: "agent — worker".to_string(),
+                detail: "worker is waiting on a confirmation prompt: worker".to_string(),
+                at: chrono::Utc::now(),
+            },
             input: edited("ship it", 4),
         },
         "p",
