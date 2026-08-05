@@ -16,6 +16,7 @@ use super::{
 
 mod confirm;
 mod inbox_dismiss;
+mod inbox_respond;
 // `dialog` phrases the bulk-toggle confirmation from the same helper the
 // resulting message uses, so the prompt and the outcome cannot drift apart.
 pub(in crate::ui) mod management;
@@ -117,17 +118,13 @@ impl App {
                     self.instruct_overseer(&instruction);
                 }
             },
-            Mode::PromptInbox {
-                target_session,
-                input,
-                ..
-            } => match overseer::prompt_action(input, key) {
+            Mode::PromptInbox { item, input } => match overseer::prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
                 overseer::PromptAction::Submit(answer) => {
-                    let session = target_session.clone();
+                    let item = item.clone();
                     self.mode = Mode::Normal;
-                    self.answer_inbox(&session, &answer);
+                    self.answer_inbox(&item, &answer);
                 }
             },
             Mode::ConfirmPr {
