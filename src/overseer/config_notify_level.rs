@@ -16,12 +16,14 @@ pub enum NotifyLevel {
     /// Failures and blockers only: `task_failed`, `task_escalated`,
     /// `worker_blocked`, a circuit-open, and a generic escalation.
     Errors,
-    /// Errors, plus `task_started`, a successful task finish (`merged`),
-    /// and `queue_drained` — "tell me it started, tell me it finished, tell
-    /// me when something breaks."
+    /// Milestones + problems: everything in `Errors`, plus a successful
+    /// task finish (`merged`) — "tell me when work lands or breaks, not
+    /// every step". Merges landing close together roll up into one message
+    /// (see `discord::rollup`); errors always fire immediately.
     #[default]
     Summary,
-    /// Everything, including `pr_opened` — today's unconditional behavior.
+    /// Everything: `Summary` plus the step-by-step narration —
+    /// `task_started`, `pr_opened`, and `queue_drained`.
     All,
 }
 

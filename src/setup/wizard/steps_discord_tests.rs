@@ -98,8 +98,13 @@ fn discord_notify_level_defaults_to_summary_and_can_be_changed() {
 
     let mut config = Config::default();
     let mut input = Cursor::new(b"y\n\n123\n\n10,20\n\nMY_DISCORD_TOKEN\n\n");
-    steps::discord(&mut input, &mut Vec::new(), &mut config).unwrap();
+    let mut output = Vec::new();
+    steps::discord(&mut input, &mut output, &mut config).unwrap();
     assert_eq!(config.overseer.discord.notify_level, NotifyLevel::Summary);
+    // The operator choosing a level must be able to read what each tier
+    // means — in particular that summary is milestones + problems.
+    let shown = String::from_utf8(output).unwrap();
+    assert!(shown.contains("summary: milestones + problems"), "{shown}");
 
     let mut config = Config::default();
     // 2 = "errors", the second listed choice.

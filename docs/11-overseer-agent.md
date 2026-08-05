@@ -341,13 +341,26 @@ below the level:
 |-------|-------|
 | `"off"` | Nothing. |
 | `"errors"` | `task_failed`, `task_escalated`, `worker_blocked`, a circuit-open, and a generic escalation. |
-| `"summary"` (default) | Everything in `errors`, plus `task_started`, a successful task finish (`merged`), and `queue_drained` (see [Queue-drained notification](#queue-drained-notification) below). |
-| `"all"` | Everything in `summary`, plus `pr_opened` — today's unconditional behavior before this key existed. |
+| `"summary"` (default) | Milestones + problems: everything in `errors`, plus a successful task finish (`merged`). |
+| `"all"` | Everything in `summary`, plus the step-by-step events: `task_started`, `pr_opened`, and `queue_drained` (see [Queue-drained notification](#queue-drained-notification) below). |
+
+**`"summary"` means milestones only.** A milestone is something the operator acts on or wants
+to know happened — work landing (`merged`) or breaking (everything in `errors`). Step-by-step
+narration (a worker starting, a PR opening, the queue going idle) is `"all"`-tier: with several
+repositories dispatching many tasks a day, those events alone turn `"summary"` into a steady
+stream.
+
+**Merge rollup.** At any level that admits `merged`, several merges landing within a short
+window (5 minutes, fixed) post as one rolled-up message — `3 pull requests were merged.` with a
+`PRs` field listing each repo and PR link — instead of one message each. A lone merge waits out
+the window before posting. Errors and escalations are never delayed: an error queued behind
+held merges flushes them immediately, and the error itself posts right after. The hold keeps no
+in-memory state — held entries simply stay unacknowledged on the delivery cursor, so a daemon
+restart mid-window loses nothing.
 
 **This changes the default.** Before `notify_level` existed, every event fired unconditionally
 (equivalent to `"all"`). The wizard and a fresh `DiscordConfig::default()` both now default to
-`"summary"`, which is quieter: it silences `pr_opened` while still covering start, finish, and
-every failure. Set `notify_level` to `"all"` to restore the old behavior in full.
+`"summary"`. Set `notify_level` to `"all"` to restore the old behavior in full.
 
 **Legacy per-event overrides.** An earlier revision of this feature kept seven per-event
 `notify_*` booleans (`notify_escalation`, `notify_pr_opened`, `notify_merged`, `notify_circuit`,

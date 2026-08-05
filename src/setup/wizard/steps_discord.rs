@@ -96,6 +96,10 @@ fn notify_level<R: BufRead, W: Write>(
         NotifyLevel::Summary,
         NotifyLevel::All,
     ];
+    writeln!(
+        output,
+        "▌ robco ▸ NOTE ············· off: nothing / errors: failures and escalations / summary: milestones + problems (merges roll up, errors fire at once) / all: every event (adds task starts, PR opened, queue drained)"
+    )?;
     let choices = ["off", "errors", "summary", "all"].map(str::to_string);
     let default = LEVELS
         .iter()

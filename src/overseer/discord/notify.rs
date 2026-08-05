@@ -10,6 +10,7 @@ use super::{
     notifications::Notification,
     notify_plan::{bounded_batch, display_ids, next_notification},
     ops_agent::PendingSession,
+    rollup::Planned,
 };
 use crate::overseer::config::DiscordConfig;
 use serde_json::json;
@@ -76,8 +77,16 @@ pub(super) async fn deliver(
     let mut pending = bounded_batch(pending, 20);
     let display_ids = display_ids(&pending);
     let language = active_language(current);
+    let now = chrono::Utc::now();
     while !pending.is_empty() {
-        let (count, notifications) = next_notification(current, &pending, &display_ids);
+        let (count, notifications) = match next_notification(current, &pending, &display_ids, now) {
+            Planned::Consume {
+                count,
+                notifications,
+            } => (count, notifications),
+            // Held merges stay on the cursor; a later tick replans them.
+            Planned::Hold => break,
+        };
         let mut completed = None;
         for _ in 0..count {
             completed = pending.pop_front();

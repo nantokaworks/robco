@@ -4,7 +4,8 @@
 
 use super::{
     cursor::PendingDecision,
-    notifications::{self, Notification, from_decision},
+    notifications::{self, from_decision},
+    rollup::{self, Planned},
 };
 use crate::overseer::{
     config::DiscordConfig,
@@ -35,16 +36,18 @@ pub(super) fn bounded_batch(
     pending.into_iter().take(end).collect()
 }
 
-/// The notifications the front of `pending` renders as, and how many pending
-/// decisions they consume. A digest-shaped run consumes the whole run and
-/// renders as one digest embed — or, below `DIGEST_MIN_DISTINCT`, as one
-/// full notification per distinct alert. Anything else consumes one decision
-/// and renders as at most one notification.
+/// What the front of `pending` renders as, and how many pending decisions
+/// one cursor advance consumes. A digest-shaped run consumes the whole run
+/// and renders as one digest embed — or, below `DIGEST_MIN_DISTINCT`, as one
+/// full notification per distinct alert. A front `merged` event may plan a
+/// rollup or a hold (`rollup::plan_merged`). Anything else consumes one
+/// decision and renders as at most one notification.
 pub(super) fn next_notification(
     config: &DiscordConfig,
     pending: &VecDeque<PendingDecision>,
     display_ids: &HashMap<String, String>,
-) -> (usize, Vec<Notification>) {
+    now: chrono::DateTime<chrono::Utc>,
+) -> Planned {
     let first = pending.front().expect("non-empty pending decisions");
     if first.entry.as_ref().is_some_and(is_digest_entry) {
         let entries = pending
@@ -57,7 +60,10 @@ pub(super) fn next_notification(
         let count = entries.len();
         let alerts = notifications::dedup_alerts(notifications::digest_alerts(config, &entries));
         if alerts.is_empty() {
-            return (count, Vec::new());
+            return Planned::Consume {
+                count,
+                notifications: Vec::new(),
+            };
         }
         let planned = if alerts.len() >= DIGEST_MIN_DISTINCT {
             vec![notifications::digest_notification(&alerts, display_ids)]
@@ -67,17 +73,23 @@ pub(super) fn next_notification(
                 .filter_map(|(entry, _)| from_decision(config, entry))
                 .collect()
         };
-        return (count, planned);
+        return Planned::Consume {
+            count,
+            notifications: planned,
+        };
     }
-    (
-        1,
-        first
+    if let Some(planned) = rollup::plan_merged(config, pending, now) {
+        return planned;
+    }
+    Planned::Consume {
+        count: 1,
+        notifications: first
             .entry
             .as_ref()
             .and_then(|entry| from_decision(config, entry))
             .into_iter()
             .collect(),
-    )
+    }
 }
 
 pub(super) fn is_digest_entry(entry: &DecisionEntry) -> bool {

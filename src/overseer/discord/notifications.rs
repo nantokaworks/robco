@@ -47,14 +47,19 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     } else {
         None
     };
+    // Tier assignment (dropr:397): `summary` means milestones only — a
+    // finished task (`merged`) plus everything in Errors. Step-by-step
+    // events (`task_started`, `pr_opened`, `queue_drained`) are `all`-tier:
+    // they narrate progress rather than mark a milestone, and at ~10+
+    // dispatches/day across repos they turn `summary` into a firehose.
     let (tier, title, color) = match (event, entry.kind) {
-        (Some("task_started"), _) => (NotifyTier::Summary, "Task started", 0x95a5a6),
+        (Some("task_started"), _) => (NotifyTier::All, "Task started", 0x95a5a6),
         (Some("pr_opened"), _) => (NotifyTier::All, "PR opened", 0x3498db),
         (Some("merged"), _) => (NotifyTier::Summary, "Merged", 0x2ecc71),
         (Some("task_failed"), _) => (NotifyTier::Errors, "Task failed", 0xc0392b),
         (Some("task_escalated"), _) => (NotifyTier::Errors, "Task escalated", 0xd35400),
         (Some("worker_blocked"), _) => (NotifyTier::Errors, "Worker blocked", 0xe67e22),
-        (Some("queue_drained"), _) => (NotifyTier::Summary, "Queue drained", 0x1abc9c),
+        (Some("queue_drained"), _) => (NotifyTier::All, "Queue drained", 0x1abc9c),
         (_, DecisionKind::CircuitOpen) => (NotifyTier::Errors, "Circuit open", 0xe74c3c),
         (_, DecisionKind::Escalate) => (NotifyTier::Errors, "Escalation", 0xf1c40f),
         _ => return None,
@@ -91,7 +96,7 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
     })
 }
 
-fn field(name: &str, value: String) -> NotificationField {
+pub(super) fn field(name: &str, value: String) -> NotificationField {
     NotificationField {
         name: name.into(),
         value: clip(&value, FIELD_VALUE_LIMIT),

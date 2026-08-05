@@ -15,6 +15,8 @@ pub(crate) struct PendingDecision {
 
 #[cfg(test)]
 impl PendingDecision {
+    /// A queue entry with no real log offset, for planner tests that never
+    /// touch the cursor file.
     pub(crate) fn planned(entry: DecisionEntry) -> Self {
         Self {
             entry: Some(entry),
@@ -121,8 +123,19 @@ mod tests {
     use super::*;
     use crate::overseer::config::DiscordConfig;
     use crate::overseer::discord::notify_plan::{bounded_batch, next_notification};
+    use crate::overseer::discord::rollup::Planned;
     use crate::overseer::logging::{self, DecisionEntry, DecisionKind};
     use std::collections::HashMap;
+
+    fn consumed(planned: Planned) -> (usize, Vec<super::super::notifications::Notification>) {
+        match planned {
+            Planned::Consume {
+                count,
+                notifications,
+            } => (count, notifications),
+            Planned::Hold => panic!("expected a consuming plan, got a hold"),
+        }
+    }
 
     #[test]
     fn cursor_only_advances_a_deliverable_entry_after_delivery() {
@@ -145,10 +158,12 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let log = temp.path().join("decisions.jsonl");
         let cursor_path = temp.path().join("discord.cursor");
-        // `task_started` rather than `pr_opened`: it fires at the
-        // `notify_level` default (`summary`), unlike `pr_opened` (`all`-tier),
-        // and this test is exercising cursor retry ordering, not gating.
-        let mut first = DecisionEntry::new(DecisionKind::Dispatch, "task_started");
+        // `merged` rather than `pr_opened`: it fires at the `notify_level`
+        // default (`summary`), unlike `pr_opened` (`all`-tier), and this test
+        // is exercising cursor retry ordering, not gating. The escalations
+        // queued behind it flush the merge rollup immediately, so the merge
+        // still plans as a single consumable notification here.
+        let mut first = DecisionEntry::new(DecisionKind::Merge, "merged");
         first.source = Some("daemon_event".into());
         logging::append_to(&log, &first).unwrap();
         for reason in ["one", "two"] {
@@ -161,9 +176,14 @@ mod tests {
         assert!(!cursor.complete(batch.remove(0), false).unwrap());
         let retry = VecDeque::from(cursor.next_batch(3).unwrap());
         assert_eq!(retry.len(), 3);
-        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "task_started");
-        let (count, notifications) =
-            next_notification(&DiscordConfig::default(), &retry, &HashMap::new());
+        assert_eq!(retry[0].entry.as_ref().unwrap().reason, "merged");
+        let now = chrono::Utc::now();
+        let (count, notifications) = consumed(next_notification(
+            &DiscordConfig::default(),
+            &retry,
+            &HashMap::new(),
+            now,
+        ));
         assert_eq!(count, 1);
         assert_eq!(notifications.len(), 1);
 
@@ -171,8 +191,12 @@ mod tests {
         assert!(cursor.complete(retry.pop_front().unwrap(), true).unwrap());
         let escalations = VecDeque::from(cursor.next_batch(3).unwrap());
         assert_eq!(escalations.len(), 2);
-        let (count, notifications) =
-            next_notification(&DiscordConfig::default(), &escalations, &HashMap::new());
+        let (count, notifications) = consumed(next_notification(
+            &DiscordConfig::default(),
+            &escalations,
+            &HashMap::new(),
+            now,
+        ));
         assert_eq!(count, 2);
         // Two distinct alerts sit under the digest threshold: they render as
         // two individual notifications, still consuming both decisions.
@@ -200,8 +224,12 @@ mod tests {
         let mut pending = bounded_batch(cursor.next_batch(500).unwrap(), 20);
 
         assert_eq!(pending.len(), 25);
-        let (count, notifications) =
-            next_notification(&DiscordConfig::default(), &pending, &HashMap::new());
+        let (count, notifications) = consumed(next_notification(
+            &DiscordConfig::default(),
+            &pending,
+            &HashMap::new(),
+            chrono::Utc::now(),
+        ));
         assert_eq!(count, 25);
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].title, "Overseer digest");
