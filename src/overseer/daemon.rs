@@ -19,7 +19,7 @@ mod merge_settle;
 pub(crate) mod merge_state;
 mod observations;
 mod protection;
-mod pull_request;
+pub(crate) mod pull_request;
 mod retention;
 
 use super::{

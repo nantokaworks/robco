@@ -19,7 +19,12 @@ pub(super) const DEFAULT_BASE_BRANCH: &str = "main";
 const FIELDS: &str = "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid,baseRefName,baseRefOid,mergeStateStatus";
 
 /// Reads the pull request, or the hold reason its read failed under.
-pub(super) fn read(repo: &str, url: &str) -> Result<Value, String> {
+///
+/// `pub(crate)`, not `pub(super)`: `overseer::runtime_request` also reads a
+/// pull request's current head when applying an `OperatorMergeOverride`
+/// request, so the override it grants names the revision the merge pass is
+/// about to see rather than a stale one taken at request time.
+pub(crate) fn read(repo: &str, url: &str) -> Result<Value, String> {
     let mut view = Command::new("gh");
     view.current_dir(repo)
         .args(["pr", "view", url, "--json", FIELDS]);
@@ -46,7 +51,7 @@ pub(super) fn base_branch(value: &Value) -> &str {
 /// Half of the deduplication key for merge recovery: a failure on a (head, base) pair
 /// already handed back is the same failure, and a new head is the worker's answer to
 /// the last one.
-pub(super) fn head_sha(value: &Value) -> &str {
+pub(crate) fn head_sha(value: &Value) -> &str {
     value
         .get("headRefOid")
         .and_then(Value::as_str)

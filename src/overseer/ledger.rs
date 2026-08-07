@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::Result;
 
 mod budgets;
-pub use budgets::{LedgerCounters, MergeHold, MergeRecovery, MergeSettling};
+pub use budgets::{LedgerCounters, MergeHold, MergeRecovery, MergeSettling, OperatorOverride};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
@@ -109,6 +109,11 @@ pub struct LedgerEntry {
     /// `monitor::apply::apply_escalation_resolution` — see there for why.
     #[serde(default)]
     pub worker_escalated: bool,
+    /// A pending one-time operator bypass for the judge/envelope verdict
+    /// blocking this entry — see [`OperatorOverride`]. Defaulted so ledgers
+    /// written before the field existed still load.
+    #[serde(default)]
+    pub operator_override: Option<OperatorOverride>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

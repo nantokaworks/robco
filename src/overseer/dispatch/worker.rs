@@ -130,6 +130,7 @@ pub(super) fn spawn_candidate(
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::decision_log::log_candidate(

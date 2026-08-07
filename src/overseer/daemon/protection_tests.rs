@@ -272,6 +272,7 @@ fn off_mode_skips_the_probe_entirely() {
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     };
     let registry = Registry::default();
     let mut cache = ProtectionCache::default();

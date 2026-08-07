@@ -133,6 +133,7 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
             worker_escalated: false,
+            operator_override: None,
         }],
         ..Default::default()
     };

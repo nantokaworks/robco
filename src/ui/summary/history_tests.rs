@@ -29,6 +29,7 @@ fn entry(display_id: &str, repo: &str, phase: LedgerPhase, settled_minute: u32) 
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     }
 }
 

@@ -13,6 +13,7 @@ use crate::{
 
 const PROMPT_LINES: usize = 20;
 
+mod approve;
 mod catalog;
 mod identity;
 mod merge;
@@ -77,10 +78,10 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
             answer(&registry, &args.agent_id, &args.text)
         }
         "robco_approve" => {
-            let args: AgentIdArgs = parse_args(arguments)?;
+            let args: approve::ApproveArgs = parse_args(arguments)?;
             validate_non_blank("agent_id", &args.agent_id)?;
             let registry = Registry::load().map_err(exec_err)?;
-            approve(&registry, &args.agent_id)
+            approve::approve(&registry, &args)
         }
         "robco_pr_status" => pr::pr_status(parse_args(arguments)?),
         "robco_pr_request" => pr::pr_request(parse_args(arguments)?),
@@ -190,12 +191,6 @@ fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> 
     let (_, agent) = find_agent(registry, agent_id)?;
     tmux::send_literal_text(&agent.tmux_session, text).map_err(exec_err)?;
     tmux::send_keys(&agent.tmux_session, &["Enter"]).map_err(exec_err)?;
-    Ok(json!({ "ok": true }))
-}
-
-fn approve(registry: &Registry, agent_id: &str) -> ToolResult<Value> {
-    let (_, agent) = find_agent(registry, agent_id)?;
-    tmux::send_keys(&agent.tmux_session, &["y", "Enter"]).map_err(exec_err)?;
     Ok(json!({ "ok": true }))
 }
 
