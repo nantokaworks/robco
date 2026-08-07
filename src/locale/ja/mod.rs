@@ -19,11 +19,15 @@
 mod actions;
 mod dialog;
 mod help;
+mod humanize;
 mod input;
 mod merge_dialog;
 mod misc;
 mod overseer;
 mod preview;
+mod remedy;
+mod remedy_merge;
+mod remedy_runtime;
 mod summary;
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
@@ -36,4 +40,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         .or_else(|| preview::lookup(en))
         .or_else(|| merge_dialog::lookup(en))
         .or_else(|| misc::lookup(en))
+        .or_else(|| remedy::lookup(en))
+        .or_else(|| remedy_merge::lookup(en))
+        .or_else(|| remedy_runtime::lookup(en))
+        .or_else(|| humanize::lookup(en))
 }
