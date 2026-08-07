@@ -111,10 +111,20 @@ pub fn list_tools() -> Value {
             "Approve an agent confirmation prompt. If the agent has no live session \
              (e.g. it was killed), instead grants a one-time bypass for the judge \
              veto/escalate verdict or autonomy-envelope hard stop currently blocking \
-             its pull request, for the merge pass to pick up on its next tick.",
+             its pull request, for the merge pass to pick up on its next tick — this \
+             fallback requires confirm: true, the same way robco_merge does, since it \
+             lets the merge pass skip a verdict rather than answer a live prompt.",
             json!({
                 "type": "object",
-                "properties": { "agent_id": { "type": "string" } },
+                "properties": {
+                    "agent_id": { "type": "string" },
+                    "confirm": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Required only when the agent has no live session; \
+                                         ignored otherwise."
+                    }
+                },
                 "required": ["agent_id"],
                 "additionalProperties": false
             }),
