@@ -60,6 +60,16 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
         (Some("task_escalated"), _) => (NotifyTier::Errors, "Task escalated", 0xd35400),
         (Some("worker_blocked"), _) => (NotifyTier::Errors, "Worker blocked", 0xe67e22),
         (Some("queue_drained"), _) => (NotifyTier::All, "Queue drained", 0x1abc9c),
+        // The prefix only selects tier/title/color here; the description
+        // below still goes through `humanize::sentence`, which strips this
+        // same prefix and uses `overseer::release_pipeline`'s own words —
+        // the published version or the failed stage — verbatim.
+        (Some(reason), _) if reason.starts_with("release_published:") => {
+            (NotifyTier::Summary, "Release published", 0x2ecc71)
+        }
+        (Some(reason), _) if reason.starts_with("release_failed:") => {
+            (NotifyTier::Errors, "Release failed", 0xc0392b)
+        }
         (_, DecisionKind::CircuitOpen) => (NotifyTier::Errors, "Circuit open", 0xe74c3c),
         (_, DecisionKind::Escalate) => (NotifyTier::Errors, "Escalation", 0xf1c40f),
         _ => return None,

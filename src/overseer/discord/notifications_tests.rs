@@ -97,6 +97,38 @@ fn a_judge_wrapped_reason_shows_the_judge_own_words() {
     );
 }
 
+/// `overseer::release_pipeline` wraps its own words the same way a judge
+/// does: the prefix picks the title/tier/color here, and `humanize::sentence`
+/// separately strips that same prefix for the description.
+#[test]
+fn a_published_release_reads_as_a_summary_tier_notification() {
+    let mut entry = DecisionEntry::new(
+        DecisionKind::Release,
+        "release_published:Published RobCo 0.1.93.",
+    );
+    entry.source = Some("daemon_event".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(notification.title, "Release published");
+    assert_eq!(notification.description, "Published RobCo 0.1.93.");
+    assert_eq!(notification.color, 0x2ecc71);
+}
+
+#[test]
+fn a_failed_release_reads_as_an_errors_tier_notification() {
+    let mut entry = DecisionEntry::new(
+        DecisionKind::Release,
+        "release_failed:Failed at stage=check cargo test failed.",
+    );
+    entry.source = Some("daemon_event".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(notification.title, "Release failed");
+    assert_eq!(
+        notification.description,
+        "Failed at stage=check cargo test failed."
+    );
+    assert_eq!(notification.color, 0xc0392b);
+}
+
 #[test]
 fn a_pr_url_without_pull_segment_still_links() {
     let mut entry = DecisionEntry::new(DecisionKind::Escalate, "stuck");

@@ -58,6 +58,18 @@ fn an_empty_judge_wrapper_is_not_mapped() {
 }
 
 #[test]
+fn a_release_pipeline_wrapper_unwraps_to_its_own_words() {
+    assert_eq!(
+        sentence("release_published:Published RobCo 0.1.93.").as_deref(),
+        Some("Published RobCo 0.1.93.")
+    );
+    assert_eq!(
+        sentence("release_failed:Failed at stage=check cargo test failed.").as_deref(),
+        Some("Failed at stage=check cargo test failed.")
+    );
+}
+
+#[test]
 fn surrounding_whitespace_does_not_defeat_the_lookup() {
     assert!(sentence("  merged  ").is_some());
 }

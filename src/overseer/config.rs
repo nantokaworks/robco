@@ -189,6 +189,19 @@ pub struct OverseerConfig {
     /// dependency instead of the steady state it is meant to be. See
     /// `overseer::ledger::LedgerEntry::prerequisite_wait`.
     pub max_prerequisite_wait_hours: u64,
+    /// Whether a merge that closes a `[release]`-scoped task in this
+    /// project's own repository runs `scripts/release.sh` unattended — see
+    /// `overseer::release_pipeline`. This is a distinct privilege class from
+    /// every other flag in this file: every other toggle here reads or acts
+    /// on GitHub through `gh`, but this one runs a local shell script for up
+    /// to thirty minutes and, on success, publishes a public GitHub release
+    /// using whatever credentials the daemon holds. Default-off, matching
+    /// `merge_recovery_enabled`'s precedent for a capability that widens
+    /// what the daemon does unattended: an operator opts in deliberately,
+    /// after weighing that `scripts/release.sh` is itself part of this
+    /// repository and a future change to it would run with this same
+    /// privilege the next time a `[release]`-scoped merge lands.
+    pub release_pipeline_enabled: bool,
     pub discord: DiscordConfig,
 }
 
@@ -243,6 +256,7 @@ impl Default for OverseerConfig {
             // CI-scale budget in this file, and still a bound rather than
             // "forever" — see the field's own doc for why.
             max_prerequisite_wait_hours: 72,
+            release_pipeline_enabled: false,
             discord: DiscordConfig::default(),
         }
     }
