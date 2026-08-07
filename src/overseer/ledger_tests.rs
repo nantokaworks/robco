@@ -246,6 +246,7 @@ fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     };
 
     entry.grant_merge_reconsideration("killed_session");
