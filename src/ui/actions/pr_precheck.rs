@@ -9,8 +9,6 @@ use crate::locale::t;
 use super::super::{App, Mode};
 
 pub(in crate::ui) struct PrPrecheckJob {
-    pub repo_path: PathBuf,
-    pub agent_id: String,
     receiver: Receiver<std::result::Result<(), String>>,
 }
 
@@ -28,15 +26,12 @@ impl App {
         branch: String,
         tmux_session: String,
     ) {
-        self.mode = Mode::ConfirmPr {
-            repo_path: repo_path.clone(),
-            agent_id: agent_id.clone(),
-            branch: branch.clone(),
-            input: self.config.pr_prompt.clone().into(),
-        };
-        self.pr_precheck_job = Some(PrPrecheckJob {
+        self.mode = Mode::PrPrecheck {
             repo_path: repo_path.clone(),
             agent_id,
+            branch: branch.clone(),
+        };
+        self.pr_precheck_job = Some(PrPrecheckJob {
             receiver: spawn(PrPrecheckTarget {
                 repo_path,
                 branch,
@@ -47,15 +42,6 @@ impl App {
 
     pub(in crate::ui) fn pr_precheck_job(&self) -> Option<&PrPrecheckJob> {
         self.pr_precheck_job.as_ref()
-    }
-
-    pub(in crate::ui) fn pr_precheck_active_for(
-        &self,
-        repo_path: &std::path::Path,
-        agent_id: &str,
-    ) -> bool {
-        self.pr_precheck_job()
-            .is_some_and(|job| job.repo_path == repo_path && job.agent_id == agent_id)
     }
 
     pub(in crate::ui) fn drain_pr_precheck_events(&mut self) {
@@ -73,18 +59,34 @@ impl App {
         }
     }
 
+    /// Applies a finished precheck's result to the progress modal, if it is
+    /// still open. A precheck racing a cancel (or a second P press) lands
+    /// here with `self.mode` already back to `Normal`, and is dropped.
     fn finish_pr_precheck(&mut self, result: std::result::Result<(), String>) {
-        let Some(_job) = self.pr_precheck_job.take() else {
+        if self.pr_precheck_job.take().is_none() {
             return;
+        }
+        if !matches!(self.mode, Mode::PrPrecheck { .. }) {
+            return;
+        }
+        let Mode::PrPrecheck {
+            repo_path,
+            agent_id,
+            branch,
+        } = std::mem::replace(&mut self.mode, Mode::Normal)
+        else {
+            unreachable!("checked above")
         };
         match result {
-            Ok(()) => {}
-            Err(message) => {
-                if matches!(self.mode, Mode::ConfirmPr { .. }) {
-                    self.mode = Mode::Normal;
-                }
-                self.show_message(message);
+            Ok(()) => {
+                self.mode = Mode::ConfirmPr {
+                    repo_path,
+                    agent_id,
+                    branch,
+                    input: self.config.pr_prompt.clone().into(),
+                };
             }
+            Err(message) => self.show_message(message),
         }
     }
 }

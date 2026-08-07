@@ -141,25 +141,24 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             ],
             None,
         ),
-        Mode::ConfirmPr {
-            repo_path,
-            agent_id,
-            branch,
-            input,
-        } => {
-            let checking = app.pr_precheck_active_for(repo_path, agent_id);
-            let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
-            let mut lines = vec![Line::from(fmt(locale, "branch: {}", &[branch]))];
-            if checking {
-                lines.push(Line::from(Span::styled(
+        Mode::PrPrecheck { branch, .. } => {
+            let lines = vec![
+                Line::from(fmt(locale, "branch: {}", &[branch])),
+                Line::from(Span::styled(
                     fmt(
                         locale,
                         "checking session/PR… {}",
                         &[spinner::frame(app.started.elapsed())],
                     ),
                     THEME.accent_style(),
-                )));
-            }
+                )),
+                hint_line(locale, "esc cancel"),
+            ];
+            (t(locale, "request PR from agent?"), lines, None)
+        }
+        Mode::ConfirmPr { branch, input, .. } => {
+            let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
+            let mut lines = vec![Line::from(fmt(locale, "branch: {}", &[branch]))];
             let wrapped = input_wrap::input_lines(
                 t(locale, "prompt"),
                 input,
@@ -170,11 +169,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             lines.extend(wrapped.lines);
             lines.push(hint_line(
                 locale,
-                if checking {
-                    "esc cancel"
-                } else {
-                    "enter send   ctrl-s save only   esc cancel"
-                },
+                "enter send   ctrl-s save only   esc cancel",
             ));
             (t(locale, "request PR from agent?"), lines, Some(caret))
         }

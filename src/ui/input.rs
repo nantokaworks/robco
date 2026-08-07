@@ -127,21 +127,22 @@ impl App {
                     self.answer_inbox(&item, &answer);
                 }
             },
+            Mode::PrPrecheck { .. } => {
+                if matches!(key.code, KeyCode::Esc) {
+                    self.pr_precheck_job = None;
+                    self.mode = Mode::Normal;
+                }
+            }
             Mode::ConfirmPr {
                 repo_path,
                 agent_id,
                 input,
                 ..
             } => {
-                let checking = self.pr_precheck_job.is_some();
                 let action = confirm_pr_action(&mut self.config, input, key, Config::save);
                 match action {
                     ConfirmPrAction::Stay => {}
-                    ConfirmPrAction::Cancel => {
-                        self.pr_precheck_job = None;
-                        self.mode = Mode::Normal;
-                    }
-                    ConfirmPrAction::Submit(_) if checking => {}
+                    ConfirmPrAction::Cancel => self.mode = Mode::Normal,
                     ConfirmPrAction::Submit(prompt) => {
                         let repo_path = repo_path.clone();
                         let agent_id = agent_id.clone();

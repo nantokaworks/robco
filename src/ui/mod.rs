@@ -119,6 +119,14 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    /// Cancellable progress modal shown while `PrPrecheckJob` runs in the
+    /// background, so pressing P never flashes `ConfirmPr` open only to have
+    /// the precheck close it again a frame later.
+    PrPrecheck {
+        repo_path: PathBuf,
+        agent_id: String,
+        branch: String,
+    },
     ConfirmPr {
         repo_path: PathBuf,
         agent_id: String,

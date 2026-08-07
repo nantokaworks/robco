@@ -21,7 +21,7 @@ fn prompt_renders_wrapped_with_editing_end_visible() {
 
     terminal
         .draw(|frame| {
-            dialog::draw(frame, &app, &[]);
+            dialog::draw(frame, &app);
         })
         .unwrap();
 
@@ -53,7 +53,7 @@ fn cursor_stays_visible_in_a_short_terminal() {
 
     terminal
         .draw(|frame| {
-            dialog::draw(frame, &app, &[]);
+            dialog::draw(frame, &app);
         })
         .unwrap();
 
