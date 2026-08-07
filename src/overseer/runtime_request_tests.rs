@@ -136,6 +136,83 @@ fn drain_applies_and_acks_all_pending_requests() {
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 }
 
+#[test]
+fn operator_merge_override_is_a_noop_when_no_entry_matches_the_target() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("requests");
+    let mut ledger = Ledger {
+        entries: vec![ledger_entry("worker-1", LedgerPhase::Escalated)],
+        ..Ledger::default()
+    };
+    let mut config = Config::default();
+    enqueue_in(
+        &dir,
+        RuntimeRequest::OperatorMergeOverride {
+            source: "test".into(),
+            target: "no-such-agent".into(),
+            at: Utc::now(),
+        },
+    )
+    .unwrap();
+
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(ledger.entries[0].operator_override.is_none());
+}
+
+#[test]
+fn operator_merge_override_is_a_noop_when_the_matched_entry_has_no_pull_request_yet() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("requests");
+    let mut entry = ledger_entry("worker-1", LedgerPhase::Escalated);
+    entry.pr_url = None;
+    let mut ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+    let mut config = Config::default();
+    enqueue_in(
+        &dir,
+        RuntimeRequest::OperatorMergeOverride {
+            source: "test".into(),
+            target: "worker-1".into(),
+            at: Utc::now(),
+        },
+    )
+    .unwrap();
+
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(ledger.entries[0].operator_override.is_none());
+}
+
+#[test]
+fn operator_merge_override_matches_by_display_id_but_leaves_no_override_when_the_pull_request_cannot_be_read()
+ {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("requests");
+    let mut entry = ledger_entry("worker-1", LedgerPhase::Escalated);
+    // A repository path `gh` cannot even `chdir` into, so the read fails fast
+    // and deterministically — no network or `gh` auth required for this test
+    // to exercise the "matched, but GitHub could not be read" branch.
+    entry.repo = "/no/such/repo/path".into();
+    let mut ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+    let mut config = Config::default();
+    enqueue_in(
+        &dir,
+        RuntimeRequest::OperatorMergeOverride {
+            source: "test".into(),
+            target: "#202".into(),
+            at: Utc::now(),
+        },
+    )
+    .unwrap();
+
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(ledger.entries[0].operator_override.is_none());
+}
+
 fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
     LedgerEntry {
         task_id: format!("task-{agent_id}"),
@@ -160,5 +237,6 @@ fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     }
 }

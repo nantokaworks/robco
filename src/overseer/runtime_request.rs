@@ -9,7 +9,12 @@ use chrono::{DateTime, Utc};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
-use super::{command::escalate_workers, ledger::Ledger, runtime_requests_dir};
+use super::{
+    command::escalate_workers,
+    daemon::pull_request,
+    ledger::{Ledger, OperatorOverride},
+    runtime_requests_dir,
+};
 use crate::{Result, config::Config};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,6 +36,21 @@ pub(crate) enum RuntimeRequest {
     MergeCompleted {
         source: String,
         repo: String,
+        at: DateTime<Utc>,
+    },
+    /// A one-time operator decision to bypass the judge veto/escalate verdict
+    /// or the autonomy envelope's hard stop currently blocking one escalated
+    /// pull request — granted by `mcp::tools::approve`'s fallback when the
+    /// worker's own session that would otherwise receive the decision is no
+    /// longer live to answer into. `target` is the ledger entry's `agent_id`
+    /// or `display_id`, the same two keys `robco_approve` and the Inbox
+    /// already key on. Applying it re-reads the pull request's current head
+    /// rather than trusting one carried on the request, so a request that
+    /// waited out a busy drain still names the revision the merge pass is
+    /// about to see, not one taken at request time.
+    OperatorMergeOverride {
+        source: String,
+        target: String,
         at: DateTime<Utc>,
     },
 }
@@ -138,7 +158,39 @@ pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRe
         // Nothing to apply: the pass that drains this request goes on to
         // observe the merge for itself, which is the whole point of waking it.
         RuntimeRequest::MergeCompleted { .. } => false,
+        RuntimeRequest::OperatorMergeOverride { target, .. } => {
+            grant_operator_override(ledger, &target);
+            false
+        }
     }
+}
+
+/// Finds the ledger entry `target` names (by `agent_id` or `display_id`) and
+/// records a bypass scoped to its pull request's current head.
+///
+/// Silently a no-op when the entry is gone, carries no pull request yet, or
+/// GitHub cannot be read right now — an operator override that missed its
+/// moment is not a failure this drain should abort or retry over, the same
+/// way [`apply`] already treats a `PanicEscalate` naming a since-vanished
+/// agent id. The operator can simply approve again.
+fn grant_operator_override(ledger: &mut Ledger, target: &str) {
+    let Some(entry) = ledger
+        .entries
+        .iter_mut()
+        .find(|entry| entry.agent_id == target || entry.display_id == target)
+    else {
+        return;
+    };
+    let Some(url) = entry.pr_url.clone() else {
+        return;
+    };
+    let Ok(value) = pull_request::read(&entry.repo, &url) else {
+        return;
+    };
+    entry.operator_override = Some(OperatorOverride {
+        head: pull_request::head_sha(&value).to_owned(),
+        granted_at: Utc::now(),
+    });
 }
 
 fn quarantine_applied(path: &Path, error: &std::io::Error) {

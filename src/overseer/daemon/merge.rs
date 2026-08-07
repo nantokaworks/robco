@@ -68,8 +68,16 @@ pub(super) fn auto_merge_pass(
         // — most of all on a pass that clears the gate and only waits on a
         // judgment, which arrives once and is not a condition to re-check.
         let recheck = merge_hold_recheck::due(entry, max_rechecks);
+        // An operator-granted bypass earns its own look even when neither the
+        // judge queue nor the hold-cap budget would otherwise grant one — the
+        // autonomy envelope's own hard stop never enters either, so without
+        // this an envelope-escalated entry with a pending override would sit
+        // parked forever the same way it does without one. See
+        // `merge_judge_gate::take_operator_override`.
         let reconsidering = entry.phase == LedgerPhase::Escalated
-            && (judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref()) || recheck);
+            && (judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref())
+                || recheck
+                || entry.operator_override.is_some());
         if entry.phase != LedgerPhase::PrOpened && !reconsidering {
             continue;
         }

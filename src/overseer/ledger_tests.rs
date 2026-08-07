@@ -28,6 +28,7 @@ fn save_load_round_trip() {
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
             worker_escalated: false,
+            operator_override: None,
         }],
         skip_list: vec!["task-2".into()],
         counters: LedgerCounters {
@@ -106,6 +107,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     };
     let ledger = Ledger {
         entries: vec![
@@ -181,6 +183,7 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
         worker_escalated: false,
+        operator_override: None,
     };
     let ledger = Ledger {
         entries: vec![

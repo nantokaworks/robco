@@ -47,6 +47,7 @@ mod tests {
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
             worker_escalated: false,
+            operator_override: None,
         }
     }
 

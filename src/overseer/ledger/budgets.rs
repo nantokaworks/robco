@@ -4,7 +4,7 @@
 //! handback, a repository settling — none of which changes what phase the
 //! entry is in on its own), plus the ledger's own daily counters.
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
 /// What the merge gate remembers about handing this pull request's failures back
@@ -81,6 +81,21 @@ pub struct MergeSettling {
     /// `overseer.max_merge_settle_passes`, so a pull that never succeeds does
     /// not park the repository forever.
     pub passes_held: u32,
+}
+
+/// A one-time operator decision to bypass the judge veto/escalate verdict or
+/// the autonomy envelope's hard stop currently blocking a pull request —
+/// granted through `overseer::runtime_request::RuntimeRequest::OperatorMergeOverride`
+/// when the worker's own tmux session is no longer live to answer a fix into
+/// (see `mcp::tools::approve`'s fallback). Scoped to the head the operator
+/// saw: `daemon::merge_judge_gate` consumes it only when the pull request's
+/// current head still matches, and clears it either way once consumed, so a
+/// later, unreviewed push cannot ride on a decision made about an older
+/// revision.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OperatorOverride {
+    pub head: String,
+    pub granted_at: DateTime<Utc>,
 }
 
 /// The ledger's daily dispatch bookkeeping: today's count against

@@ -97,6 +97,7 @@ fn management_app() -> App {
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
             worker_escalated: false,
+            operator_override: None,
         },
         LedgerEntry {
             task_id: "manual-task".into(),
@@ -121,6 +122,7 @@ fn management_app() -> App {
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
             worker_escalated: false,
+            operator_override: None,
         },
     ];
     app
@@ -732,6 +734,7 @@ fn active_phases_excludes_terminal_entries() {
                 prerequisite_wait: None,
                 merge_hold_stuck_notified: false,
                 worker_escalated: false,
+                operator_override: None,
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -756,6 +759,7 @@ fn active_phases_excludes_terminal_entries() {
                 prerequisite_wait: None,
                 merge_hold_stuck_notified: false,
                 worker_escalated: false,
+                operator_override: None,
             },
         ],
         ..Ledger::default()
@@ -806,6 +810,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
             worker_escalated: false,
+            operator_override: None,
         }],
         ..Ledger::default()
     };

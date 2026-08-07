@@ -106,13 +106,26 @@ pub fn list_tools() -> Value {
                 "additionalProperties": false
             }),
         ),
-        tool(
+        tool_with_output(
             "robco_approve",
-            "Approve an agent confirmation prompt.",
+            "Approve an agent confirmation prompt. If the agent has no live session \
+             (e.g. it was killed), instead grants a one-time bypass for the judge \
+             veto/escalate verdict or autonomy-envelope hard stop currently blocking \
+             its pull request, for the merge pass to pick up on its next tick.",
             json!({
                 "type": "object",
                 "properties": { "agent_id": { "type": "string" } },
                 "required": ["agent_id"],
+                "additionalProperties": false
+            }),
+            json!({
+                "type": "object",
+                "properties": {
+                    "ok": { "type": "boolean" },
+                    "mode": { "type": "string", "enum": ["session", "operator_override"] },
+                    "target": { "type": "string" }
+                },
+                "required": ["ok", "mode"],
                 "additionalProperties": false
             }),
         ),
