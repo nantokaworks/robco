@@ -215,3 +215,43 @@ fn corrupt_ledger_is_preserved_aside() {
         "not json"
     );
 }
+
+#[test]
+fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
+    let mut entry = LedgerEntry {
+        task_id: "task-1".into(),
+        display_id: "#1".into(),
+        repo: "/one".into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase: LedgerPhase::Escalated,
+        dispatched_at: Utc::now(),
+        settled_at: None,
+        retries: 0,
+        pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
+        merge_recovery: Default::default(),
+        merge_hold: Default::default(),
+        manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        // A stale look from a prior escalation this entry has already
+        // spent — the grant must reset it, not add to it.
+        merge_hold_rechecks: 7,
+        merge_hold_recheck_reason: Some("stale_reason".into()),
+        merge_hold_recheck_head: Some("stale_head".into()),
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
+        worker_escalated: false,
+    };
+
+    entry.grant_merge_reconsideration("killed_session");
+
+    assert!(entry.merge_hold_cap_escalated);
+    assert_eq!(entry.merge_hold_rechecks, 0);
+    assert_eq!(
+        entry.merge_hold_recheck_reason.as_deref(),
+        Some("killed_session")
+    );
+    assert_eq!(entry.merge_hold_recheck_head, None);
+}

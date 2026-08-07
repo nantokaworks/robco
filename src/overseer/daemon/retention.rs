@@ -36,32 +36,57 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
+
+use super::observations::external_state::worth_probing;
 use crate::Result;
 use crate::overseer::{
-    ledger::{Ledger, LedgerEntry, terminal},
+    ledger::{Ledger, LedgerEntry, LedgerPhase, terminal},
     logging::{self, DecisionEntry, DecisionKind},
+    monitor::{Observations, TASK_ABSENT},
 };
 
 /// Source recorded on a retention decision, so an operator can tell an entry the
 /// window evicted from one a detach or a failure removed.
 const SOURCE: &str = "retention";
 
-/// Drop the settled entries that fall outside the retention window, recording
-/// each drop in `decisions.jsonl`.
+/// Why one entry was dropped this pass — carried alongside it so
+/// `prune_pass` can log the reason that actually applied instead of
+/// re-deriving it from a ledger the entry has already left.
+enum DropReason {
+    /// Ranked outside its repository's `keep_per_repo` window — see
+    /// `beyond_window`.
+    Window,
+    /// Confirmed gone — see `beyond_reach`.
+    Reach,
+}
+
+/// Drop the settled entries that fall outside the retention window or that
+/// nothing can act on any more, recording each drop in `decisions.jsonl`.
 pub(super) fn prune_pass(
     ledger: &mut Ledger,
     registered: &[String],
+    observations: &Observations,
+    now: DateTime<Utc>,
     keep_per_repo: usize,
 ) -> Result<()> {
-    for entry in prune(ledger, registered, keep_per_repo) {
-        let mut decision = DecisionEntry::new(
-            DecisionKind::Hold,
-            format!(
+    for (entry, reason) in prune(ledger, registered, observations, now, keep_per_repo) {
+        let message = match reason {
+            DropReason::Window => format!(
                 "{}: dropped {} ledger entry outside the {keep_per_repo}-entry retention window",
                 entry.display_id,
                 entry.phase.label()
             ),
-        );
+            // The two facts `beyond_reach` accepts are spelled out here
+            // rather than carried as a further reason variant: an operator
+            // reading this line has no other place `daemon::retention`
+            // explains what "gone" meant for this particular row.
+            DropReason::Reach => format!(
+                "{}: dropped escalated ledger entry — its dropr task or pull request no longer exists",
+                entry.display_id
+            ),
+        };
+        let mut decision = DecisionEntry::new(DecisionKind::Hold, message);
         decision.task = Some(entry.task_id);
         decision.repo = Some(entry.repo);
         decision.source = Some(SOURCE.into());
@@ -71,24 +96,96 @@ pub(super) fn prune_pass(
     Ok(())
 }
 
-/// Remove the droppable entries and return them in ledger order. Survivors keep
-/// their relative order, so the ledger stays the append-ordered log it was.
-fn prune(ledger: &mut Ledger, registered: &[String], keep_per_repo: usize) -> Vec<LedgerEntry> {
-    let evicted = beyond_window(ledger, registered, keep_per_repo);
-    if evicted.is_empty() {
+/// Remove the droppable entries and return them, each with why it was
+/// dropped, in ledger order. Survivors keep their relative order, so the
+/// ledger stays the append-ordered log it was.
+fn prune(
+    ledger: &mut Ledger,
+    registered: &[String],
+    observations: &Observations,
+    now: DateTime<Utc>,
+    keep_per_repo: usize,
+) -> Vec<(LedgerEntry, DropReason)> {
+    let windowed = beyond_window(ledger, registered, keep_per_repo);
+    let gone = beyond_reach(ledger, registered, observations, now);
+    if windowed.is_empty() && gone.is_empty() {
         return Vec::new();
     }
-    let mut dropped = Vec::with_capacity(evicted.len());
-    let mut kept = Vec::with_capacity(ledger.entries.len() - evicted.len());
+    let mut dropped = Vec::with_capacity(windowed.len() + gone.len());
+    let mut kept = Vec::with_capacity(ledger.entries.len());
     for (index, entry) in ledger.entries.drain(..).enumerate() {
-        if evicted.contains(&index) {
-            dropped.push(entry);
+        // `gone` takes precedence: an entry can rank inside the window and
+        // still be confirmed gone, and "nothing left to act on" is the more
+        // informative reason to report.
+        if gone.contains(&index) {
+            dropped.push((entry, DropReason::Reach));
+        } else if windowed.contains(&index) {
+            dropped.push((entry, DropReason::Window));
         } else {
             kept.push(entry);
         }
     }
     ledger.entries = kept;
     dropped
+}
+
+/// Indices of escalated entries confirmed to have nothing left for an
+/// operator to act on: the dropr task that would have tracked them is gone,
+/// or the pull request they once had is gone. Unlike [`beyond_window`] this
+/// ignores `keep_per_repo` entirely — a confirmed-gone entry is not history
+/// worth keeping regardless of how recently it settled.
+///
+/// Guarded the same way as `beyond_window`: an entry whose worker is still in
+/// the registry is never dropped, so a worktree an operator leaves standing
+/// is not pulled out from under a later cleanup pass.
+fn beyond_reach(
+    ledger: &Ledger,
+    registered: &[String],
+    observations: &Observations,
+    now: DateTime<Utc>,
+) -> HashSet<usize> {
+    (0..ledger.entries.len())
+        .filter(|&index| {
+            let entry = &ledger.entries[index];
+            entry.phase == LedgerPhase::Escalated
+                && !registered.iter().any(|agent| agent == &entry.agent_id)
+                && worth_probing(entry, now)
+                && (task_confirmed_absent(entry, observations)
+                    || pr_confirmed_gone(entry, observations))
+        })
+        .collect()
+}
+
+/// Whether this tick's dropr probe positively confirmed the entry's task no
+/// longer exists — see `daemon::external_state::gather_repo_task_states` and
+/// `monitor::TASK_ABSENT`.
+fn task_confirmed_absent(entry: &LedgerEntry, observations: &Observations) -> bool {
+    observations
+        .tasks
+        .iter()
+        .any(|task| task.task_id == entry.task_id && task.state == TASK_ABSENT)
+}
+
+/// Whether this tick's `gh` probe positively confirmed the entry's branch
+/// carries no pull request any more, for an entry that once had one.
+///
+/// An entry that never opened a pull request is excluded — that is a worker
+/// killed mid-implementation, not a pull request that went away, and
+/// `command::escalation`/`triage::completion` already leave it unreconsidered
+/// for the same reason. `observations.errors` rules out the probe itself
+/// having failed: `daemon::external_state::list_branch_prs` reports a
+/// genuine absence as `Ok(None)` and a failed read as an error pushed there,
+/// and only the former is evidence worth sweeping on.
+fn pr_confirmed_gone(entry: &LedgerEntry, observations: &Observations) -> bool {
+    entry.pr_url.is_some()
+        && !observations
+            .prs
+            .iter()
+            .any(|pr| pr.task_id.as_deref() == Some(entry.task_id.as_str()))
+        && !observations
+            .errors
+            .iter()
+            .any(|error| error.task_id.as_deref() == Some(entry.task_id.as_str()))
 }
 
 /// Indices of the entries this pass may forget: terminal, unregistered, and

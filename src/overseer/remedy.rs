@@ -142,16 +142,32 @@ pub(crate) const WORKER_QUESTION: Remedy = Remedy {
 };
 
 /// A ledger entry parked at `phase=escalated` with no decision reason
-/// attached — nothing recorded why, and nothing will retry it on its own.
-/// `InboxItem::remedy` routes here for that shape directly, the same way it
-/// routes a `Question` to [`WORKER_QUESTION`]: there is no reason string to
-/// resolve, only the bare fact of the parked entry.
+/// attached — nothing recorded why, and no pull request for the merge pass
+/// to reconsider. `InboxItem::remedy` routes here for that shape directly,
+/// the same way it routes a `Question` to [`WORKER_QUESTION`]: there is no
+/// reason string to resolve, only the bare fact of the parked entry.
 pub(crate) const LEDGER_PARKED: Remedy = Remedy {
     step: Move::Review,
     means: "this ledger entry is parked at phase=escalated with no recorded reason, \
             and the daemon will not retry it on its own",
     next: "open the pull request directly: merge it by hand, re-dispatch the task, \
            or clear the row with `d` once it is handled",
+};
+
+/// The same bare-ledger shape as [`LEDGER_PARKED`], but for an entry that
+/// still has a pull request — a killed session or a rejected triage action,
+/// most often. `command::escalation::escalate_workers` and
+/// `triage::completion::apply_completion` grant these a merge-pass
+/// reconsideration look (`LedgerEntry::grant_merge_reconsideration`), so
+/// unlike `LEDGER_PARKED` the daemon *does* retry it on its own — this row
+/// is informational until that pass either merges it or re-escalates it
+/// with a reason.
+pub(crate) const LEDGER_PARKED_RESUMABLE: Remedy = Remedy {
+    step: Move::Watch,
+    means: "this ledger entry is parked at phase=escalated with no recorded reason, \
+            but it still has a pull request the daemon will recheck on its own",
+    next: "nothing to do yet — the next merge pass either merges it or \
+           re-escalates it with a reason",
 };
 
 /// What [`resolve`] substitutes when the table says `Answer` but there is no

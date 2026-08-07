@@ -4,10 +4,7 @@ use crate::overseer::{
     logging::{self, DecisionKind},
     monitor::{Action, FailureOrigin},
     session::executable_script,
-    triage::{
-        queue::test_queue,
-        result::{ParseError, parse},
-    },
+    triage::queue::test_queue,
 };
 use chrono::Utc;
 use std::{thread, time::Instant};
@@ -134,6 +131,44 @@ fn malformed_result_escalates_and_records_when_the_entry_settled() {
     assert_eq!(ledger.entries[0].settled_at, settled);
 }
 
+/// A triage escalation never goes through `merge_hold::charge`, so without
+/// this it never earns a reconsideration budget and a green pull request
+/// behind it would sit parked forever — see dropr:401.
+#[test]
+fn escalating_an_entry_with_an_open_pull_request_grants_reconsideration() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut ledger = ledger();
+    ledger.entries[0].pr_url = Some("https://github.com/nantokaworks/robco/pull/1".into());
+    apply_session_result_with(
+        SessionResult::TimedOut,
+        &mut ledger,
+        &case(),
+        &temp.path().join("decisions.jsonl"),
+        &no_scribble,
+    )
+    .unwrap();
+    let entry = &ledger.entries[0];
+    assert_eq!(entry.phase, LedgerPhase::Escalated);
+    assert!(!entry.worker_escalated);
+    assert!(entry.merge_hold_cap_escalated);
+    assert_eq!(entry.merge_hold_rechecks, 0);
+}
+
+#[test]
+fn escalating_an_entry_without_a_pull_request_grants_no_reconsideration() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut ledger = ledger();
+    apply_session_result_with(
+        SessionResult::TimedOut,
+        &mut ledger,
+        &case(),
+        &temp.path().join("decisions.jsonl"),
+        &no_scribble,
+    )
+    .unwrap();
+    assert!(!ledger.entries[0].merge_hold_cap_escalated);
+}
+
 /// The note is the only explanation an operator reading dropr gets for an
 /// escalation, so losing it has to reach the alert digest — and the digest
 /// reads `Escalate` while ignoring `Hold`. This failure used to be a `Hold`
@@ -168,10 +203,15 @@ fn an_escalation_note_that_did_not_land_escalates_on_its_own() {
 }
 
 #[test]
-fn unknown_action_is_rejected_and_logged() {
+fn unknown_action_is_ignored_and_logged_not_escalated() {
+    // A schema mismatch on `action` — including a name the enum does not
+    // recognise — is a model formatting slip `result::parse` now recovers
+    // from in place: the action is dropped, but `outcome`/`reason` parsed
+    // fine and are honoured as they are. See dropr:401.
     let temp = tempfile::tempdir().unwrap();
     let log_path = temp.path().join("decisions.jsonl");
     let mut ledger = ledger();
+    let before = ledger.entries[0].phase;
     let raw = br#"{
         "outcome":"resolved",
         "action":{"name":"run_shell","command":"rm -rf /"},
@@ -186,8 +226,9 @@ fn unknown_action_is_rejected_and_logged() {
     )
     .unwrap();
     let log = fs::read_to_string(log_path).unwrap();
-    assert!(log.contains("rejected triage action"));
-    assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
+    assert!(log.contains("triage action ignored"));
+    assert!(log.contains("run_shell"));
+    assert_eq!(ledger.entries[0].phase, before);
 }
 
 #[test]
@@ -301,49 +342,6 @@ fn queue_tick_starts_session_without_blocking_daemon() {
     assert_eq!(ledger.skip_list, ["task-1"]);
 }
 
-/// A payload missing a required field must name which action it was, not
-/// just the missing field — otherwise an operator has to read the source to
-/// tell `dropr_scribble_create` and `dropr_task_status_update` apart.
-#[test]
-fn missing_content_field_names_the_action_in_the_rejection() {
-    let raw = br#"{
-        "outcome":"resolved",
-        "action":{"name":"dropr_scribble_create","task_id":"task-1"},
-        "reason":"note the block"
-    }"#;
-    let rejected = parse(raw, "task-1", "worker-1", &|_| false);
-    assert!(
-        matches!(&rejected, Err(ParseError::RejectedAction(message))
-            if message.contains("dropr_scribble_create") && message.contains("content")),
-        "{rejected:?}"
-    );
-}
-
-#[test]
-fn missing_task_id_field_names_the_action_in_the_rejection() {
-    let raw = br#"{
-        "outcome":"resolved",
-        "action":{"name":"dropr_task_status_update","status":"open"},
-        "reason":"release lock"
-    }"#;
-    let rejected = parse(raw, "task-1", "worker-1", &|_| false);
-    assert!(
-        matches!(&rejected, Err(ParseError::RejectedAction(message))
-            if message.contains("dropr_task_status_update") && message.contains("task_id")),
-        "{rejected:?}"
-    );
-}
-
-#[test]
-fn live_worker_prevents_task_lock_release() {
-    let raw = br#"{
-        "outcome":"resolved",
-        "action":{"name":"dropr_task_status_update","task_id":"task-1","status":"ready"},
-        "reason":"release"
-    }"#;
-    let rejected = parse(raw, "task-1", "worker-1", &|_| true);
-    assert!(
-        matches!(rejected, Err(ParseError::RejectedAction(message)) if message.contains("alive"))
-    );
-    assert!(parse(raw, "task-1", "worker-1", &|_| false).is_ok());
-}
+// `result::parse`-level tests (schema-mismatch recovery, policy rejection)
+// live in `result_tests.rs`, mounted from `result.rs` directly — see
+// dropr:401.

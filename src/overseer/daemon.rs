@@ -180,6 +180,8 @@ pub async fn run_daemon() -> Result<()> {
         retention::prune_pass(
             &mut next,
             &observed.registered_agents,
+            &observed,
+            now,
             config.overseer.terminal_retention_per_repo,
         )?;
         // Persist decisions before removing their queue item. A crash before this
