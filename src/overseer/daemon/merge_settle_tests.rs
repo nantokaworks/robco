@@ -17,21 +17,50 @@ fn pass(settling: &mut Settling, repos_pulled: &[&str]) -> Vec<String> {
     settled
 }
 
+/// `auto_merge_pass` extracts one repository's own state out of the shared map
+/// before evaluating it — see `merge_concurrency` — mutates the owned value, and
+/// reinserts it. Every `barrier`/`begin` call in these tests goes through the
+/// same round trip so they exercise the map-level contract the pass actually
+/// relies on, not just the single-repository functions in isolation.
+fn barrier_for(settling: &mut Settling, repo: &str, max_passes: u32) -> Barrier {
+    let mut state = settling.remove(repo);
+    let result = barrier(&mut state, max_passes);
+    if let Some(state) = state {
+        settling.insert(repo.to_owned(), state);
+    }
+    result
+}
+
+fn begin_for(settling: &mut Settling, repo: &str) {
+    let mut state = settling.remove(repo);
+    begin(&mut state);
+    settling.insert(repo.to_owned(), state.expect("begin always sets Some"));
+}
+
 /// The case the barrier exists for: a second pull request in the repository
 /// that just merged waits for the pull, across passes, and only then merges.
 #[test]
 fn a_second_merge_waits_for_the_first_pull_across_passes() {
     let mut settling = Settling::new();
-    begin(&mut settling, "/repo");
-    assert_eq!(barrier(&mut settling, "/repo", MAX_PASSES), Barrier::Held);
+    begin_for(&mut settling, "/repo");
+    assert_eq!(
+        barrier_for(&mut settling, "/repo", MAX_PASSES),
+        Barrier::Held
+    );
 
     // A whole pass goes by with no pull yet: still held.
     assert!(pass(&mut settling, &[]).is_empty());
-    assert_eq!(barrier(&mut settling, "/repo", MAX_PASSES), Barrier::Held);
+    assert_eq!(
+        barrier_for(&mut settling, "/repo", MAX_PASSES),
+        Barrier::Held
+    );
 
     // The pull lands, and with it the barrier.
     assert_eq!(pass(&mut settling, &["/repo"]), vec!["/repo".to_string()]);
-    assert_eq!(barrier(&mut settling, "/repo", MAX_PASSES), Barrier::Open);
+    assert_eq!(
+        barrier_for(&mut settling, "/repo", MAX_PASSES),
+        Barrier::Open
+    );
 }
 
 /// The defect this replaces: the old per-pass set expired on its own, so a pull
@@ -39,10 +68,13 @@ fn a_second_merge_waits_for_the_first_pull_across_passes() {
 #[test]
 fn a_pull_that_keeps_failing_keeps_the_barrier_up() {
     let mut settling = Settling::new();
-    begin(&mut settling, "/repo");
+    begin_for(&mut settling, "/repo");
     for _ in 0..MAX_PASSES - 1 {
         assert!(pass(&mut settling, &[]).is_empty());
-        assert_eq!(barrier(&mut settling, "/repo", MAX_PASSES), Barrier::Held);
+        assert_eq!(
+            barrier_for(&mut settling, "/repo", MAX_PASSES),
+            Barrier::Held
+        );
     }
 }
 
@@ -51,14 +83,20 @@ fn a_pull_that_keeps_failing_keeps_the_barrier_up() {
 #[test]
 fn the_wait_is_bounded_and_the_release_is_reported_once() {
     let mut settling = Settling::new();
-    begin(&mut settling, "/repo");
+    begin_for(&mut settling, "/repo");
     for _ in 0..MAX_PASSES {
         pass(&mut settling, &[]);
     }
-    assert_eq!(barrier(&mut settling, "/repo", MAX_PASSES), Barrier::Lifted);
+    assert_eq!(
+        barrier_for(&mut settling, "/repo", MAX_PASSES),
+        Barrier::Lifted
+    );
     // Reporting it again on every later pass would bury the log, and there is
     // no barrier left to lift.
-    assert_eq!(barrier(&mut settling, "/repo", MAX_PASSES), Barrier::Open);
+    assert_eq!(
+        barrier_for(&mut settling, "/repo", MAX_PASSES),
+        Barrier::Open
+    );
 }
 
 /// Repositories have unrelated base branches, so one settling never holds
@@ -66,17 +104,29 @@ fn the_wait_is_bounded_and_the_release_is_reported_once() {
 #[test]
 fn repositories_are_independent() {
     let mut settling = Settling::new();
-    begin(&mut settling, "/repo-a");
-    assert_eq!(barrier(&mut settling, "/repo-a", MAX_PASSES), Barrier::Held);
-    assert_eq!(barrier(&mut settling, "/repo-b", MAX_PASSES), Barrier::Open);
+    begin_for(&mut settling, "/repo-a");
+    assert_eq!(
+        barrier_for(&mut settling, "/repo-a", MAX_PASSES),
+        Barrier::Held
+    );
+    assert_eq!(
+        barrier_for(&mut settling, "/repo-b", MAX_PASSES),
+        Barrier::Open
+    );
 
-    begin(&mut settling, "/repo-b");
+    begin_for(&mut settling, "/repo-b");
     assert_eq!(
         pass(&mut settling, &["/repo-b"]),
         vec!["/repo-b".to_string()]
     );
-    assert_eq!(barrier(&mut settling, "/repo-a", MAX_PASSES), Barrier::Held);
-    assert_eq!(barrier(&mut settling, "/repo-b", MAX_PASSES), Barrier::Open);
+    assert_eq!(
+        barrier_for(&mut settling, "/repo-a", MAX_PASSES),
+        Barrier::Held
+    );
+    assert_eq!(
+        barrier_for(&mut settling, "/repo-b", MAX_PASSES),
+        Barrier::Open
+    );
 }
 
 /// A repository that entered settling during this pass has waited zero passes,
@@ -85,6 +135,17 @@ fn repositories_are_independent() {
 fn a_barrier_raised_this_pass_starts_its_wait_at_zero() {
     let mut settling = Settling::new();
     pass(&mut settling, &[]);
-    begin(&mut settling, "/repo");
+    begin_for(&mut settling, "/repo");
     assert_eq!(settling["/repo"].passes_held, 0);
+}
+
+/// [`barrier`] and [`begin`] operate on a single repository's own owned state —
+/// the shape `auto_merge_pass` hands each concurrently-evaluated repository —
+/// independent of the map entirely.
+#[test]
+fn barrier_and_begin_operate_on_owned_state_directly() {
+    let mut state = None;
+    assert_eq!(barrier(&mut state, MAX_PASSES), Barrier::Open);
+    begin(&mut state);
+    assert_eq!(barrier(&mut state, MAX_PASSES), Barrier::Held);
 }

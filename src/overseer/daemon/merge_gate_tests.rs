@@ -55,7 +55,7 @@ fn a_conflicting_pull_request_with_no_checks_holds_on_the_conflict_not_the_wait(
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -93,7 +93,7 @@ fn an_unstable_pull_request_with_a_failed_check_holds_on_the_check_not_the_state
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -127,7 +127,7 @@ fn an_unstable_pull_request_with_checks_still_running_waits_not_holds_on_the_sta
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -156,7 +156,7 @@ fn a_blocked_pull_request_with_a_green_rollup_still_holds_on_the_missing_review(
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -184,7 +184,7 @@ fn a_blocked_pull_request_with_a_failed_check_holds_on_the_check_not_the_state()
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -212,7 +212,7 @@ fn a_draft_pull_request_with_a_green_rollup_still_holds_on_the_draft_state() {
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -240,7 +240,7 @@ fn a_draft_pull_request_with_a_failed_check_holds_on_the_check_not_the_state() {
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
@@ -264,7 +264,7 @@ fn a_clean_pull_request_with_pending_checks_still_waits_on_the_checks() {
         "https://pr/1",
         &value,
         &config_without_protection(),
-        &mut ProtectionCache::default(),
+        &ProtectionCache::default(),
         &Registry {
             version: 1,
             repos: vec![],
