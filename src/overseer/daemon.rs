@@ -154,7 +154,7 @@ pub async fn run_daemon() -> Result<()> {
         // reviews the board the pass inherited rather than the one this pass is
         // in the middle of changing.
         review.tick(&config, &next, now)?;
-        let pulled = execute_actions(&actions)?;
+        let pulled = execute_actions(&actions, config.overseer.release_pipeline_enabled)?;
         merge::auto_merge_pass(
             &config,
             &mut next,
