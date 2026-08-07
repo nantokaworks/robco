@@ -111,6 +111,22 @@ fn global_and_stale_escalations_are_display_only() {
     assert_eq!(global[0].target_id, "overseer");
 }
 
+/// The ledger-parked row (`LEDGER_PARKED_MARKER`) reads the phase straight off
+/// the ledger with no decision-log tie-breaker at all — unlike the
+/// decision-sourced `Escalate` row above, which `monitor::apply::escalate`
+/// pairs with a `LogDecision`. So once `monitor::apply::apply_escalation_resolution`
+/// (or an explicit `unblocked` report) moves an entry off `Escalated`, the row
+/// disappears on the very next aggregation without any of this module's own
+/// logic having to know the entry ever escalated in the first place.
+#[test]
+fn a_resolved_entry_produces_no_ledger_parked_row() {
+    let mut ledger = escalated_ledger();
+    ledger.entries[0].phase = LedgerPhase::Working;
+    ledger.entries[0].settled_at = None;
+
+    assert!(items(&ledger, &[], &[]).is_empty());
+}
+
 #[test]
 fn a_ledger_parked_escalation_names_the_repo_never_its_absolute_path() {
     // The Inbox row's `label` reaches an operator directly — the CLI's

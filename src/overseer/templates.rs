@@ -33,6 +33,10 @@ task's dropr status back to `open`), and stop. dropr excludes a task behind an u
 edge from its own ready feed, so Overseer redispatches automatically once the prerequisite merges —
 no operator action, and nothing further for you to do here.
 
+If you already reported `blocked` and a human then answers you directly inside this session —
+not through dropr, not through the Inbox — run `robco report --kind unblocked` right away. That
+tells Overseer the block lifted immediately instead of waiting for its next observation pass.
+
 {directive}Never merge. Never force push. Never push to main. Never create extra worktrees."#
     )
 }
@@ -98,6 +102,12 @@ mod tests {
         let prompt = worker(None);
         assert!(prompt.contains("already claimed #132"));
         assert!(prompt.contains("Do NOT run `dropr task next`"));
+    }
+
+    #[test]
+    fn prompt_tells_the_worker_to_report_an_in_session_unblock() {
+        let prompt = worker(None);
+        assert!(prompt.contains("robco report --kind unblocked"));
     }
 
     /// The rails are the last thing either prompt says, so the directive goes in

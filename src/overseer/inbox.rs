@@ -43,6 +43,12 @@ pub enum ReportKind {
     /// created the `blocks` dependency edge itself (dropr:375); it never
     /// escalates on its own, only after `overseer.max_prerequisite_wait_hours`.
     WaitingPrerequisite,
+    /// A human answered the worker directly inside its own session rather
+    /// than through dropr or the Inbox. `monitor::apply::apply_inbox` lifts
+    /// the escalation immediately on receiving this, the same way it does for
+    /// `blocked`, instead of waiting for the daemon's own next observation
+    /// pass to notice the tmux activity on its own.
+    Unblocked,
 }
 
 impl ReportKind {
@@ -54,6 +60,7 @@ impl ReportKind {
             "turn-done" => Some(Self::TurnDone),
             "waiting" => Some(Self::Waiting),
             "waiting-prerequisite" => Some(Self::WaitingPrerequisite),
+            "unblocked" => Some(Self::Unblocked),
             _ => None,
         }
     }

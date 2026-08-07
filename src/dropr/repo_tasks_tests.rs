@@ -38,6 +38,7 @@ fn row(display_id: &str, status: &str, priority: &str, children: usize) -> TaskR
             status: status.to_owned(),
             priority_score: None,
             blocked_reason: None,
+            updated_at: None,
         },
     }
 }

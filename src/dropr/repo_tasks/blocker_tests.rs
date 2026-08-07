@@ -9,6 +9,7 @@ fn blocked_task(display_id: &str) -> DroprTaskCandidate {
         status: "blocked".to_owned(),
         priority_score: None,
         blocked_reason: None,
+        updated_at: None,
     }
 }
 

@@ -9,6 +9,7 @@ fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
         status: status.to_string(),
         priority_score: None,
         blocked_reason: None,
+        updated_at: None,
     }
 }
 

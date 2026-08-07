@@ -14,6 +14,7 @@ pub struct Observations {
     pub sessions: Vec<SessionObservation>,
     pub tasks: Vec<TaskObservation>,
     pub prs: Vec<PrObservation>,
+    pub branches: Vec<BranchObservation>,
     pub errors: Vec<ObservationError>,
     pub manual_agents: Vec<String>,
     /// Agents that still hold a ledger entry but are no longer Overseer
@@ -87,6 +88,23 @@ pub struct SessionObservation {
 pub struct TaskObservation {
     pub task_id: String,
     pub state: String,
+    /// When dropr last recorded a change to this task. `None` when the
+    /// fetch's source did not carry the field. Read by
+    /// `monitor::apply::apply_escalation_resolution` to tell a task dropr
+    /// touched after an entry escalated from one that has sat unchanged.
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// The task branch's own local commit history, read straight off the entry's
+/// worktree. A new commit on it after an entry escalated is worker activity
+/// exactly like fresh tmux input — the worker pushed from the same worktree
+/// this observation reads — so `monitor::apply::apply_escalation_resolution`
+/// treats it as an equivalent signal.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BranchObservation {
+    pub task_id: String,
+    pub latest_commit_at: Option<DateTime<Utc>>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
