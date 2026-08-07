@@ -1,11 +1,14 @@
-//! Small supporting types split out of `ledger.rs` to keep that file under
-//! this project's source file size limit: the per-condition budgets a
-//! [`super::LedgerEntry`] carries alongside its phase (a merge hold, a
-//! handback, a repository settling — none of which changes what phase the
-//! entry is in on its own), plus the ledger's own daily counters.
+//! Small supporting types and methods split out of `ledger.rs` to keep that
+//! file under this project's source file size limit: the per-condition
+//! budgets a [`super::LedgerEntry`] carries alongside its phase (a merge
+//! hold, a handback, a repository settling — none of which changes what
+//! phase the entry is in on its own), the ledger's own daily counters, and
+//! the [`LedgerEntry`] methods that operate on those budgets directly.
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+
+use super::LedgerEntry;
 
 /// What the merge gate remembers about handing this pull request's failures back
 /// to its worker.
@@ -107,4 +110,19 @@ pub struct LedgerCounters {
     pub date: Option<NaiveDate>,
     pub dispatched_today: u32,
     pub consecutive_failures: u32,
+}
+
+impl LedgerEntry {
+    /// Grants a merge-pass reconsideration look, the way
+    /// `daemon::merge_hold_recheck::escalated` does for a hold-cap
+    /// escalation — see `daemon::merge_hold_recheck::due`. For an
+    /// escalation raised outside the merge subsystem there is no gate
+    /// reason or head sha to seed, so the first reconsideration pass
+    /// always counts as a change and spends one look.
+    pub fn grant_merge_reconsideration(&mut self, reason: &str) {
+        self.merge_hold_cap_escalated = true;
+        self.merge_hold_rechecks = 0;
+        self.merge_hold_recheck_reason = Some(reason.to_owned());
+        self.merge_hold_recheck_head = None;
+    }
 }

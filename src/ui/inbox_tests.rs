@@ -152,6 +152,22 @@ fn a_ledger_parked_escalation_names_the_repo_never_its_absolute_path() {
     assert!(!inbox.items[0].detail.contains("/Users/operator"));
 }
 
+/// An entry the merge pass will still reconsider on its own — see
+/// `LedgerEntry::grant_merge_reconsideration` — routes to a distinct,
+/// non-actionable remedy rather than `LEDGER_PARKED`'s "merge it by hand".
+#[test]
+fn a_ledger_parked_escalation_with_a_pull_request_is_marked_resumable() {
+    let mut ledger = escalated_ledger();
+    ledger.entries[0].pr_url = Some("https://github.com/nantokaworks/robco/pull/1".into());
+
+    let items = items(&ledger, &[], &[]);
+
+    assert_eq!(items.len(), 1);
+    let remedy = items[0].remedy();
+    assert_eq!(remedy.step, crate::overseer::remedy::Move::Watch);
+    assert!(!remedy.actionable());
+}
+
 #[test]
 fn escalation_requires_a_live_target_session() {
     for status in [Status::Dead, Status::BranchOnly] {
