@@ -17,8 +17,16 @@
 //! persisted across passes: a repository starts every pass with an empty
 //! claim, and whichever entry reaches the check first — because the ones
 //! ahead of it merged, failed, or were skipped — claims it fresh.
+//!
+//! The slot is given back when its holder leaves the queue *during* the pass
+//! that holds it — see [`Heads::release`]. Without that, a repository whose
+//! head merged early in a pass spent the rest of that pass with its slot held
+//! by a pull request that is no longer in the queue, so the one now at the
+//! head could not start catching up to the base until the next pass. The queue
+//! is one action per repository at a time, not one action per repository per
+//! pass.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 /// Reason recorded for a pull request that is behind its base but is not next
 /// in its repository's merge order. Kept apart from
@@ -30,14 +38,36 @@ use std::collections::HashSet;
 /// instead of falling through to the generic operator fallback.
 pub(crate) const WAITING_TURN: &str = "behind_not_next";
 
-/// Repositories that have already claimed this pass's one action slot.
+/// Which repositories have already spent this pass's per-repository slots.
 ///
 /// Built fresh in `auto_merge_pass` and threaded through every entry it
 /// evaluates that pass — never stored on the ledger, because "who is head"
 /// is recomputed from scratch every pass rather than remembered from the
 /// last one.
+///
+/// Two slots, because the two things they bound cost different resources and
+/// are spent at different points of the gate: `acting` bounds the branch
+/// update and the merge (GitHub writes), `priming` bounds starting a merge
+/// judgment early (model time). Sharing one slot would make a pull request
+/// waiting on its checks — which never touches GitHub — block the pull request
+/// behind it from updating its branch.
+///
+/// `acting` records *who* holds each slot, not merely that it is held. Only the
+/// holder may give it back — see [`Heads::release`].
 #[derive(Debug, Default)]
-pub(super) struct Heads(HashSet<String>);
+pub(super) struct Heads {
+    /// Repository path to the agent id of the entry holding its action slot.
+    ///
+    /// Keyed on the agent id rather than the task id because only the agent id
+    /// names one *entry*. A re-dispatched task pushes a second entry carrying
+    /// the same `task_id` (`dispatch::worker::record_attempt`), and its old
+    /// entry stays in the ledger with its pull request still open — so a task id
+    /// would let one attempt release the slot its other attempt is holding.
+    /// `observations::adopt_registry_children` dedupes entries on the agent id,
+    /// and `discord_events` already treats it as the per-entry key.
+    acting: HashMap<String, String>,
+    priming: HashSet<String>,
+}
 
 impl Heads {
     pub(super) fn new() -> Self {
@@ -58,8 +88,59 @@ impl Heads {
     /// otherwise stuck is not making progress, so letting it occupy the slot
     /// would stall every pull request behind it for as long as it stays
     /// stuck. Skipping the call is what lets the order pass over it instead.
-    pub(super) fn claim(&mut self, repo: &str) -> bool {
-        self.0.insert(repo.to_owned())
+    pub(super) fn claim(&mut self, repo: &str, agent_id: &str) -> bool {
+        match self.acting.entry(repo.to_owned()) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(slot) => {
+                slot.insert(agent_id.to_owned());
+                true
+            }
+        }
+    }
+
+    /// Whether `repo`'s head-of-queue slot is still open.
+    ///
+    /// Read rather than taken, by the one caller that has to decide whether an
+    /// entry is worth a GitHub read *before* the gate reaches the claim — see
+    /// the merge-settle barrier in `merge::auto_merge_pass`.
+    pub(super) fn free(&self, repo: &str) -> bool {
+        !self.acting.contains_key(repo)
+    }
+
+    /// Gives `repo`'s head-of-queue slot back, because the pull request holding
+    /// it left the queue on this pass — it merged, or it escalated to an
+    /// operator.
+    ///
+    /// The slot exists to stop two pull requests of one repository acting on a
+    /// base only one of them can have. A holder that is gone cannot invalidate
+    /// anything, so the pull request now at the head takes the slot in this
+    /// same pass and starts its branch update a poll interval sooner.
+    ///
+    /// `agent_id` is checked against the recorded holder, and a call from anyone
+    /// else is ignored. Most entries that reach a terminal phase during a pass
+    /// never claimed at all — a pull request GitHub reports closed stops before
+    /// the gate, and the hold cap escalates entries held on `checks_not_green`
+    /// or `merge_state:dirty`, neither of which claims. Letting one of those
+    /// free the slot would hand it to a third pull request while the real head
+    /// was mid-branch-update, and both would spend a check run for a base only
+    /// one of them can merge onto — the wasted CI this module exists to stop.
+    pub(super) fn release(&mut self, repo: &str, agent_id: &str) {
+        if self.acting.get(repo).is_some_and(|held| held == agent_id) {
+            self.acting.remove(repo);
+        }
+    }
+
+    /// Claims the early-judgment slot for `repo`, reporting whether this call
+    /// is the one that got it.
+    ///
+    /// Kept to one pull request per repository per pass because a judgment is
+    /// paid for in model time: the point of starting one early is to overlap
+    /// it with the checks the head is already waiting on, not to buy verdicts
+    /// for every pull request in the queue at once. The pull requests behind
+    /// the head still reach the judge the ordinary way, once the gate clears
+    /// them.
+    pub(super) fn claim_judge(&mut self, repo: &str) -> bool {
+        self.priming.insert(repo.to_owned())
     }
 }
 

@@ -16,6 +16,7 @@ fn entry(repo: &str) -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
+        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
@@ -46,13 +47,13 @@ fn a_ready_pull_request_claims_the_head_slot_and_the_single_pull_request_path_is
     assert!(halt.is_none());
     // The slot is now taken: a lone pull request still behaves as it always
     // has (nothing to gate against), but the claim itself is now recorded.
-    assert!(!heads.claim("/repo"));
+    assert!(!heads.claim("/repo", "other-agent"));
 }
 
 #[test]
 fn a_behind_pull_request_that_is_not_next_is_held_without_touching_its_branch() {
     let mut heads = Heads::new();
-    assert!(heads.claim("/repo")); // an earlier pull request already claimed the head this pass
+    assert!(heads.claim("/repo", "other-agent")); // an earlier pull request already claimed the head this pass
     let mut e = entry("/repo");
     let value = json!({"mergeStateStatus": "BEHIND"});
     let halt = merge_state_cleared(
@@ -84,7 +85,7 @@ fn a_held_pull_request_never_claims_the_slot_so_it_does_not_starve_the_one_behin
     assert_eq!(halt.reason, "merge_state:dirty");
     // The order skips the stuck pull request: the slot is still free for
     // whichever pull request is next in queue order.
-    assert!(heads.claim("/repo"));
+    assert!(heads.claim("/repo", "other-agent"));
 }
 
 #[test]
@@ -114,6 +115,6 @@ fn different_repositories_never_contend_for_the_same_slot() {
     );
     assert!(halt_a.is_none());
     assert!(halt_b.is_none());
-    assert!(!heads.claim("/repo-a"));
-    assert!(!heads.claim("/repo-b"));
+    assert!(!heads.claim("/repo-a", "other-agent"));
+    assert!(!heads.claim("/repo-b", "other-agent"));
 }

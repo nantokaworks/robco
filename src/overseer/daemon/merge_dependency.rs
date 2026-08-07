@@ -9,7 +9,7 @@
 //! back.
 //!
 //! Split into a live [`probe`] and a pure [`apply`] the same way `value: &Value`
-//! is fetched once by `merge::evaluate` and then only read in memory by
+//! is fetched once by `merge_evaluate::evaluate` and then only read in memory by
 //! `merge_gate::gate`: `apply` is what a test drives directly, and `probe` is
 //! the one place that actually shells out.
 

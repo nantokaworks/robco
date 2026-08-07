@@ -97,9 +97,12 @@ request, verifies protection on the branch that pull request targets, requires a
 with a non-empty check rollup in which every check is satisfied, requires GitHub to report
 the pull request as mergeable, and invokes `gh pr merge` with the configured strategy.
 Merges are serialised per repository: once one pull request of a repository merges, the
-rest of that repository is held with `repo_merged_this_pass` until the next pass, because
-the merge advanced their base. Repositories remain independent of each other. Workers are
-never instructed to merge their own pull requests.
+rest of that repository is held with `repo_merge_settling` until the post-merge
+`git pull --ff-only` lands, because the merge advanced their base. The hold covers the
+merge itself and nothing else — the pull request now at the head of the queue still reads
+GitHub and updates its branch in the same pass, which is what stops each extra pull
+request costing a whole poll interval. Repositories remain independent of each other.
+Workers are never instructed to merge their own pull requests.
 
 ### Execution plane
 
@@ -239,6 +242,7 @@ always has.
     "allow_unverifiable_protection": false,
     "autonomy_level": "conservative",
     "max_branch_updates": 3,
+    "max_merge_judge_primes": 3,
     "merge_recovery_enabled": false,
     "max_merge_recoveries": 2,
     "max_merge_holds": 30,
@@ -291,6 +295,7 @@ always has.
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
+| `max_merge_judge_primes` | non-negative integer | `3` | Merge judgements the gate may start for one pull request *early* — while it is still waiting on its checks — rather than after the gate clears. A judgement is keyed on the change, and every push mints a new one, so without this a worker pushing many CI fixes could spend the whole `daily_llm_budget` on one pull request. Charged before the judgement is queued. `0` turns early judgements off, leaving every merge judgement to run after the gate clears. |
 | `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. Switched off, each failure it would have acted on is still recorded once per revision as `merge_recovery_disabled:<reason>` and counted into `merge-recovery: off (N dropped)`. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
@@ -632,6 +637,27 @@ The update is a merge commit from the base by default. Only when the top-level
 `--rebase`, which rewrites the pull request's own branch; no other branch is ever
 rewritten. The two follow one setting deliberately: a branch updated with a merge commit is
 exactly the shape GitHub later refuses to rebase-merge.
+
+Only one pull request per repository updates its branch in a pass. Whichever one the pass
+reaches first while GitHub calls it mergeable or behind is that repository's head of
+queue; the rest are held under `behind_not_next`, because updating them now would only be
+undone the moment the head merges. The slot is given back the moment its holder leaves the
+queue — it merged, or it escalated — so the pull request behind it starts its own update
+in the same pass rather than a poll interval later. Draining a queue of ready pull
+requests therefore costs one branch update each, not one pass each.
+
+The merge judgement runs alongside that wait rather than after it. A pull request the gate
+holds under `checks_waiting` or `behind_branch_updated` — or one whose repository is still
+settling — is on its way to a merge and the change the judge would read is already final,
+so the judgement is started then and the verdict is usually in hand by the time the checks
+report. Three bounds keep that from spending model time on changes that never merge: one
+pull request per repository per pass, `max_merge_judge_primes` per entry, and the autonomy
+envelope, which refuses a change the judge would never be asked about anyway. The
+judgement is fingerprinted by the change itself and not by the head commit, so a branch
+update does not buy the same verdict twice.
+
+An early judgement is only ever *started* here; the verdict is read where it always was,
+by the gate that is ready to act on it.
 
 Each update is charged to the entry's `branch_updates` before it runs, and
 `max_branch_updates` bounds it. A branch that keeps losing the race against other merges —

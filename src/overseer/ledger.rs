@@ -34,6 +34,14 @@ pub struct LedgerEntry {
     /// looping. Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub branch_updates: u32,
+    /// Merge judgments started early — while this pull request was still waiting
+    /// on its checks — rather than after the gate cleared. Bounded by
+    /// `overseer.max_merge_judge_primes`, because a judgment is keyed on the
+    /// change and every push mints a new one, so an unbounded count would let one
+    /// pull request spend the whole `daily_llm_budget`. Defaulted so ledgers
+    /// written before the field existed still load.
+    #[serde(default)]
+    pub merge_judge_primes: u32,
     /// Handbacks of a failed merge to the worker that owns this branch.
     /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]

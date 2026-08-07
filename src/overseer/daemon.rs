@@ -8,6 +8,7 @@ mod merge_decision;
 mod merge_delivery;
 pub(crate) mod merge_dependency;
 mod merge_escalation;
+mod merge_evaluate;
 mod merge_gate;
 mod merge_hold;
 mod merge_hold_recheck;

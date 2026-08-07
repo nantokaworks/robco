@@ -1,16 +1,12 @@
 use std::collections::HashSet;
 
 use super::{
-    merge_apply::merge_now,
-    merge_decision::{self, Halt, Outcome, log, log_halt, manual_skip},
-    merge_dependency, merge_gate,
+    merge_decision::{Halt, Outcome, log, log_halt, manual_skip},
+    merge_evaluate::evaluate,
     merge_hold::{self, HoldPlan},
-    merge_hold_recheck,
-    merge_judge_gate::{Judgment, judge_allows},
-    merge_queue, merge_recovery, merge_settle,
+    merge_hold_recheck, merge_queue, merge_recovery, merge_settle,
     merge_settle::Barrier,
     protection::ProtectionCache,
-    pull_request::{self, base_sha, head_sha},
 };
 use crate::{
     Result,
@@ -93,8 +89,24 @@ pub(super) fn auto_merge_pass(
         if !auto {
             continue;
         }
-        match merge_settle::barrier(merge_settling, &entry.repo, max_settle_passes) {
-            Barrier::Open => {}
+        // The barrier guards the merge — a base the primary worktree has not
+        // pulled yet — not the steps before it. The pull request now at the head
+        // of this repository's queue has to catch up to the base that merge just
+        // advanced, and `gh pr update-branch` runs entirely on GitHub's side, so
+        // holding the whole evaluation cost the head a poll interval it did not
+        // owe.
+        //
+        // The `free` guard stops once one entry of the repository has actually
+        // claimed the slot. It does not bound the pass to a single read: an entry
+        // that halts before `merge_state_cleared` — a red check, a conflict, an
+        // unresolved prerequisite — never claims, so the entry behind it is read
+        // too, which is the same order the barrier-open path already walks to
+        // find the head. What it does bound is the tail *behind* a real head,
+        // which would otherwise each spend a `gh pr view` to learn they must
+        // wait.
+        let settling = match merge_settle::barrier(merge_settling, &entry.repo, max_settle_passes) {
+            Barrier::Open => false,
+            Barrier::Held if heads.free(&entry.repo) => true,
             Barrier::Held => {
                 log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
                 continue;
@@ -105,8 +117,9 @@ pub(super) fn auto_merge_pass(
             // says the base was never confirmed.
             Barrier::Lifted => {
                 log(entry, DecisionKind::Hold, merge_settle::SETTLE_CAP_REACHED)?;
+                false
             }
-        }
+        };
         let Some(url) = entry.pr_url.clone() else {
             // The gate stops before it can read a revision, so the budget is keyed
             // on the reason alone. It still ends the repetition, which is the only
@@ -121,6 +134,7 @@ pub(super) fn auto_merge_pass(
             )?;
             continue;
         };
+        let phase_before = entry.phase;
         let outcome = evaluate(
             entry,
             &url,
@@ -130,6 +144,7 @@ pub(super) fn auto_merge_pass(
             judgments,
             consecutive_failures,
             &mut heads,
+            settling,
         )?;
         match outcome {
             Outcome::Merged => {
@@ -163,6 +178,23 @@ pub(super) fn auto_merge_pass(
             // whole budget on a busy queue — spending it here would strand the
             // entry exactly the way this module exists to prevent.
             Outcome::Pending => merge_hold::cleared(entry),
+            // Recorded, not charged, for the same reason `Pending` is not: the
+            // gate is no longer what holds this entry, and the repository's own
+            // post-merge pull is not a condition an entry can escalate its way
+            // out of.
+            Outcome::Settling => {
+                log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
+                merge_hold::cleared(entry);
+            }
+        }
+        // The head slot belongs to whoever is still in this repository's queue.
+        // An entry that merged or escalated on this pass has left it, so the
+        // pull request behind it takes the slot now — and starts its own branch
+        // update in this same pass — rather than a poll interval from now.
+        // `release` ignores a caller that is not the recorded holder, which most
+        // entries reaching a terminal phase here are not.
+        if entry.phase != phase_before && super::terminal(entry.phase) {
+            heads.release(&entry.repo, &entry.agent_id);
         }
     }
     Ok(())
@@ -221,62 +253,6 @@ fn log_repo(repo: &str, reason: &str) -> Result<()> {
     decision.repo = Some(repo.to_owned());
     decision.source = Some("auto_merge".into());
     logging::append(&decision)
-}
-
-/// Runs one pull request through the gate: read, conclusion, protection, merge
-/// state, checks, merge state queue, merge judge, merge. Every non-merge exit
-/// names itself, so the caller has one place to record the decision and one
-/// place to decide whether the failure is the owning worker's to fix.
-#[allow(clippy::too_many_arguments)]
-fn evaluate(
-    entry: &mut LedgerEntry,
-    url: &str,
-    config: &Config,
-    cache: &mut ProtectionCache,
-    registry: &Registry,
-    judgments: &mut JudgmentQueue,
-    consecutive_failures: u32,
-    heads: &mut merge_queue::Heads,
-) -> Result<Outcome> {
-    let value = match pull_request::read(&entry.repo, url) {
-        Ok(value) => value,
-        // The read failed, so there is no revision to attribute a failure to.
-        Err(reason) => return Ok(Halt::hold(reason).on("", "")),
-    };
-    let head = head_sha(&value).to_owned();
-    let base = base_sha(&value).to_owned();
-    // A pull request GitHub no longer reports as open is a fact rather than
-    // something to wait for, and it is read first because everything below costs
-    // GitHub calls that cannot change the answer. The judge's terminal verdict is
-    // dropped with it: that verdict is what keeps an escalated entry re-entering
-    // this gate every pass, and a pull request that can never merge again has
-    // nothing left to re-judge.
-    if let Some(conclusion) = pull_request::conclusion(&value) {
-        judgments.forget_terminal_merge(&entry.task_id, url)?;
-        return Ok(merge_decision::concluded(entry, conclusion).on(&head, &base));
-    }
-    let dependency = merge_dependency::probe(&entry.task_id);
-    if let Some(halt) = merge_gate::gate(
-        entry, url, &value, config, cache, registry, heads, dependency,
-    ) {
-        return Ok(halt.on(&head, &base));
-    }
-    match judge_allows(entry, url, &value, config, judgments, consecutive_failures)? {
-        Judgment::Allow => {}
-        Judgment::Halt(halt) => return Ok(halt.on(&head, &base)),
-        Judgment::Queued => return Ok(Outcome::Pending),
-    }
-    Ok(
-        match merge_now(
-            entry,
-            url,
-            config.merge_strategy,
-            config.overseer.protection_mode,
-        )? {
-            Ok(()) => Outcome::Merged,
-            Err(halt) => halt.on(&head, &base),
-        },
-    )
 }
 
 /// A repo the Overseer does not manage should not have its pull requests merged

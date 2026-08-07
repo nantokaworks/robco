@@ -42,7 +42,11 @@ pub(super) const SETTLED: &str = "repo_merge_settled";
 pub(super) enum Barrier {
     /// Nothing is settling: merge normally.
     Open,
-    /// An earlier merge has not settled. Hold under [`SETTLING`].
+    /// An earlier merge has not settled. Hold under [`SETTLING`] — the merge,
+    /// and only the merge. The pull request now at the head of the queue still
+    /// reads GitHub and updates its branch onto the base that merge advanced;
+    /// both run on GitHub's side, and both are work it has to get through before
+    /// it can merge at all, so holding them cost it a poll interval for nothing.
     Held,
     /// The wait exceeded its bound and was abandoned. The merge proceeds, and
     /// the release is recorded under [`SETTLE_CAP_REACHED`].

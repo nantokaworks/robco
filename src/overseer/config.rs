@@ -44,6 +44,13 @@ fn default_discord_token_env() -> String {
     "ROBCO_DISCORD_TOKEN".to_string()
 }
 
+/// Matches `max_branch_updates`: both bound how many times one entry may spend a
+/// resource on catching up to a base that keeps moving, and a pull request that
+/// needs more looks than this is one an operator should see anyway.
+fn default_max_merge_judge_primes() -> u32 {
+    3
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct OverseerConfig {
@@ -73,6 +80,10 @@ pub struct OverseerConfig {
     pub legacy_merge_strategy: Option<String>,
     /// See `ledger::LedgerEntry::branch_updates` for what this still bounds.
     pub max_branch_updates: u32,
+    /// See `ledger::LedgerEntry::merge_judge_primes`. `0` turns early judgments
+    /// off entirely, leaving every merge judgment to run after the gate clears.
+    #[serde(default = "default_max_merge_judge_primes")]
+    pub max_merge_judge_primes: u32,
     /// Auto-merge passes one repository may be held waiting for its post-merge
     /// `git pull --ff-only` before the barrier is lifted without it. The bound is
     /// what stops a pull that never succeeds from parking the repository
@@ -205,6 +216,7 @@ impl Default for OverseerConfig {
             daily_llm_budget: 200,
             legacy_merge_strategy: None,
             max_branch_updates: 3,
+            max_merge_judge_primes: default_max_merge_judge_primes(),
             max_merge_settle_passes: 5,
             merge_recovery_enabled: false,
             max_merge_recoveries: 2,

@@ -30,6 +30,12 @@ pub(super) enum Outcome {
     /// The pass stopped without a decision of its own, because the merge judgment
     /// is still queued. There is no failure yet, so nothing is handed back.
     Pending,
+    /// Everything this pull request needed was done — the gate cleared, the judge
+    /// allowed — but an earlier merge into the same repository has not settled, so
+    /// the merge itself waits. Kept apart from a [`Halt`] because it carries no
+    /// budget: waiting for the repository's own post-merge pull is the expected
+    /// steady state, not a condition to escalate out of.
+    Settling,
 }
 
 /// A recorded non-merge outcome. The reason is both what `decisions.jsonl` shows

@@ -19,6 +19,7 @@ fn entry(task: &str, agent: &str, phase: LedgerPhase) -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr".into()),
         branch_updates: 0,
+        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
