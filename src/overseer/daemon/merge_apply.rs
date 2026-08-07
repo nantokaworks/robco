@@ -50,7 +50,7 @@ pub(super) fn merge_state_cleared(
 ) -> Option<Halt> {
     match merge_state::merge_state(value) {
         MergeState::Ready => {
-            heads.claim(&entry.repo);
+            heads.claim(&entry.repo, &entry.agent_id);
             None
         }
         // Never claims the head slot: a pull request GitHub itself calls non-mergeable
@@ -58,7 +58,7 @@ pub(super) fn merge_state_cleared(
         // slot open lets the next pull request in queue order claim it instead.
         MergeState::Held(raw) => Some(Halt::hold(merge_state::hold_reason(raw))),
         MergeState::Behind => {
-            if !heads.claim(&entry.repo) {
+            if !heads.claim(&entry.repo, &entry.agent_id) {
                 return Some(Halt::hold(merge_queue::WAITING_TURN));
             }
             match merge_state::plan_update(entry, config) {

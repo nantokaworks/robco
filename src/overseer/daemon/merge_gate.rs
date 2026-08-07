@@ -1,7 +1,8 @@
 //! The read-only middle of the auto-merge gate: protection, merge state, checks,
 //! and the merge state queue.
 //!
-//! Split out from `merge::evaluate` so a crafted [`Value`] can drive it directly —
+//! Split out from `merge_evaluate::evaluate` so a crafted [`Value`] can drive it
+//! directly —
 //! every step here either reads `value` in memory or, for protection, probes an
 //! endpoint that a `ProtectionMode::Off` config skips — which is what lets a test
 //! exercise the ordering below without shelling out to `gh`.
@@ -21,8 +22,9 @@ use crate::{config::Config, overseer::ledger::LedgerEntry, registry::Registry};
 const CHECKS_FAILED: &str = "checks_not_green";
 
 /// Reason recorded when the checks have not finished. Nothing has failed, so nothing
-/// is handed back.
-const CHECKS_WAITING: &str = "checks_waiting";
+/// is handed back. `pub(super)` because `merge_judge_gate::prime` treats this as one
+/// of the two waits a merge judgment may run underneath.
+pub(super) const CHECKS_WAITING: &str = "checks_waiting";
 
 /// Only `DIRTY` is checked ahead of the checks stage: a conflicting head reports zero
 /// check runs, because GitHub cannot construct `refs/pull/N/merge` for it and so never

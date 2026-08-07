@@ -156,6 +156,106 @@ fn a_pull_request_waiting_on_the_judge_is_recorded_once_and_then_by_its_verdict(
     }
 }
 
+/// The point of priming: the judgment runs while the pull request is still
+/// waiting on its checks, so the gate that clears next finds the verdict already
+/// waiting instead of starting the round trip it could have overlapped.
+#[test]
+fn a_primed_judgment_hands_its_verdict_to_the_gate_that_asks_afterwards() {
+    let temp = tempfile::tempdir().unwrap();
+    let log = temp.path().join("decisions.jsonl");
+    let config = judging_config(temp.path(), "allow");
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+
+    assert!(
+        queue.prime_merge(case.clone()).unwrap(),
+        "the first prime starts a judgment"
+    );
+    settle(&mut queue, &config);
+
+    // `prime_merge` never reads the answer, so the verdict is still there for the
+    // gate. Taking it in the priming call would have dropped a judgment the
+    // daemon paid model time for.
+    assert_eq!(queue.completed_len(), 1);
+    assert_eq!(queue.merge_advice(case).unwrap().unwrap().reason, "judged");
+    assert_eq!(
+        reasons(&log, "judge_pending"),
+        1,
+        "queued once, logged once"
+    );
+}
+
+#[test]
+fn priming_the_same_change_again_does_not_ask_the_judge_twice() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+
+    assert!(queue.prime_merge(case.clone()).unwrap());
+    // The head sha moves every time the branch is updated onto its base, and the
+    // gate primes again on the pass that updates it. `merge_key` is blind to the
+    // head on purpose, so both calls name one question.
+    let mut updated = case.clone();
+    updated.head_sha = "a-new-head-after-the-base-moved".into();
+    assert!(!queue.prime_merge(updated).unwrap());
+    assert!(!queue.prime_merge(case.clone()).unwrap());
+
+    assert_eq!(queue.pending_len(), 1);
+}
+
+/// The caller charges a per-entry budget on this answer, so a repeat that bought
+/// nothing must say so. Charging it would spend the whole budget on one judgment
+/// and leave nothing for the genuinely new question a later push raises.
+#[test]
+fn a_prime_that_starts_nothing_reports_that_it_bought_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+
+    assert!(queue.prime_merge(case.clone()).unwrap());
+    // Same wait, next pass: already queued.
+    assert!(!queue.prime_merge(case.clone()).unwrap());
+
+    // A push that moves the diff is a new question, and it must still be buyable.
+    let mut pushed = case.clone();
+    pushed.files.push("src/new.rs".into());
+    assert!(queue.prime_merge(pushed).unwrap());
+    assert_eq!(queue.pending_len(), 2);
+}
+
+#[test]
+fn priming_a_change_that_already_has_a_verdict_leaves_the_verdict_alone() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut queue = test_queue(temp.path());
+    let Request::Merge { case, .. } = merge_request() else {
+        unreachable!()
+    };
+    queue.cache_merge(
+        &case,
+        result::MergeAdvice {
+            outcome: result::MergeJudgment::Allow,
+            reason: "reviewed".into(),
+            fail_safe: false,
+            ignored_fields: Vec::new(),
+        },
+    );
+
+    assert!(!queue.prime_merge(case.clone()).unwrap());
+
+    assert_eq!(queue.pending_len(), 0, "nothing to re-ask");
+    assert_eq!(queue.completed_len(), 1, "and nothing consumed");
+    assert_eq!(
+        queue.merge_advice(case).unwrap().unwrap().reason,
+        "reviewed"
+    );
+}
+
 /// A judge whose whole job is to write `result.json` and exit.
 fn judging_config(dir: &Path, verdict: &str) -> Config {
     let script = crate::overseer::session::executable_script(

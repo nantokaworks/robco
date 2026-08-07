@@ -60,6 +60,45 @@ impl JudgmentQueue {
         Ok(None)
     }
 
+    /// Queues a judgment for a change the merge gate has not cleared yet, so the
+    /// session runs while the pull request is still waiting on its checks.
+    ///
+    /// Enqueue-only on purpose. Unlike [`Self::merge_advice`] this never takes a
+    /// completed verdict and never writes `terminal_merges`, because nothing here
+    /// is asking what the judge said: the gate is still the authority on whether
+    /// this pull request may merge, and it reads the answer through `merge_advice`
+    /// on the pass it is ready to act on one. Consuming the verdict here would
+    /// drop it before that pass ever saw it.
+    ///
+    /// The change is fingerprinted by [`merge_key`], which is deliberately blind
+    /// to the head sha — so priming a pull request, updating its branch, and
+    /// priming it again all name the same question, and the second call finds the
+    /// first still queued rather than paying for the judgment twice.
+    ///
+    /// Returns whether this call actually started a new judgment, so the caller
+    /// can charge its own budget for judgments bought rather than for calls made.
+    pub fn prime_merge(&mut self, case: MergeCase) -> Result<bool> {
+        let identity = merge_identity(&case);
+        let key = merge_key(&case);
+        // A verdict this change already has — terminal, or waiting to be read —
+        // is the one `merge_advice` will hand back. Asking again buys nothing.
+        if self.terminal_merges.matches(&identity, &key) || self.completed.holds(&key) {
+            return Ok(false);
+        }
+        let (task_id, repo) = (case.task_id.clone(), case.repo.clone());
+        if !self.enqueue_once(Request::Merge { key, case }) {
+            return Ok(false);
+        }
+        audit::log(
+            &self.log_path,
+            DecisionKind::Hold,
+            Some(&task_id),
+            Some(&repo),
+            audit::MERGE_PENDING,
+        )?;
+        Ok(true)
+    }
+
     pub fn has_terminal_merge(&self, task_id: &str, pr_url: Option<&str>) -> bool {
         pr_url.is_some_and(|url| {
             self.terminal_merges

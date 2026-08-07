@@ -261,6 +261,7 @@ fn off_mode_skips_the_probe_entirely() {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
+        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,

@@ -14,6 +14,7 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
+        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
@@ -80,6 +81,33 @@ fn every_reason_the_merge_gate_emits_resolves_to_one_class() {
             FailureClass::Operator,
             "expected operator-only: {reason}"
         );
+    }
+}
+
+/// The pass that runs `gh pr update-branch` must leave the entry in `pr_opened`.
+///
+/// `auto_merge_pass` gives a repository's head-of-queue slot back when an entry
+/// reaches a terminal phase during the pass, so the pull request behind it can
+/// act immediately. If a branch update could turn its own entry terminal, that
+/// release would fire on the pass that just spent a check run — and the next
+/// pull request would update its branch too, which is exactly the wasted CI the
+/// merge queue exists to prevent. Recovery is the only step between the update
+/// and the end of the pass that can move a phase, and it must stay inert here.
+#[test]
+fn a_branch_update_never_turns_its_own_entry_terminal() {
+    let mut entry = entry();
+    for reason in [
+        crate::overseer::daemon::merge_state::BRANCH_UPDATED,
+        "behind_update_exit:exit status: 1",
+        "behind_update_error:timed out",
+    ] {
+        assert_eq!(classify(reason), FailureClass::Operator, "{reason}");
+        assert_eq!(
+            plan(&mut entry, reason, "head", "base", true, 2),
+            RecoveryPlan::Idle,
+            "{reason}"
+        );
+        assert_eq!(entry.phase, LedgerPhase::PrOpened, "{reason}");
     }
 }
 

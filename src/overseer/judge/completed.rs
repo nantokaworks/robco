@@ -32,6 +32,15 @@ impl CompletedJudgments {
         self.0.remove(key).map(|(_, parsed)| parsed)
     }
 
+    /// Whether a verdict for `key` is waiting to be consumed.
+    ///
+    /// For the one caller that must not consume it: `JudgmentQueue::prime_merge`
+    /// asks only whether this question already has an answer, and taking it there
+    /// would drop the verdict before the gate ever read it.
+    pub(super) fn holds(&self, key: &str) -> bool {
+        self.0.contains_key(key)
+    }
+
     /// Drops dispatch verdicts keyed to a candidate set that no longer exists.
     ///
     /// `dispatch_key` hashes the approved ids, so one task appearing or

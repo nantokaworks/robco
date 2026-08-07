@@ -32,6 +32,7 @@ fn entry(task: &str, phase: LedgerPhase) -> crate::overseer::ledger::LedgerEntry
         retries: 0,
         pr_url: None,
         branch_updates: 0,
+        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,

@@ -122,6 +122,7 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
             retries: 0,
             pr_url: Some("https://github.com/nantokaworks/robco/pull/199".into()),
             branch_updates: 0,
+            merge_judge_primes: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
             manual_merge_skip: None,
