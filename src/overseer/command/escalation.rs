@@ -7,6 +7,11 @@ pub(crate) fn escalate_workers(ledger: &mut Ledger, killed_ids: &HashSet<String>
     for entry in &mut ledger.entries {
         if killed_ids.contains(&entry.agent_id) && !terminal(entry.phase) {
             entry.phase = LedgerPhase::Escalated;
+            // A killed session is a forced intervention, not a worker's own
+            // report — see `LedgerEntry::worker_escalated`. Unrelated activity
+            // elsewhere is no evidence that whatever made the kill necessary
+            // is resolved.
+            entry.worker_escalated = false;
         }
     }
 }
@@ -41,6 +46,7 @@ mod tests {
             merge_hold_recheck_head: None,
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
+            worker_escalated: false,
         }
     }
 

@@ -23,12 +23,23 @@ use super::{Action, LedgerEntry, LedgerPhase, Observations};
 /// predate the block. No baseline (`settled_at: None`, an old ledger row from
 /// before the field existed) means nothing to compare against, so the entry
 /// is left for a human exactly as it always was.
+///
+/// Also gated on `entry.worker_escalated`. `LedgerPhase::Escalated` is shared
+/// with the merge subsystem's own safety-valve escalations — a judge veto or
+/// fail-safe cap, an exhausted branch-update or recovery budget, a pull
+/// request closed without merging — whose worktree and tmux session stay
+/// alive exactly like a worker-blocked entry's do (`monitor::reconcile_entry`
+/// keeps cleanup pending until `Merged`), so the same three signals fire for
+/// them too. None of the three says anything about whether the specific
+/// condition the merge gate raised has cleared, so only an entry whose
+/// escalation actually came from a worker report is eligible here — see
+/// `LedgerEntry::worker_escalated`.
 pub(in crate::overseer::monitor) fn apply_escalation_resolution(
     entry: &mut LedgerEntry,
     observations: &Observations,
     actions: &mut Vec<Action>,
 ) {
-    if entry.phase != LedgerPhase::Escalated {
+    if entry.phase != LedgerPhase::Escalated || !entry.worker_escalated {
         return;
     }
     let Some(settled_at) = entry.settled_at else {
@@ -67,7 +78,13 @@ pub(in crate::overseer::monitor) fn apply_escalation_resolution(
 
 /// Common tail of both resolution paths — the explicit `unblocked` report in
 /// `apply::apply_inbox` and the activity signals in
-/// [`apply_escalation_resolution`] above.
+/// [`apply_escalation_resolution`] above. Both call sites already require
+/// `entry.worker_escalated`, so this never fires for a merge-subsystem
+/// escalation — but it clears the merge-hold reconsideration markers
+/// regardless, the same way `daemon::merge_hold_recheck::settle` does,
+/// because leaving them behind on an entry that goes on to earn a *different*
+/// escalation later would misattribute that budget to a condition this
+/// resolution has nothing to do with.
 ///
 /// Lands on `Working` rather than whatever phase preceded the escalation,
 /// which the ledger does not record: the next `apply_pr` / `apply_task_failure`
@@ -81,6 +98,12 @@ pub(in crate::overseer::monitor) fn apply_escalation_resolution(
 pub(super) fn resolve(entry: &mut LedgerEntry, signal: &str, actions: &mut Vec<Action>) {
     entry.phase = LedgerPhase::Working;
     entry.settled_at = None;
+    entry.worker_escalated = false;
+    entry.merge_hold_cap_escalated = false;
+    entry.merge_hold_rechecks = 0;
+    entry.merge_hold_recheck_reason = None;
+    entry.merge_hold_recheck_head = None;
+    entry.merge_hold_stuck_notified = false;
     let reason = format!("resolved_externally:{signal}");
     actions.push(Action::Notify {
         message: format!("{}: {reason}", entry.display_id),

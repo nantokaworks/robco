@@ -104,6 +104,11 @@ pub struct LedgerEntry {
     /// `merge_recovery` handback.
     #[serde(default)]
     pub merge_hold_stuck_notified: bool,
+    /// Whether the entry's `Escalated` phase came from a worker's own report
+    /// rather than a merge-subsystem safety valve or a killed session. Gates
+    /// `monitor::apply::apply_escalation_resolution` — see there for why.
+    #[serde(default)]
+    pub worker_escalated: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

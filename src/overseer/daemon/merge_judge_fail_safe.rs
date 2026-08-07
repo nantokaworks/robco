@@ -77,6 +77,7 @@ pub(super) fn handle(
         )?,
         Plan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
+            entry.worker_escalated = false;
             log(entry, DecisionKind::Escalate, CAP_REACHED)?;
         }
     }

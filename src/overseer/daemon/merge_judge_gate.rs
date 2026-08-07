@@ -85,6 +85,7 @@ fn judgment_allows_merge(entry: &mut LedgerEntry, outcome: MergeJudgment) -> boo
         true
     } else {
         entry.phase = LedgerPhase::Escalated;
+        entry.worker_escalated = false;
         false
     }
 }

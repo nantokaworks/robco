@@ -23,6 +23,7 @@ fn a_resolved_entry_that_re_escalates_on_a_later_pass_gets_a_fresh_clock() {
     let mut escalated = ledger();
     escalated.entries[0].phase = LedgerPhase::Escalated;
     escalated.entries[0].settled_at = Some(at(5));
+    escalated.entries[0].worker_escalated = true;
 
     let resolving: Observations = serde_json::from_str(
         r#"{"sessions":[{"agent_id":"worker-1","status":"running","last_activity_at":"2026-07-16T00:06:00Z"}]}"#,
@@ -52,6 +53,7 @@ fn an_unblocked_report_cascades_to_the_real_phase_in_the_same_pass() {
     let mut escalated = ledger();
     escalated.entries[0].phase = LedgerPhase::Escalated;
     escalated.entries[0].settled_at = Some(at(5));
+    escalated.entries[0].worker_escalated = true;
     escalated.entries[0].pr_url = Some("https://github.test/pull/1".into());
 
     let observations: Observations = serde_json::from_str(
@@ -80,6 +82,7 @@ fn a_same_pass_resolve_then_re_escalate_still_gets_a_fresh_clock() {
     let mut escalated = ledger();
     escalated.entries[0].phase = LedgerPhase::Escalated;
     escalated.entries[0].settled_at = Some(at(5));
+    escalated.entries[0].worker_escalated = true;
 
     let observations: Observations = serde_json::from_str(
         r#"{
@@ -92,4 +95,37 @@ fn a_same_pass_resolve_then_re_escalate_still_gets_a_fresh_clock() {
 
     assert_eq!(result.entries[0].phase, LedgerPhase::Escalated);
     assert_eq!(result.entries[0].settled_at, Some(at(6)));
+}
+
+/// The judge-veto regression at the `reconcile()` level: an entry escalated by
+/// the merge subsystem (`worker_escalated: false`, e.g. a judge veto or an
+/// exhausted recovery budget) must not be resolved by either path — not the
+/// daemon's own observed activity, and not a worker's `unblocked` report,
+/// since the worker's worktree and session stay alive through a merge-gate
+/// escalation too and it may not know the block is not its own.
+#[test]
+fn a_merge_gate_escalation_survives_both_resolution_paths() {
+    let mut escalated = ledger();
+    escalated.entries[0].phase = LedgerPhase::Escalated;
+    escalated.entries[0].settled_at = Some(at(5));
+    escalated.entries[0].worker_escalated = false;
+    escalated.entries[0].merge_hold_cap_escalated = true;
+
+    let observations: Observations = serde_json::from_str(
+        r#"{
+            "inbox":[{"at":"2026-07-16T00:06:00Z","agent_id":"worker-1","kind":"unblocked"}],
+            "sessions":[{"agent_id":"worker-1","status":"running","last_activity_at":"2026-07-16T00:06:00Z"}],
+            "tasks":[{"task_id":"task-131","state":"in_progress","updated_at":"2026-07-16T00:06:00Z"}]
+        }"#,
+    )
+    .unwrap();
+    let (result, actions) = reconcile(&escalated, &observations, at(6), 30, 72);
+
+    assert_eq!(result.entries[0].phase, LedgerPhase::Escalated);
+    assert_eq!(result.entries[0].settled_at, Some(at(5)));
+    assert!(result.entries[0].merge_hold_cap_escalated);
+    assert!(!actions.iter().any(|action| matches!(
+        action,
+        Action::LogDecision { message, .. } if message.starts_with("resolved_externally:")
+    )));
 }

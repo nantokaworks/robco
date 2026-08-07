@@ -172,6 +172,7 @@ pub(super) fn consider(
         RecoveryPlan::Dropped => log(entry, DecisionKind::Hold, &disabled(reason)),
         RecoveryPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
+            entry.worker_escalated = false;
             log(entry, DecisionKind::Escalate, CAP_REACHED)
         }
         RecoveryPlan::Dispatch => dispatch(entry, reason, registry, language),
@@ -190,6 +191,7 @@ fn dispatch(
         // session keeps the escalation actionable rather than reading as a
         // recovery that silently did nothing.
         entry.phase = LedgerPhase::Escalated;
+        entry.worker_escalated = false;
         let reason = skipped(&format!("missing_session:{}", entry.agent_id));
         return log(entry, DecisionKind::Escalate, &reason);
     };

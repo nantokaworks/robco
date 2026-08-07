@@ -34,6 +34,7 @@ fn entry() -> LedgerEntry {
         merge_hold_recheck_head: Some("sha-1".into()),
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        worker_escalated: false,
     }
 }
 

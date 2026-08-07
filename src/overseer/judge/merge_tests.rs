@@ -78,6 +78,7 @@ fn merge_case_saturates_additions_independently() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        worker_escalated: false,
     };
     let value = json!({
         "headRefOid":"new-sha", "additions":u64::MAX, "deletions":u32::MAX,
@@ -118,6 +119,7 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        worker_escalated: false,
     };
     let now = chrono::Local::now();
     let agent = |management| crate::model::AgentNode {
@@ -216,6 +218,7 @@ fn a_repo_opted_out_of_the_overseer_blocks_auto_merge_for_every_worker_in_it() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        worker_escalated: false,
     };
     let now = chrono::Local::now();
     let agent = crate::model::AgentNode {

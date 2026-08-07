@@ -71,7 +71,13 @@ pub(super) fn apply_inbox(
             // here, inside `apply_inbox`, means the same pass's `apply_pr` /
             // `apply_task_failure` / `apply_session` immediately re-derive the
             // entry's real phase instead of waiting for the next poll.
-            "unblocked" if entry.phase == LedgerPhase::Escalated => {
+            //
+            // Gated on `worker_escalated` the same as the signal-driven path
+            // in `apply_escalation_resolution`: the worker's own worktree and
+            // session stay alive through a merge-subsystem escalation too, so
+            // a worker that fires this hook without knowing the block is on
+            // the merge side, not its own, must not clear it.
+            "unblocked" if entry.phase == LedgerPhase::Escalated && entry.worker_escalated => {
                 resolve(entry, "explicit_report", actions)
             }
             "claimed" | "turn-done" | "waiting" | "done" | "waiting-prerequisite" | "unblocked" => {
@@ -221,6 +227,8 @@ fn fail(entry: &mut LedgerEntry, reason: &str, origin: FailureOrigin, actions: &
 }
 fn escalate(entry: &mut LedgerEntry, reason: &str, actions: &mut Vec<Action>) {
     entry.phase = LedgerPhase::Escalated;
+    // The one call site allowed to set this: see `LedgerEntry::worker_escalated`.
+    entry.worker_escalated = true;
     actions.push(Action::Escalate {
         task_id: entry.task_id.clone(),
         reason: reason.into(),
