@@ -70,6 +70,7 @@ pub(super) fn merge_state_cleared(
                 }
                 BehindPlan::Escalate => {
                     entry.phase = LedgerPhase::Escalated;
+                    entry.worker_escalated = false;
                     Some(Halt::escalate(merge_state::UPDATE_CAP_REACHED))
                 }
             }

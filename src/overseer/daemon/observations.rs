@@ -10,10 +10,13 @@ use crate::{
     },
     registry::Registry,
 };
+use branch_activity::gather_branch_activity;
 use chrono::{DateTime, Utc};
 use external_state::{gather_pr_states, gather_task_states};
 use std::process::Command;
 
+#[path = "branch_activity.rs"]
+mod branch_activity;
 #[path = "external_state.rs"]
 mod external_state;
 #[path = "liveness.rs"]
@@ -131,8 +134,9 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader, now: DateTime<Utc
     auto_ledger
         .entries
         .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
-    gather_task_states(&auto_ledger, &mut observations);
+    gather_task_states(&auto_ledger, &mut observations, now);
     gather_pr_states(&owned_ledger, &mut observations, now);
+    gather_branch_activity(&owned_ledger, &mut observations, now);
     observations
 }
 
@@ -221,6 +225,7 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
                 merge_hold_recheck_head: None,
                 prerequisite_wait: None,
                 merge_hold_stuck_notified: false,
+                worker_escalated: false,
             });
         }
     }

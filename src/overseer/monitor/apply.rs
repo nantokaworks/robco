@@ -15,6 +15,11 @@ use super::{
     Action, FailureOrigin, InboxObservation, LedgerEntry, LedgerPhase, Observations, terminal,
 };
 
+#[path = "apply_resolution.rs"]
+mod resolution;
+pub(super) use resolution::apply_escalation_resolution;
+use resolution::resolve;
+
 /// Reason recorded when a prerequisite wait outlives its bound — a worker's
 /// `waiting-prerequisite` report, or the auto-merge gate's own
 /// `daemon::merge_dependency` hold, that never cleared. Named apart from the
@@ -60,7 +65,23 @@ pub(super) fn apply_inbox(
             "waiting-prerequisite" if !terminal(entry.phase) => {
                 entry.prerequisite_wait.get_or_insert(report.at);
             }
-            "claimed" | "turn-done" | "waiting" | "done" | "waiting-prerequisite" => {}
+            // A worker that got its answer straight from a human typing into
+            // its own tmux session — rather than through dropr or the inbox —
+            // has no other way to tell Overseer the block lifted. Resolving
+            // here, inside `apply_inbox`, means the same pass's `apply_pr` /
+            // `apply_task_failure` / `apply_session` immediately re-derive the
+            // entry's real phase instead of waiting for the next poll.
+            //
+            // Gated on `worker_escalated` the same as the signal-driven path
+            // in `apply_escalation_resolution`: the worker's own worktree and
+            // session stay alive through a merge-subsystem escalation too, so
+            // a worker that fires this hook without knowing the block is on
+            // the merge side, not its own, must not clear it.
+            "unblocked" if entry.phase == LedgerPhase::Escalated && entry.worker_escalated => {
+                resolve(entry, "explicit_report", actions)
+            }
+            "claimed" | "turn-done" | "waiting" | "done" | "waiting-prerequisite" | "unblocked" => {
+            }
             kind => actions.push(Action::LogDecision {
                 task_id: Some(entry.task_id.clone()),
                 message: format!("ignored unknown inbox observation kind {kind:?}"),
@@ -206,6 +227,8 @@ fn fail(entry: &mut LedgerEntry, reason: &str, origin: FailureOrigin, actions: &
 }
 fn escalate(entry: &mut LedgerEntry, reason: &str, actions: &mut Vec<Action>) {
     entry.phase = LedgerPhase::Escalated;
+    // The one call site allowed to set this: see `LedgerEntry::worker_escalated`.
+    entry.worker_escalated = true;
     actions.push(Action::Escalate {
         task_id: entry.task_id.clone(),
         reason: reason.into(),

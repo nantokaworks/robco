@@ -71,10 +71,26 @@ only these kinds:
 | `blocked` | Escalate the worker with the default `worker blocked` reason. |
 | `turn-done` | The agent client finished a turn; a dispatched or claimed worker becomes working. |
 | `waiting` | The agent client is waiting; a dispatched or claimed worker becomes working. |
+| `unblocked` | A human answered the worker directly in its session; an escalated worker's block lifts immediately. |
 
 Lifecycle records written through the current report command contain the timestamp,
 sender agent id, and kind. They do not carry a task id, PR URL, or custom blocked
 reason. An unknown kind is rejected as invalid parameters (CLI exit code `3`).
+
+### Escalation resolution
+
+An escalated worker's Inbox row does not require an operator to clear it by hand.
+Overseer lifts the escalation on its own once it has evidence a human already
+answered, either of:
+
+- an explicit `--kind unblocked` report, resolved on the next daemon pass, or
+- activity the daemon observes on its own after the escalation: new tmux output
+  in the worker's session, a new commit on the task branch, or a change dropr
+  recorded on the task.
+
+Either path is recorded as a `Hold` decision with reason `resolved_externally:<signal>`,
+so the decision log still says why the row disappeared. Activity from before the
+escalation never counts, so a still-blocked worker is never resolved by accident.
 
 | Exit code | Meaning |
 |-----------|---------|

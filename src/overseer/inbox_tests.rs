@@ -9,6 +9,11 @@ fn report(kind: ReportKind) -> InboxReport {
 }
 
 #[test]
+fn unblocked_parses_from_its_kebab_case_kind_string() {
+    assert_eq!(ReportKind::parse("unblocked"), Some(ReportKind::Unblocked));
+}
+
+#[test]
 fn rotation_keeps_only_an_unconsumed_tail() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("inbox.jsonl");

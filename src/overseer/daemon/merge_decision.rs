@@ -116,6 +116,7 @@ pub(super) fn concluded(entry: &mut LedgerEntry, conclusion: PrConclusion) -> Ha
         }
         PrConclusion::Closed => {
             entry.phase = LedgerPhase::Escalated;
+            entry.worker_escalated = false;
             Halt::escalate(CLOSED_UNMERGED)
         }
     }

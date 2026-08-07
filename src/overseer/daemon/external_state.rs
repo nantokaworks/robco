@@ -1,6 +1,8 @@
 //! The probes that read state Overseer does not own: the dropr task board and
-//! GitHub pull requests. Both are best-effort — a failed probe becomes a logged
-//! skipped observation rather than invented state.
+//! GitHub pull requests. Both are best-effort — a failed probe becomes a
+//! logged skipped observation rather than invented state. `worth_probing` is
+//! also shared with the sibling `branch_activity` module, whose own probe
+//! follows the same live-or-recently-settled eligibility.
 
 use super::super::{COMMAND_TIMEOUT, terminal};
 use crate::{
@@ -27,16 +29,20 @@ use std::{collections::HashSet, process::Command};
 /// stops paying for itself.
 const RECONCILE_MAX_SETTLED_AGE: Duration = Duration::days(30);
 
-pub(super) fn gather_task_states(ledger: &Ledger, observations: &mut Observations) {
+pub(super) fn gather_task_states(
+    ledger: &Ledger,
+    observations: &mut Observations,
+    now: DateTime<Utc>,
+) {
     let workspaces = DroprOverlay::load_best_effort();
     let repos: HashSet<_> = ledger
         .entries
         .iter()
-        .filter(|entry| !terminal(entry.phase))
+        .filter(|entry| worth_probing(entry, now))
         .map(|entry| entry.repo.as_str())
         .collect();
     for repo in repos {
-        gather_repo_task_states(repo, ledger, &workspaces, observations);
+        gather_repo_task_states(repo, ledger, &workspaces, observations, now);
     }
 }
 
@@ -45,6 +51,7 @@ fn gather_repo_task_states(
     ledger: &Ledger,
     workspaces: &DroprOverlay,
     observations: &mut Observations,
+    now: DateTime<Utc>,
 ) {
     let mut command = Command::new("git");
     command.args(["-C", repo, "remote", "get-url", "origin"]);
@@ -93,7 +100,7 @@ fn gather_repo_task_states(
     for entry in ledger
         .entries
         .iter()
-        .filter(|entry| entry.repo == repo && !terminal(entry.phase))
+        .filter(|entry| entry.repo == repo && worth_probing(entry, now))
     {
         for task in tasks
             .iter()
@@ -102,6 +109,7 @@ fn gather_repo_task_states(
             observations.tasks.push(TaskObservation {
                 task_id: entry.task_id.clone(),
                 state: task.status.clone(),
+                updated_at: task.updated_at,
             });
         }
     }
@@ -123,7 +131,7 @@ const PR_FIELDS: &str = "state,statusCheckRollup,url,mergedAt";
 /// `settled_at` — one that reached a terminal phase before the field
 /// existed — has no age to compare and stays eligible; the alternative would
 /// silently stop reconciling exactly the backlog this bound exists to clear.
-fn worth_probing(entry: &LedgerEntry, now: DateTime<Utc>) -> bool {
+pub(super) fn worth_probing(entry: &LedgerEntry, now: DateTime<Utc>) -> bool {
     if !terminal(entry.phase) {
         return true;
     }

@@ -25,6 +25,7 @@ fn veto_escalates_and_cannot_be_selected_again_at_same_revision() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        worker_escalated: false,
     };
     assert!(!judgment_allows_merge(&mut entry, MergeJudgment::Veto));
     assert_eq!(entry.phase, LedgerPhase::Escalated);

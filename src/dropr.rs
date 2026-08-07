@@ -1,5 +1,6 @@
 use std::{process::Command, time::Duration};
 
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 mod claim;
@@ -42,6 +43,14 @@ pub struct DroprTaskCandidate {
     /// when the lookup found or asked nothing.
     #[serde(default)]
     pub blocked_reason: Option<String>,
+    /// When dropr last recorded a change to this task — a status move, or any
+    /// other field edit. `task_list` returns it on every row already; this is
+    /// only the first reader that keeps it, for
+    /// `overseer::monitor::apply_escalation_resolution`'s "did the task
+    /// change since the entry escalated" signal. `None` for a source that
+    /// omits it, such as `dropr task ready --json`.
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

@@ -87,6 +87,7 @@ fn a_linked_repo_names_its_workspace_and_lists_its_tasks() {
         status: "open".into(),
         priority_score: None,
         blocked_reason: None,
+        updated_at: None,
     }]);
 
     let lines = rendered(&repo(Some(workspace()), tasks));
@@ -131,6 +132,7 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
             merge_hold_recheck_head: None,
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
+            worker_escalated: false,
         }],
         ..Default::default()
     };

@@ -190,6 +190,7 @@ fn hold(
         }
         HoldPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
+            entry.worker_escalated = false;
             merge_hold_recheck::escalated(entry, &halt.reason, head);
             log(
                 entry,

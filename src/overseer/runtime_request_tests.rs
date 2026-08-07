@@ -159,5 +159,6 @@ fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        worker_escalated: false,
     }
 }

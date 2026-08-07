@@ -3,7 +3,10 @@ use chrono::{DateTime, Utc};
 
 mod apply;
 mod types;
-use apply::{apply_inbox, apply_pr, apply_prerequisite_wait, apply_session, apply_task_failure};
+use apply::{
+    apply_escalation_resolution, apply_inbox, apply_pr, apply_prerequisite_wait, apply_session,
+    apply_task_failure,
+};
 pub use types::*;
 
 #[rustfmt::skip]
@@ -44,7 +47,13 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
     if is_worker_phase(entry.phase) && entry.prerequisite_wait.is_none() {
         apply_session(entry, observations, now, stuck_after_mins, actions);
     }
-    settle(entry, original, now);
+    // Last word for the pass: an entry every apply_* above left sitting at
+    // `Escalated` (that is, `apply_inbox`'s `unblocked` report did not already
+    // lift it) gets one more check against activity the daemon observed on
+    // its own. A resolution here is picked back up by the normal pipeline on
+    // the next pass, not this one — see `apply::apply_escalation_resolution`.
+    apply_escalation_resolution(entry, observations, actions);
+    settle(entry, now);
     if original != LedgerPhase::Merged && entry.phase == LedgerPhase::Merged {
         push_cleanup(entry, actions);
     }
@@ -52,14 +61,21 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
 /// Record the instant an entry stopped being anyone's work.
 ///
 /// Stamped from the pass's `now` rather than `Utc::now()` so the transition is
-/// testable and every action of one pass shares one clock. Only on the
-/// transition into a terminal phase: an entry that was already terminal when
-/// the pass began keeps the timestamp it settled at, instead of having it
-/// rewritten to the current time on every later poll. That also leaves entries
-/// that settled before the field existed at `None` rather than back-dating them
-/// to whenever the daemon was next restarted.
-fn settle(entry: &mut LedgerEntry, original: LedgerPhase, now: DateTime<Utc>) {
-    if !terminal(original) && terminal(entry.phase) {
+/// testable and every action of one pass shares one clock. Driven off
+/// `entry.settled_at` itself — terminal and unset gets stamped, terminal and
+/// already stamped is left alone — rather than a phase comparison against the
+/// start of the pass. That is what gives a re-escalation its own fresh clock
+/// even when it happens in the very same pass a resolution cleared the field:
+/// `apply::apply_escalation_resolution` and the `unblocked` report both clear
+/// `settled_at` when they lift an escalation, so an entry `apply_task_failure`
+/// re-escalates later in that same pass (finding the dropr task still
+/// released, say) still reads as freshly unsettled here — the guarantee a
+/// worker that reports blocked again after an auto-resolve depends on. An
+/// entry that was already terminal when the pass began, and stays terminal,
+/// keeps the timestamp it settled at rather than having it rewritten on every
+/// later poll.
+fn settle(entry: &mut LedgerEntry, now: DateTime<Utc>) {
+    if terminal(entry.phase) && entry.settled_at.is_none() {
         entry.settled_at = Some(now);
     }
 }
@@ -122,9 +138,8 @@ fn reconcile_manual_entry(
         }
         return;
     }
-    let original = entry.phase;
     apply_pr(entry, observations, actions);
-    settle(entry, original, now);
+    settle(entry, now);
     if entry.phase == LedgerPhase::Merged {
         push_cleanup(entry, actions);
     }
@@ -174,6 +189,9 @@ mod observation_tests;
 #[cfg(test)]
 #[path = "monitor_pr_tests.rs"]
 mod pr_tests;
+#[cfg(test)]
+#[path = "monitor_resolution_tests.rs"]
+mod resolution_tests;
 #[cfg(test)]
 #[path = "monitor_tests.rs"]
 mod tests;

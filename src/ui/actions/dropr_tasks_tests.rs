@@ -9,6 +9,7 @@ fn task(display_id: &str) -> DroprTaskCandidate {
         status: "open".to_owned(),
         priority_score: None,
         blocked_reason: None,
+        updated_at: None,
     }
 }
 
