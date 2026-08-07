@@ -150,7 +150,7 @@ fn each_mode_gates_the_same_facts_differently() {
 
 #[test]
 fn positive_cache_expires_and_is_scoped_to_branch_and_mode() {
-    let mut cache = ProtectionCache::default();
+    let cache = ProtectionCache::default();
     let now = Instant::now();
     let key = cache_key("/repo", "main", ProtectionMode::Required);
     cache.remember(key.clone(), CacheState::Verified, now);
@@ -175,7 +175,7 @@ fn positive_cache_expires_and_is_scoped_to_branch_and_mode() {
 
 #[test]
 fn plan_unsupported_cache_outlives_the_positive_ttl() {
-    let mut cache = ProtectionCache::default();
+    let cache = ProtectionCache::default();
     let now = Instant::now();
     let key = cache_key("/repo", "main", ProtectionMode::Required);
     cache.remember(key.clone(), CacheState::PlanUnsupported, now);
@@ -276,19 +276,13 @@ fn off_mode_skips_the_probe_entirely() {
         operator_override: None,
     };
     let registry = Registry::default();
-    let mut cache = ProtectionCache::default();
+    let cache = ProtectionCache::default();
     assert_eq!(
-        unmet_condition(&entry, &registry, &mut cache, ProtectionMode::Off, "main"),
+        unmet_condition(&entry, &registry, &cache, ProtectionMode::Off, "main"),
         None
     );
     assert_eq!(
-        unmet_condition(
-            &entry,
-            &registry,
-            &mut cache,
-            ProtectionMode::Required,
-            "main"
-        ),
+        unmet_condition(&entry, &registry, &cache, ProtectionMode::Required, "main"),
         Some(UNKNOWN_REMOTE)
     );
 }

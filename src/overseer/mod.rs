@@ -167,6 +167,12 @@ pub fn snapshots_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("observations.jsonl"))
 }
 
+/// Last auto-merge pass's duration and slowest repository — see
+/// `daemon::merge_pass_telemetry`.
+pub fn merge_pass_path() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("merge_pass.json"))
+}
+
 /// Pull requests discovered in a watched repository that Overseer did not
 /// dispatch — see [`other_prs`]. Its own file, deliberately apart from
 /// `ledger.json`: the ledger records only what Overseer itself dispatched.

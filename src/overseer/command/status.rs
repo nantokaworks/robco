@@ -20,11 +20,12 @@ use crate::{
     config::Config,
     overseer::{
         config::OverseerConfig,
+        daemon::merge_pass_telemetry,
         exec::process_alive,
         heartbeat, heartbeat_path,
         judge::JudgmentQueue,
         ledger::{ActiveWorkers, Ledger, terminal},
-        logging,
+        logging, merge_pass_path,
         session::health::SessionHealth,
     },
     registry::Registry,
@@ -77,6 +78,7 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
     );
 
     if debug {
+        let merge_pass = merge_pass_telemetry::load(&merge_pass_path()?);
         print_debug_section(
             config,
             &ledger,
@@ -88,6 +90,7 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
             heartbeat_age,
             daemon_version.as_deref(),
             circuit_open,
+            merge_pass.as_ref(),
         )?;
     }
     Ok(())

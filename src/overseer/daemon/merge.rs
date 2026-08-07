@@ -1,11 +1,14 @@
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+    time::Instant,
+};
 
 use super::{
-    merge_decision::{Halt, Outcome, log, log_halt, manual_skip},
-    merge_evaluate::evaluate,
-    merge_hold::{self, HoldPlan},
-    merge_hold_recheck, merge_queue, merge_recovery, merge_settle,
-    merge_settle::Barrier,
+    merge_concurrency::{self, SharedJudgments},
+    merge_pass_telemetry,
+    merge_repo_pass::{self, RepoOutcome, RepoWork},
+    merge_settle,
     protection::ProtectionCache,
 };
 use crate::{
@@ -13,16 +16,26 @@ use crate::{
     config::Config,
     overseer::{
         judge::JudgmentQueue,
-        ledger::{Ledger, LedgerEntry, LedgerPhase},
+        ledger::{Ledger, LedgerEntry},
         logging::{self, DecisionEntry, DecisionKind},
+        merge_pass_path,
     },
     registry::Registry,
 };
 
-/// Reason recorded for a merge candidate whose pull request the ledger never
-/// learned. There is nothing to read, so the gate stops before every other step.
-const MISSING_PR_URL: &str = "missing_pr_url";
-
+/// Evaluates every repository's merge queue for one pass, up to
+/// `max_concurrent_merge_repos` at a time.
+///
+/// Repositories are independent of one another — their base branches share
+/// nothing — so each one's own sequential walk through its ledger entries
+/// (`merge_repo_pass::run`) runs on its own worker thread; see
+/// `merge_concurrency` for the bounded pool that schedules them and
+/// `merge_repo_pass` for what one repository's walk actually does. What is
+/// shared — the protection cache and the judgment queue — is synchronised
+/// there; what is not (`Heads`, each repository's settling barrier, each
+/// entry's own mutable state) is extracted per repository before any worker
+/// starts and folded back here once every worker has finished, so nothing is
+/// ever written from two threads at once.
 pub(super) fn auto_merge_pass(
     config: &Config,
     ledger: &mut Ledger,
@@ -33,6 +46,7 @@ pub(super) fn auto_merge_pass(
     if !config.overseer.auto_merge {
         return Ok(());
     }
+    let started = Instant::now();
     let registry = Registry::load()?;
     let consecutive_failures = ledger.counters.consecutive_failures;
     // Merges are serialised per repository: a merge advances the base and leaves every
@@ -42,7 +56,7 @@ pub(super) fn auto_merge_pass(
     // outlives the pass because that fast-forward runs on a later one. Other
     // repositories stay independent.
     let max_settle_passes = config.overseer.max_merge_settle_passes;
-    // Field-wise borrows: the barrier is read and written while `entries` is iterated.
+    // Field-wise borrows: the barrier map is read and written while `entries` is grouped.
     let Ledger {
         entries,
         merge_settling,
@@ -54,193 +68,79 @@ pub(super) fn auto_merge_pass(
     }
     merge_settle::age(merge_settling);
     let max_rechecks = config.overseer.max_merge_hold_rechecks;
-    // Fresh every pass, and shared across every entry it evaluates this pass: which
-    // pull request is a repository's head of queue is recomputed from iteration
-    // order each time, never remembered from the last pass. See `merge_queue`.
-    let mut heads = merge_queue::Heads::new();
+
+    // Group entries by repository, preserving each repository's own relative
+    // order — a repository's entries keep a stable order pass over pass (see
+    // `merge_queue`'s doc comment), and that order is what decides which
+    // entry is its head of queue this pass.
+    let mut groups: HashMap<String, Vec<&mut LedgerEntry>> = HashMap::new();
     for entry in entries.iter_mut() {
-        // Read, never charged here: the budget pays for a pass that re-read the
-        // gate and found it still holding, and this pass has not reached the gate
-        // yet. Charging on the way in spends it on outcomes the budget is not for
-        // — most of all on a pass that clears the gate and only waits on a
-        // judgment, which arrives once and is not a condition to re-check.
-        let recheck = merge_hold_recheck::due(entry, max_rechecks);
-        // An operator-granted bypass earns its own look even when neither the
-        // judge queue nor the hold-cap budget would otherwise grant one — the
-        // autonomy envelope's own hard stop never enters either, so without
-        // this an envelope-escalated entry with a pending override would sit
-        // parked forever the same way it does without one. See
-        // `merge_judge_gate::take_operator_override`.
-        let reconsidering = entry.phase == LedgerPhase::Escalated
-            && (judgments.has_terminal_merge(&entry.task_id, entry.pr_url.as_deref())
-                || recheck
-                || entry.operator_override.is_some());
-        if entry.phase != LedgerPhase::PrOpened && !reconsidering {
-            continue;
-        }
-        // The management check is not the phase check. An entry the phase check
-        // drops is not a merge candidate and there is nothing to say about it;
-        // an entry whose worker is manual *is* a candidate Overseer is declining
-        // to act on, and taking that silently left the operator unable to tell
-        // "Overseer decided not to merge this" from "the merge pass never ran".
-        let auto = worker_is_auto(entry, &registry);
-        if let Some(skip) = manual_skip(entry, auto) {
-            logging::append(&skip)?;
-        }
-        if !auto {
-            continue;
-        }
-        // The barrier guards the merge — a base the primary worktree has not
-        // pulled yet — not the steps before it. The pull request now at the head
-        // of this repository's queue has to catch up to the base that merge just
-        // advanced, and `gh pr update-branch` runs entirely on GitHub's side, so
-        // holding the whole evaluation cost the head a poll interval it did not
-        // owe.
-        //
-        // The `free` guard stops once one entry of the repository has actually
-        // claimed the slot. It does not bound the pass to a single read: an entry
-        // that halts before `merge_state_cleared` — a red check, a conflict, an
-        // unresolved prerequisite — never claims, so the entry behind it is read
-        // too, which is the same order the barrier-open path already walks to
-        // find the head. What it does bound is the tail *behind* a real head,
-        // which would otherwise each spend a `gh pr view` to learn they must
-        // wait.
-        let settling = match merge_settle::barrier(merge_settling, &entry.repo, max_settle_passes) {
-            Barrier::Open => false,
-            Barrier::Held if heads.free(&entry.repo) => true,
-            Barrier::Held => {
-                log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
-                continue;
+        groups.entry(entry.repo.clone()).or_default().push(entry);
+    }
+    // Each repository's settling state is extracted into its own owned value
+    // here, before any worker starts, so no two repositories' threads ever
+    // touch `merge_settling` at once.
+    let work: Vec<RepoWork> = groups
+        .into_iter()
+        .map(|(repo, entries)| {
+            let settling = merge_settling.remove(&repo);
+            RepoWork {
+                repo,
+                entries,
+                settling,
             }
-            // The pull never landed within its bound. Merging anyway is the
-            // lesser failure — a repository parked forever needs an operator
-            // either way — but it is recorded under its own reason so the log
-            // says the base was never confirmed.
-            Barrier::Lifted => {
-                log(entry, DecisionKind::Hold, merge_settle::SETTLE_CAP_REACHED)?;
-                false
-            }
-        };
-        let Some(url) = entry.pr_url.clone() else {
-            // The gate stops before it can read a revision, so the budget is keyed
-            // on the reason alone. It still ends the repetition, which is the only
-            // thing an entry with no pull request ever produced.
-            hold(
-                entry,
-                &Halt::hold(MISSING_PR_URL),
-                "",
-                "",
-                config,
-                &registry,
-            )?;
-            continue;
-        };
-        let phase_before = entry.phase;
-        let outcome = evaluate(
-            entry,
-            &url,
+        })
+        .collect();
+    let repos_evaluated = work.len();
+
+    let cache: &ProtectionCache = &*cache;
+    let judgments: SharedJudgments = Mutex::new(judgments);
+    let ceiling = config.overseer.max_concurrent_merge_repos;
+    let outcomes = merge_concurrency::run_bounded(work, ceiling, |item| {
+        merge_repo_pass::run(
+            item,
             config,
             cache,
             &registry,
-            judgments,
+            &judgments,
             consecutive_failures,
-            &mut heads,
-            settling,
-        )?;
-        match outcome {
-            Outcome::Merged => {
-                counters.consecutive_failures = 0;
-                merge_hold::cleared(entry);
-                merge_hold_recheck::settle(entry);
-                merge_settle::begin(merge_settling, &entry.repo);
-            }
-            // The one outcome the recheck budget is for: this pass re-read the
-            // gate and the gate still holds, so the look it was granted is spent.
-            Outcome::Halted { halt, head, base } => {
-                if recheck && merge_hold_recheck::charge(entry, &halt.reason, &head, max_rechecks) {
-                    // Recorded on the pass that spends the last look, so the log
-                    // says once — and only once — that nothing will reconsider
-                    // this entry again. Without it the operator cannot tell an
-                    // entry still being re-checked from one given up on.
-                    log(
-                        entry,
-                        DecisionKind::Escalate,
-                        &merge_hold_recheck::exhausted(&halt.reason),
-                    )?;
-                }
-                hold(entry, &halt, &head, &base, config, &registry)?;
-            }
-            // The deterministic gate cleared and only the judgment is outstanding,
-            // so whatever this entry was last held on is no longer what is holding
-            // it. Forgetting it here is what keeps a condition that came back after
-            // clearing from inheriting the old condition's spent budget. The
-            // recheck budget is deliberately not charged: the gate is no longer
-            // what holds this entry, and a judgment round trip can outlast the
-            // whole budget on a busy queue — spending it here would strand the
-            // entry exactly the way this module exists to prevent.
-            Outcome::Pending => merge_hold::cleared(entry),
-            // Recorded, not charged, for the same reason `Pending` is not: the
-            // gate is no longer what holds this entry, and the repository's own
-            // post-merge fast-forward is not a condition an entry can escalate
-            // its way out of.
-            Outcome::Settling => {
-                log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
-                merge_hold::cleared(entry);
-            }
-        }
-        // The head slot belongs to whoever is still in this repository's queue.
-        // An entry that merged or escalated on this pass has left it, so the
-        // pull request behind it takes the slot now — and starts its own branch
-        // update in this same pass — rather than a poll interval from now.
-        // `release` ignores a caller that is not the recorded holder, which most
-        // entries reaching a terminal phase here are not.
-        if entry.phase != phase_before && super::terminal(entry.phase) {
-            heads.release(&entry.repo, &entry.agent_id);
-        }
-    }
-    Ok(())
-}
+            max_rechecks,
+            max_settle_passes,
+        )
+    });
 
-/// Records one held pass and charges it against the entry's hold budget.
-///
-/// Recovery is consulted only while the hold is still being recorded. Past the cap
-/// the entry belongs to an operator, and a handback would return it to the phase it
-/// just left — the escalation would undo itself on the pass that raised it.
-fn hold(
-    entry: &mut LedgerEntry,
-    halt: &Halt,
-    head: &str,
-    base: &str,
-    config: &Config,
-    registry: &Registry,
-) -> Result<()> {
-    match merge_hold::charge(entry, halt, head, config.overseer.max_merge_holds) {
-        HoldPlan::Record => {
-            let overseer = &config.overseer;
-            let language = config.language.as_deref();
-            log_halt(entry, halt, overseer.protection_mode)?;
-            merge_recovery::consider(
-                entry,
-                &halt.reason,
-                head,
-                base,
-                overseer,
-                registry,
-                language,
-            )
+    let mut merged_any = false;
+    let mut slowest: Option<(String, std::time::Duration)> = None;
+    for outcome in outcomes {
+        let RepoOutcome {
+            repo,
+            settling,
+            merged,
+            duration,
+        } = outcome?;
+        merged_any = merged_any || merged;
+        if let Some(settling) = settling {
+            merge_settling.insert(repo.clone(), settling);
         }
-        HoldPlan::CapReached => {
-            entry.phase = LedgerPhase::Escalated;
-            entry.worker_escalated = false;
-            merge_hold_recheck::escalated(entry, &halt.reason, head);
-            log(
-                entry,
-                DecisionKind::Escalate,
-                &merge_hold::cap_reached(&halt.reason),
-            )
+        if slowest
+            .as_ref()
+            .is_none_or(|(_, slowest)| duration > *slowest)
+        {
+            slowest = Some((repo, duration));
         }
-        HoldPlan::Spent => Ok(()),
     }
+    if merged_any {
+        counters.consecutive_failures = 0;
+    }
+
+    merge_pass_telemetry::record(
+        &merge_pass_path()?,
+        chrono::Utc::now(),
+        started.elapsed(),
+        repos_evaluated,
+        slowest,
+    )?;
+    Ok(())
 }
 
 /// Records a decision about a repository rather than about one of its entries.
@@ -254,24 +154,6 @@ fn log_repo(repo: &str, reason: &str) -> Result<()> {
     decision.repo = Some(repo.to_owned());
     decision.source = Some("auto_merge".into());
     logging::append(&decision)
-}
-
-/// A repo the Overseer does not manage should not have its pull requests merged
-/// automatically either — the same silent-divergence risk `manual_skip` already
-/// guards against per-worker, now checked per-repo before the per-worker read.
-fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {
-    let repo_auto = registry
-        .repos
-        .iter()
-        .find(|repo| repo.path.to_string_lossy() == entry.repo)
-        .is_none_or(|repo| repo.management == crate::model::ManagementMode::Auto);
-    repo_auto
-        && registry
-            .repos
-            .iter()
-            .flat_map(|repo| &repo.agents)
-            .find(|agent| agent.id == entry.agent_id)
-            .is_none_or(|agent| agent.management == crate::model::ManagementMode::Auto)
 }
 
 #[cfg(test)]

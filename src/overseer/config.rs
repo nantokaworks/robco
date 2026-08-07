@@ -51,6 +51,13 @@ fn default_max_merge_judge_primes() -> u32 {
     3
 }
 
+/// Matches `max_concurrent_judges`'s default: a small ceiling that overlaps a
+/// handful of repositories' `gh`/`git` calls without spraying enough
+/// concurrent requests to trip GitHub's own rate limiting.
+fn default_max_concurrent_merge_repos() -> usize {
+    4
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct OverseerConfig {
@@ -146,6 +153,16 @@ pub struct OverseerConfig {
     pub judge_profile: Option<String>,
     pub merge_judge_profile: Option<String>,
     pub max_concurrent_judges: usize,
+    /// Repositories the auto-merge pass evaluates at once. Each repository's
+    /// own queue still runs its entries one at a time and in order — this
+    /// only bounds how many *different* repositories' `gh`/`git` calls may be
+    /// in flight in the same pass, so one repository's slow check fetch or
+    /// branch update no longer holds every other repository's ledger entries
+    /// until it finishes. Matches `max_concurrent_judges`'s role for the
+    /// judge layer: a ceiling on concurrent OS threads, not on GitHub API
+    /// rate limits, which `gh` itself already backs off for.
+    #[serde(default = "default_max_concurrent_merge_repos")]
+    pub max_concurrent_merge_repos: usize,
     /// Profile the periodic board reviewer runs under. `None` disables the
     /// review pass outright — it is the whole on/off switch, so a daemon that
     /// has never heard of the reviewer behaves exactly as it did before it
@@ -242,6 +259,7 @@ impl Default for OverseerConfig {
             judge_profile: None,
             merge_judge_profile: None,
             max_concurrent_judges: 4,
+            max_concurrent_merge_repos: default_max_concurrent_merge_repos(),
             review_profile: None,
             review_interval_mins: 20,
             // 96 covers a full day at the shortest sensible cadence (15 min),

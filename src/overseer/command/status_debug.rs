@@ -16,6 +16,7 @@ use crate::{
     overseer::{
         command::on_off,
         config::OverseerConfig,
+        daemon::merge_pass_telemetry::MergePassTelemetry,
         judge::JudgmentQueue,
         ledger::{Ledger, waiting_on_prerequisite},
         logging,
@@ -37,6 +38,7 @@ pub(super) fn print_debug_section(
     heartbeat_age: Option<Duration>,
     daemon_version: Option<&str>,
     circuit_open: bool,
+    merge_pass: Option<&MergePassTelemetry>,
 ) -> Result<()> {
     println!();
     println!("--- debug ---");
@@ -61,6 +63,7 @@ pub(super) fn print_debug_section(
         config.overseer.per_repo_limit
     );
     println!("{}", llm_line(config, judgments)?);
+    println!("{}", merge_pass_line(merge_pass));
     println!("{}", discord_line(&config.overseer.discord));
     println!("{}", session_auth_line(session_health));
     println!("{}", judgments.snapshot().summary());
@@ -112,6 +115,26 @@ fn session_auth_line(health: Option<&SessionHealth>) -> String {
     health.map_or_else(
         || "session auth: unknown (no preflight recorded)".to_string(),
         SessionHealth::summary,
+    )
+}
+
+/// How long the last auto-merge pass took, and which repository was slowest —
+/// see `daemon::merge_pass_telemetry`. Repositories are now evaluated
+/// concurrently, so no other line in this section says whether a pass is
+/// stretching out; this is the one place that would show.
+fn merge_pass_line(merge_pass: Option<&MergePassTelemetry>) -> String {
+    let Some(pass) = merge_pass else {
+        return "merge pass: none recorded yet".to_string();
+    };
+    let slowest = pass.slowest_repo.as_deref().map_or_else(
+        || "-".to_string(),
+        |repo| format!("{repo} ({}ms)", pass.slowest_repo_ms),
+    );
+    format!(
+        "merge pass: {}ms  {} repos  slowest: {slowest}  at {}",
+        pass.duration_ms,
+        pass.repos_evaluated,
+        pass.at.to_rfc3339()
     )
 }
 

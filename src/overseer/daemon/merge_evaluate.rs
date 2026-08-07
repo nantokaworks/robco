@@ -8,6 +8,7 @@
 
 use super::{
     merge_apply::merge_now,
+    merge_concurrency::SharedJudgments,
     merge_decision::{self, Halt, Outcome},
     merge_dependency, merge_gate,
     merge_judge_gate::{Judgment, judge_allows, prime as prime_judge, waiting_on_progress},
@@ -15,12 +16,7 @@ use super::{
     protection::ProtectionCache,
     pull_request::{self, base_sha, head_sha},
 };
-use crate::{
-    Result,
-    config::Config,
-    overseer::{judge::JudgmentQueue, ledger::LedgerEntry},
-    registry::Registry,
-};
+use crate::{Result, config::Config, overseer::ledger::LedgerEntry, registry::Registry};
 
 /// Runs one pull request through the gate: read, conclusion, protection, merge
 /// state, checks, merge state queue, merge judge, merge. Every non-merge exit
@@ -37,9 +33,9 @@ pub(super) fn evaluate(
     entry: &mut LedgerEntry,
     url: &str,
     config: &Config,
-    cache: &mut ProtectionCache,
+    cache: &ProtectionCache,
     registry: &Registry,
-    judgments: &mut JudgmentQueue,
+    judgments: &SharedJudgments,
     consecutive_failures: u32,
     heads: &mut merge_queue::Heads,
     settling: bool,
@@ -58,7 +54,10 @@ pub(super) fn evaluate(
     // this gate every pass, and a pull request that can never merge again has
     // nothing left to re-judge.
     if let Some(conclusion) = pull_request::conclusion(&value) {
-        judgments.forget_terminal_merge(&entry.task_id, url)?;
+        judgments
+            .lock()
+            .unwrap()
+            .forget_terminal_merge(&entry.task_id, url)?;
         return Ok(merge_decision::concluded(entry, conclusion).on(&head, &base));
     }
     let dependency = merge_dependency::probe(&entry.task_id);
