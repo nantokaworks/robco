@@ -138,7 +138,7 @@ fn run_loop<B: ratatui::backend::Backend>(
             );
             // Pinning the Normal-mode cursor gives IME preedit a stable home
             // per #189; #201 moves it right of the ROBCO ident to keep the brand clean.
-            let cursor = dialog::draw(frame, app, &visible).unwrap_or(footer_caret);
+            let cursor = dialog::draw(frame, app).unwrap_or(footer_caret);
             frame.set_cursor_position(cursor);
         })?;
 

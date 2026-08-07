@@ -34,9 +34,7 @@ fn draw_cursor(mode: Mode) -> ((u16, u16), ratatui::buffer::Buffer) {
     let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
     let mut cursor = None;
 
-    terminal
-        .draw(|frame| cursor = draw(frame, &app, &[]))
-        .unwrap();
+    terminal.draw(|frame| cursor = draw(frame, &app)).unwrap();
 
     (
         cursor.expect("text input mode should return a cursor"),

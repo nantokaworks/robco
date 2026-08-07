@@ -138,7 +138,7 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(100, height)).unwrap();
         terminal
             .draw(|frame| {
-                super::super::dialog::draw(frame, &app, &[]);
+                super::super::dialog::draw(frame, &app);
             })
             .unwrap();
         terminal

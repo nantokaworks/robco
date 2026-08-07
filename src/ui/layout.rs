@@ -3,10 +3,6 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
 };
 
-use crate::model::Selection;
-
-use super::App;
-
 const TREE_WIDTH_RATIO: f32 = 0.30;
 const TREE_MIN_WIDTH: u16 = 24;
 const TREE_MAX_WIDTH: u16 = 48;
@@ -176,90 +172,6 @@ pub(in crate::ui) fn centered_area(frame: &Frame<'_>, width: u16, height: u16) -
         width,
         height,
     }
-}
-
-/// Place the dialog just below the selected tree row, clamped inside the
-/// content pane. Falls back to above the row when there is no room below.
-pub(in crate::ui) fn popup_area(
-    frame: &Frame<'_>,
-    app: &App,
-    visible: &[Selection],
-    width: u16,
-    height: u16,
-) -> Rect {
-    let container = root(frame.area()).body;
-    let panes = panes(container, app.overseer_frame_height());
-
-    let width = width.min(container.width);
-    let height = height.min(container.height);
-
-    // OVERSEER starts with its content header; PROJECTS has a separate header row.
-    let anchor_row = if matches!(
-        app.selected_item(),
-        Some(
-            Selection::OverseerAi
-                | Selection::OverseerCategory(_)
-                | Selection::OverseerInbox(_)
-                | Selection::DiscordChannel(_)
-        )
-    ) {
-        let content = super::tree::overseer_frame::content_lines(app);
-        let inner_height = panes.overseer.height.saturating_sub(1);
-        let row = content
-            .selected_row
-            .saturating_sub(content.scroll_offset(inner_height));
-        panes.overseer.y.saturating_add(row)
-    } else {
-        // The +1 skips the bold PROJECTS header row.
-        panes.tree.y + 1 + selected_row_offset(app, visible)
-    };
-
-    let x = panes.tree.x.min(container.right().saturating_sub(width));
-    let below = anchor_row.saturating_add(1);
-    let y = if below + height <= container.bottom() {
-        below
-    } else {
-        anchor_row.saturating_sub(height)
-    };
-    let y = y
-        .max(container.y)
-        .min(container.bottom().saturating_sub(height));
-
-    Rect {
-        x,
-        y,
-        width,
-        height,
-    }
-}
-
-/// Number of rendered rows above the selected item, accounting for the extra
-/// "(no agents)" line drawn under an expanded empty repo.
-fn selected_row_offset(app: &App, visible: &[Selection]) -> u16 {
-    let mut offset = 0u16;
-    let selected = app.selected_item();
-    for item in visible {
-        if Some(*item) == selected {
-            break;
-        }
-        if matches!(
-            item,
-            Selection::OverseerAi
-                | Selection::OverseerCategory(_)
-                | Selection::OverseerInbox(_)
-                | Selection::DiscordChannel(_)
-        ) {
-            continue;
-        }
-        offset += 1;
-        if let Selection::Repo(repo_idx) = item {
-            let expanded = app.expanded.get(*repo_idx).copied().unwrap_or(true);
-            if expanded && app.registry.repos[*repo_idx].agents.is_empty() {
-                offset += 1;
-            }
-        }
-    }
-    offset
 }
 
 #[cfg(test)]

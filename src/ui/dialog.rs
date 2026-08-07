@@ -6,11 +6,12 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::model::Selection;
-
 use super::{App, Mode, help, layout, theme::DEFAULT as THEME};
 
 mod caret;
+#[cfg(test)]
+#[path = "dialog/centering_tests.rs"]
+mod centering_tests;
 mod content;
 #[cfg(test)]
 mod tests;
@@ -18,7 +19,7 @@ mod tests;
 use caret::caret_position;
 use content::DialogContent;
 
-pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(u16, u16)> {
+pub fn draw(frame: &mut Frame<'_>, app: &App) -> Option<(u16, u16)> {
     let body = layout::root(frame.area()).body;
     let DialogContent {
         title,
@@ -35,11 +36,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection]) -> Option<(
         + 4)
     .min(body.width);
     let height = (lines.len() as u16 + 2).min(body.height);
-    let area = if matches!(&app.mode, Mode::Help { .. }) {
-        layout::centered_area(frame, width, height)
-    } else {
-        layout::popup_area(frame, app, visible, width, height)
-    };
+    let area = layout::centered_area(frame, width, height);
 
     let (title, scroll) = match app.mode {
         Mode::Help { scroll } => (
