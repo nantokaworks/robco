@@ -85,9 +85,10 @@ pub struct OverseerConfig {
     #[serde(default = "default_max_merge_judge_primes")]
     pub max_merge_judge_primes: u32,
     /// Auto-merge passes one repository may be held waiting for its post-merge
-    /// `git pull --ff-only` before the barrier is lifted without it. The bound is
-    /// what stops a pull that never succeeds from parking the repository
-    /// forever. At the default poll interval this is five minutes.
+    /// fast-forward of local `main` before the barrier is lifted without it.
+    /// The bound is what stops a fast-forward that never succeeds from
+    /// parking the repository forever. At the default poll interval this is
+    /// five minutes.
     pub max_merge_settle_passes: u32,
     /// Whether a merge failure the owning worker could fix is handed back to it
     /// instead of parking the pull request. Default-off, so a daemon that has

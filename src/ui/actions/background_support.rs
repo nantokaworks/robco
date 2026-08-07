@@ -108,6 +108,7 @@ fn copy_repo_status(source: &RepoNode, target: &mut RepoNode) {
     target
         .main_tracked_command
         .clone_from(&source.main_tracked_command);
+    target.main_behind_origin = source.main_behind_origin;
 }
 
 fn copy_agent_status(source: &crate::model::AgentNode, target: &mut crate::model::AgentNode) {

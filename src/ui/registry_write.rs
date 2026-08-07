@@ -72,6 +72,7 @@ fn carry_repo(source: &RepoNode, target: &mut RepoNode) {
         .main_tracked_command
         .clone_from(&source.main_tracked_command);
     target.main_subagents_active = source.main_subagents_active;
+    target.main_behind_origin = source.main_behind_origin;
 }
 
 /// Move every `#[serde(skip)]` field of `source` onto `target`. Shared with the

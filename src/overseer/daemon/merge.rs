@@ -37,9 +37,10 @@ pub(super) fn auto_merge_pass(
     let consecutive_failures = ledger.counters.consecutive_failures;
     // Merges are serialised per repository: a merge advances the base and leaves every
     // other pull request of that repository behind, so their reads from earlier in this
-    // pass no longer describe a mergeable branch, and the primary worktree does not hold
-    // the merge until the post-merge pull lands. The barrier outlives the pass because
-    // that pull runs on a later one. Other repositories stay independent.
+    // pass no longer describe a mergeable branch, and the primary checkout's local main
+    // does not match the merge until the post-merge fast-forward lands. The barrier
+    // outlives the pass because that fast-forward runs on a later one. Other
+    // repositories stay independent.
     let max_settle_passes = config.overseer.max_merge_settle_passes;
     // Field-wise borrows: the barrier is read and written while `entries` is iterated.
     let Ledger {
@@ -180,8 +181,8 @@ pub(super) fn auto_merge_pass(
             Outcome::Pending => merge_hold::cleared(entry),
             // Recorded, not charged, for the same reason `Pending` is not: the
             // gate is no longer what holds this entry, and the repository's own
-            // post-merge pull is not a condition an entry can escalate its way
-            // out of.
+            // post-merge fast-forward is not a condition an entry can escalate
+            // its way out of.
             Outcome::Settling => {
                 log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
                 merge_hold::cleared(entry);

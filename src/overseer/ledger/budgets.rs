@@ -70,19 +70,19 @@ pub struct MergeHold {
     pub escalated: bool,
 }
 
-/// A repository whose merge has landed but whose primary worktree has not been
-/// confirmed to hold it yet.
+/// A repository whose merge has landed but whose primary checkout's local
+/// `main` has not been confirmed to match it yet.
 ///
 /// The merge gate reads this to keep a second merge out of the same repository
-/// until the post-merge `git pull --ff-only` has actually run — see
+/// until the post-merge fast-forward of local `main` has actually run — see
 /// `crate::overseer::daemon::merge_settle`. It lives in the ledger rather than
-/// in the pass, because the pull it waits on runs on a *later* pass.
+/// in the pass, because the fast-forward it waits on runs on a *later* pass.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct MergeSettling {
     /// Auto-merge passes this repository has been held for. Bounded by
-    /// `overseer.max_merge_settle_passes`, so a pull that never succeeds does
-    /// not park the repository forever.
+    /// `overseer.max_merge_settle_passes`, so a fast-forward that never
+    /// succeeds does not park the repository forever.
     pub passes_held: u32,
 }
 

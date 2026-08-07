@@ -1,10 +1,10 @@
 //! The per-repository merge barrier.
 //!
 //! A merge advances the base branch, so every other pull request in that
-//! repository is now behind it and the primary worktree no longer holds what
-//! `main` does. The next merge must wait for the post-merge
-//! `git pull --ff-only` — which runs on a *later* pass, from the cleanup
-//! sequence — before it may act on reads taken against the old base.
+//! repository is now behind it and the primary checkout's local `main` no
+//! longer matches it. The next merge must wait for the post-merge
+//! fast-forward of that local `main` — which runs on a *later* pass, from the
+//! cleanup sequence — before it may act on reads taken against the old base.
 //!
 //! This replaces the per-pass `merged_repos` set it grew out of, rather than
 //! coexisting with it. That set was dropped when the pass returned, a poll

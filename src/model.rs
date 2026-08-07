@@ -58,6 +58,14 @@ pub struct RepoNode {
     pub main_tracked_command: Option<String>,
     #[serde(skip)]
     pub main_subagents_active: usize,
+    /// How many commits the primary checkout's local `main` trails
+    /// `origin/main` by, from whatever `origin/main` was last known to be —
+    /// no network fetch of its own. `None` when it is not behind, or the
+    /// comparison could not be made at all (no local `main`, no `origin`,
+    /// not a repository). Runtime only; refreshed each tick, never
+    /// persisted.
+    #[serde(skip)]
+    pub main_behind_origin: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -56,6 +56,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
             main_pane_pid: None,
             main_tracked_command: None,
             main_subagents_active: 0,
+            main_behind_origin: None,
         }],
     }
 }

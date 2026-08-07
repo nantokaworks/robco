@@ -6,7 +6,7 @@ use ratatui::{
 use std::time::{Duration, SystemTime};
 
 use crate::{
-    locale::{Locale, t},
+    locale::{Locale, fmt, t},
     model::{AgentNode, ChildWorktree, RepoNode},
     overseer::{ledger::Ledger, other_prs::OtherPrs},
     subagents::SubagentStatus,
@@ -68,12 +68,31 @@ pub(in crate::ui) fn repo_summary(
             Span::raw(repos_root.display().to_string()),
         ]),
     ]);
+    lines.extend(main_drift_warning(repo, locale));
 
     lines.extend(dropr_section(repo, width, locale));
     lines.extend(history_section(ledger, &repo.path, width, locale));
     lines.extend(other_prs_section(other_prs, &repo.path, width, locale));
 
     (repo.name.clone(), lines.into())
+}
+
+/// A primary checkout whose local `main` could not be fast-forwarded after a
+/// merge (dirty tree, diverged history) sits behind `origin/main` until an
+/// operator notices and intervenes by hand — this is where that drift
+/// becomes visible. Empty once it catches up.
+fn main_drift_warning(repo: &RepoNode, locale: Locale) -> Vec<Line<'static>> {
+    let Some(behind) = repo.main_behind_origin else {
+        return Vec::new();
+    };
+    vec![Line::from(Span::styled(
+        fmt(
+            locale,
+            "main behind origin/main by {}",
+            &[&behind.to_string()],
+        ),
+        THEME.failure_style(),
+    ))]
 }
 
 /// The DROPR block of a repository summary.

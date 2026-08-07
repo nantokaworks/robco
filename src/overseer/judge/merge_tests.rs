@@ -175,6 +175,7 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
             main_pane_pid: None,
             main_tracked_command: None,
             main_subagents_active: 0,
+            main_behind_origin: None,
         }],
     };
 
@@ -276,6 +277,7 @@ fn a_repo_opted_out_of_the_overseer_blocks_auto_merge_for_every_worker_in_it() {
             main_pane_pid: None,
             main_tracked_command: None,
             main_subagents_active: 0,
+            main_behind_origin: None,
         }],
     };
 

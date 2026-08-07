@@ -2,15 +2,21 @@
 //! the Overseer daemon.
 //!
 //! Both paths run the same steps in the same order — fetch the base branch,
-//! remove the task worktree, delete the local branch, delete the remote
-//! branch — and differ only in what a failing step means. An interactive
-//! merge is watched, so it stops at the first failure and reports it. The daemon
-//! is not watched, so it records the failure and runs the remaining steps: a
-//! base branch fetch that fails must not strand a worktree and a branch
-//! forever.
+//! advance the primary checkout's local base branch, remove the task
+//! worktree, delete the local branch, delete the remote branch — and differ
+//! only in what a failing step means. An interactive merge is watched, so it
+//! stops at the first failure and reports it. The daemon is not watched, so
+//! it records the failure and runs the remaining steps: a base branch fetch
+//! that fails must not strand a worktree and a branch forever.
 //!
-//! None of these steps touch the repository's own checked-out branch or
-//! working tree — see [`git::fetch_branch`] — so they stay safe to run
+//! Advancing the local base branch is best-effort and never treated as a
+//! failure of the sequence: it fast-forwards the checkout in place when the
+//! base branch is checked out with a clean tree, moves only the branch ref
+//! when something else is checked out (`git fetch` itself refuses a
+//! non-fast-forward, so a diverged local base branch is left alone), and is
+//! skipped — with a note — when the checked-out base branch is dirty. Nothing
+//! else in this sequence touches the repository's own checked-out branch or
+//! working tree — see [`git::fetch_branch`] — so the rest stays safe to run
 //! against a checkout an operator or another process may be using at the same
 //! time.
 
@@ -54,17 +60,24 @@ pub struct Cleanup<'a> {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CleanupOutcome {
-    /// Whether fetching `origin/main` succeeded. Reported separately from
+    /// Whether the primary checkout's local base branch now matches
+    /// `origin/<base>` — fetched, and either fast-forwarded in place or
+    /// ref-updated, per [`Cleanup::advance_main`]. Reported separately from
     /// [`Self::notes`] because a caller has to be able to *act* on it: under
-    /// [`OnFailure::Continue`] a failed fetch is only a note among the
+    /// [`OnFailure::Continue`] a failure here is only a note among the
     /// others, and the Overseer merge gate needs to know whether the base it
-    /// is about to merge onto has caught up. Always true under
-    /// [`OnFailure::Abort`], which returns the failure instead of finishing.
+    /// is about to merge onto has actually caught up before lifting its
+    /// settle barrier. A fetch failure still aborts under [`OnFailure::Abort`]
+    /// rather than returning here — but a dirty or diverged checkout is never
+    /// an abort, under either mode, since it never touched anything unsafe to
+    /// leave alone; it only leaves `base_pulled` `false` and adds a note.
     pub base_pulled: bool,
     pub worktree_removed: bool,
     pub branch: BranchOutcome,
-    /// Failures and skipped steps, in the order they happened. Always empty
-    /// under [`OnFailure::Abort`], which returns the first failure instead.
+    /// Failures and skipped steps, in the order they happened. Empty under
+    /// [`OnFailure::Abort`] unless the base branch fetch succeeded but the
+    /// local base branch could not be advanced — that case is never an abort,
+    /// see [`Self::base_pulled`].
     pub notes: Vec<String>,
 }
 
@@ -84,7 +97,7 @@ impl Cleanup<'_> {
         let mut outcome = CleanupOutcome::default();
         step(CleanupStep::PullingMain);
         match git::fetch_branch(self.repo, BASE_BRANCH) {
-            Ok(()) => outcome.base_pulled = true,
+            Ok(()) => outcome.base_pulled = self.advance_main(&mut outcome),
             Err(error) => {
                 self.record(&mut outcome, "fetching the base branch", error)?;
             }
@@ -98,6 +111,59 @@ impl Cleanup<'_> {
         // paths.
         let _ = git::delete_remote_branch(self.repo, self.branch);
         Ok(outcome)
+    }
+
+    /// Advances the primary checkout's local base branch to [`BASE`], now
+    /// that it has been fetched fresh. Returns whether it now matches.
+    ///
+    /// Two shapes are safe without a divergence check of their own:
+    /// - The base branch is checked out with a clean tree: fast-forward the
+    ///   checkout in place (`git merge --ff-only`), which refuses on its own
+    ///   if the local branch is not an ancestor of `BASE`.
+    /// - Anything else is checked out: move only the branch ref
+    ///   (`git fetch .`), which equally refuses a non-fast-forward, so a
+    ///   diverged local base branch is left untouched either way.
+    ///
+    /// A checked-out base branch with a dirty tree is the one case neither
+    /// shape covers safely, so it is skipped outright. Every skip is a note,
+    /// never a failure: this step only ever leaves the checkout exactly as it
+    /// was, so there is nothing for [`OnFailure::Abort`] to protect against.
+    fn advance_main(&self, outcome: &mut CleanupOutcome) -> bool {
+        let advanced = match git::current_branch(self.repo) {
+            Ok(Some(branch)) if branch == BASE_BRANCH => match git::worktree_is_clean(self.repo) {
+                Ok(true) => git::fast_forward_checkout(self.repo, BASE)
+                    .map_err(|error| format!("fast-forwarding {BASE_BRANCH} failed: {error}")),
+                Ok(false) => Err(format!(
+                    "{BASE_BRANCH} is checked out with uncommitted changes"
+                )),
+                Err(error) => Err(format!(
+                    "checking the {BASE_BRANCH} worktree failed: {error}"
+                )),
+            },
+            Ok(_) => git::fast_forward_ref(self.repo, BASE_BRANCH, BASE).map_err(|error| {
+                format!("fast-forwarding the local {BASE_BRANCH} ref failed: {error}")
+            }),
+            Err(error) => Err(format!("checking the checked-out branch failed: {error}")),
+        };
+        match advanced {
+            Ok(()) => true,
+            Err(reason) => {
+                outcome.notes.push(self.main_behind_note(reason));
+                false
+            }
+        }
+    }
+
+    /// Renders an `advance_main` skip reason, adding the commit count `BASE`
+    /// is now ahead by when it can be measured — the number a `main behind
+    /// origin/main by N` warning elsewhere is built from.
+    fn main_behind_note(&self, reason: String) -> String {
+        match git::ahead_behind(self.repo, BASE_BRANCH, BASE) {
+            Ok((_, behind)) if behind > 0 => {
+                format!("{reason}; {BASE_BRANCH} is behind {BASE} by {behind}")
+            }
+            _ => reason,
+        }
     }
 
     fn remove_worktree(&self, outcome: &mut CleanupOutcome) -> Result<()> {
