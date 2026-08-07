@@ -10,7 +10,7 @@ use crate::{
     overseer::{
         exec::run_timeout,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
-        monitor::{ObservationError, Observations, PrObservation, TaskObservation},
+        monitor::{ObservationError, Observations, PrObservation, TASK_ABSENT, TaskObservation},
     },
 };
 use chrono::{DateTime, Duration, Utc};
@@ -102,10 +102,28 @@ fn gather_repo_task_states(
         .iter()
         .filter(|entry| entry.repo == repo && worth_probing(entry, now))
     {
-        for task in tasks
+        let matches: Vec<_> = tasks
             .iter()
             .filter(|task| task.display_id == entry.display_id || task.display_id == entry.task_id)
-        {
+            .collect();
+        // The fetch answered in full — `fetch.problems` is checked once, above
+        // — and still found no task under this entry's display id. For a live
+        // entry that is an eventual-consistency blip worth ignoring; for an
+        // escalated one still worth a `gh`/dropr read (`worth_probing`'s
+        // thirty-day window) it is the daemon's only chance to notice the
+        // task itself is gone, so `daemon::retention` has something to sweep
+        // it on instead of the row sitting parked forever. See dropr:401.
+        if matches.is_empty() {
+            if entry.phase == LedgerPhase::Escalated && fetch.problems.is_empty() {
+                observations.tasks.push(TaskObservation {
+                    task_id: entry.task_id.clone(),
+                    state: TASK_ABSENT.to_owned(),
+                    updated_at: None,
+                });
+            }
+            continue;
+        }
+        for task in matches {
             observations.tasks.push(TaskObservation {
                 task_id: entry.task_id.clone(),
                 state: task.status.clone(),
@@ -131,7 +149,7 @@ const PR_FIELDS: &str = "state,statusCheckRollup,url,mergedAt";
 /// `settled_at` — one that reached a terminal phase before the field
 /// existed — has no age to compare and stays eligible; the alternative would
 /// silently stop reconciling exactly the backlog this bound exists to clear.
-pub(super) fn worth_probing(entry: &LedgerEntry, now: DateTime<Utc>) -> bool {
+pub(in crate::overseer::daemon) fn worth_probing(entry: &LedgerEntry, now: DateTime<Utc>) -> bool {
     if !terminal(entry.phase) {
         return true;
     }

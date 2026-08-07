@@ -84,6 +84,16 @@ pub struct SessionObservation {
     pub status: String,
     pub last_activity_at: Option<DateTime<Utc>>,
 }
+/// `TaskObservation::state` sentinel for a task probe that succeeded but
+/// found no task under this entry's display id — the dropr task itself is
+/// gone, not merely unobserved this pass. Distinct from an ordinary dropr
+/// status string so a reader can tell "confirmed absent" apart from every
+/// value dropr itself would ever report. Read by
+/// `daemon::retention::beyond_reach` to sweep an escalated entry nothing can
+/// act on any more; harmless everywhere else `TaskObservation` is read,
+/// which treats it as just another quiet state.
+pub const TASK_ABSENT: &str = "absent";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TaskObservation {
     pub task_id: String,

@@ -18,7 +18,7 @@ use std::process::Command;
 #[path = "branch_activity.rs"]
 mod branch_activity;
 #[path = "external_state.rs"]
-mod external_state;
+pub(super) mod external_state;
 #[path = "liveness.rs"]
 mod liveness;
 

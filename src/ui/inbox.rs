@@ -61,6 +61,14 @@ pub(crate) struct InboxItem {
 /// suite builds by hand.
 pub(crate) const LEDGER_PARKED_MARKER: &str = "ledger entry parked at phase=escalated";
 
+/// The same shape as [`LEDGER_PARKED_MARKER`], but for an entry that still
+/// has a pull request and so is eligible for the merge pass's own
+/// reconsideration look — see `remedy::LEDGER_PARKED_RESUMABLE`. Checked
+/// before `LEDGER_PARKED_MARKER` in [`InboxItem::remedy`] since it shares
+/// that marker as a prefix.
+pub(crate) const LEDGER_PARKED_RESUMABLE_MARKER: &str =
+    "ledger entry parked at phase=escalated, resumable";
+
 impl InboxItem {
     /// The `(kind, target_id)` pair the aggregation dedupes on and dismissals
     /// are recorded against.
@@ -77,6 +85,9 @@ impl InboxItem {
     pub(crate) fn remedy(&self) -> Remedy {
         match self.kind {
             InboxKind::Question => remedy::WORKER_QUESTION,
+            InboxKind::Escalation if self.detail.starts_with(LEDGER_PARKED_RESUMABLE_MARKER) => {
+                remedy::LEDGER_PARKED_RESUMABLE
+            }
             InboxKind::Escalation if self.detail.starts_with(LEDGER_PARKED_MARKER) => {
                 remedy::LEDGER_PARKED
             }
@@ -172,18 +183,25 @@ pub(crate) fn aggregate(
             .filter(|report| !matches!(report.status, Status::Dead | Status::BranchOnly))
             .map(|report| report.tmux_session.clone());
         let repo = registry.repo_label(&entry.repo);
+        // The ledger records no reason, so name what the row actually is: an
+        // entry parked at `escalated`. One still has a pull request the
+        // merge pass will reconsider on its own
+        // (`LedgerEntry::grant_merge_reconsideration`); the other has
+        // nothing left for the daemon to act on. The leading marker is what
+        // `InboxItem::remedy` reads to route the row without trying to
+        // resolve the descriptive text that follows as a reason.
+        let marker = if entry.pr_url.is_some() {
+            LEDGER_PARKED_RESUMABLE_MARKER
+        } else {
+            LEDGER_PARKED_MARKER
+        };
         items.push(InboxItem {
             kind: InboxKind::Escalation,
             target_session: session,
             target_id: entry.display_id.clone(),
             label: format!("{} — {repo} / {}", entry.display_id, entry.agent_id),
-            // The ledger records no reason, so name what the row actually is:
-            // an entry parked at `escalated`, which nothing ages out. The
-            // leading `LEDGER_PARKED_MARKER` is what `InboxItem::remedy` reads
-            // to route this row to `remedy::LEDGER_PARKED` instead of trying
-            // to resolve the descriptive text that follows as a reason.
             detail: format!(
-                "{LEDGER_PARKED_MARKER} — repo {repo}, agent {}, branch {}",
+                "{marker} — repo {repo}, agent {}, branch {}",
                 entry.agent_id, entry.branch
             ),
             at: entry.dispatched_at,

@@ -50,6 +50,14 @@ fn ledger_parked_is_a_review_remedy() {
 }
 
 #[test]
+fn ledger_parked_resumable_is_a_non_actionable_watch_remedy() {
+    assert_eq!(LEDGER_PARKED_RESUMABLE.step, Move::Watch);
+    assert!(!LEDGER_PARKED_RESUMABLE.actionable());
+    assert!(!LEDGER_PARKED_RESUMABLE.means.is_empty());
+    assert!(!LEDGER_PARKED_RESUMABLE.next.is_empty());
+}
+
+#[test]
 fn an_unrecognised_reason_falls_back_to_operator_review() {
     // Not in any table and not classified recoverable, but still shaped like
     // a code — the prose test must not mistake it for a judge sentence.

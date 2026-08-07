@@ -17,11 +17,24 @@ use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
 
+/// Reason seeded on a triage escalation's reconsideration budget — see
+/// `LedgerEntry::grant_merge_reconsideration`. Never a gate reason itself,
+/// so the merge pass's first re-read of the pull request always counts as a
+/// change against it.
+const TRIAGE_ESCALATION: &str = "triage_escalation";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Completion {
     outcome: Outcome,
     action: Option<TriageAction>,
     reason: String,
+    /// Carried from `result::ParseError`'s doc comment: a schema mismatch on
+    /// `action` that `result::parse` already recovered from, dropping the
+    /// action rather than the whole completion. `#[serde(default)]` so a
+    /// marker written before this field existed still replays. `None` on
+    /// every non-`Result` outcome — there is no action to have rejected.
+    #[serde(default)]
+    action_warning: Option<String>,
 }
 
 pub(super) fn complete_session_result(
@@ -101,6 +114,7 @@ fn normalize(result: SessionResult, case: &ExceptionCase) -> Completion {
                     outcome: value.outcome,
                     action: value.action,
                     reason: value.reason,
+                    action_warning: value.action_error,
                 },
                 Err(ParseError::Malformed(error)) => {
                     escalation(format!("malformed result.json: {error}"))
@@ -125,6 +139,7 @@ fn escalation(reason: String) -> Completion {
         outcome: Outcome::Escalate,
         action: None,
         reason,
+        action_warning: None,
     }
 }
 
@@ -148,6 +163,18 @@ fn apply_completion(
             write_marker(marker, &completion)?;
         }
     }
+    // A schema mismatch `result::parse` already recovered from: the action
+    // was dropped, not the whole completion, so this is worth a line in
+    // `decisions.jsonl` without spending the outcome on it — logged once,
+    // on the pass that first read it, not on every later replay.
+    if !replay && let Some(warning) = &completion.action_warning {
+        log(
+            log_path,
+            DecisionKind::Hold,
+            case,
+            &format!("triage action ignored: {warning}"),
+        )?;
+    }
     match completion.outcome {
         Outcome::Skip => {
             if !ledger.skip_list.contains(&case.task_id) {
@@ -162,6 +189,11 @@ fn apply_completion(
                 .find(|entry| entry.task_id == case.task_id)
             {
                 entry.phase = LedgerPhase::Escalated;
+                // Triage's own decision, not a worker's report — see
+                // `LedgerEntry::worker_escalated`. Unrelated activity
+                // elsewhere is no evidence that whatever triage escalated
+                // over is resolved.
+                entry.worker_escalated = false;
                 // Triage is the second place an entry can reach a terminal
                 // phase, and reconciliation only stamps the transitions it
                 // makes itself — an entry escalated here is already terminal by
@@ -169,6 +201,17 @@ fn apply_completion(
                 // to record when it settled. Kept if it is already set, so a
                 // repeat escalation cannot move the timestamp.
                 entry.settled_at.get_or_insert_with(Utc::now);
+                // A triage escalation never goes through `merge_hold::charge`,
+                // so it never earns a reconsideration budget the way a
+                // hold-cap escalation does. Without one, a finished, green
+                // pull request whose triage output was a transient hiccup
+                // (a malformed action, a timed-out session) sits parked
+                // forever even after the condition clears — see dropr:401.
+                // An entry with no pull request yet has nothing the merge
+                // pass can read, so it stays parked instead.
+                if entry.pr_url.is_some() {
+                    entry.grant_merge_reconsideration(TRIAGE_ESCALATION);
+                }
             }
             // The note is what an operator reading dropr sees; without it the
             // escalation is there with no explanation attached. So its loss

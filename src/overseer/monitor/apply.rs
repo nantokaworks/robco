@@ -12,7 +12,8 @@
 use chrono::{DateTime, Duration, Utc};
 
 use super::{
-    Action, FailureOrigin, InboxObservation, LedgerEntry, LedgerPhase, Observations, terminal,
+    Action, FailureOrigin, InboxObservation, LedgerEntry, LedgerPhase, Observations, TASK_ABSENT,
+    terminal,
 };
 
 #[path = "apply_resolution.rs"]
@@ -178,7 +179,11 @@ pub(super) fn apply_task_failure(entry: &mut LedgerEntry, observations: &Observa
             {
                 escalate(entry, "worker released its dropr task lock", actions);
             }
-            "open" | "in_progress" | "ready" | "closed" => {}
+            // `TASK_ABSENT` is a positive "confirmed gone" signal for an
+            // already-escalated entry — see `daemon::external_state` and
+            // `daemon::retention::beyond_reach` — not a state to reconcile
+            // a live entry's phase against here.
+            "open" | "in_progress" | "ready" | "closed" | TASK_ABSENT => {}
             state => actions.push(Action::LogDecision {
                 task_id: Some(entry.task_id.clone()),
                 message: format!("ignored unknown dropr task state {state:?}"),
