@@ -2,6 +2,7 @@ use ratatui::text::{Line, Span, Text};
 
 use crate::locale::{fmt, t};
 use crate::model::Selection;
+use crate::overseer::discord::humanize;
 use crate::overseer::remedy::Move;
 use crate::ui::{App, inbox::InboxItem, theme::DEFAULT as THEME};
 
@@ -106,20 +107,47 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
             t(app.locale, "what this means"),
             THEME.muted_style(),
         )),
-        Line::from(Span::styled(remedy.means, THEME.accent_style())),
+        Line::from(Span::styled(
+            t(app.locale, remedy.means),
+            THEME.accent_style(),
+        )),
         Line::from(""),
         Line::from(Span::styled(
             t(app.locale, "next step"),
             THEME.muted_style(),
         )),
-        Line::from(Span::styled(remedy.next, THEME.accent_style())),
+        Line::from(Span::styled(
+            t(app.locale, remedy.next),
+            THEME.accent_style(),
+        )),
         Line::from(""),
         Line::from(Span::styled(t(app.locale, "reason"), THEME.muted_style())),
     ];
+    // A known code-shaped reason gets one readable, localized sentence ahead
+    // of the raw code — reusing the same vocabulary table
+    // `discord::notifications` already builds Discord descriptions from, so
+    // the two surfaces read the same reason the same way. The raw code
+    // always stays, verbatim and untranslated, beneath it — accent-styled
+    // when it is the only line (an unrecognised reason, or a judge's own
+    // wrapped prose, which is already a sentence — see
+    // `humanize::sentence`), muted once the sentence above it carries the
+    // primary reading.
+    let known_sentence = humanize::static_sentence(&item.detail);
+    if let Some(known) = known_sentence {
+        lines.push(Line::from(Span::styled(
+            t(app.locale, known),
+            THEME.accent_style(),
+        )));
+    }
+    let detail_style = if known_sentence.is_some() {
+        THEME.muted_style()
+    } else {
+        THEME.accent_style()
+    };
     lines.extend(
         item.detail
             .lines()
-            .map(|line| Line::from(Span::styled(line.to_string(), THEME.accent_style()))),
+            .map(|line| Line::from(Span::styled(line.to_string(), detail_style))),
     );
 
     (

@@ -150,18 +150,31 @@ const PREFIX: &[(&str, &str)] = &[
 /// description and the wrapped raw code stays secondary.
 const JUDGE_PREFIXES: &[&str] = &["judge_escalate:", "judge_veto:", "judge_fail_safe:"];
 
+/// The vocabulary-table half of [`sentence`]: `EXACT` / `PREFIX` only, no
+/// judge-prefix stripping. Unlike `sentence`'s owned `String` — which mixes
+/// static vocabulary with a judge's own runtime words — this returns the
+/// table's own `&'static str`, so a caller can feed it straight into
+/// `locale::t` as a translation-table key. The Inbox reason display
+/// (`ui::overseer::inbox_rows`) uses this rather than `sentence` for exactly
+/// that reason: a judge's wrapped prose is not in the vocabulary and is
+/// never translated (see the module doc comment).
+pub(crate) fn static_sentence(reason: &str) -> Option<&'static str> {
+    let trimmed = reason.trim();
+    if let Some((_, sentence)) = EXACT.iter().find(|(code, _)| *code == trimmed) {
+        return Some(sentence);
+    }
+    PREFIX
+        .iter()
+        .find(|(prefix, _)| trimmed.starts_with(prefix))
+        .map(|(_, sentence)| *sentence)
+}
+
 /// One readable sentence for a known code-shaped reason, or `None` when the
 /// reason is unknown and the caller should keep it verbatim.
 pub(super) fn sentence(reason: &str) -> Option<String> {
     let trimmed = reason.trim();
-    if let Some((_, sentence)) = EXACT.iter().find(|(code, _)| *code == trimmed) {
-        return Some((*sentence).into());
-    }
-    if let Some((_, sentence)) = PREFIX
-        .iter()
-        .find(|(prefix, _)| trimmed.starts_with(prefix))
-    {
-        return Some((*sentence).into());
+    if let Some(known) = static_sentence(trimmed) {
+        return Some(known.into());
     }
     for prefix in JUDGE_PREFIXES {
         if let Some(inner) = trimmed.strip_prefix(prefix) {

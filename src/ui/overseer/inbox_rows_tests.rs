@@ -1,6 +1,7 @@
 use super::*;
 use crate::{
     config::Config,
+    locale::Locale,
     model::OverseerCategory,
     registry::Registry,
     ui::inbox::{InboxItem, InboxKind},
@@ -116,6 +117,65 @@ fn a_display_only_item_says_why_it_cannot_be_answered() {
     assert!(
         body.contains("display-only — no live session to answer or approve"),
         "{body}"
+    );
+}
+
+#[test]
+fn a_japanese_locale_localizes_the_remedy_means_and_next_sentences() {
+    let mut app = inbox_app(vec![item(InboxKind::Question, "agent-1", Some("robco-1"))]);
+    app.locale = Locale::Ja;
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    // WORKER_QUESTION's means / next — see `locale::ja::remedy`.
+    assert!(
+        body.contains("workerは自分のセッション内で確認プロンプトを待っています"),
+        "{body}"
+    );
+    assert!(
+        body.contains("Enterを押して回答を入力してください"),
+        "{body}"
+    );
+    // Labels stay English even in the Japanese locale (dropr:377).
+    assert!(body.contains("what this means"), "{body}");
+    assert!(body.contains("next step"), "{body}");
+}
+
+#[test]
+fn a_known_reason_code_gets_a_localized_sentence_ahead_of_the_verbatim_code() {
+    let mut escalation = item(InboxKind::Escalation, "#42", None);
+    escalation.detail = "merge_state:dirty".into();
+    let mut app = inbox_app(vec![escalation]);
+    app.locale = Locale::Ja;
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    // `humanize::EXACT`'s sentence for "merge_state:dirty", localized —
+    // see `locale::ja::humanize`.
+    assert!(body.contains("ブランチがbaseと競合しています。"), "{body}");
+    // The raw code always stays, verbatim and untranslated.
+    assert!(body.contains("merge_state:dirty"), "{body}");
+}
+
+#[test]
+fn an_unknown_reason_code_renders_verbatim_with_no_extra_sentence_line() {
+    let app = inbox_app(vec![item(InboxKind::Escalation, "#159", None)]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(body.contains(LONG_REASON), "{body}");
+    // No humanized line was inserted: the reason section is exactly the raw
+    // detail, one line per line of `LONG_REASON`.
+    let reason_index = rendered(&text.lines)
+        .iter()
+        .position(|line| line == "reason")
+        .expect("reason label");
+    assert_eq!(
+        rendered(&text.lines)[reason_index + 1],
+        LONG_REASON.to_string()
     );
 }
 
