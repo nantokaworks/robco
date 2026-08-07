@@ -191,3 +191,37 @@ fn a_recorded_probe_is_reported_verbatim() {
     assert_eq!(session_auth_line(Some(&health)), health.summary());
     assert!(session_auth_line(Some(&health)).starts_with("session auth: failed"));
 }
+
+#[test]
+fn merge_pass_line_reports_none_recorded_before_the_first_pass() {
+    assert_eq!(merge_pass_line(None), "merge pass: none recorded yet");
+}
+
+#[test]
+fn merge_pass_line_names_the_slowest_repository() {
+    let pass = MergePassTelemetry {
+        at: chrono::Utc::now(),
+        duration_ms: 820,
+        repos_evaluated: 3,
+        slowest_repo: Some("/repo-a".to_string()),
+        slowest_repo_ms: 640,
+    };
+    let line = merge_pass_line(Some(&pass));
+    assert!(line.contains("820ms"), "{line}");
+    assert!(line.contains("3 repos"), "{line}");
+    assert!(line.contains("/repo-a (640ms)"), "{line}");
+}
+
+#[test]
+fn merge_pass_line_reports_no_slowest_when_nothing_was_evaluated() {
+    let pass = MergePassTelemetry {
+        at: chrono::Utc::now(),
+        duration_ms: 5,
+        repos_evaluated: 0,
+        slowest_repo: None,
+        slowest_repo_ms: 0,
+    };
+    let line = merge_pass_line(Some(&pass));
+    assert!(line.contains("0 repos"), "{line}");
+    assert!(line.contains("slowest: -"), "{line}");
+}

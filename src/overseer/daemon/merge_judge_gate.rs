@@ -8,6 +8,7 @@
 use serde_json::Value;
 
 use super::{
+    merge_concurrency::SharedJudgments,
     merge_decision::{Halt, log},
     merge_gate, merge_hold_recheck, merge_judge_fail_safe,
     merge_queue::Heads,
@@ -18,7 +19,7 @@ use crate::{
     config::Config,
     overseer::{
         autonomy::{Decision, merge_envelope_decision},
-        judge::{JudgmentQueue, MergeJudgment, change_facts, judgment_after_gate, merge_case},
+        judge::{MergeJudgment, change_facts, judgment_after_gate, merge_case},
         ledger::{LedgerEntry, LedgerPhase},
         logging::DecisionKind,
     },
@@ -53,11 +54,15 @@ pub(super) fn prime(
     url: &str,
     value: &Value,
     config: &Config,
-    judgments: &mut JudgmentQueue,
+    judgments: &SharedJudgments,
     consecutive_failures: u32,
     heads: &mut Heads,
 ) -> Result<()> {
-    let facts = change_facts(value, consecutive_failures, judgments.llm_calls_today());
+    let facts = change_facts(
+        value,
+        consecutive_failures,
+        judgments.lock().unwrap().llm_calls_today(),
+    );
     // The same envelope question `judge_allows` asks, and the honest one to ask
     // here: protection really is verified — the gate checks it before any wait
     // that reaches this — and green checks are what the pull request is waiting
@@ -81,7 +86,11 @@ pub(super) fn prime(
     // and `prime_merge` answers `false` for all but the first — charging those
     // would spend the whole budget on one judgment and leave nothing for the
     // genuinely new question a later push raises.
-    if judgments.prime_merge(merge_case(entry, url, value))? {
+    if judgments
+        .lock()
+        .unwrap()
+        .prime_merge(merge_case(entry, url, value))?
+    {
         entry.merge_judge_primes = entry.merge_judge_primes.saturating_add(1);
     }
     Ok(())
@@ -120,15 +129,19 @@ pub(super) fn judge_allows(
     url: &str,
     value: &Value,
     config: &Config,
-    judgments: &mut JudgmentQueue,
+    judgments: &SharedJudgments,
     consecutive_failures: u32,
 ) -> Result<Judgment> {
-    let facts = change_facts(value, consecutive_failures, judgments.llm_calls_today());
+    let facts = change_facts(
+        value,
+        consecutive_failures,
+        judgments.lock().unwrap().llm_calls_today(),
+    );
     let case = merge_case(entry, url, value);
     let head = pull_request::head_sha(value);
-    let Some(advice) =
-        judgment_after_gate(true, true, &facts, config, || judgments.merge_advice(case))
-    else {
+    let Some(advice) = judgment_after_gate(true, true, &facts, config, || {
+        judgments.lock().unwrap().merge_advice(case)
+    }) else {
         if matches!(
             merge_envelope_decision(true, true, &facts, &config.overseer),
             Decision::Escalate(_)
@@ -152,7 +165,10 @@ pub(super) fn judge_allows(
         // would let an operator's bypass wave a change through with no judge
         // review at all. Only a pull request the judge has actually vetoed
         // or escalated before is eligible for the bypass here.
-        if judgments.has_terminal_merge(&entry.task_id, Some(url))
+        if judgments
+            .lock()
+            .unwrap()
+            .has_terminal_merge(&entry.task_id, Some(url))
             && take_operator_override(entry, head, "judge_verdict")?
         {
             return Ok(Judgment::Allow);

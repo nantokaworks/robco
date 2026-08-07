@@ -11,6 +11,7 @@
 use std::{
     collections::HashMap,
     process::Command,
+    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -66,18 +67,21 @@ impl CacheState {
 /// Memoises the last classification of (repository, branch, mode) triples. Loosening
 /// the mode or moving to another base branch is a different question, so it re-probes
 /// rather than reusing an answer given for a stricter one.
+///
+/// Interior-mutable so several repositories' concurrent auto-merge evaluations can
+/// share one `&ProtectionCache`; the mutex guards only the `HashMap`, never `api` below.
 #[derive(Default)]
-pub(super) struct ProtectionCache(HashMap<String, (CacheState, Instant)>);
+pub(super) struct ProtectionCache(Mutex<HashMap<String, (CacheState, Instant)>>);
 
 impl ProtectionCache {
     fn remembered(&self, key: &str, now: Instant) -> Option<CacheState> {
-        self.0.get(key).and_then(|(state, at)| {
+        self.0.lock().unwrap().get(key).and_then(|(state, at)| {
             (now.saturating_duration_since(*at) < state.ttl()).then_some(*state)
         })
     }
 
-    fn remember(&mut self, key: String, state: CacheState, now: Instant) {
-        self.0.insert(key, (state, now));
+    fn remember(&self, key: String, state: CacheState, now: Instant) {
+        self.0.lock().unwrap().insert(key, (state, now));
     }
 }
 
@@ -162,7 +166,7 @@ fn rule_type(rule: &Value) -> Option<&str> {
 pub(super) fn unmet_condition(
     entry: &LedgerEntry,
     registry: &Registry,
-    cache: &mut ProtectionCache,
+    cache: &ProtectionCache,
     mode: ProtectionMode,
     branch: &str,
 ) -> Option<&'static str> {

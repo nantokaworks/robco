@@ -45,7 +45,7 @@ pub(super) fn gate(
     url: &str,
     value: &Value,
     config: &Config,
-    cache: &mut ProtectionCache,
+    cache: &ProtectionCache,
     registry: &Registry,
     heads: &mut merge_queue::Heads,
     dependency: merge_dependency::Probe,

@@ -53,9 +53,15 @@ pub(super) enum Barrier {
     Lifted,
 }
 
-/// Raises the barrier for `repo`. Called on every merge the gate applies.
-pub(super) fn begin(settling: &mut Settling, repo: &str) {
-    settling.insert(repo.to_owned(), MergeSettling::default());
+/// Raises the barrier for one repository. Called on every merge the gate applies.
+///
+/// Takes the repository's own state rather than the whole map and a key, because
+/// the auto-merge pass evaluates repositories concurrently — see
+/// `daemon::merge_concurrency` — and extracts each repository's `Settling` entry
+/// into its own owned `Option<MergeSettling>` before that, so no two repositories'
+/// threads ever touch the same map.
+pub(super) fn begin(state: &mut Option<MergeSettling>) {
+    *state = Some(MergeSettling::default());
 }
 
 /// Lowers the barrier for every repository whose fast-forward just landed,
@@ -83,19 +89,20 @@ pub(super) fn age(settling: &mut Settling) {
     }
 }
 
-/// What `repo`'s barrier says about merging into it now.
+/// What one repository's barrier says about merging into it now.
 ///
 /// A [`Barrier::Lifted`] answer drops the state as it reports it: the bound has
 /// been spent, and leaving it in place would re-report the release on every
-/// later pass.
-pub(super) fn barrier(settling: &mut Settling, repo: &str, max_passes: u32) -> Barrier {
-    let Some(state) = settling.get(repo) else {
+/// later pass. See [`begin`] for why this takes the repository's own state
+/// rather than the whole map.
+pub(super) fn barrier(state: &mut Option<MergeSettling>, max_passes: u32) -> Barrier {
+    let Some(current) = state.as_ref() else {
         return Barrier::Open;
     };
-    if state.passes_held < max_passes {
+    if current.passes_held < max_passes {
         return Barrier::Held;
     }
-    settling.remove(repo);
+    *state = None;
     Barrier::Lifted
 }
 
