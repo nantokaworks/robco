@@ -37,7 +37,16 @@ pub(crate) fn process_alive(pid: u32) -> bool {
 /// pull runs here, on a later pass than the merge that needs it, so without it
 /// the gate would have to assume the base caught up rather than know it. See
 /// `crate::overseer::daemon::merge_settle`.
-pub(crate) fn execute_actions(actions: &[Action]) -> Result<HashSet<String>> {
+///
+/// `release_pipeline_enabled` is `config.overseer.release_pipeline_enabled`,
+/// threaded down to `Action::CheckReleasePipeline` rather than read from a
+/// `Config` this function loads itself: the operator's opt-in for that
+/// unattended-shell-execution privilege is decided once, by the same pass
+/// that already holds the config, not re-read per action.
+pub(crate) fn execute_actions(
+    actions: &[Action],
+    release_pipeline_enabled: bool,
+) -> Result<HashSet<String>> {
     let mut cleanup_blocked = HashSet::new();
     let mut pulled = HashSet::new();
     for action in actions {
@@ -81,7 +90,12 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<HashSet<String>> {
                 task_id,
                 repo,
                 pr_url,
-            } => release_pipeline::consider(task_id, repo, pr_url.as_deref())?,
+            } => release_pipeline::consider(
+                task_id,
+                repo,
+                pr_url.as_deref(),
+                release_pipeline_enabled,
+            )?,
         }
     }
     Ok(pulled)

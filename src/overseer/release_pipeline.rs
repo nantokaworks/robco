@@ -8,6 +8,14 @@
 //! module is what closes that gap, without turning into a second thing that
 //! silently ships when it should not — every guard below fails closed:
 //!
+//! - `config.overseer.release_pipeline_enabled` must be on. This capability
+//!   is a distinct privilege class from the rest of the daemon's autonomy:
+//!   it runs a local shell script for up to thirty minutes and, on success,
+//!   publishes a public GitHub release with whatever credentials the daemon
+//!   holds — and `scripts/release.sh` is itself part of this repository, so
+//!   a future change to it runs with this same privilege on the next
+//!   qualifying merge. Default-off; an operator opts in deliberately. See
+//!   `overseer::config::OverseerConfig::release_pipeline_enabled`.
 //! - Only a repository that is a checkout of this very project (its
 //!   `Cargo.toml` package name matches the running binary's own, and it
 //!   carries `scripts/release.sh`) is ever considered. See [`is_self`].
@@ -67,7 +75,21 @@ const RELEASE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// diff over ledger snapshots, and everything here — the repository read,
 /// the pull request read, and the pipeline run itself — belongs with the
 /// daemon's other side-effecting steps.
-pub(crate) fn consider(task_id: &str, repo: &str, pr_url: Option<&str>) -> Result<()> {
+///
+/// `enabled` is `config.overseer.release_pipeline_enabled`, checked first
+/// and unconditionally: every guard after this one narrows *which* merge
+/// qualifies, but this one is the operator's own decision to grant the
+/// pipeline's privilege class at all, and it must not be reachable by
+/// satisfying the narrower guards alone.
+pub(crate) fn consider(
+    task_id: &str,
+    repo: &str,
+    pr_url: Option<&str>,
+    enabled: bool,
+) -> Result<()> {
+    if !enabled {
+        return Ok(());
+    }
     let repo_path = Path::new(repo);
     if !repo_path.join(SCRIPT).exists() || !is_self(repo_path) {
         return Ok(());

@@ -134,6 +134,7 @@ fn consider_is_silent_for_a_repository_without_the_release_script() {
         "task-1",
         &repo.path().display().to_string(),
         Some("https://example.invalid/pr/1"),
+        true,
     )
     .unwrap();
 }
@@ -156,6 +157,7 @@ fn consider_is_silent_for_a_repository_that_is_not_this_project() {
         "task-1",
         &repo.path().display().to_string(),
         Some("https://example.invalid/pr/1"),
+        true,
     )
     .unwrap();
 }
@@ -174,5 +176,33 @@ fn consider_is_silent_without_a_pull_request_url() {
         cargo_toml(env!("CARGO_PKG_NAME"), "0.1.0"),
     )
     .unwrap();
-    consider("task-1", &repo.path().display().to_string(), None).unwrap();
+    consider("task-1", &repo.path().display().to_string(), None, true).unwrap();
+}
+
+/// The precise regression this guard exists for: a repository that would
+/// otherwise qualify on every other guard (own project, has the script, a
+/// `[release]`-scoped PR) must still do nothing while the operator has not
+/// opted in — proven here by disabling it and expecting no crash even
+/// though `pr_title` would need `gh` (unreachable) to get past this guard.
+#[test]
+fn consider_is_silent_when_the_pipeline_is_disabled_even_for_a_qualifying_repository() {
+    let repo = TestRepo::new();
+    std::fs::create_dir_all(repo.path().join("scripts")).unwrap();
+    std::fs::write(
+        repo.path().join("scripts/release.sh"),
+        "#!/usr/bin/env bash\n",
+    )
+    .unwrap();
+    std::fs::write(
+        repo.path().join("Cargo.toml"),
+        cargo_toml(env!("CARGO_PKG_NAME"), "0.1.0"),
+    )
+    .unwrap();
+    consider(
+        "task-1",
+        &repo.path().display().to_string(),
+        Some("https://example.invalid/pr/1"),
+        false,
+    )
+    .unwrap();
 }

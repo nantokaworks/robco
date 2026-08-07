@@ -262,6 +262,7 @@ always has.
     "session_env_file": null,
     "session_preflight": true,
     "dispatch_task_authors": [],
+    "release_pipeline_enabled": false,
     "discord": {
       "enabled": false,
       "token_env": "ROBCO_DISCORD_TOKEN",
@@ -314,6 +315,7 @@ always has.
 | `session_env_file` | string (path) or `null` | `null` | `KEY=VALUE` file read below `session_env`. `null` reads `~/.robco/env`. A leading `~` is expanded. Read at spawn time, so a rotated token needs no reinstall. |
 | `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco overseer status`. |
 | `dispatch_task_authors` | array of strings | `[]` | Exact allowlist for ready-task authors. Empty permits every author. |
+| `release_pipeline_enabled` | boolean | `false` | Runs `scripts/release.sh` unattended, from this project's own checkout, after a merge closes a `[release]`-scoped task in this project's own repository. A distinct privilege class from every other flag above: on success it publishes a public GitHub release with whatever credentials the daemon holds, and `scripts/release.sh` is itself part of this repository, so a future change to it runs with this same privilege on the next qualifying merge. Default-off; an operator opts in deliberately. See [`overseer::release_pipeline`](../src/overseer/release_pipeline.rs). |
 | `discord` | object | see below | Discord gateway, command, and notification settings. |
 
 ### Discord fields
