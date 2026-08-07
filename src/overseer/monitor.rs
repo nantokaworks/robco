@@ -56,6 +56,7 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
     settle(entry, now);
     if original != LedgerPhase::Merged && entry.phase == LedgerPhase::Merged {
         push_cleanup(entry, actions);
+        push_release_pipeline_check(entry, actions);
     }
 }
 /// Record the instant an entry stopped being anyone's work.
@@ -138,10 +139,12 @@ fn reconcile_manual_entry(
         }
         return;
     }
+    let original = entry.phase;
     apply_pr(entry, observations, actions);
     settle(entry, now);
-    if entry.phase == LedgerPhase::Merged {
+    if original != LedgerPhase::Merged && entry.phase == LedgerPhase::Merged {
         push_cleanup(entry, actions);
+        push_release_pipeline_check(entry, actions);
     }
 }
 fn still_registered(entry: &LedgerEntry, observations: &Observations) -> bool {
@@ -156,6 +159,18 @@ fn push_cleanup(entry: &LedgerEntry, actions: &mut Vec<Action>) {
     });
     actions.push(Action::RemoveWorktree {
         agent_id: entry.agent_id.clone(),
+    });
+}
+/// Pushed once, alongside [`push_cleanup`], only on the pass an entry first
+/// reaches `Merged` — never on the retried-cleanup path at the top of
+/// `reconcile_entry` / `reconcile_manual_entry`, which would otherwise ask
+/// `overseer::release_pipeline` to reconsider the same pull request on every
+/// pass its worktree removal happens to still be pending.
+fn push_release_pipeline_check(entry: &LedgerEntry, actions: &mut Vec<Action>) {
+    actions.push(Action::CheckReleasePipeline {
+        task_id: entry.task_id.clone(),
+        repo: entry.repo.clone(),
+        pr_url: entry.pr_url.clone(),
     });
 }
 fn is_worker_phase(phase: LedgerPhase) -> bool {

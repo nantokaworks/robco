@@ -20,6 +20,7 @@ pub mod ledger;
 pub mod logging;
 pub mod monitor;
 pub mod other_prs;
+pub(crate) mod release_pipeline;
 pub(crate) mod remedy;
 pub mod review;
 pub mod runtime_request;

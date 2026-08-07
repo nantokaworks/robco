@@ -21,6 +21,12 @@ pub enum DecisionKind {
     Hold,
     Escalate,
     CircuitOpen,
+    /// The local release pipeline (`overseer::release_pipeline`) either ran
+    /// to completion or failed. Kept apart from `Merge` and `Escalate`:
+    /// neither reused well — the pipeline is not the pull-request merge
+    /// itself, and a failed run is not something the merge gate's own
+    /// escalation vocabulary was ever meant to describe.
+    Release,
 }
 
 impl DecisionKind {
@@ -34,6 +40,7 @@ impl DecisionKind {
             Self::Hold => "hold",
             Self::Escalate => "escalate",
             Self::CircuitOpen => "circuit_open",
+            Self::Release => "release",
         }
     }
 }

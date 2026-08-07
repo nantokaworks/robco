@@ -1,6 +1,7 @@
 use super::{
     logging::{self, DecisionEntry, DecisionKind, log_message},
     monitor::Action,
+    release_pipeline,
 };
 pub(crate) use crate::exec::run_timeout;
 use crate::{
@@ -76,6 +77,11 @@ pub(crate) fn execute_actions(actions: &[Action]) -> Result<HashSet<String>> {
                 logging::append(&entry)?;
             }
             Action::LogDecision { task_id, message } => log_message(task_id.as_deref(), message)?,
+            Action::CheckReleasePipeline {
+                task_id,
+                repo,
+                pr_url,
+            } => release_pipeline::consider(task_id, repo, pr_url.as_deref())?,
         }
     }
     Ok(pulled)

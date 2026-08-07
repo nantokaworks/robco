@@ -145,10 +145,18 @@ const PREFIX: &[(&str, &str)] = &[
     ("session_auth_failed:", "The session could not sign in."),
 ];
 
-/// Wrappers around a judge's own words (`daemon::merge_judge_gate`,
-/// `remedy::parse`). The inner text is already a sentence, so it becomes the
-/// description and the wrapped raw code stays secondary.
-const JUDGE_PREFIXES: &[&str] = &["judge_escalate:", "judge_veto:", "judge_fail_safe:"];
+/// Wrappers around text that is already a sentence in its own right — a
+/// judge's own words (`daemon::merge_judge_gate`, `remedy::parse`), or the
+/// release pipeline's own outcome (`overseer::release_pipeline`). The inner
+/// text becomes the description verbatim and the wrapped raw code stays
+/// secondary.
+const VERBATIM_PREFIXES: &[&str] = &[
+    "judge_escalate:",
+    "judge_veto:",
+    "judge_fail_safe:",
+    "release_published:",
+    "release_failed:",
+];
 
 /// The vocabulary-table half of [`sentence`]: `EXACT` / `PREFIX` only, no
 /// judge-prefix stripping. Unlike `sentence`'s owned `String` — which mixes
@@ -176,7 +184,7 @@ pub(super) fn sentence(reason: &str) -> Option<String> {
     if let Some(known) = static_sentence(trimmed) {
         return Some(known.into());
     }
-    for prefix in JUDGE_PREFIXES {
+    for prefix in VERBATIM_PREFIXES {
         if let Some(inner) = trimmed.strip_prefix(prefix) {
             let inner = inner.trim();
             if !inner.is_empty() {
