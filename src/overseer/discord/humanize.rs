@@ -78,6 +78,19 @@ const EXACT: &[(&str, &str)] = &[
         "candidate_circuit_open",
         "Repeated spawn failures tripped the circuit for this task.",
     ),
+    // Release pipeline skip reasons (`overseer::release_pipeline::ready`).
+    (
+        "release_pipeline_skipped:working_tree_dirty",
+        "The release checkout has uncommitted changes, so the release did not run.",
+    ),
+    (
+        "release_pipeline_skipped:working_tree_check_failed",
+        "The release checkout could not be checked for uncommitted changes.",
+    ),
+    (
+        "release_pipeline_skipped:checkout_not_on_merged_commit",
+        "The release checkout is not on the merged commit, so the release did not run.",
+    ),
 ];
 
 /// Reasons matched by prefix. The text after the prefix carries detail that

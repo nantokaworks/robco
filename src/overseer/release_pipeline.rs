@@ -31,8 +31,21 @@
 //! all — the common case, an ordinary merge in an ordinary repository, must
 //! stay silent. Once a candidate clears the scope guards, every remaining
 //! outcome (skipped for an unready checkout, published, or failed) is
-//! recorded through the daemon's own decision log, so an operator can always
-//! see why the last release did or did not ship.
+//! recorded through the daemon's own decision log and, for the skip and the
+//! two terminal outcomes alike, reaches Discord — see [`skip`] and [`run`] —
+//! so an operator can always see why the last release did or did not ship,
+//! promptly rather than by noticing an unpublished version days later.
+//!
+//! `scripts/release.sh` itself never leaves the checkout detached: its
+//! `tag` stage creates the release tag with `git tag -a <tag> origin/main`,
+//! which tags a commit without checking it out, and no other stage runs
+//! `git checkout`. A checkout found detached at exactly the commit a prior
+//! release published from is therefore evidence of an operator's own manual
+//! step (for example checking out the tag to verify the built artifact),
+//! not of this pipeline — see task dropr:8uAzfpolZ3OupBaaq47hD. That is also
+//! why [`ready`] only ever reports and never repairs: recovering from a
+//! manual checkout would mean this module writing to a checkout that isn't
+//! its own, which is the one thing every guard above exists to avoid.
 
 use std::{
     fs,
@@ -211,13 +224,19 @@ fn run(task_id: &str, repo: &str, pr_url: &str, repo_path: &Path) -> Result<()> 
     }
 }
 
+/// Records the skip and, by using the `daemon_event` source `run`'s own
+/// outcomes use (`overseer::discord::notifications::from_decision` keys its
+/// `release_pipeline_skipped:` match arm on that source), makes it reach
+/// Discord like a published or failed release does — an unready checkout
+/// blocks every release after it, so this is deliberately louder than an
+/// ordinary `daemon`-sourced skip.
 fn skip(task_id: &str, repo: &str, pr_url: &str, reason: &'static str) -> Result<()> {
     report(
         task_id,
         repo,
         pr_url,
         DecisionKind::Skip,
-        "daemon",
+        "daemon_event",
         format!("release_pipeline_skipped:{reason}"),
     )
 }

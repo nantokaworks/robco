@@ -70,6 +70,12 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
         (Some(reason), _) if reason.starts_with("release_failed:") => {
             (NotifyTier::Errors, "Release failed", 0xc0392b)
         }
+        // An unready checkout blocks every release after it until an
+        // operator notices and fixes it by hand, so this is Errors-tier
+        // rather than left to go unnoticed in the decision log alone.
+        (Some(reason), _) if reason.starts_with("release_pipeline_skipped:") => {
+            (NotifyTier::Errors, "Release skipped", 0xe67e22)
+        }
         (_, DecisionKind::CircuitOpen) => (NotifyTier::Errors, "Circuit open", 0xe74c3c),
         (_, DecisionKind::Escalate) => (NotifyTier::Errors, "Escalation", 0xf1c40f),
         _ => return None,

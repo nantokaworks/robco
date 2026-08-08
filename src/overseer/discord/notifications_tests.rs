@@ -129,6 +129,29 @@ fn a_failed_release_reads_as_an_errors_tier_notification() {
     assert_eq!(notification.color, 0xc0392b);
 }
 
+/// The regression this covers: a `release_pipeline_skipped` decision used to
+/// carry the plain `daemon` source, which `from_decision` never treats as a
+/// named event, so it fell through to `_ => return None` and never reached
+/// Discord — a checkout stuck off `ready()` could block every release after
+/// it for days with nothing but a decision-log line to notice it by. It now
+/// uses the same `daemon_event` source `release_published` / `release_failed`
+/// do, so it reaches the same Errors-tier notification path they do.
+#[test]
+fn a_skipped_release_reads_as_an_errors_tier_notification() {
+    let mut entry = DecisionEntry::new(
+        DecisionKind::Skip,
+        "release_pipeline_skipped:checkout_not_on_merged_commit",
+    );
+    entry.source = Some("daemon_event".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(notification.title, "Release skipped");
+    assert_eq!(
+        notification.description,
+        "The release checkout is not on the merged commit, so the release did not run."
+    );
+    assert_eq!(notification.color, 0xe67e22);
+}
+
 #[test]
 fn a_pr_url_without_pull_segment_still_links() {
     let mut entry = DecisionEntry::new(DecisionKind::Escalate, "stuck");
