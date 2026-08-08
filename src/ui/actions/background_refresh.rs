@@ -238,7 +238,6 @@ fn capture_status(
     for repo in &mut registry.repos {
         let session = agent::repo_claude_session_name(&config.tmux_session_prefix, repo);
         status::refresh_repo_main(&session, repo, processes.as_ref());
-        status::refresh_main_drift(repo);
         for tracked in &mut repo.agents {
             status::refresh_agent(&repo.path, tracked, config.auto_accept, processes.as_ref());
         }
