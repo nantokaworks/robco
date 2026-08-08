@@ -95,7 +95,7 @@ pub(super) fn merge_now(
     Ok(match run_timeout(merge, COMMAND_TIMEOUT) {
         Ok(output) if output.status.success() => {
             entry.phase = LedgerPhase::Merged;
-            log_gated(entry, DecisionKind::Merge, strategy.label(), mode)?;
+            log_gated(entry, DecisionKind::Merge, strategy.label(), "", mode)?;
             Ok(())
         }
         Ok(output) => Err(Halt::hold(hold_reason(strategy, &output))),

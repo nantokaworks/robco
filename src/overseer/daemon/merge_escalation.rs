@@ -18,10 +18,21 @@
 //!   notifies only once it has sat unresolved past [`STUCK_AFTER`].
 //!
 //! Every other escalation reason (a judge veto, the autonomy envelope, a
-//! branch-update cap) is outside this vocabulary on purpose — the task this
-//! module exists for scopes the new policy to the merge-hold recheck loop,
-//! not to every escalation path the gate can take. Those keep notifying
-//! exactly as they did before this module existed.
+//! branch-update cap) is outside this vocabulary — none of them name a
+//! condition this module's own recheck/recovery budgets track. Left
+//! completely unmanaged, an entry the merge-hold recheck loop keeps
+//! reconsidering for free (see `merge_hold_recheck`'s module doc) can hit one
+//! of these on every pass with an unchanged reason and head, and each hit
+//! logged a fresh `Escalate` decision with no `escalation_notify` at all —
+//! which the notification layer's catch-all then read as a brand new alert,
+//! forever (dropr:414). So this third bucket notifies too, but only once per
+//! `(reason, head)` pair: [`notify`] compares against
+//! `LedgerEntry::escalation_notified_reason` /
+//! `escalation_notified_head`, the pair the last notification recorded, and
+//! suppresses a repeat of the identical pair. A changed reason, a changed
+//! head, or the entry leaving the escalation behind (`merge_hold_recheck::settle`,
+//! a `merge_recovery` handback) all clear or replace that pair, so the first
+//! occurrence of a genuinely new condition still notifies immediately.
 //!
 //! [`sweep_stuck`] is the other half: a transient escalation that never
 //! changes is reconsidered for free, forever (see `merge_hold_recheck`'s
@@ -42,25 +53,36 @@ use crate::{
 };
 
 /// The `DecisionEntry::escalation_notify` value an `Escalate` decision with
-/// `reason` should carry. `None` for every reason outside this module's
-/// terminal/transient vocabulary — including escalation reasons this task's
-/// scope leaves untouched (a judge veto, the autonomy envelope, a
-/// branch-update cap) — so the notification layer falls back to its
-/// pre-existing catch-all for them, unchanged. The single call point every
-/// merge-subsystem decision builder (`merge_decision`, `merge_recovery`,
-/// `merge_judge_fail_safe`) uses, so the vocabulary is matched once rather
-/// than re-derived at each call site.
-pub(super) fn notify(kind: DecisionKind, reason: &str) -> Option<bool> {
+/// `reason` and revision `head` should carry, for the entry the decision is
+/// about. The single call point every merge-subsystem decision builder
+/// (`merge_decision`, `merge_recovery`, `merge_judge_fail_safe`) uses, so the
+/// vocabulary is matched once rather than re-derived at each call site.
+///
+/// Mutates `entry`'s `escalation_notified_reason` / `escalation_notified_head`
+/// for the third bucket below — a read-only signature could not implement the
+/// "notify once per pair" rule, since deciding *and* remembering has to be one
+/// atomic step or two concurrent calls (there are none today; the merge pass
+/// is sequential per repository) could both read "unseen" and both notify.
+pub(super) fn notify(
+    entry: &mut LedgerEntry,
+    kind: DecisionKind,
+    reason: &str,
+    head: &str,
+) -> Option<bool> {
     if kind != DecisionKind::Escalate {
         return None;
     }
     if is_terminal(reason) {
-        Some(true)
-    } else if is_transient(reason) {
-        Some(false)
-    } else {
-        None
+        return Some(true);
     }
+    if is_transient(reason) {
+        return Some(false);
+    }
+    let unchanged = entry.escalation_notified_reason.as_deref() == Some(reason)
+        && entry.escalation_notified_head.as_deref() == Some(head);
+    entry.escalation_notified_reason = Some(reason.to_owned());
+    entry.escalation_notified_head = Some(head.to_owned());
+    Some(!unchanged)
 }
 
 /// How long a still-reconsiderable escalation may sit unresolved before

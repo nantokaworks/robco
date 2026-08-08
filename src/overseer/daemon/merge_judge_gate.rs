@@ -227,6 +227,7 @@ fn take_operator_override(entry: &mut LedgerEntry, head: &str, bypassed: &str) -
         entry,
         DecisionKind::Merge,
         &format!("operator_override:{bypassed}"),
+        head,
     )?;
     Ok(true)
 }
