@@ -24,6 +24,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
 
         // summary.rs — child_summary
         "nested under agent worktree" => "agentのworktree配下にネストされています",
+
+        // summary.rs — main_drift_warning
+        "main behind origin/main by {}" => "mainがorigin/mainより{}コミット遅れています",
         _ => return None,
     })
 }

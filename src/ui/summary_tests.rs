@@ -20,6 +20,7 @@ fn repo(dropr: Option<DroprWorkspace>, dropr_tasks: DroprTaskFetch) -> RepoNode 
         main_pane_pid: None,
         main_tracked_command: None,
         main_subagents_active: 0,
+        main_behind_origin: None,
     }
 }
 
@@ -187,4 +188,31 @@ fn a_linked_repo_whose_fetch_failed_reports_the_failure() {
             .iter()
             .any(|line| line == "! root tasks: dropr refused: Not found")
     );
+}
+
+/// A primary checkout whose local `main` could not be fast-forwarded must
+/// not sit silently behind `origin/main`; the summary pane is where the
+/// drift becomes visible.
+#[test]
+fn a_repo_behind_origin_main_shows_the_drift() {
+    let mut node = repo(None, DroprTaskFetch::default());
+    node.main_behind_origin = Some(3);
+
+    let lines = rendered(&node);
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "main behind origin/main by 3")
+    );
+}
+
+/// A repo whose local `main` is caught up carries no drift line at all — not
+/// even an empty one, since blank chrome is as much a false signal as a wrong
+/// count.
+#[test]
+fn a_repo_caught_up_with_origin_main_shows_no_drift_line() {
+    let lines = rendered(&repo(None, DroprTaskFetch::default()));
+
+    assert!(!lines.iter().any(|line| line.starts_with("main behind")));
 }

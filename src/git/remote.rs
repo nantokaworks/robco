@@ -144,6 +144,53 @@ pub fn remote_branch_commit(repo: &Path, branch: &str) -> Result<String> {
     command_output(output, "git rev-parse origin branch")
 }
 
+/// The branch `HEAD` currently points at, or `None` when it is detached.
+pub fn current_branch(repo: &Path) -> Result<Option<String>> {
+    let mut command = Command::new("git");
+    command
+        .args(["-C"])
+        .arg(repo)
+        .args(["symbolic-ref", "--short", "-q", "HEAD"]);
+    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(command_output(output, "git symbolic-ref")?))
+}
+
+/// Fast-forwards whatever is checked out in `repo` onto `target`, moving the
+/// working tree and the index along with the branch ref. Refuses on its own —
+/// leaving the checkout untouched — when `target` is not a descendant of the
+/// current `HEAD`, which is why this is safe to call without a divergence
+/// check of its own.
+pub fn fast_forward_checkout(repo: &Path, target: &str) -> Result<()> {
+    let mut command = Command::new("git");
+    command
+        .args(["-C"])
+        .arg(repo)
+        .args(["merge", "--ff-only", target]);
+    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    command_unit(output, "git merge --ff-only")
+}
+
+/// Advances the local `branch` ref straight to `from` — typically
+/// `origin/<branch>`, already fetched — without touching whatever the
+/// repository has checked out. Reads purely from local refs (`repository`
+/// argument `.`), so this never hits the network even though it goes through
+/// `git fetch`. Refuses on its own when `branch` is currently checked out
+/// elsewhere or `from` is not a fast-forward, exactly like a real fetch would
+/// refuse a non-fast-forward ref update.
+pub fn fast_forward_ref(repo: &Path, branch: &str, from: &str) -> Result<()> {
+    let mut command = Command::new("git");
+    command
+        .args(["-C"])
+        .arg(repo)
+        .args(["fetch", "-q", "."])
+        .arg(format!("{from}:{branch}"));
+    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    command_unit(output, "git fetch . (local ref fast-forward)")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

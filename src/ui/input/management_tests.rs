@@ -64,6 +64,7 @@ fn repo(agents: Vec<AgentNode>) -> RepoNode {
         main_pane_pid: None,
         main_tracked_command: None,
         main_subagents_active: 0,
+        main_behind_origin: None,
     }
 }
 

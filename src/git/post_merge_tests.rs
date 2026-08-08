@@ -32,9 +32,32 @@ fn squash_merged_branch_and_worktree_are_removed() {
     assert!(!branch_exists(repo.path(), "task").unwrap());
 }
 
+/// This is the fix itself: when the primary checkout has `main` checked out
+/// with a clean tree, cleanup fast-forwards it — not just `origin/main` —
+/// so the checkout stops trailing behind what actually landed.
+#[test]
+fn main_is_fast_forwarded_when_checked_out_and_clean() {
+    let repo = TestRepo::new();
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    let worktree = repo.worktree("task");
+    repo.land_squash("task");
+
+    let outcome = cleanup(&repo, &worktree, OnFailure::Continue)
+        .run(|_| ())
+        .unwrap();
+
+    assert!(outcome.base_pulled);
+    assert_eq!(outcome.notes, Vec::<String>::new());
+    assert_eq!(current_branch(&repo), "main");
+    assert_eq!(rev_parse(&repo, "main"), rev_parse(&repo, "origin/main"));
+    assert!(repo.path().join("task.txt").exists());
+}
+
 /// Cleanup must never touch whatever the operator has checked out in the
 /// primary worktree, uncommitted work included — knowing about `origin/main`
-/// is enough to decide the branch's fate.
+/// is enough to decide the branch's fate. It still advances the local `main`
+/// ref, since a ref update touches neither the working tree nor `HEAD`.
 #[test]
 fn an_operators_dirty_checkout_survives_cleanup() {
     let repo = TestRepo::new();
@@ -51,6 +74,7 @@ fn an_operators_dirty_checkout_survives_cleanup() {
         .run(|_| ())
         .unwrap();
 
+    assert!(outcome.base_pulled);
     assert_eq!(outcome.branch, BranchOutcome::Deleted);
     assert_eq!(current_branch(&repo), "operator-wip");
     assert_eq!(
@@ -60,6 +84,69 @@ fn an_operators_dirty_checkout_survives_cleanup() {
     // The squash landed on `origin/main`, but the primary worktree's own
     // files never moved off `operator-wip` to receive it.
     assert!(!repo.path().join("task.txt").exists());
+    // Only the ref moved — `main` now points at the merge, even unchecked out.
+    assert_eq!(rev_parse(&repo, "main"), rev_parse(&repo, "origin/main"));
+}
+
+/// `main` checked out with uncommitted changes is the one shape this step
+/// cannot advance safely, so it is left exactly as it was and the drift is
+/// recorded rather than silently dropped.
+#[test]
+fn a_dirty_main_checkout_is_left_behind_with_a_note() {
+    let repo = TestRepo::new();
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    let worktree = repo.worktree("task");
+    let before = rev_parse(&repo, "main");
+    repo.land_squash("task");
+    std::fs::write(repo.path().join("f.txt"), "dirty").unwrap();
+    git(repo.path(), &["add", "f.txt"]);
+
+    let outcome = cleanup(&repo, &worktree, OnFailure::Continue)
+        .run(|_| ())
+        .unwrap();
+
+    assert!(!outcome.base_pulled);
+    assert_eq!(current_branch(&repo), "main");
+    assert_eq!(rev_parse(&repo, "main"), before);
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("f.txt")).unwrap(),
+        "dirty"
+    );
+    assert!(
+        outcome.notes[0].contains("uncommitted changes") && outcome.notes[0].contains("behind"),
+        "unexpected notes: {:?}",
+        outcome.notes
+    );
+}
+
+/// A local `main` that diverged (a commit `origin/main` never saw) cannot be
+/// fast-forwarded either way, and both shapes refuse it on their own — the
+/// left-behind commit is not silently discarded by a force update.
+#[test]
+fn a_diverged_local_main_is_left_behind_with_a_note() {
+    let repo = TestRepo::new();
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    let worktree = repo.worktree("task");
+    repo.land_squash("task");
+    std::fs::write(repo.path().join("local-only.txt"), "never pushed").unwrap();
+    git(repo.path(), &["add", "local-only.txt"]);
+    git(repo.path(), &["commit", "-qm", "local-only"]);
+    let before = rev_parse(&repo, "main");
+
+    let outcome = cleanup(&repo, &worktree, OnFailure::Continue)
+        .run(|_| ())
+        .unwrap();
+
+    assert!(!outcome.base_pulled);
+    assert_eq!(rev_parse(&repo, "main"), before);
+    assert!(repo.path().join("local-only.txt").exists());
+    assert!(
+        outcome.notes[0].contains("behind"),
+        "unexpected notes: {:?}",
+        outcome.notes
+    );
 }
 
 /// A branch whose changes never landed is the one case where deleting would
@@ -164,6 +251,16 @@ fn current_branch(repo: &TestRepo) -> String {
         .args(["-C"])
         .arg(repo.path())
         .args(["symbolic-ref", "--short", "HEAD"])
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+fn rev_parse(repo: &TestRepo, reference: &str) -> String {
+    let output = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(repo.path())
+        .args(["rev-parse", reference])
         .output()
         .unwrap();
     String::from_utf8(output.stdout).unwrap().trim().to_string()

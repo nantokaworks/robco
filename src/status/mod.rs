@@ -138,6 +138,18 @@ pub fn refresh_repo_main(
     );
 }
 
+/// Refreshes how far the primary checkout's local `main` trails
+/// `origin/main`, purely from whichever refs are already known — no fetch of
+/// its own, so this is safe to call every status tick. `None` when `main` is
+/// not behind, or the comparison could not be made at all (no local `main`,
+/// no `origin`, not a repository).
+pub fn refresh_main_drift(repo: &mut crate::model::RepoNode) {
+    repo.main_behind_origin = git::ahead_behind(&repo.path, "main", "origin/main")
+        .ok()
+        .map(|(_ahead, behind)| behind)
+        .filter(|behind| *behind > 0);
+}
+
 fn refresh_process(
     session: &str,
     pane_pid: &mut Option<u32>,
@@ -263,6 +275,8 @@ fn shell_session_working(ai_session: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use chrono::TimeZone;
+
+    use crate::{discover, git::test_repo::TestRepo};
 
     use super::*;
 
@@ -394,5 +408,29 @@ mod tests {
             shell_pane_downgrade(classified, Some("zsh")).status,
             Status::Idle
         );
+    }
+
+    #[test]
+    fn refresh_main_drift_reports_how_far_local_main_trails_origin() {
+        let repo = TestRepo::new();
+        repo.feature_branch("task", "task.txt");
+        repo.push("task");
+        repo.land_squash("task");
+        crate::git::fetch_branch(repo.path(), "main").unwrap();
+        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
+
+        refresh_main_drift(&mut node);
+
+        assert_eq!(node.main_behind_origin, Some(1));
+    }
+
+    #[test]
+    fn refresh_main_drift_is_none_when_main_is_current() {
+        let repo = TestRepo::new();
+        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
+
+        refresh_main_drift(&mut node);
+
+        assert_eq!(node.main_behind_origin, None);
     }
 }

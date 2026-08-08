@@ -51,9 +51,10 @@ pub(super) fn auto_merge_pass(
     let consecutive_failures = ledger.counters.consecutive_failures;
     // Merges are serialised per repository: a merge advances the base and leaves every
     // other pull request of that repository behind, so their reads from earlier in this
-    // pass no longer describe a mergeable branch, and the primary worktree does not hold
-    // the merge until the post-merge pull lands. The barrier outlives the pass because
-    // that pull runs on a later one. Other repositories stay independent.
+    // pass no longer describe a mergeable branch, and the primary checkout's local main
+    // does not match the merge until the post-merge fast-forward lands. The barrier
+    // outlives the pass because that fast-forward runs on a later one. Other
+    // repositories stay independent.
     let max_settle_passes = config.overseer.max_merge_settle_passes;
     // Field-wise borrows: the barrier map is read and written while `entries` is grouped.
     let Ledger {
