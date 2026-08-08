@@ -25,6 +25,14 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         // summary.rs — child_summary
         "nested under agent worktree" => "agentのworktree配下にネストされています",
 
+        // summary.rs — checkout_branch_warning
+        "HEAD is detached — press c to check out main (clean tree only)" => {
+            "HEADがdetached状態です — cキーでmainをcheckoutできます（作業ツリーがcleanな場合のみ）"
+        }
+        "on branch {}, not main — press c to check out main (clean tree only)" => {
+            "mainではなくブランチ{}上です — cキーでmainをcheckoutできます（作業ツリーがcleanな場合のみ）"
+        }
+
         // summary.rs — main_drift_warning
         "main behind origin/main by {}" => "mainがorigin/mainより{}コミット遅れています",
         _ => return None,

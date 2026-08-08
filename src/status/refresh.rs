@@ -138,6 +138,22 @@ pub fn refresh_main_drift(repo: &mut crate::model::RepoNode) {
         .filter(|behind| *behind > 0);
 }
 
+/// Refreshes where the primary checkout's `HEAD` actually points, purely
+/// from a local `git symbolic-ref` — no fetch, no network. The value only
+/// moves when an operator (or the `c` repair action) moves it by hand, so
+/// this runs on the slower discovery tick rather than the 750 ms status
+/// tick, right alongside [`refresh_main_drift`]. `None` when `HEAD` is on
+/// `main`, or the probe itself failed (not a repository, `git` missing).
+pub fn refresh_checkout_branch(repo: &mut crate::model::RepoNode) {
+    use crate::model::CheckoutState;
+    repo.checkout_state = match git::current_branch(&repo.path) {
+        Ok(Some(branch)) if branch == "main" => None,
+        Ok(Some(branch)) => Some(CheckoutState::OtherBranch(branch)),
+        Ok(None) => Some(CheckoutState::Detached),
+        Err(_) => None,
+    };
+}
+
 fn refresh_process(
     session: &str,
     pane_pid: &mut Option<u32>,
@@ -183,5 +199,43 @@ mod tests {
         refresh_main_drift(&mut node);
 
         assert_eq!(node.main_behind_origin, None);
+    }
+
+    #[test]
+    fn refresh_checkout_branch_is_none_on_main() {
+        let repo = TestRepo::new();
+        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
+
+        refresh_checkout_branch(&mut node);
+
+        assert_eq!(node.checkout_state, None);
+    }
+
+    #[test]
+    fn refresh_checkout_branch_names_another_branch() {
+        let repo = TestRepo::new();
+        repo.feature_branch("task", "task.txt");
+        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
+
+        refresh_checkout_branch(&mut node);
+
+        assert_eq!(
+            node.checkout_state,
+            Some(crate::model::CheckoutState::OtherBranch("task".into()))
+        );
+    }
+
+    #[test]
+    fn refresh_checkout_branch_reports_detached_head() {
+        let repo = TestRepo::new();
+        crate::git::test_repo::git(repo.path(), &["checkout", "-q", "--detach", "main"]);
+        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
+
+        refresh_checkout_branch(&mut node);
+
+        assert_eq!(
+            node.checkout_state,
+            Some(crate::model::CheckoutState::Detached)
+        );
     }
 }

@@ -85,3 +85,17 @@ fn a_release_pipeline_skip_reason_maps_to_a_sentence() {
         Some("The release checkout has uncommitted changes, so the release did not run.")
     );
 }
+
+/// dropr:429 — a checkout off `main` gets its own sentence, distinct from
+/// the generic "not on the merged commit" one.
+#[test]
+fn a_release_pipeline_skip_reason_names_a_checkout_off_main() {
+    assert_eq!(
+        sentence("release_pipeline_skipped:checkout_not_on_main").as_deref(),
+        Some("The release checkout is on another branch, not main, so the release did not run.")
+    );
+    assert_eq!(
+        sentence("release_pipeline_skipped:checkout_detached").as_deref(),
+        Some("The release checkout has a detached HEAD, so the release did not run.")
+    );
+}

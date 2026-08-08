@@ -1,8 +1,8 @@
 //! Japanese translations for `src/ui/actions/attach.rs`,
 //! `src/ui/actions/lifecycle.rs`, `src/ui/actions/kill.rs`,
-//! `src/ui/actions/pr.rs`, `src/ui/actions/discord_channels.rs`, and
-//! `src/ui/input/overseer.rs` — the status messages `show_message` renders
-//! after an operator action.
+//! `src/ui/actions/pr.rs`, `src/ui/actions/discord_channels.rs`,
+//! `src/ui/actions/checkout_main.rs`, and `src/ui/input/overseer.rs` — the
+//! status messages `show_message` renders after an operator action.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -40,6 +40,15 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "could not resolve path" => "パスを解決できませんでした",
         "repository already listed" => "リポジトリは既に登録済みです",
         "repository added" => "リポジトリを追加しました",
+
+        // actions/checkout_main.rs
+        "c: select a repo to check out main in its primary checkout" => {
+            "c: primary checkoutでmainをcheckoutするリポジトリを選択してください"
+        }
+        "commit or clean untracked changes before checking out main" => {
+            "mainをcheckoutする前にcommitするか未追跡の変更を整理してください"
+        }
+        "checked out main" => "mainをcheckoutしました",
 
         // input/overseer.rs
         "circuit is closed; nothing to reset" => "回路はclosedです。リセットの必要はありません",

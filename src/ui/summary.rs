@@ -14,9 +14,11 @@ use crate::{
 
 use super::{blockfont, repo_description, theme::DEFAULT as THEME};
 
+mod checkout_state;
 mod dropr_tasks;
 mod history;
 mod other_prs;
+use checkout_state::checkout_branch_warning;
 use dropr_tasks::dropr_task_lines;
 use history::history_section;
 use other_prs::other_prs_section;
@@ -68,6 +70,7 @@ pub(in crate::ui) fn repo_summary(
             Span::raw(repos_root.display().to_string()),
         ]),
     ]);
+    lines.extend(checkout_branch_warning(repo, locale));
     lines.extend(main_drift_warning(repo, locale));
 
     lines.extend(dropr_section(repo, width, locale));

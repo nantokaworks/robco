@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 69;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 70;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -48,6 +48,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  m              merge agent: merge PR + pull main (commit + PR needed)"),
         l("                 already-merged PR: clean up without merging again"),
         l("  p              edit and request PR from selected running agent"),
+        l("  c              check out main in primary checkout (clean tree only)"),
         Line::from(""),
         l("Text prompts"),
         l("  left/right     move the cursor within the text being typed"),

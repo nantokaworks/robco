@@ -85,6 +85,7 @@ pub(super) fn capture_discovery(
             added |= children::reconcile(repo, &config, worktrees).0;
         }
         status::refresh_main_drift(repo);
+        status::refresh_checkout_branch(repo);
     }
     if config.subagent_indicator {
         subagents::ingest(

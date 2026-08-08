@@ -91,6 +91,18 @@ const EXACT: &[(&str, &str)] = &[
         "release_pipeline_skipped:checkout_not_on_merged_commit",
         "The release checkout is not on the merged commit, so the release did not run.",
     ),
+    (
+        "release_pipeline_skipped:checkout_not_on_main",
+        "The release checkout is on another branch, not main, so the release did not run.",
+    ),
+    (
+        "release_pipeline_skipped:checkout_detached",
+        "The release checkout has a detached HEAD, so the release did not run.",
+    ),
+    (
+        "release_pipeline_skipped:checkout_branch_check_failed",
+        "The release checkout's branch could not be checked.",
+    ),
 ];
 
 /// Reasons matched by prefix. The text after the prefix carries detail that
