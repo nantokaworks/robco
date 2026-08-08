@@ -134,6 +134,8 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
             merge_hold_recheck_head: None,
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
+            escalation_notified_reason: None,
+            escalation_notified_head: None,
             worker_escalated: false,
             operator_override: None,
         }],

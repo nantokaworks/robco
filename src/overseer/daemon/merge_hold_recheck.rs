@@ -119,7 +119,10 @@ pub(super) fn exhausted(reason: &str) -> String {
 /// Also retires `settled_at` and `merge_hold_stuck_notified` —
 /// `merge_escalation::sweep_stuck`'s own markers for the same escalation —
 /// so a verdict or a merge that resolves this condition does not leave a
-/// stale age behind for whatever the entry does next.
+/// stale age behind for whatever the entry does next. And
+/// `escalation_notified_reason` / `escalation_notified_head`, so a later,
+/// unrelated escalation that happens to repeat the same reason and head does
+/// not inherit a suppression this condition already earned.
 pub(super) fn settle(entry: &mut LedgerEntry) {
     entry.merge_hold_cap_escalated = false;
     entry.merge_hold_rechecks = 0;
@@ -127,6 +130,8 @@ pub(super) fn settle(entry: &mut LedgerEntry) {
     entry.merge_hold_recheck_head = None;
     entry.settled_at = None;
     entry.merge_hold_stuck_notified = false;
+    entry.escalation_notified_reason = None;
+    entry.escalation_notified_head = None;
 }
 
 #[cfg(test)]

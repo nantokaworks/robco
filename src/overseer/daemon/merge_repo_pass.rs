@@ -136,7 +136,7 @@ pub(super) fn run(
             Barrier::Open => false,
             Barrier::Held if heads.free(&entry.repo) => true,
             Barrier::Held => {
-                log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
+                log(entry, DecisionKind::Hold, merge_settle::SETTLING, "")?;
                 continue;
             }
             // The pull never landed within its bound. Merging anyway is the
@@ -144,7 +144,12 @@ pub(super) fn run(
             // either way — but it is recorded under its own reason so the log
             // says the base was never confirmed.
             Barrier::Lifted => {
-                log(entry, DecisionKind::Hold, merge_settle::SETTLE_CAP_REACHED)?;
+                log(
+                    entry,
+                    DecisionKind::Hold,
+                    merge_settle::SETTLE_CAP_REACHED,
+                    "",
+                )?;
                 false
             }
         };
@@ -186,6 +191,7 @@ pub(super) fn run(
                         entry,
                         DecisionKind::Escalate,
                         &merge_hold_recheck::exhausted(&halt.reason),
+                        &head,
                     )?;
                 }
                 hold(entry, &halt, &head, &base, config, registry)?;
@@ -204,7 +210,7 @@ pub(super) fn run(
             // post-merge pull is not a condition an entry can escalate its way
             // out of.
             Outcome::Settling => {
-                log(entry, DecisionKind::Hold, merge_settle::SETTLING)?;
+                log(entry, DecisionKind::Hold, merge_settle::SETTLING, "")?;
                 merge_hold::cleared(entry);
             }
         }
@@ -243,7 +249,7 @@ fn hold(
         HoldPlan::Record => {
             let overseer = &config.overseer;
             let language = config.language.as_deref();
-            log_halt(entry, halt, overseer.protection_mode)?;
+            log_halt(entry, halt, head, overseer.protection_mode)?;
             merge_recovery::consider(
                 entry,
                 &halt.reason,
@@ -262,6 +268,7 @@ fn hold(
                 entry,
                 DecisionKind::Escalate,
                 &merge_hold::cap_reached(&halt.reason),
+                head,
             )
         }
         HoldPlan::Spent => Ok(()),

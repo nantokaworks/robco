@@ -112,6 +112,20 @@ pub struct LedgerEntry {
     /// `merge_recovery` handback.
     #[serde(default)]
     pub merge_hold_stuck_notified: bool,
+    /// `(reason, head)` the last immediate Discord escalation for this entry
+    /// reported, for an escalation reason outside `merge_escalation`'s
+    /// terminal/transient vocabulary (a judge veto, the autonomy envelope, a
+    /// branch-update cap). A later pass reporting the identical pair is the
+    /// same unresolved condition already shown to the operator, not a new
+    /// one, and suppresses its notification (dropr:414). Reset alongside
+    /// `settled_at` wherever the entry leaves this escalation behind:
+    /// `merge_hold_recheck::settle` and a successful `merge_recovery`
+    /// handback. Defaulted so ledgers written before the field existed still
+    /// load.
+    #[serde(default)]
+    pub escalation_notified_reason: Option<String>,
+    #[serde(default)]
+    pub escalation_notified_head: Option<String>,
     /// Whether the entry's `Escalated` phase came from a worker's own report
     /// rather than a merge-subsystem safety valve or a killed session. Gates
     /// `monitor::apply::apply_escalation_resolution` — see there for why.

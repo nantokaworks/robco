@@ -28,6 +28,8 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     };
@@ -130,6 +132,8 @@ fn a_repo_opted_out_of_the_overseer_blocks_auto_merge_for_every_worker_in_it() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     };

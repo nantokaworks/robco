@@ -25,6 +25,8 @@ fn entry() -> LedgerEntry {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     }
@@ -32,19 +34,25 @@ fn entry() -> LedgerEntry {
 
 #[test]
 fn a_loosened_gate_is_identifiable_from_the_decision_alone() {
-    let entry = entry();
+    let mut entry = entry();
     let merged = serde_json::to_value(gated_decision(
-        &entry,
+        &mut entry,
         DecisionKind::Merge,
         "squash",
+        "",
         ProtectionMode::Off,
     ))
     .unwrap();
     assert_eq!(merged["protection_mode"], "off");
     assert_eq!(merged["reason"], "squash");
     // Decisions the protection gate does not govern stay free of the field.
-    let unrelated =
-        serde_json::to_value(decision(&entry, DecisionKind::Hold, "checks_not_green")).unwrap();
+    let unrelated = serde_json::to_value(decision(
+        &mut entry,
+        DecisionKind::Hold,
+        "checks_not_green",
+        "",
+    ))
+    .unwrap();
     assert!(unrelated.get("protection_mode").is_none());
 }
 
@@ -135,32 +143,62 @@ fn a_closed_pull_request_stays_an_operators_problem() {
 }
 
 /// `decision` is the single place every merge-gate `Escalate` passes through
-/// on its way to `decisions.jsonl`, so this is where the terminal/transient
-/// tag from `merge_escalation` has to land — see dropr:374.
+/// on its way to `decisions.jsonl`, so this is where the terminal/transient/
+/// dedup-by-(reason, head) tag from `merge_escalation` has to land — see
+/// dropr:374 and dropr:414.
 #[test]
 fn an_escalate_decision_is_tagged_by_the_merge_escalation_vocabulary() {
-    let entry = entry();
+    let mut entry = entry();
 
     // Terminal: a closed pull request notifies immediately.
-    let terminal = decision(&entry, DecisionKind::Escalate, "pr_closed_unmerged");
+    let terminal = decision(
+        &mut entry,
+        DecisionKind::Escalate,
+        "pr_closed_unmerged",
+        "abc",
+    );
     assert_eq!(terminal.escalation_notify, Some(true));
 
     // Transient: the hold cap alone is spent, but the recheck loop may still
     // resolve this on its own, so it stays quiet for now.
     let transient = decision(
-        &entry,
+        &mut entry,
         DecisionKind::Escalate,
         "merge_hold_cap_reached:merge_state:dirty",
+        "abc",
     );
     assert_eq!(transient.escalation_notify, Some(false));
 
-    // Outside the vocabulary entirely — a judge veto, say — falls back to
-    // `notifications::from_decision`'s pre-existing catch-all, untouched by
-    // this task.
-    let unclassified = decision(&entry, DecisionKind::Escalate, "judge_veto:no rollback");
-    assert_eq!(unclassified.escalation_notify, None);
+    // Outside the vocabulary entirely — a judge veto, say — still notifies the
+    // first time it is seen for this (reason, head) pair...
+    let unclassified = decision(
+        &mut entry,
+        DecisionKind::Escalate,
+        "judge_veto:no rollback",
+        "abc",
+    );
+    assert_eq!(unclassified.escalation_notify, Some(true));
+
+    // ...but a repeat with the identical reason and head is the same
+    // unresolved condition already reported, so it is suppressed (dropr:414).
+    let repeat = decision(
+        &mut entry,
+        DecisionKind::Escalate,
+        "judge_veto:no rollback",
+        "abc",
+    );
+    assert_eq!(repeat.escalation_notify, Some(false));
+
+    // A new push (changed head) is a genuinely new condition and notifies again.
+    let new_head = decision(
+        &mut entry,
+        DecisionKind::Escalate,
+        "judge_veto:no rollback",
+        "def",
+    );
+    assert_eq!(new_head.escalation_notify, Some(true));
 
     // Only `Escalate` decisions carry the tag at all.
-    let hold = decision(&entry, DecisionKind::Hold, "pr_closed_unmerged");
+    let hold = decision(&mut entry, DecisionKind::Hold, "pr_closed_unmerged", "abc");
     assert_eq!(hold.escalation_notify, None);
 }

@@ -28,6 +28,8 @@ fn save_load_round_trip() {
             merge_hold_recheck_head: None,
             prerequisite_wait: None,
             merge_hold_stuck_notified: false,
+            escalation_notified_reason: None,
+            escalation_notified_head: None,
             worker_escalated: false,
             operator_override: None,
         }],
@@ -108,6 +110,8 @@ fn active_workers_counts_every_non_terminal_entry() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     };
@@ -185,6 +189,8 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         merge_hold_recheck_head: None,
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     };
@@ -249,6 +255,8 @@ fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
         merge_hold_recheck_head: Some("stale_head".into()),
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     };

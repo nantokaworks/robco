@@ -74,23 +74,24 @@ pub(super) fn handle(
             entry,
             DecisionKind::Hold,
             &format!("judge_fail_safe:{}", advice.reason),
+            "",
         )?,
         Plan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
             entry.worker_escalated = false;
-            log(entry, DecisionKind::Escalate, CAP_REACHED)?;
+            log(entry, DecisionKind::Escalate, CAP_REACHED, "")?;
         }
     }
     Ok(true)
 }
 
-fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
+fn log(entry: &mut LedgerEntry, kind: DecisionKind, reason: &str, head: &str) -> Result<()> {
     let mut decision = DecisionEntry::new(kind, reason);
     decision.task = Some(entry.task_id.clone());
     decision.repo = Some(entry.repo.clone());
     decision.pr_url = entry.pr_url.clone();
     decision.source = Some("merge_judge_fail_safe".into());
-    decision.escalation_notify = super::merge_escalation::notify(kind, reason);
+    decision.escalation_notify = super::merge_escalation::notify(entry, kind, reason, head);
     logging::append(&decision)
 }
 

@@ -153,52 +153,69 @@ pub(super) fn manual_skip(entry: &mut LedgerEntry, auto: bool) -> Option<Decisio
     }
     // The same word the dispatch gate uses for the same condition, under this
     // gate's own source, so the two are greppable together and still separable.
-    let mut skip = decision(entry, DecisionKind::Skip, MANUAL_MANAGED);
+    let mut skip = decision(entry, DecisionKind::Skip, MANUAL_MANAGED, "");
     skip.pr_url = Some(url.clone());
     entry.manual_merge_skip = Some(url);
     Some(skip)
 }
 
-pub(super) fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
-    logging::append(&decision(entry, kind, reason))
+pub(super) fn log(
+    entry: &mut LedgerEntry,
+    kind: DecisionKind,
+    reason: &str,
+    head: &str,
+) -> Result<()> {
+    logging::append(&decision(entry, kind, reason, head))
 }
 
-pub(super) fn log_halt(entry: &LedgerEntry, halt: &Halt, mode: ProtectionMode) -> Result<()> {
+pub(super) fn log_halt(
+    entry: &mut LedgerEntry,
+    halt: &Halt,
+    head: &str,
+    mode: ProtectionMode,
+) -> Result<()> {
     if halt.gated {
-        log_gated(entry, halt.kind, &halt.reason, mode)
+        log_gated(entry, halt.kind, &halt.reason, head, mode)
     } else {
-        log(entry, halt.kind, &halt.reason)
+        log(entry, halt.kind, &halt.reason, head)
     }
 }
 
 pub(super) fn log_gated(
-    entry: &LedgerEntry,
+    entry: &mut LedgerEntry,
     kind: DecisionKind,
     reason: &str,
+    head: &str,
     mode: ProtectionMode,
 ) -> Result<()> {
-    logging::append(&gated_decision(entry, kind, reason, mode))
+    logging::append(&gated_decision(entry, kind, reason, head, mode))
 }
 
 /// Records the active strictness mode alongside the decision, so a merge that only
 /// happened because the gate was loosened stays distinguishable in `decisions.jsonl`.
 pub(super) fn gated_decision(
-    entry: &LedgerEntry,
+    entry: &mut LedgerEntry,
     kind: DecisionKind,
     reason: &str,
+    head: &str,
     mode: ProtectionMode,
 ) -> DecisionEntry {
-    let mut decision = decision(entry, kind, reason);
+    let mut decision = decision(entry, kind, reason, head);
     decision.protection_mode = Some(mode.label().to_owned());
     decision
 }
 
-pub(super) fn decision(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> DecisionEntry {
+pub(super) fn decision(
+    entry: &mut LedgerEntry,
+    kind: DecisionKind,
+    reason: &str,
+    head: &str,
+) -> DecisionEntry {
     let mut decision = DecisionEntry::new(kind, reason);
     decision.task = Some(entry.task_id.clone());
     decision.repo = Some(entry.repo.clone());
     decision.source = Some("auto_merge".into());
-    decision.escalation_notify = super::merge_escalation::notify(kind, reason);
+    decision.escalation_notify = super::merge_escalation::notify(entry, kind, reason, head);
     decision
 }
 
