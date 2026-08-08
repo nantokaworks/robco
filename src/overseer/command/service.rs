@@ -46,6 +46,9 @@ pub(crate) enum ServiceState {
     Unsupported,
 }
 
+/// See [`ServiceState`]'s doc comment: same platform-split construction, same
+/// reason `dead_code` needs the blanket allow rather than per-variant.
+#[allow(dead_code)]
 pub(crate) enum StopOutcome {
     Stopped,
     StillShuttingDown,
