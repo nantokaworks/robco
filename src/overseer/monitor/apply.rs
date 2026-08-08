@@ -81,6 +81,41 @@ pub(super) fn apply_inbox(
             "unblocked" if entry.phase == LedgerPhase::Escalated && entry.worker_escalated => {
                 resolve(entry, "explicit_report", actions)
             }
+            // A worker that reports done again after the merge subsystem
+            // escalated the entry — a judge veto or escalation, most often —
+            // has no way to know the judge memoized that verdict as terminal
+            // (`judge::queue_merges`'s `terminal_merges`) and will keep
+            // reading it back on every later pass without ever asking again,
+            // even once the change it vetoed no longer exists. `done` is the
+            // one signal such a worker actually sends, so it is what asks the
+            // judge to look again — not what decides the outcome for it: the
+            // merge gate still reruns its own deterministic checks, and the
+            // judge is free to veto the same way twice. Gated on `settled_at`
+            // so a `done` report left over from before this escalation began
+            // is not read as new activity. Left off `worker_escalated`
+            // deliberately: that flag is what routes the `unblocked` arm
+            // above, which resolves the ledger phase itself and must stay
+            // scoped to a worker's own escalation, but forgetting a merge
+            // verdict changes nothing the judge did not already have the
+            // authority to change, so it is safe for either origin — and a
+            // merge-subsystem escalation is exactly the case with
+            // `worker_escalated == false` this exists for.
+            "done"
+                if entry.phase == LedgerPhase::Escalated
+                    && entry.settled_at.is_some_and(|settled| report.at > settled) =>
+            {
+                if let Some(pr_url) = entry.pr_url.clone() {
+                    actions.push(Action::ReconsiderMergeJudgment {
+                        task_id: entry.task_id.clone(),
+                        pr_url,
+                    });
+                    actions.push(Action::LogDecision {
+                        task_id: Some(entry.task_id.clone()),
+                        message: "done_report_after_escalation: reconsidering merge judgment"
+                            .into(),
+                    });
+                }
+            }
             "claimed" | "turn-done" | "waiting" | "done" | "waiting-prerequisite" | "unblocked" => {
             }
             kind => actions.push(Action::LogDecision {
