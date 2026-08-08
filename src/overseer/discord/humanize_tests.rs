@@ -73,3 +73,15 @@ fn a_release_pipeline_wrapper_unwraps_to_its_own_words() {
 fn surrounding_whitespace_does_not_defeat_the_lookup() {
     assert!(sentence("  merged  ").is_some());
 }
+
+#[test]
+fn a_release_pipeline_skip_reason_maps_to_a_sentence() {
+    assert_eq!(
+        sentence("release_pipeline_skipped:checkout_not_on_merged_commit").as_deref(),
+        Some("The release checkout is not on the merged commit, so the release did not run.")
+    );
+    assert_eq!(
+        sentence("release_pipeline_skipped:working_tree_dirty").as_deref(),
+        Some("The release checkout has uncommitted changes, so the release did not run.")
+    );
+}
