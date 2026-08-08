@@ -22,13 +22,23 @@
 //! discipline are told never to call either without explicit authorization —
 //! that instruction, not this flag, is what keeps an autonomous session from
 //! invoking it on its own judgment.
+//!
+//! **Status snapshot vs. send.** `live_status` classifies an agent as
+//! anything other than `Dead`/`BranchOnly` only while its tmux session is
+//! observed alive, so it should be impossible to reach the live-session send
+//! below with a session that is truly gone — except for the gap between the
+//! two calls. A worker's shell can exit and take its tmux session with it in
+//! that gap, so `send_keys` below re-validates for real instead of trusting
+//! the snapshot: on failure it checks whether the session is confirmed gone
+//! *now* and, only then, falls through to the confirm-gated fallback rather
+//! than surfacing a raw tmux error the caller cannot act on.
 
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
-    model::Status,
+    model::{AgentNode, RepoNode, Status},
     overseer::{
         ledger::Ledger,
         runtime_request::{self, RuntimeRequest},
@@ -51,11 +61,46 @@ pub(super) struct ApproveArgs {
 }
 
 pub(super) fn approve(registry: &Registry, args: &ApproveArgs) -> ToolResult<Value> {
+    approve_with(
+        registry,
+        args,
+        |repo, agent| live_status(repo, agent).status,
+        |session| tmux::send_keys(session, &["y", "Enter"]),
+        tmux::has_session,
+        || Ledger::load().map_err(exec_err),
+        |request| runtime_request::enqueue(request).map_err(exec_err),
+    )
+}
+
+/// Core of [`approve`], with every side effect injected so a test can drive
+/// the full session → fallback → ledger flow without touching real tmux, the
+/// ledger file, or the runtime-request queue — see `grant_operator_override`
+/// for the same shape.
+fn approve_with(
+    registry: &Registry,
+    args: &ApproveArgs,
+    status_of: impl FnOnce(&RepoNode, &AgentNode) -> Status,
+    send_keys: impl FnOnce(&str) -> crate::Result<()>,
+    has_session: impl FnOnce(&str) -> crate::Result<bool>,
+    load_ledger: impl FnOnce() -> ToolResult<Ledger>,
+    enqueue: impl FnOnce(RuntimeRequest) -> ToolResult<()>,
+) -> ToolResult<Value> {
     if let Ok((repo, agent)) = find_agent(registry, &args.agent_id) {
-        let status = live_status(repo, agent).status;
+        let status = status_of(repo, agent);
         if !matches!(status, Status::Dead | Status::BranchOnly) {
-            tmux::send_keys(&agent.tmux_session, &["y", "Enter"]).map_err(exec_err)?;
-            return Ok(json!({ "ok": true, "mode": "session" }));
+            match send_keys(&agent.tmux_session) {
+                Ok(()) => return Ok(json!({ "ok": true, "mode": "session" })),
+                Err(err) => {
+                    // The status snapshot above can be stale by now (see the
+                    // module doc): only treat this as "no live session" once
+                    // the session is confirmed gone for real. Any other
+                    // send-keys failure is a genuine error and must not be
+                    // swallowed into the fallback path.
+                    if !matches!(has_session(&agent.tmux_session), Ok(false)) {
+                        return Err(exec_err(err));
+                    }
+                }
+            }
         }
     }
     if !args.confirm {
@@ -65,11 +110,7 @@ pub(super) fn approve(registry: &Registry, args: &ApproveArgs) -> ToolResult<Val
              blocking its pull request",
         ));
     }
-    grant_operator_override(
-        &args.agent_id,
-        || Ledger::load().map_err(exec_err),
-        |request| runtime_request::enqueue(request).map_err(exec_err),
-    )
+    grant_operator_override(&args.agent_id, load_ledger, enqueue)
 }
 
 /// The session-less fallback: `target` reaches no live worker, so the
@@ -110,93 +151,4 @@ fn grant_operator_override(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        mcp::tools::{ToolError, tests::registry_with_agent},
-        overseer::ledger::{Ledger, LedgerPhase},
-    };
-
-    fn ledger_with_entry(agent_id: &str, display_id: &str) -> Ledger {
-        Ledger {
-            entries: vec![crate::overseer::ledger::LedgerEntry {
-                task_id: "task".into(),
-                display_id: display_id.into(),
-                repo: "/repo".into(),
-                agent_id: agent_id.into(),
-                branch: "task".into(),
-                phase: LedgerPhase::Escalated,
-                dispatched_at: Utc::now(),
-                settled_at: None,
-                retries: 0,
-                pr_url: Some("https://pr/1".into()),
-                branch_updates: 0,
-                merge_judge_primes: 0,
-                merge_recovery: Default::default(),
-                merge_hold: Default::default(),
-                manual_merge_skip: None,
-                merge_judge_fail_safes: 0,
-                merge_hold_cap_escalated: false,
-                merge_hold_rechecks: 0,
-                merge_hold_recheck_reason: None,
-                merge_hold_recheck_head: None,
-                prerequisite_wait: None,
-                merge_hold_stuck_notified: false,
-                worker_escalated: false,
-                operator_override: None,
-            }],
-            ..Ledger::default()
-        }
-    }
-
-    #[test]
-    fn a_target_matching_no_ledger_entry_is_refused_without_enqueueing() {
-        let error = grant_operator_override(
-            "missing",
-            || Ok(ledger_with_entry("a1", "#1")),
-            |_| panic!("must not enqueue when the target does not resolve"),
-        )
-        .unwrap_err();
-
-        assert!(error.to_string().contains("no live session"));
-    }
-
-    #[test]
-    fn a_target_matching_by_agent_id_or_display_id_enqueues_a_bypass_request() {
-        for target in ["a1", "#1"] {
-            let mut enqueued = None;
-            let outcome = grant_operator_override(
-                target,
-                || Ok(ledger_with_entry("a1", "#1")),
-                |request| {
-                    enqueued = Some(request);
-                    Ok(())
-                },
-            )
-            .unwrap();
-
-            assert_eq!(outcome["ok"], true);
-            assert_eq!(outcome["mode"], "operator_override");
-            assert!(matches!(
-                enqueued,
-                Some(RuntimeRequest::OperatorMergeOverride { .. })
-            ));
-        }
-    }
-
-    #[test]
-    fn an_unconfirmed_fallback_is_refused_without_touching_the_ledger_or_queue() {
-        let registry = registry_with_agent("a1");
-        let error = approve(
-            &registry,
-            &ApproveArgs {
-                agent_id: "a1".into(),
-                confirm: false,
-            },
-        )
-        .unwrap_err();
-
-        assert!(matches!(error, ToolError::InvalidParams(_)));
-        assert!(error.to_string().contains("confirm must be true"));
-    }
-}
+mod tests;
