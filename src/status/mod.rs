@@ -12,7 +12,7 @@ use auto_accept::maybe_auto_accept;
 use classify::classify_capture;
 use proc::ProcSnapshot;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct WatchStatusState {
     pub last_capture: Option<String>,
     pub last_spinner: Option<String>,
@@ -215,6 +215,41 @@ pub fn classify_agent_status(
     }
 }
 
+/// Classify a bare tmux session — the Overseer's own control session, which
+/// has no worktree or branch to fall back on — the same way a session-backed
+/// agent or the repo-main row is classified: via [`classify_capture`], not an
+/// existence probe, so the row can tell an idle prompt from actual work.
+///
+/// An absent session reports `None` (no glyph), not `Dead` — there is no
+/// worktree/branch history to distinguish from. A transient `tmux` failure
+/// (the existence probe or the capture itself) returns `previous` unchanged,
+/// the same "keep the last known status" contract [`refresh_repo_main`] gives
+/// a probe hiccup rather than flipping the row.
+pub fn classify_session_status(
+    session: &str,
+    previous: Option<Status>,
+    state: &mut WatchStatusState,
+) -> Option<Status> {
+    match tmux::has_session(session) {
+        Ok(true) => {
+            let Ok(capture) = tmux::capture_text(session) else {
+                return previous;
+            };
+            classify_session_observation(Some(&capture), state, Local::now())
+        }
+        Ok(false) => classify_session_observation(None, state, Local::now()),
+        Err(_) => previous,
+    }
+}
+
+fn classify_session_observation(
+    capture: Option<&str>,
+    state: &mut WatchStatusState,
+    now: chrono::DateTime<Local>,
+) -> Option<Status> {
+    Some(classify_capture(capture?, state, now).status)
+}
+
 fn downgrade_running_shell_pane(report: StatusReport, session: &str) -> StatusReport {
     if report.status != Status::Running {
         return report;
@@ -408,6 +443,35 @@ mod tests {
             shell_pane_downgrade(classified, Some("zsh")).status,
             Status::Idle
         );
+    }
+
+    #[test]
+    fn control_session_idle_capture_does_not_report_running() {
+        let mut state = WatchStatusState::default();
+        let status =
+            classify_session_observation(Some("nothing interesting here"), &mut state, now());
+
+        assert_eq!(status, Some(Status::Idle));
+    }
+
+    #[test]
+    fn control_session_working_capture_reports_running() {
+        let mut state = WatchStatusState::default();
+        let status = classify_session_observation(
+            Some("Generating response (esc to interrupt)"),
+            &mut state,
+            now(),
+        );
+
+        assert_eq!(status, Some(Status::Running));
+    }
+
+    #[test]
+    fn control_session_absent_capture_reports_none() {
+        let mut state = WatchStatusState::default();
+        let status = classify_session_observation(None, &mut state, now());
+
+        assert_eq!(status, None);
     }
 
     #[test]

@@ -18,7 +18,7 @@ use super::{
     discovery,
     discovery_capture::{DiscoveryResult, capture_discovery},
     dropr_overlay::{self, OverlayStatus},
-    overseer_refresh::{OverseerResult, capture_overseer},
+    overseer_refresh::{ControlWatch, OverseerResult, capture_overseer},
     registry_sync,
 };
 use crate::ui::{App, list};
@@ -34,6 +34,8 @@ pub(in crate::ui) struct BackgroundRefresh {
     status_in_flight: Option<Instant>,
     discovery_in_flight: Option<Instant>,
     pub(super) overseer_synced_at: Option<Instant>,
+    /// Persisted control-session classification state; see [`ControlWatch`].
+    pub(super) control_watch: ControlWatch,
     dropr_overlay_load_started_at: Option<Instant>,
     pub(super) dropr_overlay_status: OverlayStatus,
     decision_cursor: Option<Arc<Mutex<logging::DigestCursor>>>,
@@ -58,6 +60,7 @@ impl BackgroundRefresh {
             status_in_flight: None,
             discovery_in_flight: None,
             overseer_synced_at: None,
+            control_watch: ControlWatch::default(),
             dropr_overlay_load_started_at: None,
             dropr_overlay_status: OverlayStatus::default(),
             decision_cursor: None,
@@ -73,7 +76,11 @@ impl App {
 
     pub(in crate::ui) fn initial_tick(&mut self) {
         let started = Instant::now();
-        let result = capture_status(clone_registry(&self.registry), &self.config);
+        let result = capture_status(
+            clone_registry(&self.registry),
+            &self.config,
+            &self.background_refresh.control_watch,
+        );
         self.apply_status(result, started);
     }
 
@@ -91,6 +98,7 @@ impl App {
         let sender = self.background_refresh.status_tx.clone();
         let registry = clone_registry(&self.registry);
         let config = self.config.clone();
+        let control_watch = self.background_refresh.control_watch.clone();
         let spawn = std::thread::Builder::new()
             .name("ui-status-refresh".into())
             .spawn(move || {
@@ -98,7 +106,7 @@ impl App {
                     if let Ok(mut cursor) = cursor.lock() {
                         notify_new_decisions(&mut cursor, &notify_tx, config.notify.enabled);
                     }
-                    capture_status(registry, &config)
+                    capture_status(registry, &config, &control_watch)
                 }))
                 .ok();
                 let _ = sender.send((started, result));
@@ -218,7 +226,11 @@ impl App {
     }
 }
 
-fn capture_status(mut registry: Registry, config: &Config) -> StatusResult {
+fn capture_status(
+    mut registry: Registry,
+    config: &Config,
+    control_watch: &ControlWatch,
+) -> StatusResult {
     let processes = config
         .process_indicator
         .then(status::proc::ProcSnapshot::capture)
@@ -232,7 +244,7 @@ fn capture_status(mut registry: Registry, config: &Config) -> StatusResult {
         }
     }
     StatusResult {
-        overseer: capture_overseer(&registry, config),
+        overseer: capture_overseer(&registry, config, control_watch),
         repos: registry.repos,
         overseer_visible: list::overseer_is_visible(),
     }
