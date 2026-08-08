@@ -1,5 +1,5 @@
-//! The task branch's own local commit history, read straight off an escalated
-//! entry's worktree.
+//! The task branch's own local commit history, read straight off each live
+//! (or recently settled) entry's worktree.
 //!
 //! Split out of `external_state.rs` on its own so the dropr-task and pull
 //! request probes stay separately readable from this one.
@@ -8,19 +8,21 @@ use super::super::COMMAND_TIMEOUT;
 use super::external_state::worth_probing;
 use crate::overseer::{
     exec::run_timeout,
-    ledger::{Ledger, LedgerPhase},
+    ledger::Ledger,
     monitor::{BranchObservation, ObservationError, Observations},
 };
 use chrono::{DateTime, Utc};
 use std::process::Command;
 
-/// Reads the local commit timestamp on an escalated entry's own task branch.
+/// Reads the local commit timestamp on every `worth_probing` entry's own task
+/// branch.
 ///
-/// Scoped to `Escalated` rather than every `worth_probing` entry: a live
-/// entry's branch changes on every commit a worker makes as a matter of
-/// course, so reading it would only cost a `git log` nothing acts on. Only an
-/// escalated entry needs to know whether the branch moved *after* it
-/// escalated — see `monitor::apply::apply_escalation_resolution`.
+/// Every live entry is probed, not only `Escalated` ones: the board review's
+/// stall finding (`review::findings::stalls`) reads this to tell a worker that
+/// is still landing commits apart from one that stopped moving, and it cannot
+/// do that from an escalated-only sample. `monitor::apply::apply_escalation_resolution`
+/// reads the same observations for its own, narrower purpose — whether an
+/// escalated entry's branch moved *after* it escalated.
 ///
 /// `entry.repo` is the worker's own worktree, not a shared checkout, so a new
 /// commit made from the same tmux session that pushed it is already on this
@@ -33,7 +35,7 @@ pub(super) fn gather_branch_activity(
     for entry in ledger
         .entries
         .iter()
-        .filter(|entry| entry.phase == LedgerPhase::Escalated && worth_probing(entry, now))
+        .filter(|entry| worth_probing(entry, now))
     {
         match latest_commit_at(&entry.repo, &entry.branch) {
             Ok(latest_commit_at) => observations.branches.push(BranchObservation {
