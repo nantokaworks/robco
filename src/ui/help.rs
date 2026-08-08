@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 65;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 67;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -26,8 +26,10 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("                 on a repo row: any Auto -> all Manual, else all Auto"),
         l("  G              on a repo row: toggle Overseer opt-out for the whole repo"),
         l("                 (opted out: no dispatch/merge; running workers untouched)"),
-        l("  S              stop overseer (kill workers); off: start dispatch"),
-        l("  R              reset dispatch circuit (when open)"),
+        l("  S              stop dispatch (kill workers); off: start dispatch"),
+        l("  R              reset dispatch circuit (open) or start the daemon"),
+        l("                 (not running)"),
+        l("  K              stop the overseer daemon process (running)"),
         l("Overseer inbox"),
         l("  l              expand OVERSEER > Inbox to reach its item rows"),
         l("  enter          on an item row: answer the waiting worker"),

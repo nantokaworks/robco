@@ -21,6 +21,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "kill session?" => "セッションを終了しますか？",
         "stop overseer?" => "overseerを停止しますか？",
         "reset dispatch circuit?" => "dispatch回路をリセットしますか？",
+        "stop the overseer daemon?" => "overseerデーモンを停止しますか？",
         "clear the overseer inbox?" => "overseer受信箱を消去しますか？",
 
         // Body / hint text
@@ -59,6 +60,12 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "dispatchを再有効化し失敗カウンタをクリア"
         }
         "y reset   n/esc cancel" => "yでリセット   n/escでキャンセル",
+        "ends the daemon process itself, not just dispatch" => {
+            "dispatchだけでなくdaemonプロセス自体を終了します"
+        }
+        "running workers are not touched; start it again with R" => {
+            "稼働中のworkerには影響しません。Rで再度起動できます"
+        }
         "hide all {} listed item(s)" => "表示中の{}件をすべて非表示にします",
         "decisions.jsonl and ledger.json are not modified;" => {
             "decisions.jsonlとledger.jsonは変更されません；"

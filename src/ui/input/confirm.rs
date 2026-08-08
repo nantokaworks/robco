@@ -25,6 +25,7 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
+            | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => Some(Ok(())),
             _ => None,
@@ -97,6 +98,13 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             app.mode = Mode::Normal;
             if confirmed {
                 app.reset_overseer();
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmDaemonStop => {
+            app.mode = Mode::Normal;
+            if confirmed {
+                app.stop_daemon();
             }
             Some(Ok(()))
         }
