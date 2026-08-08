@@ -170,12 +170,16 @@ fn reset_key_opens_confirm_when_circuit_is_open() {
 }
 
 #[test]
-fn reset_key_reports_when_circuit_is_closed() {
+fn reset_key_reports_when_circuit_is_closed_and_daemon_is_alive() {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
     app.overseer_snapshot.overseer.failure_circuit_threshold = 2;
     app.overseer_snapshot.ledger.counters.consecutive_failures = 1;
+    // A live daemon is the precondition for "nothing to reset": with the
+    // daemon down, R's job is to start it instead — see
+    // `reset_key_starts_the_daemon_when_circuit_is_closed_and_daemon_is_dead`.
+    app.overseer_snapshot.daemon_alive = true;
 
     assert!(handle_normal(&mut app, KeyCode::Char('R')));
     assert!(matches!(app.mode, Mode::Normal));
@@ -183,6 +187,28 @@ fn reset_key_reports_when_circuit_is_closed() {
         app.message.as_ref().map(|(message, _)| message.as_str()),
         Some("circuit is closed; nothing to reset")
     );
+}
+
+#[test]
+fn reset_key_starts_the_daemon_when_circuit_is_closed_and_daemon_is_dead() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = true;
+    app.overseer_snapshot.overseer.failure_circuit_threshold = 2;
+    app.overseer_snapshot.ledger.counters.consecutive_failures = 1;
+    assert!(!app.overseer_snapshot.daemon_alive);
+
+    assert!(handle_normal(&mut app, KeyCode::Char('R')));
+
+    assert!(matches!(app.mode, Mode::Normal));
+    // No launchd service is installed in the test environment, so this
+    // exercises the "no service" branch of `start_daemon`.
+    let message = app
+        .message
+        .as_ref()
+        .map(|(message, _)| message.as_str())
+        .unwrap_or_default();
+    assert_ne!(message, "circuit is closed; nothing to reset");
 }
 
 #[test]
@@ -194,6 +220,44 @@ fn reset_key_is_ignored_when_overseer_inactive() {
     app.overseer_snapshot.ledger.counters.consecutive_failures = 2;
 
     assert!(!handle_normal(&mut app, KeyCode::Char('R')));
+    assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn daemon_stop_key_opens_confirm_when_the_daemon_is_alive() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = true;
+    app.overseer_snapshot.daemon_alive = true;
+
+    assert!(handle_normal(&mut app, KeyCode::Char('K')));
+    assert!(matches!(app.mode, Mode::ConfirmDaemonStop));
+}
+
+#[test]
+fn daemon_stop_key_reports_when_the_daemon_is_already_dead() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = true;
+    assert!(!app.overseer_snapshot.daemon_alive);
+
+    assert!(handle_normal(&mut app, KeyCode::Char('K')));
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("overseer daemon is not running")
+    );
+}
+
+#[test]
+fn daemon_stop_key_is_ignored_when_overseer_inactive() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = false;
+    app.overseer_snapshot.daemon_alive = true;
+
+    assert!(!handle_normal(&mut app, KeyCode::Char('K')));
     assert!(matches!(app.mode, Mode::Normal));
 }
 

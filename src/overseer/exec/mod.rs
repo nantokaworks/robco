@@ -12,12 +12,9 @@ use crate::{
     },
     registry::Registry,
 };
-use fd_lock::RwLock;
 use std::{
-    collections::HashSet,
-    fs::{self, OpenOptions},
-    io::Write,
-    path::{Path, PathBuf},
+    collections::{BTreeMap, HashSet},
+    path::Path,
     process::{Command, Output},
     time::Duration,
 };
@@ -46,6 +43,7 @@ pub(crate) fn process_alive(pid: u32) -> bool {
 pub(crate) fn execute_actions(
     actions: &[Action],
     release_pipeline_enabled: bool,
+    cleanup_notes_logged: &mut BTreeMap<String, Vec<String>>,
 ) -> Result<HashSet<String>> {
     let mut cleanup_blocked = HashSet::new();
     let mut pulled = HashSet::new();
@@ -66,7 +64,7 @@ pub(crate) fn execute_actions(
                         ),
                     )?;
                 } else {
-                    match clean_up_agent(agent_id) {
+                    match clean_up_agent(agent_id, cleanup_notes_logged) {
                         Ok(Some(repo)) => {
                             pulled.insert(repo);
                         }
@@ -146,7 +144,10 @@ fn kill_agent_session(agent_id: &str) -> Result<()> {
 /// Returns the repository path when the base fast-forward succeeded, which is
 /// the signal the merge gate's per-repository barrier waits on. Contention
 /// returns `None`: the pull did not run, so the barrier must not lift.
-fn clean_up_agent(agent_id: &str) -> Result<Option<String>> {
+fn clean_up_agent(
+    agent_id: &str,
+    cleanup_notes_logged: &mut BTreeMap<String, Vec<String>>,
+) -> Result<Option<String>> {
     let registry = Registry::load()?;
     let target = registry.repos.iter().find_map(|repo| {
         repo.agents
@@ -164,7 +165,7 @@ fn clean_up_agent(agent_id: &str) -> Result<Option<String>> {
         return Ok(None);
     };
     let ran = with_merge_lock_if_free(&repo, || {
-        clean_up_locked(agent_id, &repo, &worktree, &branch)
+        clean_up_locked(agent_id, &repo, &worktree, &branch, cleanup_notes_logged)
     })?;
     let Some(pulled) = ran else {
         // Logged as its own thing rather than through `log_cleanup_failure`:
@@ -199,6 +200,7 @@ fn clean_up_locked(
     repo: &Path,
     worktree: &Path,
     branch: &str,
+    cleanup_notes_logged: &mut BTreeMap<String, Vec<String>>,
 ) -> Result<Option<String>> {
     let outcome = Cleanup {
         repo,
@@ -207,8 +209,20 @@ fn clean_up_locked(
         on_failure: OnFailure::Continue,
     }
     .run(|_| ())?;
+    // A stuck cleanup re-emits the same notes on every ~60s pass until it
+    // recovers or an operator intervenes. Logging only the first sighting of
+    // each distinct note per agent keeps the decision log from growing
+    // without bound while a note that actually changes (a different failure,
+    // or recovery) still surfaces (dropr:TKxgioWtorh7MZPbTBseC).
+    let logged = cleanup_notes_logged
+        .entry(agent_id.to_string())
+        .or_default();
     for note in &outcome.notes {
+        if logged.iter().any(|seen| seen == note) {
+            continue;
+        }
         log_message(None, &format!("cleanup for {agent_id}: {note}"))?;
+        logged.push(note.clone());
     }
     let pulled = outcome
         .base_pulled
@@ -216,6 +230,7 @@ fn clean_up_locked(
     if !outcome.worktree_removed {
         return Ok(pulled);
     }
+    cleanup_notes_logged.remove(agent_id);
     Registry::locked_update(|registry| {
         for repo in &mut registry.repos {
             repo.agents.retain(|agent| agent.id != agent_id);
@@ -233,54 +248,7 @@ fn command_error(command: &str, output: &Output) -> std::io::Error {
     ))
 }
 
-pub(crate) fn append_jsonl(path: &Path, value: &impl serde::Serialize) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    serde_json::to_writer(&mut file, value)?;
-    file.write_all(b"\n")?;
-    Ok(())
-}
-
-pub(crate) struct PidGuard {
-    path: PathBuf,
-}
-
-impl PidGuard {
-    pub(crate) fn acquire(path: PathBuf) -> Result<Self> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let lock_file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(path.with_extension("pid.lock"))?;
-        let mut lock = RwLock::new(lock_file);
-        let _guard = lock.write()?;
-        if let Ok(raw) = fs::read_to_string(&path)
-            && raw.trim().parse::<u32>().ok().is_some_and(process_alive)
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                "overseer daemon is already running",
-            )
-            .into());
-        }
-        let _ = fs::remove_file(&path);
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)?
-            .write_all(std::process::id().to_string().as_bytes())?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for PidGuard {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
-}
+// Process pid-file locking and a small persistence helper the daemon loop
+// uses alongside it — split out to keep this file to action execution.
+mod pid;
+pub(crate) use pid::{PidGuard, append_jsonl};

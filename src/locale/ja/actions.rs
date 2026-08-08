@@ -52,8 +52,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "inbox item is no longer listed" => "受信箱項目は既に一覧から削除されています",
         "answer sent" => "回答を送信しました",
         "approval sent" => "承認を送信しました",
-        "overseer stopped: dispatch off, workers killed" => {
-            "overseerを停止しました：dispatch無効化、worker終了"
+        "dispatch off, workers killed; daemon still running" => {
+            "dispatchを無効化しworkerを終了しました：daemonは稼働継続"
         }
         "overseer dispatch enabled" => "overseer dispatchを有効化しました",
         "overseer dispatch enabled; warning: {}" => "overseer dispatchを有効化しました。警告: {}",
@@ -63,6 +63,19 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "dispatch circuit reset requested: dispatch on, failures pending; warning: {}" => {
             "dispatch回路のリセットを要求しました：dispatch有効、失敗カウンタは保留中。警告: {}"
         }
+        "overseer daemon is not running" => "overseerデーモンは稼働していません",
+        "overseer daemon stopped" => "overseerデーモンを停止しました",
+        "overseer daemon shutdown requested; a pass may still be finishing, but it will not restart automatically" => {
+            "overseerデーモンの停止を要求しました：passが完了中の場合がありますが、自動再起動はしません"
+        }
+        "no launchd service installed; install it with `robco overseer install-service`, or run `robco overseer run` in a terminal" => {
+            "launchdサービスが未インストールです。`robco overseer install-service`でインストールするか、ターミナルで`robco overseer run`を実行してください"
+        }
+        "launchd service management is unavailable on this OS; run `robco overseer run` in a terminal" => {
+            "このOSではlaunchdサービス管理を利用できません。ターミナルで`robco overseer run`を実行してください"
+        }
+        "overseer is already running" => "overseerは既に稼働しています",
+        "overseer started" => "overseerを起動しました",
 
         // actions/kill.rs
         "kill is not available for child worktrees" => "子worktreeではkillできません",

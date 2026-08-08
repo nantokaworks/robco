@@ -1,6 +1,8 @@
 use std::{path::Path, process::Command};
 
-use super::{GIT_LOCAL_TIMEOUT, Worktree, command_output, command_unit};
+use super::{
+    GIT_LOCAL_TIMEOUT, GIT_WORKTREE_REMOVE_TIMEOUT, Worktree, command_output, command_unit,
+};
 use crate::{Result, exec::run_timeout};
 
 pub fn list_worktrees(repo: &Path) -> Result<Vec<Worktree>> {
@@ -69,7 +71,7 @@ pub fn remove_worktree(repo: &Path, worktree: &Path, force: bool) -> Result<()> 
         command.arg("--force");
     }
     command.arg(worktree);
-    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    let output = run_timeout(command, GIT_WORKTREE_REMOVE_TIMEOUT)?;
     command_unit(output, "git worktree remove")?;
     prune_worktrees(repo)
 }

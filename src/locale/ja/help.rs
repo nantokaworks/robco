@@ -52,11 +52,15 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 (opted out: no dispatch/merge; running workers untouched)" => {
             "                 （対象外：dispatch/mergeなし。稼働中workerは継続）"
         }
-        "  S              stop overseer (kill workers); off: start dispatch" => {
-            "  S              overseer停止（worker強制終了）／off時：dispatch開始"
+        "  S              stop dispatch (kill workers); off: start dispatch" => {
+            "  S              dispatch停止（worker強制終了）／off時：dispatch開始"
         }
-        "  R              reset dispatch circuit (when open)" => {
-            "  R              dispatch回路をリセット（open時）"
+        "  R              reset dispatch circuit (open) or start the daemon" => {
+            "  R              dispatch回路をリセット（open時）／daemon起動"
+        }
+        "                 (not running)" => "                 （daemon停止中）",
+        "  K              stop the overseer daemon process (running)" => {
+            "  K              overseerデーモンプロセスを停止（稼働中）"
         }
         "  l              expand OVERSEER > Inbox to reach its item rows" => {
             "  l              OVERSEER > Inboxを展開し項目行を表示"

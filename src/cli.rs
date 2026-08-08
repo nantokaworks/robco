@@ -83,8 +83,15 @@ pub enum OverseerCommand {
     Run,
     /// Answer whether anything needs you, is stuck, or is running.
     Status(OverseerStatusArgs),
-    /// Gracefully stop the running daemon.
+    /// Durably stop the running daemon: bootout the launchd service if one is
+    /// installed and loaded, else signal the manually-run process.
     Stop,
+    /// Start the daemon: load the launchd service if one is installed, else
+    /// explain how to run it.
+    Start,
+    /// Restart the daemon: reload the launchd service if one is installed
+    /// (bootout, then bootstrap), else explain how to run it.
+    Restart,
     /// Persist a runtime toggle in RobCo's JSON config.
     Set(OverseerSetArgs),
     /// Set the daily dispatch limit (0 = unlimited).

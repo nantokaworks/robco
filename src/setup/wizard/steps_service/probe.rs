@@ -9,19 +9,24 @@ const LABEL: &str = "com.robco.overseer";
 
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ServiceState {
+pub(crate) enum ServiceState {
     NotInstalled,
     Unloaded,
     Loaded,
 }
 
 #[cfg(target_os = "macos")]
-pub(super) struct ServiceProbe {
-    pub(super) state: ServiceState,
+pub(crate) struct ServiceProbe {
+    pub(crate) state: ServiceState,
 }
 
+/// Also the probe `robco overseer stop|start|restart` uses
+/// (`overseer::command::service::control`) to decide which of the durable
+/// launchd path or the manual pidfile path applies — kept here rather than
+/// duplicated since it is exactly the same launchd/plist state the wizard's
+/// install and reload flow probes.
 #[cfg(target_os = "macos")]
-pub(super) fn run() -> ServiceProbe {
+pub(crate) fn run() -> ServiceProbe {
     let Some(home) = dirs::home_dir() else {
         return unloaded();
     };
