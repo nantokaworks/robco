@@ -6,6 +6,7 @@ use crate::{git, model::Status, tmux};
 
 use super::classify::classify_capture;
 use super::proc;
+use super::session_alive;
 use super::{StatusReport, WatchStatusState};
 
 /// Classify an agent's status. The tmux session is the source of truth for
@@ -24,9 +25,10 @@ pub fn classify_agent_status(
     branch: &str,
     tmux_session: &str,
     state: &mut WatchStatusState,
+    panes: Option<&tmux::PaneSnapshot>,
 ) -> Option<StatusReport> {
-    match tmux::has_session(tmux_session) {
-        Ok(true) => {
+    match session_alive(panes, tmux_session) {
+        Some(true) => {
             // A transient capture failure should not corrupt the signal; keep
             // the previous status until the next successful capture.
             let capture = tmux::capture_text(tmux_session).ok()?;
@@ -38,9 +40,9 @@ pub fn classify_agent_status(
                 state,
                 Local::now(),
             )?;
-            Some(downgrade_running_shell_pane(report, tmux_session))
+            Some(downgrade_running_shell_pane(report, tmux_session, panes))
         }
-        Ok(false) => {
+        Some(false) => {
             let worktree_exists = worktree_path.exists();
             let branch_exists =
                 !worktree_exists && git::branch_exists(repo_path, branch).unwrap_or(false);
@@ -53,7 +55,7 @@ pub fn classify_agent_status(
                 Local::now(),
             )
         }
-        Err(_) => None,
+        None => None,
     }
 }
 
@@ -92,12 +94,16 @@ fn classify_session_observation(
     Some(classify_capture(capture?, state, now).status)
 }
 
-pub(super) fn downgrade_running_shell_pane(report: StatusReport, session: &str) -> StatusReport {
+pub(super) fn downgrade_running_shell_pane(
+    report: StatusReport,
+    session: &str,
+    panes: Option<&tmux::PaneSnapshot>,
+) -> StatusReport {
     if report.status != Status::Running {
         return report;
     }
-    let pane_command = tmux::pane_current_command(session).ok().flatten();
-    shell_pane_downgrade(report, pane_command.as_deref())
+    let pane_command = panes.and_then(|panes| panes.pane_current_command(session));
+    shell_pane_downgrade(report, pane_command)
 }
 
 fn shell_pane_downgrade(mut report: StatusReport, pane_command: Option<&str>) -> StatusReport {

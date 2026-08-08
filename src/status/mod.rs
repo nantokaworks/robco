@@ -30,3 +30,15 @@ pub struct StatusReport {
     pub worktree_missing: bool,
     pub mcp_active: bool,
 }
+
+/// Whether `session` is alive, per the batched pane snapshot. `None` means
+/// the snapshot capture itself failed this tick — the same "unknown, keep
+/// the previous status" signal a per-session probe `Err(_)` used to carry.
+/// `Some(false)` means the snapshot succeeded and the session is simply not
+/// in it (gone), the counterpart of a per-session probe's `Ok(false)`.
+pub(super) fn session_alive(
+    panes: Option<&crate::tmux::PaneSnapshot>,
+    session: &str,
+) -> Option<bool> {
+    panes.map(|panes| panes.contains(session))
+}

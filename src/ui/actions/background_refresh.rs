@@ -235,11 +235,18 @@ fn capture_status(
         .process_indicator
         .then(status::proc::ProcSnapshot::capture)
         .and_then(crate::Result::ok);
+    let panes = crate::tmux::capture_panes().ok();
     for repo in &mut registry.repos {
         let session = agent::repo_claude_session_name(&config.tmux_session_prefix, repo);
-        status::refresh_repo_main(&session, repo, processes.as_ref());
+        status::refresh_repo_main(&session, repo, processes.as_ref(), panes.as_ref());
         for tracked in &mut repo.agents {
-            status::refresh_agent(&repo.path, tracked, config.auto_accept, processes.as_ref());
+            status::refresh_agent(
+                &repo.path,
+                tracked,
+                config.auto_accept,
+                processes.as_ref(),
+                panes.as_ref(),
+            );
         }
     }
     StatusResult {

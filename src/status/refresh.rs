@@ -9,6 +9,7 @@ use super::auto_accept::maybe_auto_accept;
 use super::classify::classify_capture;
 use super::observe::{classify_agent_status, downgrade_running_shell_pane};
 use super::proc::ProcSnapshot;
+use super::session_alive;
 use super::shell_session::shell_session_working;
 
 pub fn refresh_agent(
@@ -16,6 +17,7 @@ pub fn refresh_agent(
     agent: &mut crate::model::AgentNode,
     auto_accept: bool,
     processes: Option<&ProcSnapshot>,
+    panes: Option<&tmux::PaneSnapshot>,
 ) {
     let mut state = WatchStatusState {
         last_capture: agent.last_capture.take(),
@@ -29,11 +31,12 @@ pub fn refresh_agent(
         &agent.branch,
         &agent.tmux_session,
         &mut state,
+        panes,
     );
     agent.last_capture = state.last_capture;
     agent.last_spinner = state.last_spinner;
     agent.last_change_at = state.last_change_at;
-    agent.shell_working = shell_session_working(&agent.tmux_session);
+    agent.shell_working = shell_session_working(&agent.tmux_session, panes);
     match report {
         Some(report) => {
             agent.status = report.status;
@@ -53,6 +56,7 @@ pub fn refresh_agent(
                     &mut agent.pane_pid,
                     &mut agent.tracked_command,
                     processes,
+                    panes,
                 );
             }
         }
@@ -73,11 +77,12 @@ pub fn refresh_repo_main(
     session: &str,
     repo: &mut crate::model::RepoNode,
     processes: Option<&ProcSnapshot>,
+    panes: Option<&tmux::PaneSnapshot>,
 ) {
     repo.main_tracked_command = None;
-    match tmux::has_session(session) {
-        Ok(true) => {}
-        Ok(false) => {
+    match session_alive(panes, session) {
+        Some(true) => {}
+        Some(false) => {
             repo.main_status = None;
             repo.main_last_capture = None;
             repo.main_last_spinner = None;
@@ -88,7 +93,7 @@ pub fn refresh_repo_main(
             repo.main_tracked_command = None;
             return;
         }
-        Err(_) => {
+        None => {
             repo.main_pane_pid = None;
             return;
         }
@@ -105,16 +110,17 @@ pub fn refresh_repo_main(
     };
     let report = classify_capture(&capture, &mut state, Local::now());
     repo.main_mcp_active = report.mcp_active;
-    repo.main_status = Some(downgrade_running_shell_pane(report, session).status);
+    repo.main_status = Some(downgrade_running_shell_pane(report, session, panes).status);
     repo.main_last_capture = state.last_capture;
     repo.main_last_spinner = state.last_spinner;
     repo.main_last_change_at = state.last_change_at;
-    repo.main_shell_working = shell_session_working(session);
+    repo.main_shell_working = shell_session_working(session, panes);
     refresh_process(
         session,
         &mut repo.main_pane_pid,
         &mut repo.main_tracked_command,
         processes,
+        panes,
     );
 }
 
@@ -137,13 +143,14 @@ fn refresh_process(
     pane_pid: &mut Option<u32>,
     tracked_command: &mut Option<String>,
     processes: Option<&ProcSnapshot>,
+    panes: Option<&tmux::PaneSnapshot>,
 ) {
     *tracked_command = None;
     let Some(processes) = processes else {
         return;
     };
     if pane_pid.is_none_or(|pid| !processes.contains(pid)) {
-        *pane_pid = tmux::pane_pid(session).ok().flatten();
+        *pane_pid = panes.and_then(|panes| panes.pane_pid(session));
     }
     *tracked_command = pane_pid.and_then(|pid| processes.tracked_command(pid));
 }
