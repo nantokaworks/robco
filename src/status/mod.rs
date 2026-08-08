@@ -36,6 +36,7 @@ pub fn refresh_agent(
     agent: &mut crate::model::AgentNode,
     auto_accept: bool,
     processes: Option<&ProcSnapshot>,
+    panes: Option<&tmux::PaneSnapshot>,
 ) {
     let mut state = WatchStatusState {
         last_capture: agent.last_capture.take(),
@@ -49,11 +50,12 @@ pub fn refresh_agent(
         &agent.branch,
         &agent.tmux_session,
         &mut state,
+        panes,
     );
     agent.last_capture = state.last_capture;
     agent.last_spinner = state.last_spinner;
     agent.last_change_at = state.last_change_at;
-    agent.shell_working = shell_session_working(&agent.tmux_session);
+    agent.shell_working = shell_session_working(&agent.tmux_session, panes);
     match report {
         Some(report) => {
             agent.status = report.status;
@@ -73,6 +75,7 @@ pub fn refresh_agent(
                     &mut agent.pane_pid,
                     &mut agent.tracked_command,
                     processes,
+                    panes,
                 );
             }
         }
@@ -93,11 +96,12 @@ pub fn refresh_repo_main(
     session: &str,
     repo: &mut crate::model::RepoNode,
     processes: Option<&ProcSnapshot>,
+    panes: Option<&tmux::PaneSnapshot>,
 ) {
     repo.main_tracked_command = None;
-    match tmux::has_session(session) {
-        Ok(true) => {}
-        Ok(false) => {
+    match session_alive(panes, session) {
+        Some(true) => {}
+        Some(false) => {
             repo.main_status = None;
             repo.main_last_capture = None;
             repo.main_last_spinner = None;
@@ -108,7 +112,7 @@ pub fn refresh_repo_main(
             repo.main_tracked_command = None;
             return;
         }
-        Err(_) => {
+        None => {
             repo.main_pane_pid = None;
             return;
         }
@@ -125,16 +129,17 @@ pub fn refresh_repo_main(
     };
     let report = classify_capture(&capture, &mut state, Local::now());
     repo.main_mcp_active = report.mcp_active;
-    repo.main_status = Some(downgrade_running_shell_pane(report, session).status);
+    repo.main_status = Some(downgrade_running_shell_pane(report, session, panes).status);
     repo.main_last_capture = state.last_capture;
     repo.main_last_spinner = state.last_spinner;
     repo.main_last_change_at = state.last_change_at;
-    repo.main_shell_working = shell_session_working(session);
+    repo.main_shell_working = shell_session_working(session, panes);
     refresh_process(
         session,
         &mut repo.main_pane_pid,
         &mut repo.main_tracked_command,
         processes,
+        panes,
     );
 }
 
@@ -150,18 +155,28 @@ pub fn refresh_main_drift(repo: &mut crate::model::RepoNode) {
         .filter(|behind| *behind > 0);
 }
 
+/// Whether `session` is alive, per the batched pane snapshot. `None` means
+/// the snapshot capture itself failed this tick — the same "unknown, keep
+/// the previous status" signal a per-session probe `Err(_)` used to carry.
+/// `Some(false)` means the snapshot succeeded and the session is simply not
+/// in it (gone), the counterpart of a per-session probe's `Ok(false)`.
+fn session_alive(panes: Option<&tmux::PaneSnapshot>, session: &str) -> Option<bool> {
+    panes.map(|panes| panes.contains(session))
+}
+
 fn refresh_process(
     session: &str,
     pane_pid: &mut Option<u32>,
     tracked_command: &mut Option<String>,
     processes: Option<&ProcSnapshot>,
+    panes: Option<&tmux::PaneSnapshot>,
 ) {
     *tracked_command = None;
     let Some(processes) = processes else {
         return;
     };
     if pane_pid.is_none_or(|pid| !processes.contains(pid)) {
-        *pane_pid = tmux::pane_pid(session).ok().flatten();
+        *pane_pid = panes.and_then(|panes| panes.pane_pid(session));
     }
     *tracked_command = pane_pid.and_then(|pid| processes.tracked_command(pid));
 }
@@ -182,9 +197,10 @@ pub fn classify_agent_status(
     branch: &str,
     tmux_session: &str,
     state: &mut WatchStatusState,
+    panes: Option<&tmux::PaneSnapshot>,
 ) -> Option<StatusReport> {
-    match tmux::has_session(tmux_session) {
-        Ok(true) => {
+    match session_alive(panes, tmux_session) {
+        Some(true) => {
             // A transient capture failure should not corrupt the signal; keep
             // the previous status until the next successful capture.
             let capture = tmux::capture_text(tmux_session).ok()?;
@@ -196,9 +212,9 @@ pub fn classify_agent_status(
                 state,
                 Local::now(),
             )?;
-            Some(downgrade_running_shell_pane(report, tmux_session))
+            Some(downgrade_running_shell_pane(report, tmux_session, panes))
         }
-        Ok(false) => {
+        Some(false) => {
             let worktree_exists = worktree_path.exists();
             let branch_exists =
                 !worktree_exists && git::branch_exists(repo_path, branch).unwrap_or(false);
@@ -211,7 +227,7 @@ pub fn classify_agent_status(
                 Local::now(),
             )
         }
-        Err(_) => None,
+        None => None,
     }
 }
 
@@ -250,12 +266,16 @@ fn classify_session_observation(
     Some(classify_capture(capture?, state, now).status)
 }
 
-fn downgrade_running_shell_pane(report: StatusReport, session: &str) -> StatusReport {
+fn downgrade_running_shell_pane(
+    report: StatusReport,
+    session: &str,
+    panes: Option<&tmux::PaneSnapshot>,
+) -> StatusReport {
     if report.status != Status::Running {
         return report;
     }
-    let pane_command = tmux::pane_current_command(session).ok().flatten();
-    shell_pane_downgrade(report, pane_command.as_deref())
+    let pane_command = panes.and_then(|panes| panes.pane_current_command(session));
+    shell_pane_downgrade(report, pane_command)
 }
 
 fn shell_pane_downgrade(mut report: StatusReport, pane_command: Option<&str>) -> StatusReport {
@@ -296,15 +316,14 @@ fn classify_agent_observation(
 /// `#{pane_current_command}` rather than by scraping output. Returns `false`
 /// when the shell session does not exist or the probe fails transiently, so a
 /// missing/So-far-unopened TERM never shows a spurious "working" mark.
-fn shell_session_working(ai_session: &str) -> bool {
+fn shell_session_working(ai_session: &str, panes: Option<&tmux::PaneSnapshot>) -> bool {
     let shell = format!("{ai_session}-shell");
-    if !matches!(tmux::has_session(&shell), Ok(true)) {
+    if session_alive(panes, &shell) != Some(true) {
         return false;
     }
-    match tmux::pane_current_command(&shell) {
-        Ok(Some(cmd)) => !proc::is_shell_name(&cmd),
-        _ => false,
-    }
+    panes
+        .and_then(|panes| panes.pane_current_command(&shell))
+        .is_some_and(|cmd| !proc::is_shell_name(cmd))
 }
 
 #[cfg(test)]

@@ -196,12 +196,14 @@ fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> 
 
 fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
     let mut state = WatchStatusState::default();
+    let panes = tmux::capture_panes().ok();
     status::classify_agent_status(
         &repo.path,
         &agent.worktree_path,
         &agent.branch,
         &agent.tmux_session,
         &mut state,
+        panes.as_ref(),
     )
     .unwrap_or(StatusReport {
         status: Status::Dead,

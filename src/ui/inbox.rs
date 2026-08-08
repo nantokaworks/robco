@@ -13,6 +13,7 @@ use crate::{
     },
     registry::Registry,
     status::{self, WatchStatusState},
+    tmux,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -247,10 +248,12 @@ pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
 }
 
 pub(crate) fn question_reports(registry: &Registry) -> Vec<AgentQuestionReport> {
+    let panes = tmux::capture_panes().ok();
     registry
         .repos
         .iter()
         .flat_map(|repo| {
+            let panes = panes.as_ref();
             repo.agents.iter().map(move |agent| {
                 let awaiting_confirmation = if agent.status == Status::Waiting {
                     status::classify_agent_status(
@@ -259,6 +262,7 @@ pub(crate) fn question_reports(registry: &Registry) -> Vec<AgentQuestionReport> 
                         &agent.branch,
                         &agent.tmux_session,
                         &mut WatchStatusState::default(),
+                        panes,
                     )
                     .is_some_and(|report| report.awaiting_confirmation)
                 } else {

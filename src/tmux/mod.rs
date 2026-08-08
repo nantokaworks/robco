@@ -2,14 +2,14 @@ mod attach;
 mod capture;
 mod env;
 mod keys;
+mod panes;
 mod resize;
 mod session;
 
 pub use attach::{attach, send_keys, send_literal_text, single_line};
-pub use capture::{
-    capture_plain, capture_scrollback, capture_text, history_size, pane_current_command, pane_pid,
-};
+pub use capture::{capture_plain, capture_scrollback, capture_text, history_size, pane_pid};
 pub use env::session_env;
+pub use panes::{PaneSnapshot, capture_panes};
 pub use resize::resize_session;
 pub use session::{
     find_session_by_cwd, has_session, kill_session, list_sessions_with_cwd, new_session,
