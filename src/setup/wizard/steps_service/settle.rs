@@ -17,16 +17,16 @@ const LABEL: &str = "com.robco.overseer";
 /// the wizard can never hang on a service that refuses to exit.
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy)]
-pub(super) struct SettleBudget {
-    pub(super) polls: u32,
-    pub(super) poll_interval: Duration,
-    pub(super) bootstrap_attempts: u32,
-    pub(super) retry_interval: Duration,
+pub(crate) struct SettleBudget {
+    pub(crate) polls: u32,
+    pub(crate) poll_interval: Duration,
+    pub(crate) bootstrap_attempts: u32,
+    pub(crate) retry_interval: Duration,
 }
 
 #[cfg(target_os = "macos")]
 impl SettleBudget {
-    pub(super) const fn launchd() -> Self {
+    pub(crate) const fn launchd() -> Self {
         Self {
             polls: 20,
             poll_interval: Duration::from_millis(250),
@@ -38,22 +38,27 @@ impl SettleBudget {
 
 /// The launchd domain the wizard is loading the Overseer plist into, plus the
 /// budget that bounds the wait for the domain to become available.
+///
+/// Also used by `overseer::command::service::control` for `robco overseer
+/// stop|start|restart`: the same async bootout-then-bootstrap dance applies
+/// whether the caller is the install wizard reloading onto a fresh binary or
+/// the CLI/TUI restarting an already-installed service.
 #[cfg(target_os = "macos")]
-pub(super) struct Domain<'a> {
-    pub(super) name: &'a str,
-    pub(super) plist: &'a Path,
-    pub(super) budget: SettleBudget,
+pub(crate) struct Domain<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) plist: &'a Path,
+    pub(crate) budget: SettleBudget,
 }
 
 #[cfg(target_os = "macos")]
 impl Domain<'_> {
-    pub(super) fn service(&self) -> String {
+    pub(crate) fn service(&self) -> String {
         format!("{}/{LABEL}", self.name)
     }
 
     /// Poll the domain until the booted-out label is genuinely gone, so the
     /// bootstrap that follows is not racing the daemon's own shutdown.
-    pub(super) fn wait_for_bootout<F>(&self, run: &mut F) -> Result<()>
+    pub(crate) fn wait_for_bootout<F>(&self, run: &mut F) -> Result<()>
     where
         F: FnMut(&[OsString]) -> std::io::Result<Output>,
     {
@@ -76,7 +81,7 @@ impl Domain<'_> {
 
     /// Bootstrap the plist, retrying while launchd reports the domain is still
     /// busy with the outgoing job.
-    pub(super) fn bootstrap<F>(&self, run: &mut F) -> Result<()>
+    pub(crate) fn bootstrap<F>(&self, run: &mut F) -> Result<()>
     where
         F: FnMut(&[OsString]) -> std::io::Result<Output>,
     {

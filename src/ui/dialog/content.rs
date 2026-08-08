@@ -210,6 +210,21 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             ],
             None,
         ),
+        Mode::ConfirmDaemonStop => (
+            t(locale, "stop the overseer daemon?"),
+            vec![
+                Line::from(t(
+                    locale,
+                    "ends the daemon process itself, not just dispatch",
+                )),
+                Line::from(t(
+                    locale,
+                    "running workers are not touched; start it again with R",
+                )),
+                hint_line(locale, "y stop   n/esc cancel"),
+            ],
+            None,
+        ),
         Mode::ConfirmInboxDismissAll { count } => (
             t(locale, "clear the overseer inbox?"),
             vec![
