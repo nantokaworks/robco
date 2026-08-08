@@ -35,6 +35,8 @@ fn entry() -> LedgerEntry {
         merge_hold_recheck_head: Some("sha-1".into()),
         prerequisite_wait: None,
         merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
     }
@@ -63,7 +65,7 @@ fn the_hold_cap_reason_is_transient() {
 }
 
 #[test]
-fn reasons_outside_the_vocabulary_are_neither() {
+fn reasons_outside_the_vocabulary_notify_once_per_reason_and_head() {
     for reason in [
         "judge_veto:no rollback",
         "judge_escalate:risky",
@@ -74,18 +76,47 @@ fn reasons_outside_the_vocabulary_are_neither() {
     ] {
         assert!(!is_terminal(reason), "{reason} should not be terminal");
         assert!(!is_transient(reason), "{reason} should not be transient");
-        assert_eq!(notify(DecisionKind::Escalate, reason), None);
+
+        let mut e = entry();
+        // First sighting of this (reason, head) pair notifies immediately —
+        // dropr:834's regression was every pass staying silent-less than this.
+        assert_eq!(
+            notify(&mut e, DecisionKind::Escalate, reason, "sha-1"),
+            Some(true)
+        );
+        // An unchanged pass reporting the identical reason and head is the
+        // same unresolved condition already shown to the operator (dropr:414).
+        assert_eq!(
+            notify(&mut e, DecisionKind::Escalate, reason, "sha-1"),
+            Some(false)
+        );
+        // A new push presents a head the operator never saw, so it notifies again.
+        assert_eq!(
+            notify(&mut e, DecisionKind::Escalate, reason, "sha-2"),
+            Some(true)
+        );
     }
 }
 
 #[test]
 fn notify_only_tags_escalate_decisions() {
+    let mut e = entry();
     assert_eq!(
-        notify(DecisionKind::Hold, merge_recovery::CAP_REACHED),
+        notify(
+            &mut e,
+            DecisionKind::Hold,
+            merge_recovery::CAP_REACHED,
+            "sha-1"
+        ),
         None
     );
     assert_eq!(
-        notify(DecisionKind::Escalate, merge_recovery::CAP_REACHED),
+        notify(
+            &mut e,
+            DecisionKind::Escalate,
+            merge_recovery::CAP_REACHED,
+            "sha-1"
+        ),
         Some(true)
     );
 }

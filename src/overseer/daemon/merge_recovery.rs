@@ -169,11 +169,11 @@ pub(super) fn consider(
         // Recorded, not acted on: the entry keeps its phase and its worker is
         // never touched, so the daemon behaves exactly as it did with recovery
         // off — it just no longer does so silently.
-        RecoveryPlan::Dropped => log(entry, DecisionKind::Hold, &disabled(reason)),
+        RecoveryPlan::Dropped => log(entry, DecisionKind::Hold, &disabled(reason), ""),
         RecoveryPlan::CapReached => {
             entry.phase = LedgerPhase::Escalated;
             entry.worker_escalated = false;
-            log(entry, DecisionKind::Escalate, CAP_REACHED)
+            log(entry, DecisionKind::Escalate, CAP_REACHED, head_sha)
         }
         RecoveryPlan::Dispatch => dispatch(entry, reason, registry, language),
     }
@@ -193,7 +193,7 @@ fn dispatch(
         entry.phase = LedgerPhase::Escalated;
         entry.worker_escalated = false;
         let reason = skipped(&format!("missing_session:{}", entry.agent_id));
-        return log(entry, DecisionKind::Escalate, &reason);
+        return log(entry, DecisionKind::Escalate, &reason, "");
     };
     let prompt = templates::merge_recovery_prompt(
         &entry.display_id,
@@ -209,6 +209,7 @@ fn dispatch(
             entry,
             DecisionKind::Hold,
             &skipped(&format!("send_failed:{error}")),
+            "",
         );
     }
     if !confirm_delivered(&session) {
@@ -220,19 +221,22 @@ fn dispatch(
         // `PrOpened` is deliberately not set: the worker was not handed
         // anything, so the phase the merge pass reads must not change.
         refund(entry);
-        return log(entry, DecisionKind::Hold, &undelivered(reason));
+        return log(entry, DecisionKind::Hold, &undelivered(reason), "");
     }
     // The worker now owns the failure, so the entry returns to the phase the
     // merge pass reads. A judge veto had already escalated it; that escalation
     // is superseded rather than left to strand the pull request. Whatever
-    // escalation the entry is leaving behind is over too, so its age marker
-    // and stuck notice go with it — a later re-escalation starts a fresh
-    // clock rather than inheriting one that already ran most of the way to
-    // `merge_escalation::STUCK_AFTER`.
+    // escalation the entry is leaving behind is over too, so its age marker,
+    // stuck notice, and last-notified (reason, head) pair go with it — a later
+    // re-escalation starts fresh rather than inheriting one that already ran
+    // most of the way to `merge_escalation::STUCK_AFTER`, or a suppression
+    // that condition already earned.
     entry.phase = LedgerPhase::PrOpened;
     entry.settled_at = None;
     entry.merge_hold_stuck_notified = false;
-    log(entry, DecisionKind::Hold, &dispatched(reason))?;
+    entry.escalation_notified_reason = None;
+    entry.escalation_notified_head = None;
+    log(entry, DecisionKind::Hold, &dispatched(reason), "")?;
     note_on_task(entry, reason);
     Ok(())
 }
@@ -264,7 +268,7 @@ fn live_session(agent_id: &str, registry: &Registry) -> Option<String> {
 /// A scribble that does not land must not abort the merge pass: the prompt has
 /// already been delivered, and failing here would leave the worker working on a
 /// failure Overseer then forgot it had charged.
-fn note_on_task(entry: &LedgerEntry, reason: &str) {
+fn note_on_task(entry: &mut LedgerEntry, reason: &str) {
     let content = format!(
         "Overseer could not merge {} and handed the failure back to worker `{}` (handback {}): {reason}",
         entry.pr_url.as_deref().unwrap_or("the pull request"),
@@ -281,17 +285,18 @@ fn note_on_task(entry: &LedgerEntry, reason: &str) {
             entry,
             DecisionKind::Escalate,
             &format!("handback note not recorded in dropr: {error}"),
+            "",
         );
     }
 }
 
-fn log(entry: &LedgerEntry, kind: DecisionKind, reason: &str) -> Result<()> {
+fn log(entry: &mut LedgerEntry, kind: DecisionKind, reason: &str, head: &str) -> Result<()> {
     let mut decision = DecisionEntry::new(kind, reason);
     decision.task = Some(entry.task_id.clone());
     decision.repo = Some(entry.repo.clone());
     decision.pr_url = entry.pr_url.clone();
     decision.source = Some("merge_recovery".into());
-    decision.escalation_notify = super::merge_escalation::notify(kind, reason);
+    decision.escalation_notify = super::merge_escalation::notify(entry, kind, reason, head);
     logging::append(&decision)
 }
 
