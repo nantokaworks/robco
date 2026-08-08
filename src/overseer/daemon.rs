@@ -166,6 +166,7 @@ pub async fn run_daemon() -> Result<()> {
             &actions,
             config.overseer.release_pipeline_enabled,
             &mut cleanup_notes_logged,
+            &mut judgments,
         )?;
         merge::auto_merge_pass(
             &config,

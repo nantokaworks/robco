@@ -1,4 +1,5 @@
 use super::{
+    judge::JudgmentQueue,
     logging::{self, DecisionEntry, DecisionKind, log_message},
     monitor::Action,
     release_pipeline,
@@ -40,10 +41,19 @@ pub(crate) fn process_alive(pid: u32) -> bool {
 /// `Config` this function loads itself: the operator's opt-in for that
 /// unattended-shell-execution privilege is decided once, by the same pass
 /// that already holds the config, not re-read per action.
+///
+/// `judgments` is the same `JudgmentQueue` the caller hands to
+/// `daemon::merge::auto_merge_pass` right after this call returns, taken by
+/// plain `&mut` rather than the `SharedJudgments` that pass wraps it in: this
+/// runs before any repository worker starts, so nothing here is shared with
+/// another thread yet. `Action::ReconsiderMergeJudgment` is the only action
+/// that reads it, and only to drop a memoized verdict — never to answer one
+/// itself.
 pub(crate) fn execute_actions(
     actions: &[Action],
     release_pipeline_enabled: bool,
     cleanup_notes_logged: &mut BTreeMap<String, Vec<String>>,
+    judgments: &mut JudgmentQueue,
 ) -> Result<HashSet<String>> {
     let mut cleanup_blocked = HashSet::new();
     let mut pulled = HashSet::new();
@@ -94,6 +104,9 @@ pub(crate) fn execute_actions(
                 pr_url.as_deref(),
                 release_pipeline_enabled,
             )?,
+            Action::ReconsiderMergeJudgment { task_id, pr_url } => {
+                judgments.forget_terminal_merge(task_id, pr_url)?;
+            }
         }
     }
     Ok(pulled)
