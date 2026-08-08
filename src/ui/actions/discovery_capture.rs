@@ -8,7 +8,7 @@ use std::{collections::HashSet, path::PathBuf, time::SystemTime};
 
 use crate::{
     config::Config, discover, git, model::OrphanSession,
-    overseer::discord_channels::DiscordChannels, registry::Registry,
+    overseer::discord_channels::DiscordChannels, registry::Registry, status,
     subagents::claude::ClaudeSubagentReader,
 };
 
@@ -84,6 +84,7 @@ pub(super) fn capture_discovery(
         if let Ok(worktrees) = git::list_worktrees(&repo.path) {
             added |= children::reconcile(repo, &config, worktrees).0;
         }
+        status::refresh_main_drift(repo);
     }
     if config.subagent_indicator {
         subagents::ingest(
