@@ -1,6 +1,11 @@
-//! Everything below `install_service` is launchd, and launchd is macOS. The
-//! consumers in `setup::wizard::steps_service` are gated the same way, so on
-//! any other target these items would compile only to sit unused.
+//! `install_service` and the `plist`/`control` submodules are launchd, and
+//! launchd is macOS. The consumers in `setup::wizard::steps_service` are
+//! gated the same way, so on any other target those items would compile only
+//! to sit unused. `ServiceState` and the `*_service` functions below stay
+//! platform-agnostic on purpose: `overseer::command`'s `stop`/`start`/
+//! `restart` need one signature that works on every target, backed by a
+//! macOS body where launchd exists and an `Unsupported`/`unreachable!` one
+//! where it does not.
 
 #[cfg(target_os = "macos")]
 use std::{fs, process::Command, time::Duration};
@@ -13,8 +18,100 @@ use crate::Result;
 #[path = "service/plist.rs"]
 mod plist;
 
+#[cfg(target_os = "macos")]
+#[path = "service/control.rs"]
+pub(crate) mod control;
+
 pub(crate) fn install_service() -> Result<()> {
     crate::setup::wizard::steps_service::install_service()
+}
+
+/// Whether the launchd Overseer service is installed and, if so, loaded —
+/// what `robco overseer stop|start|restart` (dropr:412) branch on to choose
+/// between a durable launchd bootout/bootstrap and the manual pidfile path.
+/// `Unsupported` stands in for `target_os != "macos"`, where launchd does not
+/// exist at all.
+///
+/// Every match on this enum lives in platform-agnostic code (`command.rs`),
+/// but each variant is only ever *constructed* on one side of the
+/// `target_os = "macos"` split below — `dead_code` cannot see that the other
+/// platform's build supplies the rest, so it is allowed here rather than on
+/// each variant.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ServiceState {
+    NotInstalled,
+    Unloaded,
+    Loaded,
+    Unsupported,
+}
+
+/// See [`ServiceState`]'s doc comment: same platform-split construction, same
+/// reason `dead_code` needs the blanket allow rather than per-variant.
+#[allow(dead_code)]
+pub(crate) enum StopOutcome {
+    Stopped,
+    StillShuttingDown,
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn service_state() -> ServiceState {
+    match control::probe_state() {
+        control::ServiceState::NotInstalled => ServiceState::NotInstalled,
+        control::ServiceState::Unloaded => ServiceState::Unloaded,
+        control::ServiceState::Loaded => ServiceState::Loaded,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn service_state() -> ServiceState {
+    ServiceState::Unsupported
+}
+
+/// Durably stop the loaded service. Callers only reach this once
+/// [`service_state`] has already reported [`ServiceState::Loaded`].
+#[cfg(target_os = "macos")]
+pub(crate) fn stop_service() -> Result<StopOutcome> {
+    Ok(match control::bootout()? {
+        control::StopOutcome::Stopped => StopOutcome::Stopped,
+        control::StopOutcome::StillShuttingDown => StopOutcome::StillShuttingDown,
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn stop_service() -> Result<StopOutcome> {
+    unreachable!(
+        "stop_service is only called once service_state() reports Loaded, which never happens off macOS"
+    )
+}
+
+/// Bootstrap the already-installed plist. Callers only reach this once
+/// [`service_state`] has already reported [`ServiceState::Unloaded`].
+#[cfg(target_os = "macos")]
+pub(crate) fn start_service() -> Result<()> {
+    control::bootstrap()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn start_service() -> Result<()> {
+    unreachable!(
+        "start_service is only called once service_state() reports Unloaded, which never happens off macOS"
+    )
+}
+
+/// Bootout then bootstrap the loaded service. Callers only reach this once
+/// [`service_state`] has already reported [`ServiceState::Loaded`].
+#[cfg(target_os = "macos")]
+pub(crate) fn restart_service() -> Result<()> {
+    control::bootout()?;
+    control::bootstrap()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn restart_service() -> Result<()> {
+    unreachable!(
+        "restart_service is only called once service_state() reports Loaded, which never happens off macOS"
+    )
 }
 
 #[cfg(target_os = "macos")]

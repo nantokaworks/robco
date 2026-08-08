@@ -1,6 +1,10 @@
 mod plan;
-mod probe;
-mod settle;
+// `probe` and `settle` hold the launchd primitives `overseer::command::service::control`
+// reuses for `robco overseer stop|start|restart` (dropr:412), so both need to be
+// reachable outside this module tree; `plan` and `workflow` stay private to the
+// interactive install/reload flow.
+pub(crate) mod probe;
+pub(crate) mod settle;
 mod workflow;
 #[cfg(all(test, target_os = "macos"))]
 mod workflow_tests;

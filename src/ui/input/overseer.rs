@@ -45,6 +45,11 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         }
         return true;
     }
+    // R resets the dispatch circuit when it is open (unchanged). Otherwise,
+    // while the daemon is not running, R starts it instead — the daemon has
+    // no other TUI-reachable start, and reusing R keeps the operator on one
+    // key for "the thing overseer needs right now" rather than adding a
+    // separate always-visible start key.
     if code == KeyCode::Char('R') {
         if !app.overseer_visible {
             return false;
@@ -53,7 +58,24 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
             app.mode = Mode::ConfirmOverseerReset;
             return true;
         }
+        if !app.overseer_snapshot.daemon_alive {
+            app.start_daemon();
+            return true;
+        }
         app.show_message(t(app.locale, "circuit is closed; nothing to reset"));
+        return true;
+    }
+    // K durably stops the daemon process itself — distinct from S, which only
+    // disables dispatch and kills workers while leaving the daemon running.
+    if code == KeyCode::Char('K') {
+        if !app.overseer_visible {
+            return false;
+        }
+        if !app.overseer_snapshot.daemon_alive {
+            app.show_message(t(app.locale, "overseer daemon is not running"));
+            return true;
+        }
+        app.mode = Mode::ConfirmDaemonStop;
         return true;
     }
     match app.selected_item() {
@@ -129,11 +151,64 @@ impl App {
 
     /// Panic-stop the overseer: disable dispatch and terminate every
     /// overseer-managed worker. Runs synchronously since it is an explicit,
-    /// operator-initiated action.
+    /// operator-initiated action. This never stops the daemon process itself
+    /// — see [`App::stop_daemon`] for that.
     pub(in crate::ui) fn panic_overseer(&mut self) {
         let result = crate::overseer::command::panic_stop_attributed("ui", None);
         self.refresh_overseer_snapshot();
-        self.response_message(result, "overseer stopped: dispatch off, workers killed");
+        self.response_message(result, "dispatch off, workers killed; daemon still running");
+    }
+
+    /// Durably stop the Overseer daemon process: bootout the launchd service
+    /// if one is loaded, else SIGTERM the manually-run process. Runs
+    /// synchronously since it is an explicit, operator-initiated action.
+    pub(in crate::ui) fn stop_daemon(&mut self) {
+        let result = crate::overseer::command::stop_daemon();
+        self.refresh_overseer_snapshot();
+        match result {
+            Ok(crate::overseer::command::StopAttempt::NotRunning) => {
+                self.show_message(t(self.locale, "overseer daemon is not running"));
+            }
+            Ok(crate::overseer::command::StopAttempt::Stopped) => {
+                self.show_message(t(self.locale, "overseer daemon stopped"));
+            }
+            Ok(crate::overseer::command::StopAttempt::StillShuttingDown) => {
+                self.show_message(t(
+                    self.locale,
+                    "overseer daemon shutdown requested; a pass may still be finishing, but it will not restart automatically",
+                ));
+            }
+            Err(error) => self.show_message(error.to_string()),
+        }
+    }
+
+    /// Start the Overseer daemon: load the launchd service if one is
+    /// installed, else report how to run it. Runs synchronously since it is
+    /// an explicit, operator-initiated action.
+    pub(in crate::ui) fn start_daemon(&mut self) {
+        let result = crate::overseer::command::start_daemon();
+        self.refresh_overseer_snapshot();
+        match result {
+            Ok(crate::overseer::command::StartAttempt::NotInstalled) => {
+                self.show_message(t(
+                    self.locale,
+                    "no launchd service installed; install it with `robco overseer install-service`, or run `robco overseer run` in a terminal",
+                ));
+            }
+            Ok(crate::overseer::command::StartAttempt::Unsupported) => {
+                self.show_message(t(
+                    self.locale,
+                    "launchd service management is unavailable on this OS; run `robco overseer run` in a terminal",
+                ));
+            }
+            Ok(crate::overseer::command::StartAttempt::AlreadyRunning) => {
+                self.show_message(t(self.locale, "overseer is already running"));
+            }
+            Ok(crate::overseer::command::StartAttempt::Started) => {
+                self.show_message(t(self.locale, "overseer started"));
+            }
+            Err(error) => self.show_message(error.to_string()),
+        }
     }
 
     /// Turn dispatch back on from a stop, independent of circuit state.

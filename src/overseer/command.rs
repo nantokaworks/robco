@@ -24,9 +24,9 @@ mod status;
 use compact::compact_decisions;
 pub(crate) use escalation::escalate_workers;
 use inbox::clear_inbox;
-use service::install_service;
 #[cfg(target_os = "macos")]
 pub(crate) use service::write_service_plist;
+use service::{ServiceState, StopOutcome, install_service, service_state};
 pub(crate) use settings::set_runtime;
 use settings::{autonomy_level, daily_limit, notify_channel, protection_mode, set};
 use status::status;
@@ -42,6 +42,8 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Run => unreachable!("async overseer run handled by main"),
         OverseerCommand::Status(args) => status(config, args.debug),
         OverseerCommand::Stop => stop(),
+        OverseerCommand::Start => start(),
+        OverseerCommand::Restart => restart(),
         OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
         OverseerCommand::DailyLimit(args) => daily_limit(args.value),
         OverseerCommand::NotifyChannel(args) => {
@@ -56,10 +58,60 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
     }
 }
 
-fn stop() -> Result<()> {
+/// Outcome of a stop attempt, shared between the CLI (`stop()`, which prints
+/// it) and the TUI (`App::stop_daemon`, which localizes it) — see dropr:412.
+pub(crate) enum StopAttempt {
+    NotRunning,
+    Stopped,
+    StillShuttingDown,
+}
+
+/// Outcome of a start attempt. See [`StopAttempt`].
+pub(crate) enum StartAttempt {
+    /// No launchd service is installed and this OS has no other launchd-free
+    /// equivalent; the caller has to run the daemon by hand.
+    NotInstalled,
+    /// launchd service management does not exist on this OS at all.
+    Unsupported,
+    AlreadyRunning,
+    Started,
+}
+
+/// Outcome of a restart attempt. See [`StopAttempt`].
+pub(crate) enum RestartAttempt {
+    NotInstalled,
+    Unsupported,
+    /// The service was not running; restart just started it.
+    Started,
+    Restarted,
+}
+
+/// Durably stop the daemon: bootout the launchd service if one is loaded —
+/// a `KeepAlive` job only leaves the domain that way, since a bare `SIGTERM`
+/// gets it respawned — else fall back to the manual pidfile/SIGTERM path for
+/// a daemon started with `robco overseer run` directly.
+pub(crate) fn stop_daemon() -> Result<StopAttempt> {
+    stop_daemon_with(service_state, service::stop_service, stop_manual)
+}
+
+fn stop_daemon_with<S, T, M>(state: S, stop_service: T, stop_manual: M) -> Result<StopAttempt>
+where
+    S: FnOnce() -> ServiceState,
+    T: FnOnce() -> Result<StopOutcome>,
+    M: FnOnce() -> Result<StopAttempt>,
+{
+    if state() == ServiceState::Loaded {
+        return Ok(match stop_service()? {
+            StopOutcome::Stopped => StopAttempt::Stopped,
+            StopOutcome::StillShuttingDown => StopAttempt::StillShuttingDown,
+        });
+    }
+    stop_manual()
+}
+
+fn stop_manual() -> Result<StopAttempt> {
     let Some(pid) = read_pid() else {
-        println!("overseer is not running");
-        return Ok(());
+        return Ok(StopAttempt::NotRunning);
     };
     let mut command = Command::new("kill");
     command.args(["-TERM", &pid.to_string()]);
@@ -69,12 +121,102 @@ fn stop() -> Result<()> {
     }
     for _ in 0..20 {
         if !process_alive(pid) {
-            println!("overseer stopped");
-            return Ok(());
+            return Ok(StopAttempt::Stopped);
         }
         thread::sleep(Duration::from_millis(100));
     }
-    println!("SIGTERM sent; overseer is still shutting down");
+    Ok(StopAttempt::StillShuttingDown)
+}
+
+/// Start the daemon: bootstrap the launchd service if one is installed but
+/// not loaded. There is no manual-start equivalent — a daemon not running
+/// under launchd has to be launched with `robco overseer run` by hand, which
+/// this only names in the message.
+pub(crate) fn start_daemon() -> Result<StartAttempt> {
+    start_daemon_with(service_state, service::start_service)
+}
+
+fn start_daemon_with<S, T>(state: S, start_service: T) -> Result<StartAttempt>
+where
+    S: FnOnce() -> ServiceState,
+    T: FnOnce() -> Result<()>,
+{
+    match state() {
+        ServiceState::NotInstalled => Ok(StartAttempt::NotInstalled),
+        ServiceState::Unsupported => Ok(StartAttempt::Unsupported),
+        ServiceState::Loaded => Ok(StartAttempt::AlreadyRunning),
+        ServiceState::Unloaded => {
+            start_service()?;
+            Ok(StartAttempt::Started)
+        }
+    }
+}
+
+/// Restart the daemon: bootout-then-bootstrap when the service is loaded,
+/// or a plain bootstrap when it is installed but not currently running.
+pub(crate) fn restart_daemon() -> Result<RestartAttempt> {
+    restart_daemon_with(
+        service_state,
+        service::start_service,
+        service::restart_service,
+    )
+}
+
+fn restart_daemon_with<S, T, R>(
+    state: S,
+    start_service: T,
+    restart_service: R,
+) -> Result<RestartAttempt>
+where
+    S: FnOnce() -> ServiceState,
+    T: FnOnce() -> Result<()>,
+    R: FnOnce() -> Result<()>,
+{
+    match state() {
+        ServiceState::NotInstalled => Ok(RestartAttempt::NotInstalled),
+        ServiceState::Unsupported => Ok(RestartAttempt::Unsupported),
+        ServiceState::Unloaded => {
+            start_service()?;
+            Ok(RestartAttempt::Started)
+        }
+        ServiceState::Loaded => {
+            restart_service()?;
+            Ok(RestartAttempt::Restarted)
+        }
+    }
+}
+
+const NO_SERVICE_HINT: &str = "no launchd service installed; run `robco overseer install-service` to install and load it, or `robco overseer run` to run the daemon in the foreground";
+const UNSUPPORTED_HINT: &str = "launchd service management is unavailable on this OS; run `robco overseer run` to run the daemon in the foreground";
+
+fn stop() -> Result<()> {
+    match stop_daemon()? {
+        StopAttempt::NotRunning => println!("overseer is not running"),
+        StopAttempt::Stopped => println!("overseer stopped"),
+        StopAttempt::StillShuttingDown => println!(
+            "overseer shutdown requested; a pass may still be finishing, but it will not restart automatically"
+        ),
+    }
+    Ok(())
+}
+
+fn start() -> Result<()> {
+    match start_daemon()? {
+        StartAttempt::NotInstalled => println!("{NO_SERVICE_HINT}"),
+        StartAttempt::Unsupported => println!("{UNSUPPORTED_HINT}"),
+        StartAttempt::AlreadyRunning => println!("overseer is already running"),
+        StartAttempt::Started => println!("overseer started"),
+    }
+    Ok(())
+}
+
+fn restart() -> Result<()> {
+    match restart_daemon()? {
+        RestartAttempt::NotInstalled => println!("{NO_SERVICE_HINT}"),
+        RestartAttempt::Unsupported => println!("{UNSUPPORTED_HINT}"),
+        RestartAttempt::Started => println!("overseer started"),
+        RestartAttempt::Restarted => println!("overseer restarted"),
+    }
     Ok(())
 }
 
@@ -134,4 +276,129 @@ pub(crate) fn load_active_workers() -> Result<ActiveWorkers> {
     let raw = fs::read_to_string(crate::overseer::ledger_path()?)?;
     let ledger: Ledger = serde_json::from_str(&raw)?;
     Ok(ledger.active_workers())
+}
+
+#[cfg(test)]
+mod daemon_lifecycle_tests {
+    use super::*;
+
+    fn unreachable_start_service() -> Result<()> {
+        unreachable!("start_service must not run when the service is not Unloaded")
+    }
+
+    fn unreachable_restart_service() -> Result<()> {
+        unreachable!("restart_service must not run when the service is not Loaded")
+    }
+
+    #[test]
+    fn a_loaded_service_stops_through_bootout_instead_of_the_manual_path() {
+        let outcome = stop_daemon_with(
+            || ServiceState::Loaded,
+            || Ok(StopOutcome::Stopped),
+            || unreachable!("the manual pidfile path must not run when a service is loaded"),
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, StopAttempt::Stopped));
+    }
+
+    #[test]
+    fn a_bootout_that_has_not_landed_yet_reports_still_shutting_down_not_failure() {
+        // The daemon may still be finishing a merge/judge pass past the
+        // settle window; bootout is already durable at that point, so this
+        // must read as an honest in-progress status, not a flaky failure.
+        let outcome = stop_daemon_with(
+            || ServiceState::Loaded,
+            || Ok(StopOutcome::StillShuttingDown),
+            || unreachable!("the manual pidfile path must not run when a service is loaded"),
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, StopAttempt::StillShuttingDown));
+    }
+
+    #[test]
+    fn an_absent_service_falls_back_to_the_manual_stop_path() {
+        for state in [
+            ServiceState::NotInstalled,
+            ServiceState::Unloaded,
+            ServiceState::Unsupported,
+        ] {
+            let outcome = stop_daemon_with(
+                move || state,
+                || unreachable!("stop_service must not run when the service is not Loaded"),
+                || Ok(StopAttempt::NotRunning),
+            )
+            .unwrap();
+
+            assert!(matches!(outcome, StopAttempt::NotRunning), "{state:?}");
+        }
+    }
+
+    #[test]
+    fn starting_with_no_service_installed_names_the_manual_alternative() {
+        let outcome =
+            start_daemon_with(|| ServiceState::NotInstalled, unreachable_start_service).unwrap();
+
+        assert!(matches!(outcome, StartAttempt::NotInstalled));
+    }
+
+    #[test]
+    fn starting_on_an_unsupported_os_names_the_manual_alternative() {
+        let outcome =
+            start_daemon_with(|| ServiceState::Unsupported, unreachable_start_service).unwrap();
+
+        assert!(matches!(outcome, StartAttempt::Unsupported));
+    }
+
+    #[test]
+    fn starting_an_already_loaded_service_is_a_no_op() {
+        let outcome =
+            start_daemon_with(|| ServiceState::Loaded, unreachable_start_service).unwrap();
+
+        assert!(matches!(outcome, StartAttempt::AlreadyRunning));
+    }
+
+    #[test]
+    fn starting_an_unloaded_service_bootstraps_it() {
+        let outcome = start_daemon_with(|| ServiceState::Unloaded, || Ok(())).unwrap();
+
+        assert!(matches!(outcome, StartAttempt::Started));
+    }
+
+    #[test]
+    fn restarting_a_loaded_service_boots_it_out_and_back_in() {
+        let outcome = restart_daemon_with(
+            || ServiceState::Loaded,
+            unreachable_start_service,
+            || Ok(()),
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, RestartAttempt::Restarted));
+    }
+
+    #[test]
+    fn restarting_an_unloaded_service_only_bootstraps_it() {
+        let outcome = restart_daemon_with(
+            || ServiceState::Unloaded,
+            || Ok(()),
+            unreachable_restart_service,
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, RestartAttempt::Started));
+    }
+
+    #[test]
+    fn restarting_with_no_service_installed_names_the_manual_alternative() {
+        let outcome = restart_daemon_with(
+            || ServiceState::NotInstalled,
+            unreachable_start_service,
+            unreachable_restart_service,
+        )
+        .unwrap();
+
+        assert!(matches!(outcome, RestartAttempt::NotInstalled));
+    }
 }

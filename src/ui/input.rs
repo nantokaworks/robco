@@ -269,6 +269,7 @@ impl App {
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
+            | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => unreachable!("handled above"),
         }
