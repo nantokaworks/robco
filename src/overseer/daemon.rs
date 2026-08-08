@@ -18,6 +18,7 @@ mod merge_judge_gate;
 pub(crate) mod merge_pass_telemetry;
 pub(crate) mod merge_queue;
 mod merge_recovery;
+mod merge_release_check;
 mod merge_repo_pass;
 mod merge_settle;
 pub(crate) mod merge_state;
@@ -168,12 +169,24 @@ pub async fn run_daemon() -> Result<()> {
             &mut cleanup_notes_logged,
             &mut judgments,
         )?;
+        // Snapshot before the pass mutates `next.entries` in place: neither
+        // `merge_apply::merge_now` nor `merge_decision::concluded` (the two
+        // ways this pass reaches `Merged`) runs through `monitor::reconcile`,
+        // so this before/after diff is the only place that transition is
+        // ever seen. See `merge_release_check::newly_merged`.
+        let before_merge = next.entries.clone();
         merge::auto_merge_pass(
             &config,
             &mut next,
             &mut protections,
             &mut judgments,
             &pulled,
+        )?;
+        execute_actions(
+            &merge_release_check::newly_merged(&before_merge, &next.entries),
+            config.overseer.release_pipeline_enabled,
+            &mut cleanup_notes_logged,
+            &mut judgments,
         )?;
         // After the merge pass, not before: the recheck budget it reads
         // (`merge_hold_recheck::due`) only reflects this tick's escalations
