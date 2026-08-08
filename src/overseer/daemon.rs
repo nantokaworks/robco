@@ -45,7 +45,7 @@ use super::{
 use crate::{Result, config::Config};
 use chrono::Utc;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -95,6 +95,10 @@ pub async fn run_daemon() -> Result<()> {
     // Repos whose unmaterialised-workspace skip was already recorded this
     // daemon run; deliberately in-memory so a restart logs each once more.
     let mut unmaterialised_logged = BTreeSet::new();
+    // Agent id -> cleanup notes already logged this daemon run, so a stuck
+    // worktree cleanup does not re-emit the same decision-log line every
+    // pass. Deliberately in-memory, same rationale as `unmaterialised_logged`.
+    let mut cleanup_notes_logged = BTreeMap::new();
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -158,7 +162,11 @@ pub async fn run_daemon() -> Result<()> {
         // reviews the board the pass inherited rather than the one this pass is
         // in the middle of changing.
         review.tick(&config, &next, now)?;
-        let pulled = execute_actions(&actions, config.overseer.release_pipeline_enabled)?;
+        let pulled = execute_actions(
+            &actions,
+            config.overseer.release_pipeline_enabled,
+            &mut cleanup_notes_logged,
+        )?;
         merge::auto_merge_pass(
             &config,
             &mut next,

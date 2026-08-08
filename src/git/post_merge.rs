@@ -173,9 +173,35 @@ impl Cleanup<'_> {
         }
         match git::remove_worktree(self.repo, self.worktree, false) {
             Ok(()) => outcome.worktree_removed = true,
+            Err(error) if is_dirty_worktree_error(&error) && self.branch_landed() => {
+                // `self.branch_landed()` is what makes this safe regardless of
+                // why the tree is dirty: a `git worktree remove` killed
+                // mid-delete by a timeout leaves exactly this shape behind,
+                // and plain removal then fails forever with the same
+                // "use --force" error every retry (dropr:TKxgioWtorh7MZPbTBseC)
+                // — but the check does not assume that is the reason. It only
+                // forces past a dirty tree once the branch's own content is
+                // provably already in the base, so there is nothing left in
+                // the worktree that force-deleting could lose.
+                match git::remove_worktree(self.repo, self.worktree, true) {
+                    Ok(()) => outcome.worktree_removed = true,
+                    Err(error) => self.record(outcome, "force-removing the worktree", error)?,
+                }
+            }
             Err(error) => self.record(outcome, "removing the worktree", error)?,
         }
         Ok(())
+    }
+
+    /// Whether `self.branch`'s content is already in [`BASE`] — the same
+    /// check [`Cleanup::delete_branch`] runs before deleting the branch with
+    /// `-D`. [`Cleanup::remove_worktree`] reuses it as the gate for forcing
+    /// past a dirty tree, so a genuinely dirty worktree whose branch never
+    /// landed is never force-deleted. A lookup failure answers `false`: an
+    /// unverified branch is treated the same as an unmerged one, never as
+    /// license to force-delete.
+    fn branch_landed(&self) -> bool {
+        git::branch_content_merged(self.repo, self.branch, BASE).unwrap_or(false)
     }
 
     /// Deletes the local branch once its changes are provably in the base.
@@ -186,7 +212,14 @@ impl Cleanup<'_> {
     /// branch that fails it is kept rather than force-deleted anyway.
     fn delete_branch(&self, outcome: &mut CleanupOutcome) -> Result<()> {
         if !outcome.worktree_removed {
-            return self.keep(outcome, "its worktree is still checked out");
+            // No separate note here: `remove_worktree` already recorded why
+            // it failed (the only way to reach this branch with
+            // `worktree_removed` still false), and repeating "its worktree is
+            // still checked out" alongside that note doubled every cleanup
+            // failure into two decision-log lines per pass for no new
+            // information.
+            outcome.branch = BranchOutcome::Kept;
+            return Ok(());
         }
         match git::branch_exists(self.repo, self.branch) {
             Ok(false) => return Ok(()),
@@ -233,6 +266,20 @@ impl Cleanup<'_> {
     }
 }
 
+/// Whether `error` is `git worktree remove`'s refusal to delete a worktree
+/// with modified or untracked files — the one shape [`Cleanup::remove_worktree`]
+/// treats as safe to force past, rather than every possible removal failure
+/// (a locked file, a permissions error, and so on stay unforced).
+fn is_dirty_worktree_error(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::Command { stderr, .. } if stderr.contains("contains modified or untracked files")
+    )
+}
+
 #[cfg(test)]
 #[path = "post_merge_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "post_merge_worktree_removal_tests.rs"]
+mod worktree_removal_tests;
