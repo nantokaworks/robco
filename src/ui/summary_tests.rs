@@ -21,6 +21,7 @@ fn repo(dropr: Option<DroprWorkspace>, dropr_tasks: DroprTaskFetch) -> RepoNode 
         main_tracked_command: None,
         main_subagents_active: 0,
         main_behind_origin: None,
+        checkout_state: None,
     }
 }
 
@@ -217,4 +218,18 @@ fn a_repo_caught_up_with_origin_main_shows_no_drift_line() {
     let lines = rendered(&repo(None, DroprTaskFetch::default()));
 
     assert!(!lines.iter().any(|line| line.starts_with("main behind")));
+}
+
+/// A detached primary checkout renders through the summary too, not just in
+/// `checkout_state`'s own unit tests — a regression that only broke the
+/// wiring between `repo_summary` and `checkout_branch_warning` would
+/// otherwise pass every other test in this file.
+#[test]
+fn a_detached_primary_checkout_shows_a_warning_through_the_summary() {
+    let mut node = repo(None, DroprTaskFetch::default());
+    node.checkout_state = Some(crate::model::CheckoutState::Detached);
+
+    let lines = rendered(&node);
+
+    assert!(lines.iter().any(|line| line.contains("detached")));
 }

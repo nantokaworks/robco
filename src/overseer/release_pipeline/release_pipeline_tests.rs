@@ -111,6 +111,37 @@ fn ready_rejects_a_checkout_behind_the_merged_commit() {
     assert_eq!(ready(repo.path()), Err("checkout_not_on_merged_commit"));
 }
 
+/// dropr:429 — a detached checkout must be named, not folded into the
+/// generic "not on the merged commit" reason.
+#[test]
+fn ready_rejects_a_detached_checkout() {
+    let repo = TestRepo::new();
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    repo.land_squash("task");
+    git(repo.path(), &["checkout", "-q", "--detach", "main"]);
+
+    assert_eq!(ready(repo.path()), Err("checkout_detached"));
+}
+
+/// dropr:429 — a checkout left on some other branch gets its own reason too.
+#[test]
+fn ready_rejects_a_checkout_on_another_branch() {
+    let repo = TestRepo::new();
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    repo.land_squash("task");
+    git(repo.path(), &["checkout", "-qb", "operator-wip"]);
+
+    assert_eq!(ready(repo.path()), Err("checkout_not_on_main"));
+    // `ready` only ever reads; the checkout it found must be exactly the one
+    // it leaves behind.
+    assert_eq!(
+        crate::git::current_branch(repo.path()).unwrap().as_deref(),
+        Some("operator-wip")
+    );
+}
+
 #[test]
 fn ready_accepts_a_clean_checkout_already_on_the_merged_commit() {
     let repo = TestRepo::new();

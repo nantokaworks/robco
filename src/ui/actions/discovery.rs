@@ -197,6 +197,7 @@ mod tests {
             main_tracked_command: None,
             main_subagents_active: 0,
             main_behind_origin: None,
+            checkout_state: None,
         };
         for path in ["/wt/foo", "/wt/foo/nested", "/wt/foo-bar"] {
             repo.agents.push(agent::adopt_worktree(

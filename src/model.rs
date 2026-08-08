@@ -66,6 +66,23 @@ pub struct RepoNode {
     /// persisted.
     #[serde(skip)]
     pub main_behind_origin: Option<u32>,
+    /// Where the primary checkout's `HEAD` actually points, probed on the
+    /// same slow discovery cadence as `main_behind_origin`, next to it.
+    /// `None` when it is on `main` — the safe state — or the probe has not
+    /// run yet; `Some` is always something a repo summary warns about.
+    /// Runtime only; refreshed each tick, never persisted.
+    #[serde(skip)]
+    pub checkout_state: Option<CheckoutState>,
+}
+
+/// The one thing that can be wrong with the primary checkout's `HEAD`: it is
+/// detached, or it is on a named branch that is not `main`. Both leave
+/// `ready` (`overseer::release_pipeline`) unable to release and plain `git
+/// pull` failing for the operator — see `RepoNode::checkout_state`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckoutState {
+    Detached,
+    OtherBranch(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

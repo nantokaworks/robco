@@ -148,6 +148,7 @@ mod tests {
             main_tracked_command: None,
             main_subagents_active: 0,
             main_behind_origin: None,
+            checkout_state: None,
         }
     }
 

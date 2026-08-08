@@ -1,6 +1,7 @@
 mod attach;
 pub(super) mod background_refresh;
 mod background_support;
+mod checkout_main;
 pub(super) mod children;
 pub(super) mod clone;
 mod discord_channels;

@@ -10,7 +10,7 @@ mod refresh;
 mod shell_session;
 
 pub use observe::{classify_agent_status, classify_session_status};
-pub use refresh::{refresh_agent, refresh_main_drift, refresh_repo_main};
+pub use refresh::{refresh_agent, refresh_checkout_branch, refresh_main_drift, refresh_repo_main};
 
 #[derive(Debug, Default, Clone)]
 pub struct WatchStatusState {

@@ -107,6 +107,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  p              edit and request PR from selected running agent" => {
             "  p              選択中の稼働エージェントからPRを編集・依頼"
         }
+        "  c              check out main in primary checkout (clean tree only)" => {
+            "  c              primary checkoutをmainへ（作業ツリーがclean時のみ）"
+        }
         "  left/right     move the cursor within the text being typed" => {
             "  left/right     入力中テキスト内でカーソルを移動"
         }

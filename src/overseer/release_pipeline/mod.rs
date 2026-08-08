@@ -65,6 +65,9 @@ use crate::{
     },
 };
 
+mod readiness;
+use readiness::ready;
+
 /// Task-title scope prefix for the version-bump tasks this pipeline covers,
 /// matching the `emoji [scope] description` convention this project's own
 /// dropr workspace rules document.
@@ -151,39 +154,6 @@ fn pr_title(repo: &str, url: &str) -> Option<String> {
         .get("title")?
         .as_str()
         .map(str::to_owned)
-}
-
-/// Confirms the repository's own checkout is safe to run the pipeline
-/// against. Returns the skip reason on the first guard that fails.
-///
-/// Fetches `origin/main` to learn the merge's commit — the same read-only
-/// step `git::post_merge` takes — but never writes to the checkout itself:
-/// an operator's own working tree, dirty or not, is never this module's to
-/// change. A checkout behind or diverged from that commit is left exactly
-/// as it is; the pipeline waits for whatever already keeps it current.
-fn ready(repo: &Path) -> std::result::Result<(), &'static str> {
-    match crate::git::worktree_is_clean(repo) {
-        Ok(true) => {}
-        Ok(false) => return Err("working_tree_dirty"),
-        Err(_) => return Err("working_tree_check_failed"),
-    }
-    let Ok(merged_commit) = crate::git::remote_branch_commit(repo, "main") else {
-        return Err("checkout_not_on_merged_commit");
-    };
-    match head_commit(repo) {
-        Some(head) if head == merged_commit => Ok(()),
-        _ => Err("checkout_not_on_merged_commit"),
-    }
-}
-
-fn head_commit(repo: &Path) -> Option<String> {
-    let mut command = Command::new("git");
-    command.args(["-C"]).arg(repo).args(["rev-parse", "HEAD"]);
-    let output = run_timeout(command, COMMAND_TIMEOUT).ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 fn run(task_id: &str, repo: &str, pr_url: &str, repo_path: &Path) -> Result<()> {
