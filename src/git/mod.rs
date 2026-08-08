@@ -25,6 +25,12 @@ use crate::{Error, Result, exec::run_timeout};
 
 pub(super) const GIT_LOCAL_TIMEOUT: Duration = Duration::from_secs(15);
 pub(super) const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(120);
+/// `git worktree remove` walks and deletes every file in the tree, which can
+/// run well past `GIT_LOCAL_TIMEOUT` on a large worktree. A removal that gets
+/// killed mid-delete leaves a half-removed tree behind that no plain retry
+/// can clean up (dropr:TKxgioWtorh7MZPbTBseC), so the removal gets a timeout
+/// of its own rather than sharing the one sized for quick plumbing commands.
+pub(super) const GIT_WORKTREE_REMOVE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// A single entry from `git worktree list --porcelain`.
 #[derive(Debug, Clone)]
