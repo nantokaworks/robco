@@ -179,6 +179,14 @@ mod tests {
     }
 
     #[test]
+    fn quotes_initial_prompt_for_shell_command() {
+        assert_eq!(
+            launch_command("claude", Some("fix Bob's bug"), &[]),
+            "claude 'fix Bob'\\''s bug'"
+        );
+    }
+
+    #[test]
     fn creates_session_id_only_for_claude_programs() {
         let id = claude_session_id("/usr/local/bin/claude").unwrap();
         assert_eq!(id.len(), 36);
