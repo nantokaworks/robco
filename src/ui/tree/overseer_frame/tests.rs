@@ -527,3 +527,23 @@ fn the_control_ai_row_shows_no_badge_until_the_session_exists() {
         "a running session should draw the spinner glyph: {row:?}"
     );
 }
+
+#[test]
+fn the_control_ai_row_shows_the_waiting_glyph_while_awaiting_input() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+
+    app.overseer_snapshot.control_status = Some(crate::model::Status::Waiting);
+    let content = build_content_with_warnings(&app, Some(23), &[]);
+    let row = content
+        .lines
+        .iter()
+        .find(|line| line.to_string().contains("Control AI"))
+        .expect("no Control AI row")
+        .to_string();
+    let after_label = row.split("Control AI").nth(1).unwrap_or_default();
+    assert!(
+        !after_label.trim().is_empty(),
+        "a session awaiting confirmation should draw a badge: {row:?}"
+    );
+}

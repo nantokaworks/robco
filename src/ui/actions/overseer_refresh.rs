@@ -8,7 +8,7 @@ use crate::{
         other_prs::OtherPrs,
     },
     registry::Registry,
-    tmux,
+    status::{self, WatchStatusState},
 };
 
 use crate::ui::{
@@ -18,12 +18,31 @@ use crate::ui::{
 
 use super::{background_refresh::StatusResult, background_support::merge_status};
 
+/// Persisted classification state for the Overseer's own control tmux
+/// session, carried across refresh ticks the same way a [`WatchStatusState`]
+/// is carried inside `AgentNode` / `RepoNode` — but the control row has no
+/// long-lived model node of its own to hold it, so it lives on
+/// [`super::background_refresh::BackgroundRefresh`] instead. `status` is the
+/// previously reported glyph, fed back in so a transient `tmux` failure can
+/// keep it rather than flipping the row (see
+/// [`crate::status::classify_session_status`]).
+#[derive(Debug, Default, Clone)]
+pub(super) struct ControlWatch {
+    pub(super) status: Option<Status>,
+    pub(super) state: WatchStatusState,
+}
+
 pub(super) struct OverseerResult {
     pub(super) inbox: inbox::Inbox,
     pub(super) snapshot: OverseerSnapshot,
+    pub(super) control_watch: ControlWatch,
 }
 
-pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> OverseerResult {
+pub(super) fn capture_overseer(
+    registry: &Registry,
+    config: &Config,
+    control_watch: &ControlWatch,
+) -> OverseerResult {
     let ledger = Ledger::load().unwrap_or_default();
     let other_prs = OtherPrs::load().unwrap_or_default();
     let discord_channels = crate::overseer::discord_ops_dir()
@@ -63,13 +82,13 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
     let daemon_version = heartbeat
         .as_ref()
         .and_then(|path| crate::overseer::heartbeat::recorded_version(path));
-    // A cheap existence probe, not the full capture/classify pipeline an agent
-    // or repo main session gets: the row only needs to say whether Enter would
-    // attach or create, not track spinner motion.
+    // Classify via the same capture/classify pipeline an agent or repo main
+    // session gets, so the row reflects real activity instead of merely
+    // whether the session exists (dropr:420).
     let control_session = crate::overseer::control_session_name(&config.tmux_session_prefix);
-    let control_status = tmux::has_session(&control_session)
-        .ok()
-        .and_then(|exists| exists.then_some(Status::Running));
+    let mut watch_state = control_watch.state.clone();
+    let control_status =
+        status::classify_session_status(&control_session, control_watch.status, &mut watch_state);
     OverseerResult {
         inbox,
         snapshot: OverseerSnapshot {
@@ -82,6 +101,10 @@ pub(super) fn capture_overseer(registry: &Registry, config: &Config) -> Overseer
             heartbeat_age,
             daemon_version,
             control_status,
+        },
+        control_watch: ControlWatch {
+            status: control_status,
+            state: watch_state,
         },
     }
 }
@@ -111,13 +134,18 @@ impl App {
         self.overseer_snapshot = result.snapshot;
         self.overseer_inbox = result.inbox.items;
         self.overseer_inbox_targets = result.inbox.targets;
+        self.background_refresh.control_watch = result.control_watch;
         self.restore_selection(selected_identity);
     }
 
     pub(in crate::ui) fn refresh_overseer_snapshot(&mut self) {
         // Operator commands only need overseer state immediately; deliberately
         // skip the potentially slow per-repo and per-agent status probes.
-        let result = capture_overseer(&self.registry, &self.config);
+        let result = capture_overseer(
+            &self.registry,
+            &self.config,
+            &self.background_refresh.control_watch,
+        );
         self.background_refresh.overseer_synced_at = Some(Instant::now());
         self.apply_overseer(result);
     }
@@ -175,6 +203,7 @@ mod tests {
                     &Registry::default(),
                 ),
                 snapshot: OverseerSnapshot::default(),
+                control_watch: ControlWatch::default(),
             });
         }
 
@@ -214,6 +243,7 @@ mod tests {
                     targets: std::collections::HashSet::new(),
                 },
                 snapshot,
+                control_watch: ControlWatch::default(),
             },
         }
     }
