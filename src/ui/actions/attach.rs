@@ -209,6 +209,10 @@ impl App {
             ));
             return Ok(());
         }
+        if let Some(Selection::DiscordChannel(index)) = self.selected_item() {
+            self.reset_discord_channel_selected(index);
+            return Ok(());
+        }
         if let Some(Selection::Agent {
             repo,
             agent: agent_idx,

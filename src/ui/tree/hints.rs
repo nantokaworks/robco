@@ -70,6 +70,8 @@ const EXPANDABLE_CATEGORY_HINTS: Hints = &[
 
 const DISCORD_CHANNEL_HINTS: Hints = &[
     ("↵", "attach"),
+    ("r", "retry"),
+    ("x", "remove"),
     ("R", "reset"),
     ("?", "help"),
     ("q", "quit"),
@@ -246,6 +248,12 @@ mod tests {
         )
         .to_string();
         assert_eq!(line, "[↵] ATTACH [?] HELP [q] QUIT");
+    }
+
+    #[test]
+    fn discord_channel_advertises_retry_and_remove() {
+        let line = hints_line(None, Some(Selection::DiscordChannel(0)), false).to_string();
+        assert_eq!(line, "[↵] ATTACH [r] RETRY [x] REMOVE [?] HELP [q] QUIT");
     }
 
     #[test]

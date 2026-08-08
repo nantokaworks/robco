@@ -271,6 +271,7 @@ impl App {
             | Mode::ConfirmOverseerReset
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
+            | Mode::ConfirmRemoveDiscordChannel { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => unreachable!("handled above"),
         }
 

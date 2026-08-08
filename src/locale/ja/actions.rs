@@ -1,7 +1,8 @@
 //! Japanese translations for `src/ui/actions/attach.rs`,
 //! `src/ui/actions/lifecycle.rs`, `src/ui/actions/kill.rs`,
-//! `src/ui/actions/pr.rs`, and `src/ui/input/overseer.rs` — the status
-//! messages `show_message` renders after an operator action.
+//! `src/ui/actions/pr.rs`, `src/ui/actions/discord_channels.rs`, and
+//! `src/ui/input/overseer.rs` — the status messages `show_message` renders
+//! after an operator action.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -135,6 +136,11 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
 
         // actions/attach.rs (dropr:371 additions)
         "channel is no longer listed" => "チャンネルは既に一覧から削除されています",
+
+        // actions/discord_channels.rs (dropr:417)
+        "reset {} to idle" => "{} をidleにリセットしました",
+        "{} is not in a failed state" => "{} はfailed状態ではありません",
+        "removed channel {}" => "チャンネル {} を削除しました",
         _ => return None,
     })
 }

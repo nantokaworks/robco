@@ -170,6 +170,37 @@ impl DiscordChannels {
         self.save(path)
     }
 
+    /// Clears a channel stuck at `Failed` back to `Idle` and drops
+    /// `last_error`, so a transient failure (e.g. a timeout) does not sit in
+    /// the info pane forever once the channel is reachable again. A no-op —
+    /// no write, `false` returned — for an unknown channel id or one that is
+    /// not currently `Failed`, so a stray keypress cannot touch a channel
+    /// mid-turn or a channel that is already fine.
+    pub fn reset_channel(&mut self, path: &Path, channel_id: &str) -> Result<bool, String> {
+        let Some(entry) = self.channels.get_mut(channel_id) else {
+            return Ok(false);
+        };
+        if entry.status != ChannelAgentStatus::Failed {
+            return Ok(false);
+        }
+        entry.status = ChannelAgentStatus::Idle;
+        entry.last_error = None;
+        self.save(path)?;
+        Ok(true)
+    }
+
+    /// Deletes the retained record for `channel_id` entirely — history, turn
+    /// count, everything — for a channel that is gone from Discord or simply
+    /// no longer wanted in the info pane. Returns whether a record existed to
+    /// remove; a no-op — no write — for an unknown channel id.
+    pub fn remove_channel(&mut self, path: &Path, channel_id: &str) -> Result<bool, String> {
+        if self.channels.remove(channel_id).is_none() {
+            return Ok(false);
+        }
+        self.save(path)?;
+        Ok(true)
+    }
+
     /// The operator-facing label for `channel_id`: `#name` when a name is
     /// stored, the raw id otherwise (records from before names were fetched,
     /// or channels whose every fetch failed).

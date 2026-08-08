@@ -23,6 +23,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "reset dispatch circuit?" => "dispatch回路をリセットしますか？",
         "stop the overseer daemon?" => "overseerデーモンを停止しますか？",
         "clear the overseer inbox?" => "overseer受信箱を消去しますか？",
+        "remove channel?" => "チャンネルを削除しますか？",
 
         // Body / hint text
         "Create a new agent with an optional | initial prompt." => {

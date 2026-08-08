@@ -245,6 +245,11 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             ],
             None,
         ),
+        Mode::ConfirmRemoveDiscordChannel { label, .. } => (
+            t(locale, "remove channel?"),
+            confirm_lines(locale, label.clone(), "y remove   n/esc cancel"),
+            None,
+        ),
         Mode::ErrorDialog {
             title,
             lines,
