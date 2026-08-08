@@ -26,6 +26,7 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmOverseerReset
             | Mode::ConfirmInboxDismissAll { .. }
+            | Mode::ConfirmRemoveDiscordChannel { .. }
             | Mode::ConfirmOverseerBulkToggle { .. } => Some(Ok(())),
             _ => None,
         };
@@ -104,6 +105,14 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             app.mode = Mode::Normal;
             if confirmed {
                 app.dismiss_inbox_all();
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmRemoveDiscordChannel { channel_id, label } => {
+            let (channel_id, label) = (channel_id.clone(), label.clone());
+            app.mode = Mode::Normal;
+            if confirmed {
+                app.remove_discord_channel(&channel_id, &label);
             }
             Some(Ok(()))
         }

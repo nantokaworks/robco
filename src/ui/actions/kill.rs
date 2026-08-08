@@ -102,6 +102,9 @@ impl App {
                     };
                 }
             }
+            Some(Selection::DiscordChannel(index)) => {
+                self.confirm_remove_discord_channel_selected(index);
+            }
             _ => {}
         }
     }

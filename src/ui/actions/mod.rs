@@ -3,6 +3,7 @@ pub(super) mod background_refresh;
 mod background_support;
 pub(super) mod children;
 pub(super) mod clone;
+mod discord_channels;
 pub(super) mod discovery;
 mod discovery_capture;
 mod dropr_overlay;

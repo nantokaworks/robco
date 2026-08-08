@@ -85,6 +85,12 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 only while a turn is running for that channel)" => {
             "                 そのチャンネルでターン実行中のみ）"
         }
+        "  r              on a channel row: reset a failed channel to idle" => {
+            "  r              チャンネル行：failed状態をidleにリセット"
+        }
+        "  x              on a channel row: remove the retained record (confirms)" => {
+            "  x              チャンネル行：保持レコードを削除（要確認）"
+        }
         "  a              clone <git-url> [branch], or add local repo path" => {
             "  a              <git-url> [branch] をclone、またはローカルパスを追加"
         }

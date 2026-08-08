@@ -162,6 +162,16 @@ enum Mode {
     ConfirmInboxDismissAll {
         count: usize,
     },
+    /// Delete a retained Discord channel record. Holds the channel id (not an
+    /// index) since the row order re-derives from `last_active_at` on every
+    /// refresh — the same hazard `ConfirmKillOrphan` guards against. `label`
+    /// is the display label the dialog was opened with, reused for the
+    /// result message so it reads the same even if the record is gone by the
+    /// time the operator confirms.
+    ConfirmRemoveDiscordChannel {
+        channel_id: String,
+        label: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

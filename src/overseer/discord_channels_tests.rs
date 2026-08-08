@@ -158,6 +158,74 @@ fn set_channel_name_without_a_record_is_a_no_op() {
 }
 
 #[test]
+fn reset_channel_clears_a_failed_status_back_to_idle() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    let mut channels = DiscordChannels::load(&path).unwrap();
+
+    channels.begin_turn(&path, "c1").unwrap();
+    channels
+        .end_turn(&path, "c1", "hi", Err("session timed out"))
+        .unwrap();
+    assert_eq!(
+        channels.channels.get("c1").unwrap().status,
+        ChannelAgentStatus::Failed
+    );
+
+    assert!(channels.reset_channel(&path, "c1").unwrap());
+    let record = channels.channels.get("c1").unwrap();
+    assert_eq!(record.status, ChannelAgentStatus::Idle);
+    assert_eq!(record.last_error, None);
+
+    let reloaded = DiscordChannels::load(&path).unwrap();
+    assert_eq!(reloaded, channels);
+}
+
+#[test]
+fn reset_channel_is_a_no_op_for_an_unknown_or_non_failed_channel() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    let mut channels = DiscordChannels::load(&path).unwrap();
+
+    assert!(!channels.reset_channel(&path, "unknown").unwrap());
+    assert!(!path.exists());
+
+    channels.begin_turn(&path, "c1").unwrap();
+    channels.end_turn(&path, "c1", "hi", Ok("hello")).unwrap();
+    assert_eq!(
+        channels.channels.get("c1").unwrap().status,
+        ChannelAgentStatus::Idle
+    );
+    assert!(!channels.reset_channel(&path, "c1").unwrap());
+}
+
+#[test]
+fn remove_channel_deletes_the_retained_record() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    let mut channels = DiscordChannels::load(&path).unwrap();
+
+    channels.begin_turn(&path, "c1").unwrap();
+    channels.end_turn(&path, "c1", "hi", Ok("hello")).unwrap();
+
+    assert!(channels.remove_channel(&path, "c1").unwrap());
+    assert!(channels.channels.is_empty());
+
+    let reloaded = DiscordChannels::load(&path).unwrap();
+    assert!(reloaded.channels.is_empty());
+}
+
+#[test]
+fn remove_channel_is_a_no_op_for_an_unknown_channel() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("channels.json");
+    let mut channels = DiscordChannels::load(&path).unwrap();
+
+    assert!(!channels.remove_channel(&path, "unknown").unwrap());
+    assert!(!path.exists());
+}
+
+#[test]
 fn a_record_written_before_channel_names_existed_still_loads() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("channels.json");
