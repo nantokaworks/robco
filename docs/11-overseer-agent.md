@@ -139,6 +139,31 @@ Workers report to the append-only inbox at `~/.robco/overseer/inbox.jsonl`; the 
 reads complete JSONL records, commits an offset only after the poll is persisted, and
 rotates consumed data after the file reaches 1 MiB.
 
+### Ordering and file-overlap races
+
+Overseer's dispatch candidates come straight from dropr's `task ready` feed, and that
+feed already excludes a task behind an unresolved `blocks` dependency edge (dropr:375).
+No dispatch-time gate re-implements this in `dispatch/gate.rs`; the exclusion is dropr's,
+not Overseer's, and doing it twice would only drift. Two existing paths already rely on
+this:
+
+- A worker that discovers, mid-implementation, that its own task cannot proceed until a
+  different task merges first creates the `blocks` edge, reports `waiting-prerequisite`,
+  and releases its claim — see the worker prompt in `templates.rs`.
+- `daemon/merge_dependency.rs` reads the same edge at merge time and holds a pull request
+  whose task still depends on an unmerged prerequisite, because a worker cannot un-open a
+  pull request once it learns its task was ordered behind another.
+
+A third case has no code counterpart: an agent that files a follow-up task for someone
+else while its own current task still has an open, unmerged pull request touching the
+same file. Left as a plain open task, the follow-up is immediately dispatchable — dropr's
+60-second-default poll can hand it to another worker before the original pull request
+merges, and a split on the pre-edit file layout collides with the still-open edit (dropr
+#423 / #426, PR #345 / #346). The fix is a workflow instruction, not a gate: the filing
+agent must add a `blocks` edge from the follow-up onto its own in-flight task whenever
+their file footprints overlap, the same edge the two cases above already use. See dropr
+#427 for the decision record.
+
 ### Post-merge cleanup
 
 An entry that reaches `merged` is cleaned up while its registry row still exists. The
