@@ -9,12 +9,13 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use std::cmp::Reverse;
+use std::{cmp::Reverse, collections::BTreeMap};
 
 use crate::overseer::{
     config::OverseerConfig,
     ledger::{Ledger, terminal},
     logging::{DecisionEntry, DecisionKind},
+    monitor::BranchObservation,
 };
 
 /// Most recent decisions carried into a review.
@@ -45,10 +46,12 @@ pub(super) struct Entry {
     pub task: String,
     pub repo: String,
     pub phase: &'static str,
-    /// Minutes since the worker was dispatched. The ledger records no
-    /// phase-transition time, so this is an age rather than a true time-in-phase
-    /// — for a non-terminal entry the two coincide once it stops advancing,
-    /// which is exactly the case worth reporting.
+    /// Minutes since the worker last showed progress: the latest local commit
+    /// on its own task branch, or `dispatched_at` when no commit was observed
+    /// (no branch activity probe, or none newer than dispatch). A RUN worker
+    /// can hold one ledger phase — typically `claimed` — for hours by design
+    /// while it works through a subtree, so age-since-phase-entry alone cannot
+    /// tell that apart from a worker that stopped moving; a fresh commit can.
     pub age_mins: i64,
 }
 
@@ -64,6 +67,7 @@ pub(super) struct Counters {
 pub(super) fn build(
     decisions: &[DecisionEntry],
     ledger: &Ledger,
+    branch_activity: &[BranchObservation],
     config: &OverseerConfig,
     now: DateTime<Utc>,
 ) -> Digest {
@@ -86,7 +90,7 @@ pub(super) fn build(
                 reason: truncate(&entry.reason),
             })
             .collect(),
-        entries: live_entries(ledger, now),
+        entries: live_entries(ledger, branch_activity, now),
         counters: Counters {
             consecutive_failures: ledger.counters.consecutive_failures,
             failure_circuit_threshold: config.failure_circuit_threshold,
@@ -97,20 +101,45 @@ pub(super) fn build(
     }
 }
 
-fn live_entries(ledger: &Ledger, now: DateTime<Utc>) -> Vec<Entry> {
+fn live_entries(
+    ledger: &Ledger,
+    branch_activity: &[BranchObservation],
+    now: DateTime<Utc>,
+) -> Vec<Entry> {
+    // Last observation wins on a duplicate task id, which never happens in
+    // practice — one probe per live ledger entry per pass — but a map read is
+    // no less correct than a list scan if it ever did.
+    let latest_commit_at: BTreeMap<&str, DateTime<Utc>> = branch_activity
+        .iter()
+        .filter_map(|observation| {
+            observation
+                .latest_commit_at
+                .map(|at| (observation.task_id.as_str(), at))
+        })
+        .collect();
     let mut entries = ledger
         .entries
         .iter()
         .filter(|entry| !terminal(entry.phase))
-        .map(|entry| Entry {
-            task: if entry.display_id.is_empty() {
-                entry.task_id.clone()
-            } else {
-                entry.display_id.clone()
-            },
-            repo: entry.repo.clone(),
-            phase: entry.phase.label(),
-            age_mins: (now - entry.dispatched_at).num_minutes().max(0),
+        .map(|entry| {
+            // A commit older than dispatch is prior work the branch already
+            // carried, not progress made under this claim — only a commit
+            // strictly after `dispatched_at` counts.
+            let progress_at = latest_commit_at
+                .get(entry.task_id.as_str())
+                .copied()
+                .filter(|at| *at > entry.dispatched_at)
+                .unwrap_or(entry.dispatched_at);
+            Entry {
+                task: if entry.display_id.is_empty() {
+                    entry.task_id.clone()
+                } else {
+                    entry.display_id.clone()
+                },
+                repo: entry.repo.clone(),
+                phase: entry.phase.label(),
+                age_mins: (now - progress_at).num_minutes().max(0),
+            }
         })
         .collect::<Vec<_>>();
     // Oldest first, so the cap drops the entries least likely to be stalled.

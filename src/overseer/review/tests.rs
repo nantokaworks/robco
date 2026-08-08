@@ -2,6 +2,7 @@ use super::*;
 use crate::overseer::{
     config::OverseerConfig,
     ledger::{LedgerEntry, LedgerPhase},
+    monitor::BranchObservation,
 };
 use chrono::TimeZone;
 
@@ -91,7 +92,16 @@ pub(super) fn live_entry(
 }
 
 fn reasons(decisions: &[DecisionEntry], ledger: &Ledger, config: &OverseerConfig) -> Vec<String> {
-    let digest = digest::build(decisions, ledger, config, now());
+    reasons_with_activity(decisions, ledger, &[], config)
+}
+
+pub(super) fn reasons_with_activity(
+    decisions: &[DecisionEntry],
+    ledger: &Ledger,
+    branch_activity: &[BranchObservation],
+    config: &OverseerConfig,
+) -> Vec<String> {
+    let digest = digest::build(decisions, ledger, branch_activity, config, now());
     findings::detect(&digest, config)
         .into_iter()
         .map(|finding| finding.reason)
@@ -218,7 +228,7 @@ fn the_digest_is_bounded_however_long_the_log_is() {
         })
         .collect();
 
-    let built = digest::build(&decisions, &ledger_with(entries), &config, now());
+    let built = digest::build(&decisions, &ledger_with(entries), &[], &config, now());
     assert_eq!(built.decisions.len(), digest::MAX_DECISIONS);
     assert!(built.entries.len() <= 50);
     assert!(

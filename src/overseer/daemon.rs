@@ -161,7 +161,7 @@ pub async fn run_daemon() -> Result<()> {
         // Read-only, and deliberately placed before the acting passes: it
         // reviews the board the pass inherited rather than the one this pass is
         // in the middle of changing.
-        review.tick(&config, &next, now)?;
+        review.tick(&config, &next, &observed, now)?;
         let pulled = execute_actions(
             &actions,
             config.overseer.release_pipeline_enabled,

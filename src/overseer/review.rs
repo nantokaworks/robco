@@ -22,32 +22,23 @@ mod briefing;
 mod digest;
 mod findings;
 mod result;
+mod session;
 mod state;
 
 use chrono::{DateTime, Utc};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::mpsc::TryRecvError,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::mpsc::TryRecvError};
 
 use crate::{
     Result,
-    config::{Config, Profile},
+    config::Config,
     overseer::{
         daily::DailyCounter,
         ledger::Ledger,
         logging::{self, DecisionEntry, DecisionKind},
-        session::{
-            BRIEFING_PROMPT, EphemeralSession, SessionControl, SessionHandle, SessionResult,
-            env::SessionEnv, session_profile, terminate_stale_session,
-        },
+        monitor::Observations,
+        session::{SessionHandle, SessionResult},
     },
 };
-
-use digest::Digest;
-use findings::Finding;
 
 /// `source` written on every decision this pass records. Also what the digest
 /// filters out, so the review never reads itself back as evidence.
@@ -90,14 +81,20 @@ impl ReviewPass {
     }
 
     /// Runs at most one step of the review and never waits for a model process.
-    pub fn tick(&mut self, config: &Config, ledger: &Ledger, now: DateTime<Utc>) -> Result<()> {
+    pub fn tick(
+        &mut self,
+        config: &Config,
+        ledger: &Ledger,
+        observations: &Observations,
+        now: DateTime<Utc>,
+    ) -> Result<()> {
         if self.active.is_some() {
             return self.poll_session();
         }
         if !self.due(config, now) {
             return Ok(());
         }
-        self.review(config, ledger, now)
+        self.review(config, ledger, observations, now)
     }
 
     fn due(&self, config: &Config, now: DateTime<Utc>) -> bool {
@@ -108,9 +105,21 @@ impl ReviewPass {
         (now - last).num_minutes() >= interval
     }
 
-    fn review(&mut self, config: &Config, ledger: &Ledger, now: DateTime<Utc>) -> Result<()> {
+    fn review(
+        &mut self,
+        config: &Config,
+        ledger: &Ledger,
+        observations: &Observations,
+        now: DateTime<Utc>,
+    ) -> Result<()> {
         let decisions = logging::tail_from(&self.log_path, digest::MAX_DECISIONS)?;
-        let digest = digest::build(&decisions, ledger, &config.overseer, now);
+        let digest = digest::build(
+            &decisions,
+            ledger,
+            &observations.branches,
+            &config.overseer,
+            now,
+        );
         let found = findings::detect(&digest, &config.overseer);
         self.state.last_run = Some(now);
         let fresh = state::State::newly_seen(
@@ -137,7 +146,7 @@ impl ReviewPass {
             return self.log(DecisionKind::Hold, "review_budget_exhausted");
         }
         self.counter.increment(&self.counter_path)?;
-        self.active = Some(spawn_session(config, &digest, &found, &self.root));
+        self.active = Some(session::spawn_session(config, &digest, &found, &self.root));
         Ok(())
     }
 
@@ -163,7 +172,10 @@ impl ReviewPass {
                     &format!("review result rejected: {error}"),
                 ),
             },
-            other => self.log(DecisionKind::Hold, &format!("review {}", failed(other))),
+            other => self.log(
+                DecisionKind::Hold,
+                &format!("review {}", session::failed(other)),
+            ),
         }
     }
 
@@ -204,81 +216,6 @@ impl ReviewPass {
     }
 }
 
-fn spawn_session(
-    config: &Config,
-    digest: &Digest,
-    findings: &[Finding],
-    root: &Path,
-) -> SessionHandle {
-    let profile = review_profile(config);
-    let timeout = Duration::from_secs(config.overseer.triage_timeout_mins.saturating_mul(60));
-    let case_dir = root.join("session");
-    let case = match serde_json::to_vec_pretty(digest) {
-        Ok(raw) => raw,
-        Err(error) => {
-            return SessionHandle::spawn(move |_| SessionResult::LaunchFailed(error.to_string()));
-        }
-    };
-    let prompt = briefing::render(digest, findings, config.language.as_deref());
-    let env = SessionEnv::resolve(config);
-    SessionHandle::spawn(move |control| {
-        run_session(profile, timeout, &case, &prompt, &case_dir, &control, &env)
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_session(
-    profile: Option<Profile>,
-    timeout: Duration,
-    case: &[u8],
-    prompt: &str,
-    case_dir: &Path,
-    control: &SessionControl,
-    env: &SessionEnv,
-) -> SessionResult {
-    if let Err(error) = fs::create_dir_all(case_dir) {
-        return SessionResult::LaunchFailed(error.to_string());
-    }
-    if let Err(error) = fs::write(case_dir.join("digest.json"), case)
-        .and_then(|()| fs::write(case_dir.join("briefing.md"), prompt))
-    {
-        return SessionResult::LaunchFailed(error.to_string());
-    }
-    let Some(profile) = profile else {
-        return SessionResult::LaunchFailed("review profile not found".into());
-    };
-    let pid_path = case_dir.join("session.pid");
-    terminate_stale_session(&pid_path);
-    EphemeralSession {
-        profile: &profile,
-        case_dir,
-        timeout,
-        env,
-        prompt: BRIEFING_PROMPT,
-    }
-    .run_controlled(&result::is_complete, control, Some(&pid_path))
-}
-
-pub(crate) fn review_profile(config: &Config) -> Option<Profile> {
-    config
-        .overseer
-        .review_profile
-        .as_ref()
-        .and_then(|name| session_profile(config, Some(name)))
-}
-
-fn failed(result: SessionResult) -> String {
-    match result {
-        SessionResult::TimedOut => "session timed out".into(),
-        SessionResult::Missing => "session exited without result.json".into(),
-        SessionResult::AuthFailed(detail) => {
-            format!("{}: {detail}", crate::overseer::session::auth::REASON)
-        }
-        SessionResult::LaunchFailed(error) => format!("session failed: {error}"),
-        SessionResult::Result(_) => unreachable!("a result is not a failure"),
-    }
-}
-
 #[cfg(test)]
 #[path = "review/tests.rs"]
 mod tests;
@@ -286,3 +223,11 @@ mod tests;
 #[cfg(test)]
 #[path = "review/pass_tests.rs"]
 mod pass_tests;
+
+#[cfg(test)]
+#[path = "review/stall_tests.rs"]
+mod stall_tests;
+
+#[cfg(test)]
+#[path = "review/briefing_tests.rs"]
+mod briefing_tests;
