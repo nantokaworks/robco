@@ -140,9 +140,11 @@ pub fn refresh_repo_main(
 
 /// Refreshes how far the primary checkout's local `main` trails
 /// `origin/main`, purely from whichever refs are already known — no fetch of
-/// its own, so this is safe to call every status tick. `None` when `main` is
-/// not behind, or the comparison could not be made at all (no local `main`,
-/// no `origin`, not a repository).
+/// its own. The value only moves when the refs move (a fetch, merge, pull,
+/// or push), so this runs on the slower discovery tick rather than the
+/// 750 ms status tick. `None` when `main` is not behind, or the comparison
+/// could not be made at all (no local `main`, no `origin`, not a
+/// repository).
 pub fn refresh_main_drift(repo: &mut crate::model::RepoNode) {
     repo.main_behind_origin = git::ahead_behind(&repo.path, "main", "origin/main")
         .ok()
