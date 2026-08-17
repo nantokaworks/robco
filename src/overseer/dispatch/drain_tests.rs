@@ -16,6 +16,7 @@ fn candidate(id: &str) -> Candidate {
         workspace: "workspace".into(),
         priority_score: None,
         status: "open".into(),
+        parent_task_id: None,
     }
 }
 

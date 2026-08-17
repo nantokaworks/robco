@@ -4,21 +4,20 @@ use std::mem;
 
 use super::{
     Candidate,
-    decision_log::{
-        log_candidate, log_global, log_ready_failure, log_repo_skip, skip_unmaterialised,
-    },
-    drain, plan_dispatch,
+    decision_log::{log_candidate_once, log_global, log_global_once},
+    drain,
+    gather::gather_candidates,
+    plan_dispatch,
     route::{Route, remaining_capacity, route},
     worker::{SpawnOutcome, spawn_candidate},
 };
 use crate::overseer::{
     config_write,
-    exec::COMMAND_TIMEOUT,
     judge::JudgmentQueue,
     ledger::Ledger,
     logging::{self, DecisionKind},
 };
-use crate::{Result, config::Config, dropr, dropr::READY_FETCH_LIMIT, registry::Registry};
+use crate::{Result, config::Config, registry::Registry};
 
 pub fn dispatch_pass(
     config: &mut Config,
@@ -26,6 +25,8 @@ pub fn dispatch_pass(
     now: DateTime<Utc>,
     judgments: &mut JudgmentQueue,
     unmaterialised_logged: &mut BTreeSet<String>,
+    dispatch_hold_logged: &mut BTreeMap<String, String>,
+    dispatch_global_hold_logged: &mut Option<String>,
 ) -> Result<()> {
     let worker_modes = worker_modes()?;
     let preflight = plan_dispatch(&config.overseer, ledger, &[], now, &worker_modes);
@@ -36,17 +37,32 @@ pub fn dispatch_pass(
         return Ok(());
     }
     if let Some(decision) = preflight.decisions.first() {
-        log_global(DecisionKind::Skip, &decision.reason)?;
+        log_global_once(
+            DecisionKind::Skip,
+            &decision.reason,
+            dispatch_global_hold_logged,
+            logging::append,
+        )?;
         return Ok(());
     }
 
-    let Some(candidates) = gather_candidates(unmaterialised_logged)? else {
+    let Some(candidates) = gather_candidates(unmaterialised_logged, dispatch_global_hold_logged)?
+    else {
         // The gather itself failed (e.g. `dropr_overlay_unavailable`, already
         // logged inside `gather_candidates`); an empty result here is not
         // evidence the board is quiet, so the queue-drained check must not
         // run on it.
         return Ok(());
     };
+    // Every global gate cleared this pass, so whatever blocked an earlier
+    // pass — this reason or a different one — is free to log fresh if it
+    // recurs later.
+    *dispatch_global_hold_logged = None;
+    // A task id that left the candidate list (dispatched, closed, or no
+    // longer offered) leaves no stale entry behind to wrongly suppress a
+    // later, genuinely new decision about the same task id.
+    let candidate_ids: BTreeSet<&str> = candidates.iter().map(|c| c.task_id.as_str()).collect();
+    dispatch_hold_logged.retain(|task_id, _| candidate_ids.contains(task_id.as_str()));
     drain::check(&candidates, ledger)?;
     let plan = plan_dispatch(&config.overseer, ledger, &candidates, now, &worker_modes);
     let approved = plan
@@ -84,7 +100,15 @@ pub fn dispatch_pass(
         config.overseer.failure_circuit_threshold,
         &mut streaks,
         |candidate| spawn_candidate(config, ledger, candidate, now, taken.label()),
-        log_candidate,
+        |kind, candidate, reason| {
+            log_candidate_once(
+                kind,
+                candidate,
+                reason,
+                dispatch_hold_logged,
+                logging::append,
+            )
+        },
     )?;
     ledger.dispatch_failure_streaks = streaks;
     // A candidate that exhausted its own budget stops being redispatched from
@@ -141,6 +165,12 @@ where
             // A candidate the pre-spawn re-check held was never attempted, so it
             // leaves the failure budget for genuine spawn faults untouched.
             Ok(SpawnOutcome::Held(reason)) => log(DecisionKind::Hold, &candidate, &reason)?,
+            // Same failure-budget treatment as `Held` — an escalated candidate
+            // never reached a spawn attempt either — logged as `Escalate` so it
+            // reaches the alert digest instead of reading as a routine hold.
+            Ok(SpawnOutcome::Escalated(reason)) => {
+                log(DecisionKind::Escalate, &candidate, &reason)?
+            }
             Err(error) => {
                 let streak = streaks.entry(candidate.task_id.clone()).or_insert(0);
                 *streak = streak.saturating_add(1);
@@ -177,102 +207,6 @@ fn open_circuit(config: &mut Config) -> Result<()> {
     )?;
     eprintln!("overseer: dispatch circuit opened; operator action required");
     Ok(())
-}
-
-/// `None` means the gather itself failed (currently: the dropr workspace
-/// overlay was unreachable) — distinct from `Some(vec![])`, a gather that
-/// succeeded and simply found nothing ready. Callers that treat "no
-/// candidates" as a board signal (the queue-drained check) must tell the two
-/// apart, or an outage reads as "all done".
-fn gather_candidates(
-    unmaterialised_logged: &mut BTreeSet<String>,
-) -> Result<Option<Vec<Candidate>>> {
-    let registry = Registry::load()?;
-    let (workspaces, overlay_ok) = dropr::DroprOverlay::load_with_status_timeout(COMMAND_TIMEOUT);
-    if !overlay_ok {
-        // Without the workspace overlay every repo would be skipped silently;
-        // record the outage so an idle overseer is diagnosable from decisions.jsonl.
-        log_global(DecisionKind::Skip, "dropr_overlay_unavailable")?;
-        return Ok(None);
-    }
-    let mut candidates = Vec::new();
-    for repo in &registry.repos {
-        if repo.management == crate::model::ManagementMode::Manual {
-            // An operator working a repo by hand opted it out; recording this
-            // as its own skip reason (rather than falling through to
-            // `workspace_unmatched`) is what keeps an idle Overseer
-            // diagnosable from `decisions.jsonl` alone.
-            log_repo_skip(
-                &repo.path.to_string_lossy(),
-                "overseer_unmanaged",
-                logging::append,
-            )?;
-            continue;
-        }
-        let Some(remote) = &repo.remote_url else {
-            continue;
-        };
-        let Some(workspace) = workspaces.find_by_repo_url(remote) else {
-            log_repo_skip(
-                &repo.path.to_string_lossy(),
-                "workspace_unmatched",
-                logging::append,
-            )?;
-            continue;
-        };
-        if skip_unmaterialised(
-            &repo.path.to_string_lossy(),
-            workspace,
-            unmaterialised_logged,
-            logging::append,
-        )? {
-            continue;
-        }
-        if !repo.path.exists() {
-            // Dispatching into a missing checkout fails the spawn and feeds
-            // the failure circuit; skip stale registry entries instead.
-            log_repo_skip(
-                &repo.path.to_string_lossy(),
-                "repo_path_missing",
-                logging::append,
-            )?;
-            continue;
-        }
-        let tasks = match dropr::fetch_ready_dispatch_tasks_timeout(
-            &workspace.id,
-            READY_FETCH_LIMIT,
-            COMMAND_TIMEOUT,
-        ) {
-            Ok(tasks) => tasks,
-            Err(error) => {
-                log_ready_failure(
-                    &repo.path.to_string_lossy(),
-                    &workspace.id,
-                    error,
-                    logging::append,
-                )?;
-                continue;
-            }
-        };
-        for task in tasks {
-            candidates.push(Candidate {
-                task_id: if task.id.is_empty() {
-                    task.task.display_id.clone()
-                } else {
-                    task.id
-                },
-                display_id: task.task.display_id,
-                title: task.task.title,
-                repo: repo.path.to_string_lossy().into_owned(),
-                author: task.author,
-                priority: task.task.priority,
-                workspace: workspace.id.clone(),
-                priority_score: task.task.priority_score,
-                status: task.task.status,
-            });
-        }
-    }
-    Ok(Some(candidates))
 }
 
 #[cfg(test)]

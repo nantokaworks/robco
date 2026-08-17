@@ -1,13 +1,15 @@
-use crate::{config::language_directive, overseer::OVERSEER_AGENT_ID};
+use crate::{config::language_directive, dropr::Subtask, overseer::OVERSEER_AGENT_ID};
 
 pub fn worker_prompt(
     display_id: &str,
     task_id: &str,
     title: &str,
     repo: &str,
+    subtasks: &[Subtask],
     language: Option<&str>,
 ) -> String {
     let directive = language_directive(language);
+    let close_directive = close_directive_instruction(display_id, subtasks);
     format!(
         r#"You are the autonomous RUN worker for assigned Dropr task {display_id} ({task_id}):
 {title}
@@ -21,7 +23,7 @@ a second claim would only fight the one you already hold. Verify the task is cla
 
 Follow RUN discipline: implement the task, self-review the diff, run relevant tests, commit with
 `(refs dropr:{task_id})` in the commit message, and push only your assigned branch. Open a pull
-request whose body contains `Close Dropr: {display_id}`. Finally run `robco report --kind done`.
+request whose body contains {close_directive} Finally run `robco report --kind done`.
 The current report CLI carries lifecycle kind only; Overseer discovers the PR URL from your branch.
 
 If, while implementing, you discover this task cannot proceed until a *different* dropr task
@@ -38,6 +40,29 @@ not through dropr, not through the Inbox — run `robco report --kind unblocked`
 tells Overseer the block lifted immediately instead of waiting for its next observation pass.
 
 {directive}Never merge. Never force push. Never push to main. Never create extra worktrees."#
+    )
+}
+
+/// The dispatch prompt's close-directive instruction, one line for a childless
+/// task and one `Close Dropr:` line per subtask plus a `Refs Dropr:` line for
+/// the parent when the dispatched task has subtasks
+/// (dropr:yD5Gf6TX23VMvuSLFsmvO).
+///
+/// Without this, a parent dispatch's PR closed only the parent: every subtask
+/// stayed `open` and unclaimed, so dropr kept offering them on the ready feed
+/// and Overseer dispatched a fresh worker for work that had already merged.
+fn close_directive_instruction(display_id: &str, subtasks: &[Subtask]) -> String {
+    if subtasks.is_empty() {
+        return format!("`Close Dropr: {display_id}`.");
+    }
+    let close_lines = subtasks
+        .iter()
+        .map(|subtask| format!("`Close Dropr: {}`", subtask.display_id))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "one line for each subtask this run covers — {close_lines} — plus \
+         `Refs Dropr: {display_id}` for the parent task itself."
     )
 }
 
@@ -80,7 +105,13 @@ mod tests {
     use super::*;
 
     fn worker(language: Option<&str>) -> String {
-        worker_prompt("#132", "abc", "Build overseer", "/repo", language)
+        worker_prompt("#132", "abc", "Build overseer", "/repo", &[], language)
+    }
+
+    fn subtask(display_id: &str) -> Subtask {
+        Subtask {
+            display_id: display_id.into(),
+        }
     }
 
     fn recovery(language: Option<&str>) -> String {
@@ -153,6 +184,37 @@ mod tests {
         ] {
             assert!(prompt.contains(rail), "missing rail: {rail}");
         }
+    }
+
+    /// dropr:yD5Gf6TX23VMvuSLFsmvO defect 1: a parent dispatch's PR body must
+    /// close every subtask the run covers, not just the parent — otherwise
+    /// every subtask stays open and unclaimed after the merge, and dropr
+    /// redispatches a fresh worker for work that already landed.
+    #[test]
+    fn a_parent_dispatch_closes_every_subtask_and_refs_the_parent() {
+        let prompt = worker_prompt(
+            "#431",
+            "abc",
+            "Make the merge loop always end in a merge or a notice",
+            "/repo",
+            &[subtask("#432"), subtask("#436")],
+            None,
+        );
+        assert!(prompt.contains("`Close Dropr: #432`"));
+        assert!(prompt.contains("`Close Dropr: #436`"));
+        assert!(prompt.contains("`Refs Dropr: #431`"));
+        // The parent itself must never appear as a Close directive — only
+        // subtasks close; the parent closes once every subtask has.
+        assert!(!prompt.contains("`Close Dropr: #431`"));
+    }
+
+    /// The other half of the same defect: a childless task's prompt must stay
+    /// exactly what it was before this change.
+    #[test]
+    fn a_childless_dispatch_keeps_the_single_close_line() {
+        let prompt = worker_prompt("#132", "abc", "Build overseer", "/repo", &[], None);
+        assert!(prompt.contains("`Close Dropr: #132`."));
+        assert!(!prompt.contains("Refs Dropr:"));
     }
 
     #[test]

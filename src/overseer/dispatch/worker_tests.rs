@@ -57,6 +57,7 @@ fn a_failed_spawn_still_counts_against_max_retries() {
             workspace: "workspace-1".into(),
             priority_score: None,
             status: "open".into(),
+            parent_task_id: None,
         }],
         Utc::now(),
         &HashMap::new(),
@@ -76,6 +77,7 @@ fn candidate(display_id: &str, title: &str) -> Candidate {
         workspace: "workspace-1".into(),
         priority_score: None,
         status: "open".into(),
+        parent_task_id: None,
     }
 }
 
@@ -138,6 +140,72 @@ fn an_unrelated_pull_request_does_not_hold_the_candidate() {
         closed_elsewhere(&OtherPrs::default(), &candidate("#803", "task")),
         None
     );
+}
+
+/// dropr:ZJd6VtMdhDsD39-oeoq_L: a left-over branch is not a transient state,
+/// so holding the candidate forever (one branch was held 1,151 times in the
+/// evidence this task cites) hides the real problem instead of surfacing it.
+#[test]
+fn a_branch_conflict_escalates_after_the_bound_and_then_stays_quiet() {
+    let mut ledger = Ledger::default();
+    for expected_holds in 1..MAX_BRANCH_EXISTS_HOLDS {
+        match branch_exists_outcome(&mut ledger, "task-1", "robco/task-1-branch") {
+            SpawnOutcome::Held(reason) => {
+                assert_eq!(reason, "branch_exists:robco/task-1-branch");
+            }
+            SpawnOutcome::Escalated(_) => panic!("escalated before the bound was spent"),
+            SpawnOutcome::Spawned => unreachable!(),
+        }
+        assert_eq!(ledger.branch_exists_holds["task-1"], expected_holds);
+    }
+
+    // The pass that spends the bound escalates exactly once.
+    let SpawnOutcome::Escalated(reason) =
+        branch_exists_outcome(&mut ledger, "task-1", "robco/task-1-branch")
+    else {
+        panic!("expected the bound-spending pass to escalate");
+    };
+    assert_eq!(reason, "branch_exists:robco/task-1-branch");
+    assert_eq!(
+        ledger.branch_exists_holds["task-1"],
+        MAX_BRANCH_EXISTS_HOLDS
+    );
+
+    // Every later pass while the branch is still there is a steady hold, not
+    // a repeated escalation, and the count no longer grows.
+    for _ in 0..3 {
+        let SpawnOutcome::Held(reason) =
+            branch_exists_outcome(&mut ledger, "task-1", "robco/task-1-branch")
+        else {
+            panic!("expected the steady escalated hold, not a repeated escalation");
+        };
+        assert_eq!(reason, "branch_exists_escalated:robco/task-1-branch");
+    }
+    assert_eq!(
+        ledger.branch_exists_holds["task-1"],
+        MAX_BRANCH_EXISTS_HOLDS
+    );
+}
+
+#[test]
+fn a_cleared_branch_conflict_resets_the_hold_count() {
+    let mut ledger = Ledger::default();
+    ledger.branch_exists_holds.insert("task-1".into(), 4);
+
+    ledger.branch_exists_holds.remove("task-1");
+
+    assert!(!ledger.branch_exists_holds.contains_key("task-1"));
+}
+
+#[test]
+fn separate_tasks_hold_their_own_independent_counts() {
+    let mut ledger = Ledger::default();
+    branch_exists_outcome(&mut ledger, "task-1", "branch-a");
+    branch_exists_outcome(&mut ledger, "task-1", "branch-a");
+    branch_exists_outcome(&mut ledger, "task-2", "branch-b");
+
+    assert_eq!(ledger.branch_exists_holds["task-1"], 2);
+    assert_eq!(ledger.branch_exists_holds["task-2"], 1);
 }
 
 #[test]

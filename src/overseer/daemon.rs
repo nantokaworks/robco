@@ -100,6 +100,17 @@ pub async fn run_daemon() -> Result<()> {
     // worktree cleanup does not re-emit the same decision-log line every
     // pass. Deliberately in-memory, same rationale as `unmaterialised_logged`.
     let mut cleanup_notes_logged = BTreeMap::new();
+    // Task id -> last logged per-candidate dispatch decision reason this
+    // daemon run, so a candidate held on the same reason writes one line
+    // instead of one per poll. Deliberately in-memory, same rationale as
+    // `unmaterialised_logged`; `dispatch_pass` prunes a task id's entry once
+    // it leaves the candidate list.
+    let mut dispatch_hold_logged = BTreeMap::new();
+    // Last logged global (not candidate-scoped) dispatch decision reason —
+    // `dispatch_disabled`, `daily_limit`, `circuit_open`, or
+    // `dropr_overlay_unavailable` — this daemon run. `None` once a pass gets
+    // past every global gate.
+    let mut dispatch_global_hold_logged = None;
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -198,6 +209,8 @@ pub async fn run_daemon() -> Result<()> {
             now,
             &mut judgments,
             &mut unmaterialised_logged,
+            &mut dispatch_hold_logged,
+            &mut dispatch_global_hold_logged,
         )?;
         // Last, so every pass above reads the board it was given: retention only
         // decides how much of the settled past the *next* pass inherits, and a

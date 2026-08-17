@@ -173,6 +173,16 @@ pub struct Ledger {
     /// once a candidate trips its budget (a candidate later removed from
     /// `skip_list` by an operator starts its budget over).
     pub dispatch_failure_streaks: BTreeMap<String, u32>,
+    /// Consecutive dispatch passes one candidate has been held on
+    /// `branch_exists`, keyed by `Candidate::task_id`. A left-over branch is
+    /// not a transient state — only an operator removing it, or the worker
+    /// that owns it finishing, clears it — so this bounds the hold the same
+    /// way `dispatch_failure_streaks` bounds a repeatedly failing spawn:
+    /// `dispatch::worker::MAX_BRANCH_EXISTS_HOLDS` escalates the candidate
+    /// once spent rather than holding it forever. Cleared the moment the
+    /// branch conflict clears, so a branch the operator deletes dispatches
+    /// again with a fresh count.
+    pub branch_exists_holds: BTreeMap<String, u32>,
 }
 
 /// Live workers counted globally and per repository.

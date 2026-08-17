@@ -3,12 +3,13 @@ use chrono::{DateTime, Utc};
 use super::{Candidate, claim, naming, naming::TaskSource};
 use crate::overseer::{
     OVERSEER_AGENT_ID,
+    exec::COMMAND_TIMEOUT,
     ledger::{Ledger, LedgerEntry, LedgerPhase},
     logging::DecisionKind,
     other_prs::OtherPrs,
     templates::worker_prompt,
 };
-use crate::{Result, config::Config, spawn};
+use crate::{Result, config::Config, dropr, spawn};
 
 /// What an approved candidate produced. A held candidate is not a spawn fault
 /// and must not consume the failure budget the circuit reserves for genuine
@@ -16,7 +17,21 @@ use crate::{Result, config::Config, spawn};
 pub(super) enum SpawnOutcome {
     Spawned,
     Held(String),
+    /// A candidate dispatch could never proceed on its own — e.g.
+    /// `branch_exists` after `MAX_BRANCH_EXISTS_HOLDS` consecutive passes.
+    /// Logged as `DecisionKind::Escalate` rather than `Hold`, so it reaches
+    /// the alert digest and Inbox instead of being retried forever. Same
+    /// failure-budget treatment as `Held`: not a spawn fault.
+    Escalated(String),
 }
+
+/// Consecutive dispatch passes one candidate may be held on `branch_exists`
+/// before it escalates. A left-over branch is not a transient state — only
+/// an operator removing it, or the worker that owns it finishing, clears it
+/// — so retrying every poll for days, as `dropr:ZJd6VtMdhDsD39-oeoq_L`'s
+/// evidence shows happened, is wasted work that hides the real problem
+/// instead of surfacing it.
+const MAX_BRANCH_EXISTS_HOLDS: u32 = 5;
 
 /// `route` names how this pass chose its dispatch set (see
 /// `super::route::Route`). It is written into the spawn's decision entry so the
@@ -55,8 +70,13 @@ pub(super) fn spawn_candidate(
     if let Some(branch) =
         spawn::branch_conflict(&task.repo, &task.title, name_slug(task).as_deref(), config)?
     {
-        return Ok(SpawnOutcome::Held(format!("branch_exists:{branch}")));
+        return Ok(branch_exists_outcome(ledger, &task.task_id, &branch));
     }
+    // The branch conflict cleared — either the operator removed the
+    // left-over branch, or this candidate never held one — so a later
+    // conflict on this task starts its escalation count over rather than
+    // inheriting one from a branch that is already gone.
+    ledger.branch_exists_holds.remove(&task.task_id);
     // The ledger only knows about workers this overseer started. Re-read the
     // task in dropr and take its claim here, so an agent that claimed it while
     // the judge round was in flight is seen now rather than discovered when two
@@ -75,11 +95,16 @@ pub(super) fn spawn_candidate(
         .find(|profile| profile.name == worker_config.default_program)
         .map(|profile| profile.autonomous_args.clone())
         .unwrap_or_default();
+    // Read next to where the display id is captured, the way defect 1
+    // (dropr:yD5Gf6TX23VMvuSLFsmvO) asks: a leaf task simply comes back
+    // empty, which renders the same childless prompt as before.
+    let subtasks = dropr::fetch_subtasks(&task.workspace, &task.task_id, COMMAND_TIMEOUT);
     let prompt = worker_prompt(
         &task.display_id,
         &task.task_id,
         &task.title,
         &task.repo,
+        &subtasks,
         config.language.as_deref(),
     );
     let outcome = match spawn::spawn_in_repo(
@@ -142,6 +167,28 @@ pub(super) fn spawn_candidate(
         &format!("worker spawned:{route}"),
     )?;
     Ok(SpawnOutcome::Spawned)
+}
+
+/// Charges one `branch_exists` hold against `task_id` and decides whether the
+/// candidate should keep being held or escalate.
+///
+/// `Escalated` fires exactly once, on the pass that spends the bound — the
+/// count is left at `MAX_BRANCH_EXISTS_HOLDS` rather than growing further, so
+/// every later pass while the branch is still there returns the steady
+/// `branch_exists_escalated` hold instead of re-escalating on every poll.
+fn branch_exists_outcome(ledger: &mut Ledger, task_id: &str, branch: &str) -> SpawnOutcome {
+    let holds = ledger
+        .branch_exists_holds
+        .entry(task_id.to_owned())
+        .or_insert(0);
+    if *holds >= MAX_BRANCH_EXISTS_HOLDS {
+        return SpawnOutcome::Held(format!("branch_exists_escalated:{branch}"));
+    }
+    *holds = holds.saturating_add(1);
+    if *holds >= MAX_BRANCH_EXISTS_HOLDS {
+        return SpawnOutcome::Escalated(format!("branch_exists:{branch}"));
+    }
+    SpawnOutcome::Held(format!("branch_exists:{branch}"))
 }
 
 /// Counts this dispatch attempt against every ledger entry already tracking the

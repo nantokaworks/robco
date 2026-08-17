@@ -14,6 +14,7 @@ mod decision_log;
 mod drain;
 mod entries;
 mod gate;
+mod gather;
 pub(crate) mod naming;
 mod order;
 mod route;
@@ -57,6 +58,14 @@ pub struct Candidate {
     /// it already filtered upstream.
     #[serde(default)]
     pub status: String,
+    /// This task's dropr `parent_task_id`, when it is a subtask. `dropr task
+    /// ready` does not carry this itself, so `gather_candidates` batches a
+    /// separate `dropr::fetch_parents` lookup per repo to fill it in.
+    /// `None` covers both "this is a root task" and "the lookup could not
+    /// tell" — `gate::candidate_skip`'s ancestor check treats both the same
+    /// way, by not holding the candidate.
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

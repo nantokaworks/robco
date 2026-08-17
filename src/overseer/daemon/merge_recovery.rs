@@ -15,7 +15,7 @@
 //! Overseer keeps sole possession of the merge throughout: the worker fixes and
 //! pushes, and the next merge pass re-evaluates the pull request normally.
 
-use super::merge_delivery::{confirm_delivered, send};
+use super::merge_delivery::{DeliveryConfirmation, confirm_delivered, send};
 use crate::{
     Result,
     overseer::{
@@ -147,6 +147,53 @@ fn undelivered(reason: &str) -> String {
     format!("merge_recovery_undelivered:{reason}")
 }
 
+/// Reason recorded when the delivery probe itself could not read the pane —
+/// distinct from `undelivered`, which means the pane was read cleanly and
+/// simply showed no working marker. A probe failure says nothing about
+/// whether the worker got the prompt; conflating it with `undelivered` would
+/// hide that the decision log's read on this attempt is itself unreliable.
+fn capture_failed(reason: &str, detail: &str) -> String {
+    format!("merge_recovery_capture_failed:{detail}:{reason}")
+}
+
+/// Reason recorded when an undelivered handback exhausts its own bound. Named
+/// differently from `undelivered` so the decision log tells apart "held,
+/// still retrying" from "gave up, an operator has to look" — the former is
+/// the steady state of a slow session, the latter is a worker nobody's
+/// prompt ever reached.
+fn undeliverable(reason: &str) -> String {
+    format!("merge_recovery_undeliverable:{reason}")
+}
+
+/// Bounds how many times one revision's handback may fail delivery
+/// confirmation before it escalates, mirroring `plan`'s (head, base)-keyed
+/// budget for the charged path. This tracks `undelivered_head` rather than
+/// `entry.merge_recovery.head`, because `refund` clears the latter after
+/// every failed confirm — reusing it here would make each retry look like a
+/// fresh candidate and defeat the bound this function exists to enforce.
+/// Returns whether the bound is now spent.
+pub(super) fn undelivered_cap_reached(
+    entry: &mut LedgerEntry,
+    head_sha: &str,
+    max_recoveries: u32,
+) -> bool {
+    if entry.merge_recovery.undelivered_head.as_deref() != Some(head_sha) {
+        entry.merge_recovery.undelivered_head = Some(head_sha.to_owned());
+        entry.merge_recovery.undelivered_charged = 0;
+    }
+    entry.merge_recovery.undelivered_charged =
+        entry.merge_recovery.undelivered_charged.saturating_add(1);
+    entry.merge_recovery.undelivered_charged >= max_recoveries
+}
+
+/// Clears the undelivered bound once a handback is actually confirmed
+/// delivered, so a later failure on a fresh revision starts its own count
+/// rather than inheriting one from a revision that did land.
+fn clear_undelivered(entry: &mut LedgerEntry) {
+    entry.merge_recovery.undelivered_head = None;
+    entry.merge_recovery.undelivered_charged = 0;
+}
+
 /// Acts on a recorded merge failure: hands it back, escalates it, or leaves it.
 pub(super) fn consider(
     entry: &mut LedgerEntry,
@@ -175,7 +222,13 @@ pub(super) fn consider(
             entry.worker_escalated = false;
             log(entry, DecisionKind::Escalate, CAP_REACHED, head_sha)
         }
-        RecoveryPlan::Dispatch => dispatch(entry, reason, registry, language),
+        RecoveryPlan::Dispatch => dispatch(
+            entry,
+            reason,
+            registry,
+            language,
+            config.max_merge_recoveries,
+        ),
     }
 }
 
@@ -185,6 +238,7 @@ fn dispatch(
     reason: &str,
     registry: &Registry,
     language: Option<&str>,
+    max_recoveries: u32,
 ) -> Result<()> {
     let Some(session) = live_session(&entry.agent_id, registry) else {
         // A worker whose session is gone cannot be handed anything. Naming the
@@ -212,7 +266,18 @@ fn dispatch(
             "",
         );
     }
-    if !confirm_delivered(&session) {
+    let hold_reason = match confirm_delivered(&session) {
+        DeliveryConfirmation::Confirmed => None,
+        // A probe that could not read the pane at all proves nothing about
+        // the session either way; a clean read that never showed the working
+        // marker is a genuine (if still unproven) non-delivery. Both still
+        // refund and retry the same way — subtask #436 owns the retry/escalate
+        // bound — but the decision log tells them apart instead of collapsing
+        // both into "not working".
+        DeliveryConfirmation::NotConfirmed => Some(undelivered(reason)),
+        DeliveryConfirmation::CaptureFailed(detail) => Some(capture_failed(reason, &detail)),
+    };
+    if let Some(hold_reason) = hold_reason {
         // tmux reported success, but nothing confirms the worker actually
         // received the prompt — the exact gap that let a handback sit unsent in
         // an input box while the decision log read as though it had landed.
@@ -220,9 +285,19 @@ fn dispatch(
         // quietly losing budget to an instruction nobody was told about, and
         // `PrOpened` is deliberately not set: the worker was not handed
         // anything, so the phase the merge pass reads must not change.
+        let head = entry.merge_recovery.head.clone().unwrap_or_default();
         refund(entry);
-        return log(entry, DecisionKind::Hold, &undelivered(reason), "");
+        if undelivered_cap_reached(entry, &head, max_recoveries) {
+            // The worker was never told, and retrying has not fixed that — an
+            // operator has to look, the same way a spent `charged` budget
+            // escalates rather than re-prompting forever.
+            entry.phase = LedgerPhase::Escalated;
+            entry.worker_escalated = false;
+            return log(entry, DecisionKind::Escalate, &undeliverable(reason), &head);
+        }
+        return log(entry, DecisionKind::Hold, &hold_reason, "");
     }
+    clear_undelivered(entry);
     // The worker now owns the failure, so the entry returns to the phase the
     // merge pass reads. A judge veto had already escalated it; that escalation
     // is superseded rather than left to strand the pull request. Whatever
