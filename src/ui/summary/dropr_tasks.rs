@@ -6,6 +6,8 @@
 //! whatever the fetch could not answer, and it distinguishes an empty board
 //! from a broken one.
 
+use std::collections::{HashMap, HashSet};
+
 use ratatui::text::{Line, Span};
 
 use crate::{
@@ -13,6 +15,9 @@ use crate::{
     locale::{Locale, fmt, t},
     ui::theme::DEFAULT as THEME,
 };
+
+mod nesting;
+use nesting::{children_by_parent, is_root, nested_lines};
 
 /// Task rows either list gets before the rest are counted instead of listed.
 ///
@@ -26,7 +31,7 @@ const TASK_DISPLAY_LIMIT: usize = 8;
 // while the display cap bites before the fetch limit does.
 const _: () = assert!(TASK_DISPLAY_LIMIT < TASK_FETCH_LIMIT);
 
-/// Splits the rows into the panel's three sections.
+/// Splits the root rows into the panel's three sections.
 ///
 /// `blocked` is split off first and never folded in with `next`: a blocked
 /// task is not available work, and rendering it as though it were would
@@ -36,6 +41,10 @@ const _: () = assert!(TASK_DISPLAY_LIMIT < TASK_FETCH_LIMIT);
 /// be picked up. All three sections come from the same `task_list` query, so
 /// membership is decided by the task's own status rather than by which
 /// endpoint happened to return it.
+///
+/// Subtasks never appear here directly: they are only ever reached by nesting
+/// under their parent's row (see `nesting::nested_lines`), so a subtask's own
+/// status never puts it in a section of its own.
 fn partition_tasks(
     tasks: &[DroprTaskCandidate],
 ) -> (
@@ -46,7 +55,7 @@ fn partition_tasks(
     let mut blocked = Vec::new();
     let mut in_progress = Vec::new();
     let mut next = Vec::new();
-    for task in tasks {
+    for task in tasks.iter().filter(|task| is_root(task)) {
         match task.status.as_str() {
             "blocked" => blocked.push(task),
             "in_progress" => in_progress.push(task),
@@ -64,22 +73,29 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Li
     }
 
     let (blocked, in_progress, next) = partition_tasks(&fetch.tasks);
+    let children = children_by_parent(&fetch.tasks);
     let mut lines = task_section(
         locale,
         Span::styled(t(locale, "next tasks"), THEME.accent_style()),
         &next,
+        &children,
+        &fetch.subtrees_known,
         |task| vec![Line::from(format!("{}  {}", task.display_id, task.title))],
     );
     lines.extend(task_section(
         locale,
         Span::styled(t(locale, "in progress"), THEME.subagent_style()),
         &in_progress,
+        &children,
+        &fetch.subtrees_known,
         |task| vec![Line::from(format!("▸ {}  {}", task.display_id, task.title))],
     ));
     lines.extend(task_section(
         locale,
         Span::styled(t(locale, "blocked"), THEME.needs_decision_style(false)),
         &blocked,
+        &children,
+        &fetch.subtrees_known,
         blocked_row,
     ));
     if lines.is_empty() {
@@ -125,7 +141,10 @@ fn blocked_row(task: &DroprTaskCandidate) -> Vec<Line<'static>> {
 const REASON_DISPLAY_LIMIT: usize = 100;
 
 /// Squashes a scribble body onto the single line a blocked row can spend on it.
-fn squash_reason(reason: &str) -> String {
+///
+/// `pub(super)` because `nesting::child_rows` renders a blocked subtask's
+/// reason the same way a top-level blocked row does.
+pub(super) fn squash_reason(reason: &str) -> String {
     reason
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -153,18 +172,18 @@ fn task_section(
     locale: Locale,
     heading: Span<'static>,
     tasks: &[&DroprTaskCandidate],
+    children: &HashMap<&str, Vec<&DroprTaskCandidate>>,
+    subtrees_known: &HashSet<String>,
     row: impl Fn(&DroprTaskCandidate) -> Vec<Line<'static>>,
 ) -> Vec<Line<'static>> {
     if tasks.is_empty() {
         return Vec::new();
     }
     let mut lines = vec![Line::from(""), Line::from(heading)];
-    lines.extend(
-        tasks
-            .iter()
-            .take(TASK_DISPLAY_LIMIT)
-            .flat_map(|task| row(task)),
-    );
+    for task in tasks.iter().take(TASK_DISPLAY_LIMIT) {
+        lines.extend(row(task));
+        lines.extend(nested_lines(locale, task, children, subtrees_known));
+    }
     if let Some(notice) = truncation_notice(locale, tasks.len()) {
         lines.push(Line::from(Span::styled(notice, THEME.muted_style())));
     }
@@ -176,7 +195,11 @@ fn task_section(
 /// `held` is what the panel actually has; a fetch that came back full may have
 /// left more behind, so the remainder it can report is a floor rather than a
 /// count and the wording says so.
-fn truncation_notice(locale: Locale, held: usize) -> Option<String> {
+///
+/// `pub(super)` because `nesting::nested_lines` reuses it verbatim for a
+/// root's capped child list — the same "floor, not a count" reasoning applies
+/// there, since a subtree query is itself capped at `TASK_FETCH_LIMIT`.
+pub(super) fn truncation_notice(locale: Locale, held: usize) -> Option<String> {
     let hidden = held.saturating_sub(TASK_DISPLAY_LIMIT);
     if hidden == 0 {
         return None;

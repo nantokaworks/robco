@@ -39,6 +39,7 @@ fn answered(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
         tasks,
         problems: Vec::new(),
         answered: true,
+        subtrees_known: Default::default(),
     }
 }
 
@@ -90,6 +91,9 @@ fn a_linked_repo_names_its_workspace_and_lists_its_tasks() {
         priority_score: None,
         blocked_reason: None,
         updated_at: None,
+        id: String::new(),
+        parent_task_id: None,
+        child_count: 0,
     }]);
 
     let lines = rendered(&repo(Some(workspace()), tasks));
