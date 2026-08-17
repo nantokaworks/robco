@@ -10,6 +10,7 @@
 //! when something above pointed at it first.
 
 use std::{
+    collections::BTreeMap,
     fs,
     time::{Duration, SystemTime},
 };
@@ -70,6 +71,7 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
         "{}",
         running_line(
             &ledger.active_workers(),
+            &ledger.primary_holders(),
             &registry,
             ledger.counters.dispatched_today,
             &crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
@@ -226,12 +228,14 @@ fn stuck_summary(reasons: &[String]) -> String {
 }
 
 /// "What is running right now?" — active workers by repository (named, never
-/// by the absolute path the ledger records them under), today's dispatch
-/// throughput, and anything the judge is actively evaluating. A worker holding
-/// a slot and a judgment holding a queue are both "running" in the sense an
-/// operator means it; a completed or terminal entry is not.
+/// by the absolute path the ledger records them under), which task holds
+/// each repository's primary slot, today's dispatch throughput, and anything
+/// the judge is actively evaluating. A worker holding a slot and a judgment
+/// holding a queue are both "running" in the sense an operator means it; a
+/// completed or terminal entry is not.
 fn running_line(
     active: &ActiveWorkers,
+    primary_holders: &BTreeMap<String, String>,
     registry: &Registry,
     dispatched_today: u32,
     dispatch_limit_label: &str,
@@ -243,7 +247,13 @@ fn running_line(
         let by_repo = active
             .repos
             .iter()
-            .map(|(path, count)| format!("{}={count}", registry.repo_label(path)))
+            .map(|(path, count)| {
+                let label = registry.repo_label(path);
+                match primary_holders.get(path) {
+                    Some(primary) => format!("{label}={count} (primary {primary})"),
+                    None => format!("{label}={count}"),
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ");
         format!("{} worker(s) ({by_repo})", active.count)

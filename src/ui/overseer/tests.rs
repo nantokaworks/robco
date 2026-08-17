@@ -856,3 +856,62 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
     assert!(rendered.contains("robco=1"));
     assert!(!rendered.contains("/Users/operator"));
 }
+
+#[test]
+fn primary_holder_names_the_repo_and_the_task() {
+    let ledger = Ledger {
+        entries: vec![LedgerEntry {
+            task_id: "task".into(),
+            display_id: "#452".into(),
+            repo: "/Users/operator/repos/robco".into(),
+            agent_id: "agent".into(),
+            branch: "branch".into(),
+            phase: LedgerPhase::Working,
+            dispatched_at: Utc::now(),
+            settled_at: None,
+            retries: 0,
+            pr_url: None,
+            branch_updates: 0,
+            merge_judge_primes: 0,
+            merge_recovery: Default::default(),
+            merge_hold: Default::default(),
+            manual_merge_skip: None,
+            merge_judge_fail_safes: 0,
+            merge_hold_cap_escalated: false,
+            merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
+            prerequisite_wait: None,
+            merge_hold_stuck_notified: false,
+            escalation_notified_reason: None,
+            escalation_notified_head: None,
+            worker_escalated: false,
+            operator_override: None,
+        }],
+        ..Ledger::default()
+    };
+    let mut repo = crate::discover::repo_node("/Users/operator/repos/robco".into(), false);
+    repo.name = "robco".into();
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo],
+    };
+    let mut lines = Vec::new();
+    append_ledger(
+        &mut lines,
+        &OverseerConfig::default(),
+        &ledger,
+        &[],
+        &[],
+        &registry,
+    );
+    let rendered = lines
+        .iter()
+        .flat_map(|line| line.spans.iter())
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+
+    assert!(rendered.contains("primary holder"));
+    assert!(rendered.contains("robco=#452"));
+    assert!(!rendered.contains("/Users/operator"));
+}

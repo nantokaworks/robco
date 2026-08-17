@@ -150,16 +150,24 @@ pub(super) fn append_ledger(
         (
             "workers",
             format!(
-                "{} / {} global, {}/repo",
+                "{} active, parallel_limit {}",
                 active.len(),
-                config.max_workers,
-                config.per_repo_limit
+                config.parallel_limit
             ),
             false,
         ),
     ]));
     if !repos.is_empty() {
         lines.push(pair("workers by repo", &map_text(&repos), false));
+    }
+    let primary_holders = ledger.primary_holders();
+    if !primary_holders.is_empty() {
+        let holders = primary_holders
+            .iter()
+            .map(|(repo, display_id)| format!("{}={display_id}", registry.repo_label(repo)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(pair("primary holder", &holders, false));
     }
     if !phases.is_empty() {
         lines.push(pair("active phases", &map_text(&phases), false));

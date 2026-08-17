@@ -34,12 +34,12 @@ pub fn list_tools() -> Value {
                 "properties": {
                     "dispatch_enabled": { "type": "boolean" },
                     "auto_merge": { "type": "boolean" },
-                    "max_workers": { "type": "integer", "minimum": 0 },
+                    "parallel_limit": { "type": "integer", "minimum": 0 },
                     "daemon_alive": { "type": "boolean" },
                     "dispatch_without_daemon": { "type": "boolean" },
                     "circuit_open": { "type": "boolean" }
                 },
-                "required": ["dispatch_enabled", "auto_merge", "max_workers",
+                "required": ["dispatch_enabled", "auto_merge", "parallel_limit",
                     "daemon_alive", "dispatch_without_daemon", "circuit_open"],
                 "additionalProperties": false
             }),

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::model::ManagementMode;
 use crate::overseer::ledger::{Ledger, LedgerEntry};
 
-pub(super) use crate::overseer::ledger::{holds_capacity, terminal};
+pub(super) use crate::overseer::ledger::holds_capacity;
 
 /// Ledger entries recording an attempt at this task. Both identifiers are
 /// compared because a ready task without a nanoid is tracked under its display

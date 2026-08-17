@@ -84,3 +84,80 @@ fn a_root_candidate_is_never_held_on_a_parent_worker() {
     assert_eq!(plan.decisions[0].reason, "ready");
     assert!(plan.decisions[0].dispatch);
 }
+
+/// dropr:452 — a subtask whose priority outranks its own parent's must not
+/// take the slot while the parent is also a ready candidate this pass, or a
+/// RUN dispatch against the parent ends up building the same change twice.
+/// `order_candidates` sorts on priority alone, so without this gate the
+/// higher-priority subtask would sort ahead of its parent and dispatch
+/// first.
+#[test]
+fn a_higher_priority_subtask_does_not_dispatch_ahead_of_its_ready_parent() {
+    let parent = Candidate {
+        task_id: "parent-task".into(),
+        priority: "low".into(),
+        ..candidate("/repo")
+    };
+    let subtask = Candidate {
+        task_id: "subtask".into(),
+        priority: "high".into(),
+        parent_task_id: Some("parent-task".into()),
+        ..candidate("/repo")
+    };
+
+    let plan = plan_dispatch(
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        &[subtask, parent],
+        now(),
+        &HashMap::new(),
+    );
+
+    let subtask_decision = plan
+        .decisions
+        .iter()
+        .find(|decision| {
+            decision
+                .candidate
+                .as_ref()
+                .is_some_and(|c| c.task_id == "subtask")
+        })
+        .expect("subtask decision recorded");
+    assert_eq!(subtask_decision.reason, "ancestor_candidate");
+    assert!(!subtask_decision.dispatch);
+
+    let parent_decision = plan
+        .decisions
+        .iter()
+        .find(|decision| {
+            decision
+                .candidate
+                .as_ref()
+                .is_some_and(|c| c.task_id == "parent-task")
+        })
+        .expect("parent decision recorded");
+    assert_eq!(parent_decision.reason, "ready");
+    assert!(parent_decision.dispatch);
+}
+
+/// Once the parent is no longer among this pass's candidates — dispatched,
+/// closed, or held for an unrelated reason — the subtask must be free to
+/// dispatch on its own again.
+#[test]
+fn a_subtask_dispatches_once_its_parent_is_not_a_candidate() {
+    let subtask = Candidate {
+        task_id: "subtask".into(),
+        parent_task_id: Some("parent-task".into()),
+        ..candidate("/repo")
+    };
+
+    let plan = plan_dispatch(
+        &OverseerConfig::default(),
+        &Ledger::default(),
+        &[subtask],
+        now(),
+        &HashMap::new(),
+    );
+    assert_eq!(plan.decisions[0].reason, "ready");
+    assert!(plan.decisions[0].dispatch);
+}
