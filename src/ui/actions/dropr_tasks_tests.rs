@@ -10,6 +10,9 @@ fn task(display_id: &str) -> DroprTaskCandidate {
         priority_score: None,
         blocked_reason: None,
         updated_at: None,
+        id: String::new(),
+        parent_task_id: None,
+        child_count: 0,
     }
 }
 
@@ -18,6 +21,7 @@ fn answered(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
         tasks,
         problems: Vec::new(),
         answered: true,
+        subtrees_known: Default::default(),
     }
 }
 

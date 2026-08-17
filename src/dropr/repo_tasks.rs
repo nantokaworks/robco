@@ -18,7 +18,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{
@@ -27,6 +26,10 @@ use super::{
 };
 
 mod blocker;
+mod order;
+#[cfg(test)]
+use order::display_number;
+use order::settle;
 
 /// Statuses the summary renders. `draft` is left out on purpose: an unpublished
 /// task is not work the pane should claim exists. `closed` is left out because
@@ -67,6 +70,12 @@ pub struct DroprTaskFetch {
     /// One line per query that did not answer, phrased for an operator.
     pub problems: Vec<String>,
     pub answered: bool,
+    /// Ids of the parent tasks whose subtree query actually succeeded. A
+    /// parent with `child_count > 0` but no entry here was never asked about
+    /// (skipped past `SUBTREE_QUERY_LIMIT`) or its query failed — either way
+    /// its true child list is unknown, so the pane must not render a closed
+    /// count for it that only looks precise.
+    pub subtrees_known: HashSet<String>,
 }
 
 impl DroprTaskFetch {
@@ -77,20 +86,9 @@ impl DroprTaskFetch {
             tasks: Vec::new(),
             problems: vec![problem.into()],
             answered: false,
+            subtrees_known: HashSet::new(),
         }
     }
-}
-
-/// A `task_list` row. The pane renders `task`; `id` and `child_count` are what
-/// tell the fetch which subtrees it still has to ask about.
-#[derive(Debug, Clone, Deserialize)]
-struct TaskRow {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    child_count: usize,
-    #[serde(flatten)]
-    task: DroprTaskCandidate,
 }
 
 pub fn fetch(workspace_id: &str) -> DroprTaskFetch {
@@ -107,7 +105,7 @@ pub fn fetch(workspace_id: &str) -> DroprTaskFetch {
 
 /// Answers to one batch of `task_list` calls. The outer `Err` is the session
 /// failing; a per-call `Err` is dropr answering that one call with a refusal.
-type Answers = Result<Vec<Result<Vec<TaskRow>, String>>, String>;
+type Answers = Result<Vec<Result<Vec<DroprTaskCandidate>, String>>, String>;
 
 /// Runs one batch over `dropr mcp-stdio`. [`fetch_within`] takes the batch
 /// runner as a parameter so the walk is testable without a `dropr` on PATH.
@@ -123,7 +121,7 @@ fn mcp_asker(arguments: Vec<Value>, timeout: Duration) -> Answers {
     Ok(outcomes.into_iter().map(read_rows).collect())
 }
 
-fn read_rows(outcome: ToolOutcome) -> Result<Vec<TaskRow>, String> {
+fn read_rows(outcome: ToolOutcome) -> Result<Vec<DroprTaskCandidate>, String> {
     match outcome {
         ToolOutcome::Ok(payload) => rows(&payload)
             .ok_or_else(|| "task_list answered in a shape robco cannot read".to_string()),
@@ -133,7 +131,7 @@ fn read_rows(outcome: ToolOutcome) -> Result<Vec<TaskRow>, String> {
     }
 }
 
-fn rows(payload: &Value) -> Option<Vec<TaskRow>> {
+fn rows(payload: &Value) -> Option<Vec<DroprTaskCandidate>> {
     let tasks = payload.get("tasks")?.as_array()?;
     Some(
         tasks
@@ -159,12 +157,13 @@ where
 
     let parents = roots
         .iter()
-        .filter(|row| row.child_count > 0 && !row.id.is_empty())
+        .filter(|task| task.child_count > 0 && !task.id.is_empty())
         .collect::<Vec<_>>();
     let mut fetch = DroprTaskFetch {
-        tasks: roots.iter().map(|row| row.task.clone()).collect(),
+        tasks: roots.clone(),
         problems: Vec::new(),
         answered: true,
+        subtrees_known: HashSet::new(),
     };
     if let Some(skipped) = parents
         .len()
@@ -182,16 +181,19 @@ where
 
     let queries = walked
         .iter()
-        .map(|row| subtree_query(workspace_id, &row.id))
+        .map(|task| subtree_query(workspace_id, &task.id))
         .collect();
     match ask_within(&mut ask, queries, deadline) {
         Ok(answers) => {
             for (parent, answer) in walked.iter().zip(answers) {
                 match answer {
-                    Ok(rows) => fetch.tasks.extend(rows.into_iter().map(|row| row.task)),
+                    Ok(rows) => {
+                        fetch.subtrees_known.insert(parent.id.clone());
+                        fetch.tasks.extend(rows);
+                    }
                     Err(problem) => fetch
                         .problems
-                        .push(format!("subtasks of {}: {problem}", parent.task.display_id)),
+                        .push(format!("subtasks of {}: {problem}", parent.display_id)),
                 }
             }
         }
@@ -203,7 +205,7 @@ where
     settle(fetch)
 }
 
-fn one_answer(answers: Answers) -> Result<Vec<TaskRow>, String> {
+fn one_answer(answers: Answers) -> Result<Vec<DroprTaskCandidate>, String> {
     answers?
         .into_iter()
         .next()
@@ -248,47 +250,6 @@ fn subtree_query(workspace_id: &str, parent_task_id: &str) -> Value {
         "status": DISPLAY_STATUSES,
         "limit": TASK_FETCH_LIMIT,
     })
-}
-
-/// Dedupes and orders the rows the fetch collected.
-///
-/// Ordering is what decides which rows survive the pane's display cap, so it
-/// puts the most urgent first: priority, then task number so the tie-break
-/// reads as task order.
-fn settle(mut fetch: DroprTaskFetch) -> DroprTaskFetch {
-    let mut seen = HashSet::new();
-    fetch
-        .tasks
-        .retain(|task| seen.insert(task.display_id.clone()));
-    fetch.tasks.sort_by_key(|task| {
-        (
-            priority_rank(&task.priority),
-            display_number(&task.display_id),
-        )
-    });
-    fetch
-}
-
-/// Display order for priorities, most urgent first. An unset or unrecognised
-/// priority sorts last: it is the least informative row to keep.
-fn priority_rank(priority: &str) -> u8 {
-    match priority {
-        "high" => 0,
-        "medium" => 1,
-        "low" => 2,
-        _ => 3,
-    }
-}
-
-/// The number in a `#N` display id, so `#9` sorts before `#10`.
-fn display_number(display_id: &str) -> u64 {
-    display_id
-        .trim_start_matches('#')
-        .split('-')
-        .next()
-        .unwrap_or_default()
-        .parse()
-        .unwrap_or(u64::MAX)
 }
 
 /// Squashes a server message onto the single line a summary row can hold.

@@ -53,6 +53,24 @@ pub struct DroprTaskCandidate {
     /// omits it, such as `dropr task ready --json`.
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+    /// This task's own nanoid. `ui::summary::dropr_tasks` matches it against a
+    /// child's `parent_task_id` to nest subtasks under their parent. Empty for
+    /// a source that omits it, such as `dropr task ready --json` — see
+    /// `DroprDispatchCandidate`, which carries its own `id` field outside this
+    /// struct for that reason.
+    #[serde(default)]
+    pub id: String,
+    /// The parent task's nanoid, `None` for a root task. `dropr::repo_tasks`
+    /// only ever fetches one level of descendants, so this is enough to tell
+    /// a root from a subtask without a deeper lineage walk.
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
+    /// Total children this task has, of any status — unlike the rows
+    /// `dropr::repo_tasks` actually fetches, which are filtered to the
+    /// statuses the pane renders. The gap between the two is what lets the
+    /// pane report a closed count without fetching closed rows.
+    #[serde(default)]
+    pub child_count: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
