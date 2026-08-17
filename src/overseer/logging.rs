@@ -96,6 +96,8 @@ pub fn append(entry: &DecisionEntry) -> Result<()> {
 }
 
 pub(crate) fn append_to(path: &Path, entry: &DecisionEntry) -> Result<()> {
+    #[cfg(test)]
+    refuse_the_operators_real_home(path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -109,6 +111,27 @@ pub(crate) fn append_to(path: &Path, entry: &DecisionEntry) -> Result<()> {
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     file.write_all(&buf)?;
     Ok(())
+}
+
+/// Fails loudly rather than writing a decision line under the operator's
+/// real home directory during a test run.
+///
+/// `config::robco_dir`/`home_dir` already redirect every caller that resolves
+/// its path through `decision_log_path` (dropr:2zv1HmithVvCszUFmAaEY) — this
+/// is the second line of defense named in dropr:goePffPb7zAkCztR3HCV8 for a
+/// future test that reaches this function with a path built some other way.
+/// Deliberately checks `dirs::home_dir` — the real, unredirected home — not
+/// `config::home_dir`, whose whole point under `cfg(test)` is to disagree
+/// with it.
+#[cfg(test)]
+fn refuse_the_operators_real_home(path: &Path) {
+    if let Some(real_home) = dirs::home_dir() {
+        assert!(
+            !path.starts_with(&real_home),
+            "logging::append_to refused to write {path:?} under the operator's real home \
+             {real_home:?} during a test run"
+        );
+    }
 }
 
 pub fn log_message(task: Option<&str>, reason: &str) -> Result<()> {

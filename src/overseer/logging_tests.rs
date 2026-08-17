@@ -149,3 +149,24 @@ fn append_never_writes_the_operators_real_decision_log() {
         "logging::append wrote to the operator's real decision log during cargo test"
     );
 }
+
+/// The second line of defense named in dropr:goePffPb7zAkCztR3HCV8: a test
+/// that reaches `append_to` with an explicit path under the operator's real
+/// home — bypassing `decision_log_path`'s redirect entirely — must fail
+/// loudly instead of quietly writing there. The assertion panics before any
+/// file I/O runs, so this test never touches the real path it names.
+#[test]
+#[should_panic(expected = "refused to write")]
+fn append_to_panics_on_a_path_under_the_operators_real_home() {
+    let Some(real_home) = dirs::home_dir() else {
+        panic!("refused to write: no real home dir resolved to test the guard against");
+    };
+    let path = real_home
+        .join(".robco-logging-guard-test")
+        .join("decisions.jsonl");
+    append_to(
+        &path,
+        &DecisionEntry::new(DecisionKind::Skip, "must never land"),
+    )
+    .unwrap();
+}
