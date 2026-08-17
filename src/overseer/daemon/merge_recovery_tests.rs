@@ -439,3 +439,63 @@ fn refund_never_underflows_a_charge_that_was_never_taken() {
     assert_eq!(entry.merge_recovery.head, None);
     assert_eq!(entry.merge_recovery.base, None);
 }
+
+#[test]
+fn every_undeliverable_reason_names_the_merge_recovery_step() {
+    assert_eq!(
+        undeliverable("judge_veto:no rollback"),
+        "merge_recovery_undeliverable:judge_veto:no rollback"
+    );
+}
+
+/// The bug #436 exists to fix: `refund` resets `merge_recovery.head`/`base`
+/// after every failed confirm, so `plan`'s own dedup key can never bound an
+/// undelivered handback — it looks like a fresh candidate on every poll.
+/// `undelivered_cap_reached` tracks the same head through a separate field
+/// that `refund` never touches, so the retry loop actually ends.
+#[test]
+fn an_undelivered_handback_escalates_after_the_bound() {
+    let mut entry = entry();
+    assert!(!undelivered_cap_reached(&mut entry, "sha-1", 2));
+    assert_eq!(entry.merge_recovery.undelivered_charged, 1);
+    assert_eq!(
+        entry.merge_recovery.undelivered_head.as_deref(),
+        Some("sha-1")
+    );
+
+    assert!(undelivered_cap_reached(&mut entry, "sha-1", 2));
+    assert_eq!(entry.merge_recovery.undelivered_charged, 2);
+}
+
+#[test]
+fn a_new_head_resets_the_undelivered_counter_but_a_repeat_head_keeps_it() {
+    let mut entry = entry();
+    assert!(!undelivered_cap_reached(&mut entry, "sha-1", 3));
+    assert!(!undelivered_cap_reached(&mut entry, "sha-1", 3));
+    assert_eq!(entry.merge_recovery.undelivered_charged, 2);
+
+    // A worker that pushed a fix presents a new head — a genuinely new
+    // handback, not a continuation of the one that never reached the worker.
+    assert!(!undelivered_cap_reached(&mut entry, "sha-2", 3));
+    assert_eq!(entry.merge_recovery.undelivered_charged, 1);
+    assert_eq!(
+        entry.merge_recovery.undelivered_head.as_deref(),
+        Some("sha-2")
+    );
+}
+
+#[test]
+fn a_zero_undelivered_bound_escalates_on_the_first_attempt() {
+    let mut entry = entry();
+    assert!(undelivered_cap_reached(&mut entry, "sha-1", 0));
+    assert_eq!(entry.merge_recovery.undelivered_charged, 1);
+}
+
+#[test]
+fn a_confirmed_delivery_clears_the_undelivered_bound() {
+    let mut entry = entry();
+    assert!(!undelivered_cap_reached(&mut entry, "sha-1", 3));
+    clear_undelivered(&mut entry);
+    assert_eq!(entry.merge_recovery.undelivered_charged, 0);
+    assert_eq!(entry.merge_recovery.undelivered_head, None);
+}

@@ -41,6 +41,15 @@ pub struct MergeRecovery {
     pub dropped_head: Option<String>,
     /// Base sha the last drop was recorded against.
     pub dropped_base: Option<String>,
+    /// Undelivered handback attempts charged so far against `undelivered_head`.
+    /// Independent from `charged`/`head`/`base`, which `refund` resets after
+    /// every failed confirm — this pair must survive that reset, or a handback
+    /// nobody's session ever confirms looks like a fresh candidate on every
+    /// poll and the retry loop it exists to bound never bites.
+    pub undelivered_charged: u32,
+    /// Head sha the undelivered counter above is tracking. A new head resets
+    /// it, the same way a new head resets `charged`'s deduplication.
+    pub undelivered_head: Option<String>,
 }
 
 /// What the merge gate remembers about holding this pull request back.
