@@ -10,6 +10,9 @@ fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
         priority_score: None,
         blocked_reason: None,
         updated_at: None,
+        id: String::new(),
+        parent_task_id: None,
+        child_count: 0,
     }
 }
 
@@ -31,6 +34,7 @@ fn complete(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
         tasks,
         problems: Vec::new(),
         answered: true,
+        subtrees_known: Default::default(),
     }
 }
 
@@ -261,6 +265,7 @@ fn a_partial_fetch_shows_its_rows_and_admits_what_is_missing() {
         tasks: vec![task("#249", "in_progress")],
         problems: vec!["subtasks of #249: dropr refused: unknown workspace".to_owned()],
         answered: true,
+        subtrees_known: Default::default(),
     };
 
     let lines = rendered(&fetch);
@@ -281,6 +286,7 @@ fn a_partial_fetch_with_no_rows_reports_the_problem_not_an_empty_board() {
         tasks: Vec::new(),
         problems: vec!["subtasks of 2 parent task(s): the session died".to_owned()],
         answered: true,
+        subtrees_known: Default::default(),
     };
 
     let lines = rendered(&fetch);

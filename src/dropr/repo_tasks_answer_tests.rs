@@ -33,7 +33,7 @@ fn rows_that_do_not_deserialize_do_not_discard_their_neighbours() {
     let rows = rows(&payload).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].child_count, 2);
-    assert_eq!(rows[1].task.display_id, "#3");
+    assert_eq!(rows[1].display_id, "#3");
 }
 
 #[test]

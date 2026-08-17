@@ -27,19 +27,18 @@ impl Recorder {
     }
 }
 
-fn row(display_id: &str, status: &str, priority: &str, children: usize) -> TaskRow {
-    TaskRow {
+fn row(display_id: &str, status: &str, priority: &str, children: usize) -> DroprTaskCandidate {
+    DroprTaskCandidate {
+        display_id: display_id.to_owned(),
+        title: format!("Task {display_id}"),
+        priority: priority.to_owned(),
+        status: status.to_owned(),
+        priority_score: None,
+        blocked_reason: None,
+        updated_at: None,
         id: format!("id-{}", display_id.trim_start_matches('#')),
+        parent_task_id: None,
         child_count: children,
-        task: DroprTaskCandidate {
-            display_id: display_id.to_owned(),
-            title: format!("Task {display_id}"),
-            priority: priority.to_owned(),
-            status: status.to_owned(),
-            priority_score: None,
-            blocked_reason: None,
-            updated_at: None,
-        },
     }
 }
 
