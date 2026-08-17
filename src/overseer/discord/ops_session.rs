@@ -4,8 +4,8 @@ use crate::{
     overseer::{
         self,
         discord_channels::ChannelTurn,
-        ledger::Ledger,
-        logging,
+        ledger::{Ledger, LedgerEntry},
+        logging::{self, DecisionEntry},
         session::{BRIEFING_PROMPT, SessionHandle, SessionResult, auth, env::SessionEnv},
         triage::{recent_worker_capture, triage_profile},
     },
@@ -41,6 +41,12 @@ impl SessionSpawner for SystemSessionSpawner {
             &config.tmux_session_prefix,
             &request.channel_id,
         );
+        let bound_repo = config
+            .overseer
+            .discord
+            .channel_repo_bindings
+            .get(&request.channel_id)
+            .cloned();
         let handle = spawn_session(
             request,
             case_dir,
@@ -48,7 +54,7 @@ impl SessionSpawner for SystemSessionSpawner {
             timeout,
             env,
             session_name,
-            move |request| briefing(request, language.as_deref()),
+            move |request| briefing(request, language.as_deref(), bound_repo.as_deref()),
         );
         Ok(Box::new(SystemPending(handle)))
     }
@@ -101,38 +107,9 @@ impl PendingSession for SystemPending {
     }
 }
 
-fn briefing(request: &SessionRequest, language: Option<&str>) -> String {
-    let ledger = Ledger::load()
-        .map(|ledger| {
-            ledger
-                .entries
-                .into_iter()
-                .map(|entry| {
-                    format!(
-                        "{} {} {:?} {}",
-                        entry.display_id, entry.task_id, entry.phase, entry.agent_id
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_else(|error| format!("unavailable: {error}"));
-    let decisions = logging::tail(20)
-        .map(|entries| {
-            entries
-                .into_iter()
-                .map(|entry| {
-                    format!(
-                        "{} {:?} {}",
-                        entry.at.to_rfc3339(),
-                        entry.kind,
-                        entry.reason
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
-        .unwrap_or_else(|error| format!("unavailable: {error}"));
+fn briefing(request: &SessionRequest, language: Option<&str>, bound_repo: Option<&str>) -> String {
+    let ledger = ledger_status(bound_repo);
+    let decisions = decision_log(bound_repo);
     let case = request
         .case
         .as_ref()
@@ -154,6 +131,54 @@ fn briefing(request: &SessionRequest, language: Option<&str>) -> String {
         data("RECENT_CAPTURE", &capture),
         data("CONVERSATION_HISTORY", &history),
     )
+}
+
+/// The `LEDGER_STATUS` block: every ledger entry, or — when the channel is
+/// bound to a repository (dropr:450) — only that repository's entries, so a
+/// scoped channel's briefing cannot see another repo's tasks.
+fn ledger_status(bound_repo: Option<&str>) -> String {
+    Ledger::load()
+        .map(|ledger| format_ledger_entries(ledger.entries, bound_repo))
+        .unwrap_or_else(|error| format!("unavailable: {error}"))
+}
+
+fn format_ledger_entries(entries: Vec<LedgerEntry>, bound_repo: Option<&str>) -> String {
+    entries
+        .into_iter()
+        .filter(|entry| bound_repo.is_none_or(|repo| entry.repo == repo))
+        .map(|entry| {
+            format!(
+                "{} {} {:?} {}",
+                entry.display_id, entry.task_id, entry.phase, entry.agent_id
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The `DECISION_LOG` block, scoped the same way as `ledger_status`. A
+/// decision with no recorded repo (a daemon-wide event) is excluded once a
+/// channel is scoped, so "only that repo's rows" holds for decisions too.
+fn decision_log(bound_repo: Option<&str>) -> String {
+    logging::tail(20)
+        .map(|entries| format_decision_entries(entries, bound_repo))
+        .unwrap_or_else(|error| format!("unavailable: {error}"))
+}
+
+fn format_decision_entries(entries: Vec<DecisionEntry>, bound_repo: Option<&str>) -> String {
+    entries
+        .into_iter()
+        .filter(|entry| bound_repo.is_none_or(|repo| entry.repo.as_deref() == Some(repo)))
+        .map(|entry| {
+            format!(
+                "{} {:?} {}",
+                entry.at.to_rfc3339(),
+                entry.kind,
+                entry.reason
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Renders this channel's retained turns (dropr:363) as the continuity block
