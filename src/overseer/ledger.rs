@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use crate::Result;
 
 mod budgets;
-pub use budgets::{LedgerCounters, MergeHold, MergeRecovery, MergeSettling, OperatorOverride};
+pub use budgets::{
+    LedgerCounters, MergeApproval, MergeHold, MergeRecovery, MergeSettling, OperatorOverride,
+};
 mod phase;
 pub use phase::{LedgerPhase, holds_capacity, terminal, waiting_on_prerequisite};
 mod slots;
@@ -140,6 +142,11 @@ pub struct LedgerEntry {
     /// written before the field existed still load.
     #[serde(default)]
     pub operator_override: Option<OperatorOverride>,
+    /// A merge approval queued by Discord's `!merge` against a pull request
+    /// that had not yet reached `Escalated` — see [`MergeApproval`].
+    /// Defaulted so ledgers written before the field existed still load.
+    #[serde(default)]
+    pub merge_approval: Option<MergeApproval>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -190,6 +197,20 @@ impl Ledger {
         self.entries
             .iter()
             .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
+            .count()
+    }
+
+    /// Merges Discord's `!merge` queued an approval for while they were still
+    /// waiting on the deterministic gate, and have not yet drained.
+    ///
+    /// Read by `robco overseer status --debug`, the same way
+    /// [`Self::manual_merge_skips`] is, so an operator can see how many
+    /// pending merges already carry their own approval rather than a future
+    /// escalation.
+    pub fn queued_merge_approvals(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.merge_approval.is_some() && !terminal(entry.phase))
             .count()
     }
 

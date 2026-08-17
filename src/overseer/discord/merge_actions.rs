@@ -5,7 +5,7 @@
 //! because the merge path pulls in a distinct set of dependencies
 //! ([`MergeFlow`], [`Registry`]) that the rest of `actions.rs` does not need.
 
-use std::process::Command as ProcessCommand;
+use std::{process::Command as ProcessCommand, sync::mpsc::Sender};
 
 use crate::{
     agent,
@@ -19,22 +19,37 @@ use crate::{
     registry::Registry,
 };
 
+use super::ledger_requests::LedgerRequest;
+
 /// Merges an escalated pull request's ledger entry, reusing the exact
 /// sequence the TUI merge key and the `robco_merge` MCP tool run
 /// ([`MergeFlow`]) so a merge landed from Discord ends in the same state.
-/// Restricted to `Escalated` entries: every other phase already has an
-/// automated path to `Merged`, and widening this to any task would blur
-/// the one case Discord's `!merge` exists for — a pull request the
-/// automated gate could not land on its own.
-pub(super) fn merge(task: &str) -> crate::Result<String> {
+///
+/// An entry that has not reached `Escalated` yet cannot merge immediately —
+/// its checks may still be running, or the deterministic gate may not have
+/// looked at it at all — so the operator's approval is queued instead (see
+/// [`queue_approval`]) and satisfies only the autonomy envelope once the gate
+/// itself clears, on a later poll pass.
+pub(super) fn merge(
+    task: &str,
+    user_id: &str,
+    ledger_requests: &Sender<LedgerRequest>,
+) -> crate::Result<String> {
     let ledger = Ledger::load()?;
     let entry = find_ledger_entry(&ledger, task)?;
     if entry.phase != LedgerPhase::Escalated {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("{task}: not escalated (phase: {})", entry.phase.label()),
-        )
-        .into());
+        if entry.pr_url.is_none() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("{task}: no pull request recorded"),
+            )
+            .into());
+        }
+        queue_approval(ledger_requests, task, user_id)?;
+        return Ok(format!(
+            "{task}: merge queued (phase: {})",
+            entry.phase.label()
+        ));
     }
     let registry = Registry::load()?;
     let (repo, agent_node) = find_agent(&registry, &entry.agent_id)?;
@@ -86,6 +101,31 @@ pub(super) fn diff(task: &str) -> crate::Result<String> {
         ))
         .into())
     }
+}
+
+/// Sends an operator approval to the daemon's ledger-request channel, the
+/// same way `!skip` / `!retry` do, so the Discord thread never writes the
+/// ledger directly. The daemon resolves the pull request's head sha when it
+/// drains the request — see `ledger_requests::apply`'s `Approve` arm — rather
+/// than trusting one taken here, so the approval names the revision the merge
+/// pass is about to see.
+fn queue_approval(
+    ledger_requests: &Sender<LedgerRequest>,
+    task: &str,
+    user_id: &str,
+) -> crate::Result<()> {
+    ledger_requests
+        .send(LedgerRequest::Approve {
+            task: task.to_owned(),
+            user_id: user_id.to_owned(),
+        })
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "daemon ledger request channel is closed",
+            )
+        })?;
+    Ok(())
 }
 
 fn find_ledger_entry<'a>(ledger: &'a Ledger, task: &str) -> crate::Result<&'a LedgerEntry> {

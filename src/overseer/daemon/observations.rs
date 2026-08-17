@@ -268,6 +268,7 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
                 escalation_notified_head: None,
                 worker_escalated: false,
                 operator_override: None,
+                merge_approval: None,
             });
         }
     }

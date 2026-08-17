@@ -33,6 +33,7 @@ fn ledger_with_entry(agent_id: &str, display_id: &str) -> Ledger {
             escalation_notified_head: None,
             worker_escalated: false,
             operator_override: None,
+            merge_approval: None,
         }],
         ..Ledger::default()
     }

@@ -244,6 +244,7 @@ fn ledger_entry(repo: &str, task_id: &str) -> crate::overseer::ledger::LedgerEnt
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     }
 }
 

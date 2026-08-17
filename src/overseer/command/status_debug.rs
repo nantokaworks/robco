@@ -91,6 +91,10 @@ pub(super) fn print_debug_section(
     if manual_merges != 0 {
         println!("merge-eligible, manual: {manual_merges}");
     }
+    let queued_approvals = ledger.queued_merge_approvals();
+    if queued_approvals != 0 {
+        println!("merges queued (operator approved): {queued_approvals}");
+    }
     println!("skip list: {:?}", ledger.skip_list);
     println!("recent decisions:");
     for entry in logging::tail(10)? {

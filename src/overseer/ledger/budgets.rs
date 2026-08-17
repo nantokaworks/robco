@@ -110,6 +110,28 @@ pub struct OperatorOverride {
     pub granted_at: DateTime<Utc>,
 }
 
+/// A merge approval Discord's `!merge` queued against a pull request that had
+/// not yet reached `Escalated` when the operator approved it — see
+/// `overseer::discord::merge_actions::merge`'s queue path and
+/// `overseer::discord::ledger_requests::LedgerRequest::Approve`.
+///
+/// Scoped to the head sha the operator saw, the same way [`OperatorOverride`]
+/// is: a later push presents a revision the operator never approved, and this
+/// approval is dropped rather than carried forward — the drop is itself
+/// recorded in `decisions.jsonl`, because a silently dropped approval looks to
+/// the operator like a merge that should already have happened.
+///
+/// Deliberately narrower than [`OperatorOverride`]: `daemon::merge_judge_gate`
+/// consumes it only to satisfy the autonomy envelope's decision to escalate,
+/// never a judge veto or escalate verdict. An operator approving from Discord
+/// before the judge has spoken has not reviewed a verdict there is anything to
+/// bypass.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MergeApproval {
+    pub head: String,
+    pub granted_at: DateTime<Utc>,
+}
+
 /// The ledger's daily dispatch bookkeeping: today's count against
 /// `overseer.daily_dispatch_limit`, reset once `date` no longer matches, and
 /// the consecutive-failure count the dispatch/merge circuit breaker shares.

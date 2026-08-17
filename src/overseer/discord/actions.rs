@@ -122,7 +122,7 @@ fn execute(
             command::panic_stop_attributed("discord", Some(user_id))?;
             Ok("panic stop complete".into())
         }
-        Command::Merge(task) => merge_actions::merge(task),
+        Command::Merge(task) => merge_actions::merge(task, user_id, ledger_requests),
         Command::Diff(task) => merge_actions::diff(task),
         Command::Help => Ok(help::help_message()),
     }
