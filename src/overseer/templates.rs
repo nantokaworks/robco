@@ -39,7 +39,11 @@ If you already reported `blocked` and a human then answers you directly inside t
 not through dropr, not through the Inbox — run `robco report --kind unblocked` right away. That
 tells Overseer the block lifted immediately instead of waiting for its next observation pass.
 
-{directive}Never merge. Never force push. Never push to main. Never create extra worktrees."#
+{directive}Never merge. Never force push. Never push to main. Never change the branch of the
+repository under `~/.robco/repos/` — not with `git checkout`, not with `gh pr checkout`. To
+inspect another PR, make a throwaway worktree outside that managed tree (for example under
+the system temp directory) and remove it when you are done — that is the one worktree this
+rule allows; do not create any other extra worktree."#
     )
 }
 
@@ -95,7 +99,11 @@ veto), re-run the relevant tests, commit with `(refs dropr:{task_id})` in the me
 push the same branch. Then run `robco report --kind done`. Overseer re-evaluates the pull
 request on its next pass and merges it once the gate is satisfied.
 
-{directive}Never merge. Never force push. Never push to main. Never create extra worktrees.
+{directive}Never merge. Never force push. Never push to main. Never change the branch of the
+repository under `~/.robco/repos/` — not with `git checkout`, not with `gh pr checkout`. To
+inspect another PR, make a throwaway worktree outside that managed tree (for example under
+the system temp directory) and remove it when you are done — that is the one worktree this
+rule allows; do not create any other extra worktree.
 You fix the branch; Overseer merges it."#
     )
 }
@@ -180,9 +188,25 @@ mod tests {
             "Never merge",
             "Never force push",
             "Never push to main",
-            "Never create extra worktrees",
+            "Never change the branch of the",
         ] {
             assert!(prompt.contains(rail), "missing rail: {rail}");
+        }
+    }
+
+    /// dropr:JUo1qJqo6XHWKvrbREmlX: the rail bans switching the shared
+    /// checkout's branch, but a worker still needs to read another PR
+    /// sometimes — the prompt has to name the throwaway-worktree
+    /// alternative, not just the ban, in both prompts that carry the rails.
+    #[test]
+    fn both_prompts_name_the_throwaway_worktree_alternative() {
+        for prompt in [worker(None), recovery(None)] {
+            assert!(
+                prompt
+                    .contains("Never change the branch of the\nrepository under `~/.robco/repos/`")
+            );
+            assert!(prompt.contains("throwaway worktree outside that managed tree"));
+            assert!(prompt.contains("do not create any other extra worktree"));
         }
     }
 
