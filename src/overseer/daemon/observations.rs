@@ -104,13 +104,34 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader, now: DateTime<Utc
                 continue;
             }
             match liveness::probe_session_status(&agent.tmux_session) {
-                Ok(dead) => observations.sessions.push(SessionObservation {
-                    agent_id: entry.agent_id.clone(),
-                    status: if dead { "dead" } else { "running" }.into(),
-                    last_activity_at: (!dead)
-                        .then(|| tmux_activity(&agent.tmux_session))
-                        .flatten(),
-                }),
+                Ok(dead) => {
+                    let last_activity_at = if dead {
+                        None
+                    } else {
+                        match tmux_activity(&agent.tmux_session) {
+                            Ok(at) => Some(at),
+                            // A probe fault is not the same signal as "no
+                            // activity" — silently treating it as one is
+                            // what let a hung worker's stuck check go
+                            // completely blind. Log it and leave this tick's
+                            // reading absent instead of guessing.
+                            Err(error) => {
+                                observations.errors.push(
+                                    ObservationError::new(format!(
+                                        "tmux activity probe faulted: {error}"
+                                    ))
+                                    .about(&entry.task_id, &entry.repo),
+                                );
+                                None
+                            }
+                        }
+                    };
+                    observations.sessions.push(SessionObservation {
+                        agent_id: entry.agent_id.clone(),
+                        status: if dead { "dead" } else { "running" }.into(),
+                        last_activity_at,
+                    });
+                }
                 Err(error) => observations.errors.push(
                     ObservationError::new(format!("tmux probe skipped: {error}"))
                         .about(&entry.task_id, &entry.repo),
@@ -162,26 +183,43 @@ fn detached_agents(ledger: &Ledger, registry: &Registry) -> Vec<String> {
         .collect()
 }
 
-fn tmux_activity(session: &str) -> Option<DateTime<Utc>> {
+/// Reads a live session's start-or-most-recent-activity time (tmux's
+/// `#{session_activity}`). `Err` means the probe itself faulted — command
+/// failure, non-zero exit, or output that would not parse — and callers
+/// must not read that the same way as "no activity"; see [`gather`].
+///
+/// The target is `={session}:`, not the bare `={session}`: on tmux 3.7,
+/// `display-message` against a bare session target exits 0 and prints an
+/// empty string for pane/window-scoped format variables (the same failure
+/// mode documented on `tmux::session::exact`, which this daemon-side probe
+/// predates and did not go through). The trailing `:` selects the session's
+/// default window/pane, which resolves `#{session_activity}` correctly.
+fn tmux_activity(session: &str) -> std::result::Result<DateTime<Utc>, String> {
     let mut command = Command::new("tmux");
     command.args([
         "display-message",
         "-p",
         "-t",
-        &format!("={session}"),
+        &format!("={session}:"),
         "-F",
         "#{session_activity}",
     ]);
-    let output = run_timeout(command, COMMAND_TIMEOUT).ok()?;
+    let output = run_timeout(command, COMMAND_TIMEOUT).map_err(|error| error.to_string())?;
     if !output.status.success() {
-        return None;
+        return Err(format!(
+            "tmux display-message exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
     }
-    let epoch = std::str::from_utf8(&output.stdout)
-        .ok()?
-        .trim()
+    let raw = std::str::from_utf8(&output.stdout)
+        .map_err(|error| format!("tmux display-message output was not utf8: {error}"))?
+        .trim();
+    let epoch: i64 = raw
         .parse()
-        .ok()?;
+        .map_err(|error| format!("tmux display-message returned {raw:?}: {error}"))?;
     DateTime::from_timestamp(epoch, 0)
+        .ok_or_else(|| format!("session_activity epoch {epoch} out of range"))
 }
 
 pub(super) fn adopt_registry_children(ledger: &mut Ledger) -> Result<()> {

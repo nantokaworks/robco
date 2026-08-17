@@ -249,10 +249,16 @@ pub(super) fn apply_session(entry: &mut LedgerEntry, observations: &Observations
         });
         return;
     }
-    let last = session
-        .last_activity_at
-        .or_else(|| (entry.phase == LedgerPhase::Dispatched).then_some(entry.dispatched_at));
-    if last.is_some_and(|last| {
+    // `last_activity_at` now carries a real tmux `#{session_activity}` reading
+    // for any live session, in every phase — not just `Dispatched` — so a
+    // `dispatched_at` fallback is no longer needed to catch a worker that
+    // never sends its first report. A `None` reading here means this tick's
+    // probe faulted (already logged as an `ObservationError` in
+    // `daemon::observations::gather`), not that the session sat idle since
+    // dispatch; judging it against `dispatched_at` would fail an actively
+    // working session on a single transient probe miss. Leave it unjudged
+    // this tick instead — the next successful probe carries a real value.
+    if session.last_activity_at.is_some_and(|last| {
         now.signed_duration_since(last) > Duration::minutes(stuck_after_mins as i64)
     }) {
         fail(entry, "worker exceeded stuck timeout", FailureOrigin::Worker, actions);
