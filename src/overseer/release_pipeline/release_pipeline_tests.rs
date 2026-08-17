@@ -95,7 +95,7 @@ fn ready_rejects_a_dirty_checkout() {
 
     std::fs::write(repo.path().join("wip.txt"), "not yet committed").unwrap();
 
-    assert_eq!(ready(repo.path()), Err("working_tree_dirty"));
+    assert_eq!(ready(repo.path()), Err("working_tree_dirty".to_string()));
 }
 
 #[test]
@@ -108,7 +108,10 @@ fn ready_rejects_a_checkout_behind_the_merged_commit() {
     // squash landed on `origin/main` — nothing in this module pulls it.
     git(repo.path(), &["checkout", "-q", "main"]);
 
-    assert_eq!(ready(repo.path()), Err("checkout_not_on_merged_commit"));
+    assert_eq!(
+        ready(repo.path()),
+        Err("checkout_not_on_merged_commit".to_string())
+    );
 }
 
 /// dropr:429 — a detached checkout must be named, not folded into the
@@ -121,10 +124,12 @@ fn ready_rejects_a_detached_checkout() {
     repo.land_squash("task");
     git(repo.path(), &["checkout", "-q", "--detach", "main"]);
 
-    assert_eq!(ready(repo.path()), Err("checkout_detached"));
+    assert_eq!(ready(repo.path()), Err("checkout_detached".to_string()));
 }
 
 /// dropr:429 — a checkout left on some other branch gets its own reason too.
+/// dropr:444 — and that reason carries the branch name, so the
+/// operator-facing message can name it too.
 #[test]
 fn ready_rejects_a_checkout_on_another_branch() {
     let repo = TestRepo::new();
@@ -133,7 +138,10 @@ fn ready_rejects_a_checkout_on_another_branch() {
     repo.land_squash("task");
     git(repo.path(), &["checkout", "-qb", "operator-wip"]);
 
-    assert_eq!(ready(repo.path()), Err("checkout_not_on_main"));
+    assert_eq!(
+        ready(repo.path()),
+        Err("checkout_not_on_main:operator-wip".to_string())
+    );
     // `ready` only ever reads; the checkout it found must be exactly the one
     // it leaves behind.
     assert_eq!(

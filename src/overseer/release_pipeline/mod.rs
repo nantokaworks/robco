@@ -75,6 +75,12 @@ const RELEASE_SCOPE: &str = "[release]";
 
 const SCRIPT: &str = "scripts/release.sh";
 
+/// Shared prefix for every skip reason this module logs. Matched by
+/// `discord::notifications::from_decision` (Discord) and `ui::inbox::aggregate`
+/// (TUI Inbox) so a skip reaches the operator on both surfaces, from one
+/// definition rather than a literal copied at each call site.
+pub(crate) const SKIPPED_PREFIX: &str = "release_pipeline_skipped:";
+
 /// How long `scripts/release.sh` may run before the daemon gives up on it.
 /// The pipeline cross-compiles four targets and publishes to two remote
 /// repositories — comfortably the longest-running command this daemon ever
@@ -121,7 +127,7 @@ pub(crate) fn consider(
     }
     match ready(repo_path) {
         Ok(()) => run(task_id, repo, pr_url, repo_path),
-        Err(reason) => skip(task_id, repo, pr_url, reason),
+        Err(reason) => skip(task_id, repo, pr_url, &reason),
     }
 }
 
@@ -200,14 +206,14 @@ fn run(task_id: &str, repo: &str, pr_url: &str, repo_path: &Path) -> Result<()> 
 /// Discord like a published or failed release does — an unready checkout
 /// blocks every release after it, so this is deliberately louder than an
 /// ordinary `daemon`-sourced skip.
-fn skip(task_id: &str, repo: &str, pr_url: &str, reason: &'static str) -> Result<()> {
+fn skip(task_id: &str, repo: &str, pr_url: &str, reason: &str) -> Result<()> {
     report(
         task_id,
         repo,
         pr_url,
         DecisionKind::Skip,
         "daemon_event",
-        format!("release_pipeline_skipped:{reason}"),
+        format!("{SKIPPED_PREFIX}{reason}"),
     )
 }
 
