@@ -152,6 +152,28 @@ fn a_skipped_release_reads_as_an_errors_tier_notification() {
     assert_eq!(notification.color, 0xe67e22);
 }
 
+/// dropr:444 — a checkout left off `main` names the branch it is on and the
+/// fix (return it to `main`), not just the bare reason code.
+#[test]
+fn a_skipped_release_off_main_names_the_branch_and_the_fix() {
+    let mut entry = DecisionEntry::new(
+        DecisionKind::Skip,
+        "release_pipeline_skipped:checkout_not_on_main:operator-wip",
+    );
+    entry.source = Some("daemon_event".into());
+    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
+    assert_eq!(notification.title, "Release skipped");
+    assert_eq!(
+        notification.description,
+        "The release checkout is on another branch, not main, so the release did not run. \
+         Move the checkout back to main to unblock the release."
+    );
+    assert_eq!(
+        field_value(&notification, "Reason"),
+        Some("`release_pipeline_skipped:checkout_not_on_main:operator-wip`")
+    );
+}
+
 #[test]
 fn a_pr_url_without_pull_segment_still_links() {
     let mut entry = DecisionEntry::new(DecisionKind::Escalate, "stuck");

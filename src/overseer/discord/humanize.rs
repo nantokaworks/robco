@@ -101,10 +101,6 @@ const EXACT: &[(&str, &str)] = &[
         "The release checkout is not on the merged commit, so the release did not run.",
     ),
     (
-        "release_pipeline_skipped:checkout_not_on_main",
-        "The release checkout is on another branch, not main, so the release did not run.",
-    ),
-    (
         "release_pipeline_skipped:checkout_detached",
         "The release checkout has a detached HEAD, so the release did not run.",
     ),
@@ -117,6 +113,15 @@ const EXACT: &[(&str, &str)] = &[
 /// Reasons matched by prefix. The text after the prefix carries detail that
 /// stays available in the raw code the caller shows next to the sentence.
 const PREFIX: &[(&str, &str)] = &[
+    // The branch name rides along after this prefix (`overseer::release_
+    // pipeline::readiness::ready`), so the sentence itself names the fix
+    // rather than the branch — the raw code shown next to it names the
+    // branch.
+    (
+        "release_pipeline_skipped:checkout_not_on_main:",
+        "The release checkout is on another branch, not main, so the release did not run. \
+         Move the checkout back to main to unblock the release.",
+    ),
     (
         "merge_hold_cap_reached:",
         "The pull request was held on the same condition too many times.",
