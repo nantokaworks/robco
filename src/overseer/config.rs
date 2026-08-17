@@ -220,6 +220,28 @@ pub struct OverseerConfig {
     /// repository and a future change to it would run with this same
     /// privilege the next time a `[release]`-scoped merge lands.
     pub release_pipeline_enabled: bool,
+    /// Whether the periodic repository health watch — security-advisory
+    /// drift (`daemon::repo_watch_advisory`) and stale/conflicted Dependabot
+    /// pull requests (`daemon::repo_watch_dependabot`) — runs at all.
+    /// Default-on, unlike `merge_recovery_enabled` or
+    /// `release_pipeline_enabled`: this widens nothing the daemon does to a
+    /// repository's branches or pull requests, it only reads `bun audit` /
+    /// `govulncheck` / `gh pr list` output and files a dropr task an
+    /// operator still has to act on. Per-repository opt-out reuses
+    /// `RepoNode::management` — the same flag `dispatch::gather` and
+    /// `merge_repo_pass` already honor for "does Overseer treat this repo as
+    /// its own" — rather than a second per-repo toggle.
+    pub repo_watch_enabled: bool,
+    /// Hours between one repository's advisory/Dependabot watch passes.
+    /// Default matches dropr task #430's "keep it cheap" ask: a daily
+    /// cadence costs one `govulncheck` run per watched repository a day
+    /// rather than one a minute.
+    pub repo_watch_interval_hours: u64,
+    /// Days a Dependabot pull request may sit open, unconflicted, before the
+    /// watch treats it as needing coordinated attention. A conflicted
+    /// (`DIRTY`) pull request is flagged regardless of age — see
+    /// `daemon::repo_watch_dependabot`.
+    pub dependabot_stale_after_days: i64,
     pub discord: DiscordConfig,
 }
 
@@ -276,6 +298,9 @@ impl Default for OverseerConfig {
             // "forever" — see the field's own doc for why.
             max_prerequisite_wait_hours: 72,
             release_pipeline_enabled: false,
+            repo_watch_enabled: true,
+            repo_watch_interval_hours: 24,
+            dependabot_stale_after_days: 3,
             discord: DiscordConfig::default(),
         }
     }

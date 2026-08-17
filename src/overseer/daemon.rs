@@ -25,6 +25,10 @@ pub(crate) mod merge_state;
 mod observations;
 mod protection;
 pub(crate) mod pull_request;
+mod repo_watch;
+mod repo_watch_advisory;
+mod repo_watch_dependabot;
+mod repo_watch_task;
 mod retention;
 
 use super::{
@@ -153,6 +157,11 @@ pub async fn run_daemon() -> Result<()> {
         // dispatch or merging, so it is logged rather than propagated.
         if let Err(error) = external_prs::refresh_pass(&ledger, now) {
             logging::log_message(None, &format!("other-PR discovery failed: {error}"))?;
+        }
+        // Same best-effort tolerance as the other-PR discovery pass above: a
+        // repo health watch failure must not interrupt dispatch or merging.
+        if let Err(error) = repo_watch::watch_pass(&config, now) {
+            logging::log_message(None, &format!("repo watch failed: {error}"))?;
         }
         let (mut next, actions) = reconcile(
             &ledger,

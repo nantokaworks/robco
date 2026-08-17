@@ -189,6 +189,44 @@ because the fast-forward failed — is left in place with the reason logged, nev
 force-deleted. Remote branch deletion stays best-effort: GitHub's own
 auto-delete-branch setting usually gets there first, and its absence is not a failure.
 
+### Repository health watch
+
+A daemon tick also runs `daemon/repo_watch.rs` for every Auto-managed, materialised
+repository — the same `RepoNode::management` gate `gather_candidates` and
+`merge_repo_pass` already honor (see [Repo-level Overseer
+opt-out](#repo-level-overseer-opt-out)), rather than a second per-repo toggle. Detection
+only: filing the coordination task is as far as this goes, and a human or a dispatched
+worker still does the actual fix.
+
+- **Advisory drift** (`repo_watch_advisory.rs`) runs `bun audit` when the checkout has a
+  `bun.lock`, and `govulncheck ./...` when it has a `go.mod`. A failing run that names at
+  least one `GHSA-*` or `GO-*` advisory id files one task; a failing run that names none —
+  a network hiccup, a missing tool — is logged and skipped rather than treated as an
+  advisory.
+- **Dependabot coordination** (`repo_watch_dependabot.rs`) lists open Dependabot pull
+  requests via `gh pr list` and files one task naming every pull request that is
+  conflicted (`DIRTY`) or has sat open past `dependabot_stale_after_days`, regardless of
+  age for the former.
+- **Cadence** is `repo_watch_interval_hours` per repository, tracked in
+  `~/.robco/overseer/repo_watch.json` — a cache, not a ledger; losing it costs one extra
+  check, never a duplicate task.
+- **Dedup** lives on the dropr board itself, not in local state: each condition's task
+  title carries a `[repo-watch:<kind>:<repo>:<key>]` marker (the key is the sorted
+  advisory-id set or pull-request-number set), and the watch skips filing while an
+  `open` / `in_progress` / `blocked` task already carries that exact marker. A changed
+  condition is, by design, a new marker and gets its own task; a resolved one (the prior
+  task closed) re-files on the next due pass if the condition still holds. When the board
+  itself cannot be read, the pass skips filing that repository entirely rather than risk a
+  duplicate.
+- Filed tasks report through the same Discord path dispatch and merge events use —
+  `advisory_task_filed` / `dependabot_task_filed` decision-log reasons, humanized in
+  `discord/humanize.rs` and tiered in `discord/notifications.rs`.
+
+See dropr task #430 for the feature's origin: eight Dependabot pull requests sat unmerged
+for four days after new advisories broke `nex`'s blocking CI gates, because nothing in the
+automation owned detection — Overseer only polls dropr's ready feed, and Dependabot pull
+requests never become tasks on their own.
+
 ### Judgment plane
 
 Overseer uses short-lived LLM processes for exception triage and conversational Discord
@@ -292,6 +330,9 @@ always has.
     "session_preflight": true,
     "dispatch_task_authors": [],
     "release_pipeline_enabled": false,
+    "repo_watch_enabled": true,
+    "repo_watch_interval_hours": 24,
+    "dependabot_stale_after_days": 3,
     "discord": {
       "enabled": false,
       "token_env": "ROBCO_DISCORD_TOKEN",
@@ -346,6 +387,9 @@ always has.
 | `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco overseer status`. |
 | `dispatch_task_authors` | array of strings | `[]` | Exact allowlist for ready-task authors. Empty permits every author. |
 | `release_pipeline_enabled` | boolean | `false` | Runs `scripts/release.sh` unattended, from this project's own checkout, after a merge closes a `[release]`-scoped task in this project's own repository. A distinct privilege class from every other flag above: on success it publishes a public GitHub release with whatever credentials the daemon holds, and `scripts/release.sh` is itself part of this repository, so a future change to it runs with this same privilege on the next qualifying merge. Default-off; an operator opts in deliberately. See [`overseer::release_pipeline`](../src/overseer/release_pipeline.rs). |
+| `repo_watch_enabled` | boolean | `true` | Whether the periodic advisory/Dependabot repository health watch runs at all. See [Repository health watch](#repository-health-watch). |
+| `repo_watch_interval_hours` | non-negative integer | `24` | Hours between one repository's advisory/Dependabot watch passes. |
+| `dependabot_stale_after_days` | integer | `3` | Days a Dependabot pull request may sit open, unconflicted, before the watch treats it as needing coordinated attention. A conflicted (`DIRTY`) pull request is flagged regardless of age. |
 | `discord` | object | see below | Discord gateway, command, and notification settings. |
 
 ### Discord fields
@@ -1259,7 +1303,9 @@ inside it can be compared directly.
 A repo switched to Manual is dropped from `gather_candidates` before its dropr workspace
 is even looked up, recording an `overseer_unmanaged` skip per pass — its own reason,
 distinct from `workspace_unmatched`, so an idle Overseer stays diagnosable from
-`decisions.jsonl` alone. Auto-merge honours the same decision: `worker_is_auto` now
+`decisions.jsonl` alone. [Repository health watch](#repository-health-watch) honours the
+same flag: a Manual repo is skipped before `repo_watch.rs` runs `bun audit` /
+`govulncheck` / `gh pr list` against it at all. Auto-merge honours the same decision: `worker_is_auto` now
 requires the entry's repo to be Auto *and* its worker to be Auto, so a Manual repo's pull
 requests take the existing per-worker `manual` skip path in `auto_merge_pass` — recorded
 once per pull request, exactly like a Manual worker's. The two gates were already at risk
