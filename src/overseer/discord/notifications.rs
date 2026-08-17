@@ -60,6 +60,12 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
         (Some("task_escalated"), _) => (NotifyTier::Errors, "Task escalated", 0xd35400),
         (Some("worker_blocked"), _) => (NotifyTier::Errors, "Worker blocked", 0xe67e22),
         (Some("queue_drained"), _) => (NotifyTier::All, "Queue drained", 0x1abc9c),
+        (Some("advisory_task_filed"), _) => (NotifyTier::Summary, "Advisory task filed", 0xf39c12),
+        (Some("dependabot_task_filed"), _) => (
+            NotifyTier::Summary,
+            "Dependabot coordination task filed",
+            0xf39c12,
+        ),
         // The prefix only selects tier/title/color here; the description
         // below still goes through `humanize::sentence`, which strips this
         // same prefix and uses `overseer::release_pipeline`'s own words —
