@@ -28,14 +28,14 @@ fn autonomy_level_keeps_a_concurrent_edit_to_another_field() {
     // Stand in for the daemon rewriting the file after the CLI read its own
     // snapshot: the write must reload rather than serialise a stale one.
     let mut concurrent = Config::load_at(&path).unwrap();
-    concurrent.overseer.max_workers = 11;
+    concurrent.overseer.parallel_limit = 11;
     concurrent.save_at(&path).unwrap();
 
     persist_autonomy_level_at(&path, AutonomyLevel::FullAuto).unwrap();
 
     let after = Config::load_at(&path).unwrap();
     assert_eq!(after.overseer.autonomy_level, AutonomyLevel::FullAuto);
-    assert_eq!(after.overseer.max_workers, 11);
+    assert_eq!(after.overseer.parallel_limit, 11);
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn notify_channel_keeps_a_concurrent_edit_to_another_field() {
     // Stand in for the daemon rewriting the file after the CLI read its own
     // snapshot: the write must reload rather than serialise a stale one.
     let mut concurrent = Config::load_at(&path).unwrap();
-    concurrent.overseer.max_workers = 11;
+    concurrent.overseer.parallel_limit = 11;
     concurrent.save_at(&path).unwrap();
 
     persist_notify_channel_at(&path, Some("1234".into())).unwrap();
@@ -85,7 +85,7 @@ fn notify_channel_keeps_a_concurrent_edit_to_another_field() {
         after.overseer.discord.notify_channel_id.as_deref(),
         Some("1234")
     );
-    assert_eq!(after.overseer.max_workers, 11);
+    assert_eq!(after.overseer.parallel_limit, 11);
 }
 
 #[test]

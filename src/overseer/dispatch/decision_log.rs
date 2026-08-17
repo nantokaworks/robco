@@ -222,7 +222,7 @@ mod tests {
         log_candidate_once(
             DecisionKind::Skip,
             &candidate("task-1"),
-            "per_repo_limit",
+            "primary_slot_taken",
             &mut logged,
             |e| {
                 reasons.push(e.reason.clone());
@@ -231,7 +231,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(reasons, ["one_per_repo", "per_repo_limit"]);
+        assert_eq!(reasons, ["one_per_repo", "primary_slot_taken"]);
     }
 
     #[test]

@@ -113,8 +113,16 @@ pub struct OverseerConfig {
     /// hold-cap escalation.
     pub max_merge_hold_rechecks: u32,
     pub worker_profile: Option<String>,
-    pub max_workers: usize,
-    pub per_repo_limit: usize,
+    /// Secondary dispatch slots opened per repository, on top of the one
+    /// always-present primary slot. `0` (the default) means every repository
+    /// runs a single serialized worker; a positive value lets this many more
+    /// candidates dispatch alongside the primary once it is running. Replaces
+    /// the retired `max_workers` / `per_repo_limit` pair — see
+    /// `dispatch::gate::candidate_skip` for how the two slot tiers are
+    /// enforced, and dropr:452 for why no global cap replaces `max_workers`:
+    /// with one primary per repository, the number of registered repositories
+    /// already bounds the total.
+    pub parallel_limit: usize,
     /// Settled ledger entries kept per repository. Nothing else ever removes a
     /// terminal entry, so without a bound the ledger grows for the life of the
     /// installation and every save rewrites all of it. `0` keeps every entry,
@@ -243,8 +251,7 @@ impl Default for OverseerConfig {
             max_merge_judge_fail_safes: 3,
             max_merge_hold_rechecks: 10,
             worker_profile: None,
-            max_workers: 3,
-            per_repo_limit: 1,
+            parallel_limit: 0,
             // Deep enough that a repository's recent history is still readable
             // — well past the live-entry cap every other surface applies — and
             // shallow enough that the file the daemon rewrites every pass stays

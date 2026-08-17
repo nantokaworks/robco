@@ -52,11 +52,22 @@ still open, or closed without merging, leaves it escalated and says nothing.
 
 The dispatch engine considers ready tasks from dropr workspaces associated with RobCo's
 registered repository remotes. It applies the dispatch toggle, daily limit, failure
-circuit, skip list, retry limit, task-author filter, global worker limit, per-repository
-limit, and a one-new-worker-per-repository-per-pass rule. A task whose ledger entry is
-still in a non-terminal phase is held with reason `active_worker` whatever management
-mode owns that worker, because the live worker still holds the task's branch and
-worktree. Every decision is appended to `~/.robco/overseer/decisions.jsonl`.
+circuit, skip list, retry limit, task-author filter, an ancestor-preference rule, each
+repository's primary/secondary dispatch slots, and a one-new-worker-per-repository-per-pass
+rule. A task whose ledger entry is still in a non-terminal phase is held with reason
+`active_worker` whatever management mode owns that worker, because the live worker still
+holds the task's branch and worktree. A subtask whose own parent is also a ready candidate
+this pass is held with reason `ancestor_candidate` rather than dispatched ahead of it, even
+when the subtask carries a higher priority — a RUN dispatch against the parent already
+covers the subtask's own implementation. Every decision is appended to
+`~/.robco/overseer/decisions.jsonl`.
+
+Every repository runs exactly one *primary* worker at a time; `parallel_limit` opens that
+many *secondary* slots alongside it, default `0`. A candidate for a repository whose
+primary slot is already taken holds with reason `primary_slot_taken` when `parallel_limit`
+is `0`, or `parallel_slot_taken` once every secondary slot is also taken. There is no
+global worker cap any more — the number of registered repositories bounds the total, since
+each repository's slots are self-contained.
 
 Candidates are ordered before those gates run, by dropr task priority (`high`, `medium`,
 `low`, then anything else) and then by ascending display id, which dropr assigns in
@@ -65,8 +76,9 @@ slot rather than whichever repository the registry happened to list first. The j
 one runs, receives this same ordering as its input, so it reorders a defined baseline.
 
 A dispatch pass consults the LLM judge only when it is contended — when the approved
-candidates outnumber the worker slots still available (`max_workers` minus live Auto
-workers, bounded by one new worker per repository). Otherwise approving everything is the
+candidates outnumber the worker slots still available (each repository's own open
+primary/secondary slot, bounded by one new worker per repository per pass). Otherwise
+approving everything is the
 only verdict the judge's authority can produce, so the pass dispatches its own ordering
 immediately instead of spending a call and a whole extra poll cycle waiting for the
 verdict. With `judge_profile` unset no dispatch judgment is ever enqueued, at any
@@ -310,8 +322,7 @@ always has.
     "max_merge_recoveries": 2,
     "max_merge_holds": 30,
     "worker_profile": null,
-    "max_workers": 3,
-    "per_repo_limit": 1,
+    "parallel_limit": 0,
     "terminal_retention_per_repo": 50,
     "poll_interval_secs": 60,
     "stuck_after_mins": 30,
@@ -367,8 +378,7 @@ always has.
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
 | `max_merge_hold_rechecks` | non-negative integer | `10` | Further looks through the gate an entry escalated by `max_merge_holds` is given, so a condition an operator fixes afterwards is noticed instead of leaving the pull request parked for good. Only a pass that re-read the gate and found it still holding spends one; a pass waiting on a judgment spends nothing. The pass that spends the last look records `merge_hold_recheck_exhausted:<reason>`. `0` leaves an escalated entry where it is, which is how Overseer behaved before this budget existed. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
-| `max_workers` | non-negative integer | `3` | Maximum active non-terminal Overseer ledger entries globally. Manual entries count too — see below. |
-| `per_repo_limit` | non-negative integer | `1` | Maximum active Overseer ledger entries per repository. Manual entries count too — see below. |
+| `parallel_limit` | non-negative integer | `0` | Secondary dispatch slots opened per repository, on top of the one always-present primary slot. `0` runs every repository serialized, one worker at a time. Manual entries count too — see below. There is no global cap; the number of registered repositories bounds the total, since each repository's slots are self-contained. |
 | `terminal_retention_per_repo` | non-negative integer | `50` | Settled (`merged`, `failed`, `escalated`) ledger entries kept per repository. The oldest beyond the window are dropped at the end of a pass — see below. `0` keeps every settled entry, which is how the ledger behaved before the window existed. |
 | `poll_interval_secs` | non-negative integer | `60` | Target period between daemon passes; also defines heartbeat freshness as `max(2 × value, 5)` seconds. |
 | `stuck_after_mins` | non-negative integer | `30` | A dispatched, claimed, or working worker with older tmux activity is failed. |
@@ -1116,7 +1126,7 @@ when it settled.
 The window is applied last, after reconcile, notifications, triage, merge, and dispatch
 have read the board, so it only decides how much settled history the *next* pass
 inherits. It never drops a non-terminal entry — live work holds a worktree and a dispatch
-slot, so `active_workers()`, `max_workers`, and `per_repo_limit` read exactly the counts
+slot, so `active_workers()` and the primary/secondary slot gate read exactly the counts
 they read before — and it never drops a terminal entry whose worker is still registered:
 merged cleanup is re-pushed for as long as the registry row survives, and dropping the
 entry first would leak the session and worktree that cleanup was about to remove. A
@@ -1249,7 +1259,7 @@ overwritten.
 
 Manual workers remain owned by Overseer but are skipped for automatic dispatch. Manual
 suppresses intervention, not occupancy: a live Manual worker still holds a worktree, a
-branch, and a tmux session, so it counts toward `max_workers` and `per_repo_limit`
+branch, and a tmux session, so it occupies its repository's primary or secondary slot
 exactly like an Auto worker, and `robco overseer status` reports the same count the
 dispatch gate enforces. Cycling a worker to Manual therefore never frees a dispatch slot.
 

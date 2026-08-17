@@ -12,8 +12,8 @@ pub use budgets::{
 };
 mod phase;
 pub use phase::{LedgerPhase, holds_capacity, terminal, waiting_on_prerequisite};
-mod reports;
-pub use reports::ActiveWorkers;
+mod slots;
+pub use slots::ActiveWorkers;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
@@ -185,6 +185,49 @@ pub struct Ledger {
 }
 
 impl Ledger {
+    /// Live merge candidates the merge pass is declining because their worker is
+    /// manual-managed.
+    ///
+    /// Read off the marker the merge pass itself writes rather than re-derived
+    /// from the registry, so every surface reports the gate's own verdict instead
+    /// of a second opinion that can disagree with it. Terminal entries are
+    /// excluded: a pull request a human merged themselves is no longer something
+    /// Overseer is holding back.
+    pub fn manual_merge_skips(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
+            .count()
+    }
+
+    /// Merges Discord's `!merge` queued an approval for while they were still
+    /// waiting on the deterministic gate, and have not yet drained.
+    ///
+    /// Read by `robco overseer status --debug`, the same way
+    /// [`Self::manual_merge_skips`] is, so an operator can see how many
+    /// pending merges already carry their own approval rather than a future
+    /// escalation.
+    pub fn queued_merge_approvals(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.merge_approval.is_some() && !terminal(entry.phase))
+            .count()
+    }
+
+    /// Merge failures a worker could have fixed that were left alone because
+    /// merge recovery is switched off.
+    ///
+    /// Counted across every entry the ledger still holds, terminal ones included:
+    /// an entry that escalated *because* nobody was handed its failure is the
+    /// clearest evidence the setting costs something, and dropping it from the
+    /// count would hide exactly the cases worth reading. The retention window is
+    /// what bounds how far back this reaches.
+    pub fn merge_recovery_drops(&self) -> u32 {
+        self.entries.iter().fold(0, |total, entry| {
+            total.saturating_add(entry.merge_recovery.dropped)
+        })
+    }
+
     pub fn load() -> Result<Self> {
         let path = super::ledger_path()?;
         Self::load_from(&path)
