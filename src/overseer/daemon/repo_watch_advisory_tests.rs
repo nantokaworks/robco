@@ -1,5 +1,37 @@
 use super::*;
 
+/// A probe binary absent from `PATH` is a host fact, not a run failure —
+/// distinguished from every other spawn/exit failure so the caller can skip
+/// it silently after the first sighting instead of logging it forever
+/// (dropr task #445).
+#[test]
+fn a_missing_binary_is_reported_as_missing_not_failed() {
+    let command = Command::new("robco-test-definitely-not-a-real-binary-xyz");
+    let result = probe(command, "phantom", "phantom probe");
+    assert!(matches!(result, Err(ProbeError::Missing("phantom"))));
+}
+
+/// A binary that exists but exits non-zero with no advisory id in its output
+/// is a genuine failure, kept apart from the missing-tool case above.
+#[test]
+fn a_failing_command_with_no_advisory_id_is_reported_as_failed() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "echo nothing to see here >&2; exit 1"]);
+    let result = probe(command, "phantom", "phantom probe");
+    assert!(matches!(result, Err(ProbeError::Failed(_))));
+}
+
+#[test]
+fn a_missing_tool_is_reported_once_then_stays_quiet() {
+    let mut reported = BTreeSet::new();
+    assert!(note_missing_tool("govulncheck", &mut reported).is_ok());
+    assert!(reported.contains("govulncheck"));
+    // The second sighting of the same tool must not error either — the point
+    // is silence, not failure.
+    assert!(note_missing_tool("govulncheck", &mut reported).is_ok());
+    assert_eq!(reported.len(), 1);
+}
+
 #[test]
 fn finds_a_ghsa_id_inside_bun_audit_style_output() {
     let output = r#"{"advisories":[{"id":"GHSA-2v37-7h3g-55p8","severity":"high"}]}"#;

@@ -2,13 +2,16 @@
 //! and `govulncheck ./...` (when it has a `go.mod`), run against a
 //! repository's local checkout on `repo_watch`'s cadence. A failing run that
 //! names at least one advisory id files one coordination task; a failing run
-//! that names none (network trouble, a missing tool) is logged and skipped
-//! rather than treated as an advisory (dropr task #430).
+//! that names none (network trouble) is logged and skipped rather than
+//! treated as an advisory (dropr task #430). A probe whose binary is not
+//! installed is a separate, permanent host fact rather than a per-run
+//! failure — it is reported once, not on every due repository forever
+//! (dropr task #445).
 
-use std::{path::Path, process::Command, time::Duration};
+use std::{collections::BTreeSet, path::Path, process::Command, time::Duration};
 
 use super::repo_watch_task;
-use crate::overseer::exec::run_timeout;
+use crate::overseer::{exec::run_timeout, logging};
 
 /// `govulncheck` walks a module graph and can run considerably longer than
 /// the 15s `COMMAND_TIMEOUT` daemon.rs uses for `gh` calls — the task's own
@@ -20,22 +23,47 @@ struct Finding {
     output: String,
 }
 
+/// Why a probe did not produce a [`Finding`].
+enum ProbeError {
+    /// The probe's binary is not on `PATH` — a permanent host fact, not a
+    /// failure of this run.
+    Missing(&'static str),
+    /// The probe ran and failed for a reason that named no advisory id
+    /// (network trouble, a tool crash).
+    Failed(String),
+}
+
 /// Probes one repository and files a task when advisories are found.
 /// Best-effort per probe: a `bun audit` failure does not stop `govulncheck`
-/// from running, and either probe's own tool-level error is returned rather
-/// than swallowed, so the caller can log it.
-pub(super) fn run(repo_path: &Path, workspace_id: &str, repo_name: &str) -> Result<(), String> {
+/// from running. A tool-level failure is returned rather than swallowed, so
+/// the caller can log it; a missing tool is instead reported once via
+/// `reported_missing_tools` and otherwise treated as the probe not applying
+/// here, the same as a repository without the matching lockfile.
+pub(super) fn run(
+    repo_path: &Path,
+    workspace_id: &str,
+    repo_name: &str,
+    reported_missing_tools: &mut BTreeSet<String>,
+) -> Result<(), String> {
     let mut problems = Vec::new();
     let bun = match probe_bun_audit(repo_path) {
         Ok(finding) => finding,
-        Err(problem) => {
+        Err(ProbeError::Missing(label)) => {
+            note_missing_tool(label, reported_missing_tools)?;
+            None
+        }
+        Err(ProbeError::Failed(problem)) => {
             problems.push(problem);
             None
         }
     };
     let go = match probe_govulncheck(repo_path) {
         Ok(finding) => finding,
-        Err(problem) => {
+        Err(ProbeError::Missing(label)) => {
+            note_missing_tool(label, reported_missing_tools)?;
+            None
+        }
+        Err(ProbeError::Failed(problem)) => {
             problems.push(problem);
             None
         }
@@ -46,6 +74,24 @@ pub(super) fn run(repo_path: &Path, workspace_id: &str, repo_name: &str) -> Resu
     } else {
         Err(problems.join("; "))
     }
+}
+
+/// Logs a missing-tool setup notice the first time `label` is seen, and stays
+/// quiet on every later call — the fact does not change until an operator
+/// installs the tool, so repeating it every due repository would just be
+/// noise.
+fn note_missing_tool(
+    label: &str,
+    reported_missing_tools: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    if !reported_missing_tools.insert(label.to_string()) {
+        return Ok(());
+    }
+    logging::log_message(
+        None,
+        &format!("{label} is not installed; its advisory probe is skipped until it is available"),
+    )
+    .map_err(|error| format!("decision log write failed: {error}"))
 }
 
 /// Combines whatever the two probes found, and files one task when the
@@ -85,32 +131,39 @@ fn file_if_found(
     }
 }
 
-fn probe_bun_audit(repo_path: &Path) -> Result<Option<Finding>, String> {
+fn probe_bun_audit(repo_path: &Path) -> Result<Option<Finding>, ProbeError> {
     if !repo_path.join("bun.lock").exists() && !repo_path.join("bun.lockb").exists() {
         return Ok(None);
     }
     let mut command = Command::new("bun");
     command.current_dir(repo_path).arg("audit");
-    probe(command, "bun audit")
+    probe(command, "bun", "bun audit")
 }
 
-fn probe_govulncheck(repo_path: &Path) -> Result<Option<Finding>, String> {
+fn probe_govulncheck(repo_path: &Path) -> Result<Option<Finding>, ProbeError> {
     if !repo_path.join("go.mod").exists() {
         return Ok(None);
     }
     let mut command = Command::new("govulncheck");
     command.current_dir(repo_path).arg("./...");
-    probe(command, "govulncheck")
+    probe(command, "govulncheck", "govulncheck")
 }
 
 /// Runs one advisory tool and reads its result. A clean exit is `Ok(None)`,
-/// same as the tool not applying to this repository. A non-zero exit with no
-/// advisory id anywhere in its combined output is an `Err` — a tool crash or
-/// a network failure, not an advisory — so the caller logs it instead of
-/// filing a task that names nothing.
-fn probe(command: Command, label: &str) -> Result<Option<Finding>, String> {
-    let output =
-        run_timeout(command, PROBE_TIMEOUT).map_err(|error| format!("{label}: {error}"))?;
+/// same as the tool not applying to this repository. The tool's binary being
+/// absent from `PATH` (`io::ErrorKind::NotFound` from spawning it) is
+/// [`ProbeError::Missing`] rather than a failure. A non-zero exit with no
+/// advisory id anywhere in its combined output is [`ProbeError::Failed`] — a
+/// tool crash or a network failure, not an advisory — so the caller logs it
+/// instead of filing a task that names nothing.
+fn probe(command: Command, tool: &'static str, label: &str) -> Result<Option<Finding>, ProbeError> {
+    let output = run_timeout(command, PROBE_TIMEOUT).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ProbeError::Missing(tool)
+        } else {
+            ProbeError::Failed(format!("{label}: {error}"))
+        }
+    })?;
     if output.status.success() {
         return Ok(None);
     }
@@ -121,10 +174,10 @@ fn probe(command: Command, label: &str) -> Result<Option<Finding>, String> {
     );
     let ids = advisory_ids(&text);
     if ids.is_empty() {
-        return Err(format!(
+        return Err(ProbeError::Failed(format!(
             "{label} exited {}, no advisory id found",
             output.status
-        ));
+        )));
     }
     Ok(Some(Finding { ids, output: text }))
 }

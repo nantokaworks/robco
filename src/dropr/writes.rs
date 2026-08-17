@@ -75,12 +75,23 @@ pub(crate) fn task_status_update_timeout(
 }
 
 /// Files a new task onto a workspace's board.
+///
+/// A blank `workspace_id` is refused here rather than round-tripped to the
+/// server: dropr's `task_create` answers a blank workspace target the same
+/// way it answers no target at all — "exactly one of workspace_id,
+/// canonical_repo, repo_url must be set" — which reads like a caller bug in
+/// dropr rather than the empty value it actually is (dropr task #445).
 pub(crate) fn task_create_timeout(
     workspace_id: &str,
     title: &str,
     description: Option<&str>,
     timeout: Duration,
 ) -> WriteResult {
+    if workspace_id.trim().is_empty() {
+        return Err(WriteError::Refused(
+            "task_create_timeout: workspace_id is blank".to_string(),
+        ));
+    }
     write(
         "task_create",
         task_create_arguments(workspace_id, title, description),

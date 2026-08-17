@@ -8,7 +8,12 @@
 //! here — a lost or stale copy of this file costs an extra day's `bun
 //! audit` / `govulncheck` run at worst, never a duplicate task.
 
-use std::{collections::BTreeMap, fs, io::ErrorKind, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    io::ErrorKind,
+    path::Path,
+};
 
 use chrono::{DateTime, Utc};
 use nanoid::nanoid;
@@ -21,6 +26,13 @@ pub(crate) struct RepoWatchState {
     /// Keyed by repository path, matching `OtherPrs::repos`'s convention: two
     /// checkouts of the same repository are different working copies.
     pub(crate) repos: BTreeMap<String, DateTime<Utc>>,
+    /// Advisory-probe tool labels (e.g. `"govulncheck"`) already reported
+    /// missing at least once. A missing tool is a host-level fact that stays
+    /// true every pass until someone installs it, so the notice fires only
+    /// the first time rather than on every due repository forever
+    /// (dropr task #445).
+    #[serde(default)]
+    pub(crate) reported_missing_tools: BTreeSet<String>,
 }
 
 impl RepoWatchState {
