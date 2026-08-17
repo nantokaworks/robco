@@ -73,7 +73,8 @@ pub(super) fn describe(command: &Command) -> Entry {
         },
         Command::Merge(_) => Entry {
             usage: "!merge <task>",
-            description: "Merge an escalated task's pull request. Requires confirmation.",
+            description: "Merge an escalated task's pull request, or queue the approval if it \
+                is not escalated yet. Requires confirmation.",
         },
         Command::Diff(_) => Entry {
             usage: "!diff <task>",

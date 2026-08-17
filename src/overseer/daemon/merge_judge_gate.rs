@@ -146,7 +146,9 @@ pub(super) fn judge_allows(
             merge_envelope_decision(true, true, &facts, &config.overseer),
             Decision::Escalate(_)
         ) {
-            if take_operator_override(entry, head, "autonomy_envelope")? {
+            if take_operator_override(entry, head, "autonomy_envelope")?
+                || take_merge_approval(entry, head)?
+            {
                 return Ok(Judgment::Allow);
             }
             return Ok(Judgment::Halt(Halt::escalate("autonomy_envelope")));
@@ -227,6 +229,41 @@ fn take_operator_override(entry: &mut LedgerEntry, head: &str, bypassed: &str) -
         entry,
         DecisionKind::Merge,
         &format!("operator_override:{bypassed}"),
+        head,
+    )?;
+    Ok(true)
+}
+
+/// Consumes `entry.merge_approval` if it is still live and its head matches
+/// the pull request's current one — the approval Discord's `!merge` queued
+/// against a pull request that had not reached `Escalated` yet (see
+/// `discord::ledger_requests::LedgerRequest::Approve`).
+///
+/// Narrower than [`take_operator_override`]: only the autonomy envelope's
+/// decision to escalate is ever bypassed here, never a judge veto or
+/// escalate verdict — an operator approving from Discord before the judge
+/// has spoken has not reviewed a verdict there is anything to bypass. Taken
+/// (cleared) either way, matched or not: a head that no longer matches means
+/// the worker pushed after the operator approved, and the drop is recorded
+/// so it does not look, later, like a merge that should already have
+/// happened.
+fn take_merge_approval(entry: &mut LedgerEntry, head: &str) -> Result<bool> {
+    let Some(granted) = entry.merge_approval.take() else {
+        return Ok(false);
+    };
+    if granted.head != head {
+        log(
+            entry,
+            DecisionKind::Hold,
+            "merge_approval_dropped:stale_head",
+            head,
+        )?;
+        return Ok(false);
+    }
+    log(
+        entry,
+        DecisionKind::Merge,
+        "merge_approval:autonomy_envelope",
         head,
     )?;
     Ok(true)
