@@ -30,17 +30,20 @@ mod repo_watch_advisory;
 mod repo_watch_dependabot;
 mod repo_watch_task;
 mod retention;
+mod support;
+
+pub(crate) use support::terminal;
+use support::{account_failures, persist_drained_config};
 
 use super::{
-    config_write,
     dispatch::dispatch_pass,
     exec::{PidGuard, append_jsonl, execute_actions},
     heartbeat, heartbeat_path,
     inbox::InboxReader,
     judge::JudgmentQueue,
-    ledger::{Ledger, LedgerPhase},
+    ledger::Ledger,
     logging,
-    monitor::{Action, FailureOrigin, ObservationError, ObservationSnapshot, reconcile},
+    monitor::{ObservationError, ObservationSnapshot, reconcile},
     pidfile_path,
     review::ReviewPass,
     runtime_request, session, snapshots_path,
@@ -250,56 +253,6 @@ pub async fn run_daemon() -> Result<()> {
             return Ok(());
         }
     }
-}
-
-/// Write back what the drained requests changed. `runtime_request::apply` only
-/// ever flips `overseer.dispatch_enabled`, so the write narrows to that field
-/// rather than serialising this pass's snapshot over an operator's edits.
-fn persist_drained_config(dispatch_enabled: bool) -> Result<()> {
-    if config_write::persist_dispatch_enabled(dispatch_enabled)? {
-        logging::log_message(
-            None,
-            &format!("config rewritten: overseer.dispatch_enabled={dispatch_enabled}"),
-        )?;
-    }
-    Ok(())
-}
-
-fn account_failures(previous: &Ledger, next: &mut Ledger, actions: &[Action]) {
-    // Only worker-origin failures count; merges reset the streak, while re-arm
-    // otherwise remains an operator action.
-    let failures = actions
-        .iter()
-        .filter(|action| {
-            matches!(
-                action,
-                Action::MarkFailed {
-                    origin: FailureOrigin::Worker,
-                    ..
-                }
-            )
-        })
-        .count() as u32;
-    next.counters.consecutive_failures =
-        next.counters.consecutive_failures.saturating_add(failures);
-    let newly_merged = next.entries.iter().any(|entry| {
-        entry.phase == LedgerPhase::Merged
-            && previous
-                .entries
-                .iter()
-                .find(|old| old.task_id == entry.task_id)
-                .is_some_and(|old| old.phase != LedgerPhase::Merged)
-    });
-    if newly_merged {
-        next.counters.consecutive_failures = 0;
-    }
-}
-
-pub(crate) fn terminal(phase: LedgerPhase) -> bool {
-    matches!(
-        phase,
-        LedgerPhase::Merged | LedgerPhase::Failed | LedgerPhase::Escalated
-    )
 }
 
 #[cfg(test)]
