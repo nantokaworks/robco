@@ -141,6 +141,12 @@ where
             // A candidate the pre-spawn re-check held was never attempted, so it
             // leaves the failure budget for genuine spawn faults untouched.
             Ok(SpawnOutcome::Held(reason)) => log(DecisionKind::Hold, &candidate, &reason)?,
+            // Same failure-budget treatment as `Held` — an escalated candidate
+            // never reached a spawn attempt either — logged as `Escalate` so it
+            // reaches the alert digest instead of reading as a routine hold.
+            Ok(SpawnOutcome::Escalated(reason)) => {
+                log(DecisionKind::Escalate, &candidate, &reason)?
+            }
             Err(error) => {
                 let streak = streaks.entry(candidate.task_id.clone()).or_insert(0);
                 *streak = streak.saturating_add(1);
