@@ -255,6 +255,7 @@ pub(super) fn describe_command(command: &Command) -> String {
         Command::Panic => "panic".into(),
         Command::Merge(task) => format!("merge {task}"),
         Command::Diff(task) => format!("diff {task}"),
+        Command::Help => "help".into(),
     }
 }
 
@@ -282,7 +283,12 @@ fn impactful(command: &Command) -> bool {
 fn mutating(command: &Command) -> bool {
     !matches!(
         command,
-        Command::Status | Command::Workers | Command::Tasks | Command::Log(_) | Command::Diff(_)
+        Command::Status
+            | Command::Workers
+            | Command::Tasks
+            | Command::Log(_)
+            | Command::Diff(_)
+            | Command::Help
     )
 }
 

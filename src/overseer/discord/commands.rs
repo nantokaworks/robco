@@ -22,6 +22,7 @@ pub enum Command {
     Panic,
     Merge(String),
     Diff(String),
+    Help,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +42,7 @@ pub fn parse(message: &str) -> Option<Input> {
     let name = parts.next()?.to_ascii_lowercase();
     let command = match name.as_str() {
         "status" if parts.next().is_none() => Command::Status,
+        "help" if parts.next().is_none() => Command::Help,
         "workers" if parts.next().is_none() => Command::Workers,
         "tasks" if parts.next().is_none() => Command::Tasks,
         "panic" if parts.next().is_none() => Command::Panic,
@@ -126,5 +128,7 @@ mod tests {
             Some(Input::Command(Command::Diff("#448".into())))
         );
         assert_eq!(parse("!merge"), None);
+        assert_eq!(parse("!help"), Some(Input::Command(Command::Help)));
+        assert_eq!(parse("!help extra"), None);
     }
 }

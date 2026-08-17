@@ -4,6 +4,7 @@ pub mod commands;
 mod cursor;
 mod gateway;
 pub mod handler;
+mod help;
 pub(crate) mod humanize;
 pub(crate) mod ledger_requests;
 mod localize;

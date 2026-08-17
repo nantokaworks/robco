@@ -1,6 +1,7 @@
 use super::{
     commands::Command,
     handler::{CommandExecutor, describe_command},
+    help,
     ledger_requests::LedgerRequest,
     merge_actions,
     respond::{bounded_rows, code_block},
@@ -123,6 +124,7 @@ fn execute(
         }
         Command::Merge(task) => merge_actions::merge(task),
         Command::Diff(task) => merge_actions::diff(task),
+        Command::Help => Ok(help::help_message()),
     }
 }
 
