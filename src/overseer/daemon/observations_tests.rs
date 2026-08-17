@@ -91,3 +91,29 @@ fn manual_overseer_children_are_not_adopted() {
 
     assert!(ledger.entries.is_empty());
 }
+
+/// Regression for the bare `={session}` target: on tmux 3.7, `display-message`
+/// against it exits 0 and prints an empty string for `#{session_activity}`,
+/// so `tmux_activity` returned `None` for every live session that was ever
+/// probed. The anchored `={session}:` target must resolve a real timestamp.
+#[test]
+fn tmux_activity_reads_a_real_sessions_activity_time() {
+    let session = format!("robco-test-tmux-activity-{}", std::process::id());
+    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+        // No usable tmux in this environment — nothing more to assert here.
+        return;
+    }
+    let result = tmux_activity(&session);
+    let _ = crate::tmux::kill_session(&session);
+    assert!(
+        result.is_ok(),
+        "expected a real session_activity reading, got {result:?}"
+    );
+}
+
+#[test]
+fn tmux_activity_reports_a_fault_for_a_missing_session() {
+    let result = tmux_activity("robco-test-tmux-activity-missing-session");
+
+    assert!(result.is_err());
+}

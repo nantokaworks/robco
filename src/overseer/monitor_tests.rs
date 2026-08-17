@@ -258,6 +258,25 @@ fn claimed_worker_without_activity_is_not_marked_stuck() {
         LedgerPhase::Claimed
     );
 }
+/// A missing `last_activity_at` on a still-`Dispatched` entry is a probe
+/// fault reading (see `daemon::observations::tmux_activity`), not evidence
+/// the worker has sat idle since it was spawned. Judging it against
+/// `dispatched_at` used to fail an actively working worker on a single
+/// transient probe miss — see dropr #440.
+#[test]
+fn dispatched_worker_without_activity_is_not_marked_stuck() {
+    let observations: Observations = serde_json::from_str(
+        r#"{"sessions":[{"agent_id":"worker-1","status":"running","last_activity_at":null}]}"#,
+    )
+    .unwrap();
+    // Long past dispatched_at (2026-07-16T00:00:00Z) plus stuck_after_mins,
+    // which is exactly the scenario the old dispatched_at fallback misjudged.
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 5, 0, 0).unwrap();
+    assert_eq!(
+        reconcile(&ledger(), &observations, now, 30, 72).0.entries[0].phase,
+        LedgerPhase::Dispatched
+    );
+}
 #[test]
 fn open_task_escalates_only_after_claim() {
     let observations: Observations =
