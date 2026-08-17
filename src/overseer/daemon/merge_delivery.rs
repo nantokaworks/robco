@@ -12,6 +12,20 @@
 //! started a turn. Callers decide what to do when confirmation fails —
 //! `merge_recovery::dispatch` un-charges its budget and records its own
 //! reason — this module only reports whether delivery could be confirmed.
+//!
+//! The confirmation itself is a timeout-bounded probe, not a certainty, and it
+//! false-negatives: dropr task #455 caught a live case (nex PR #830, dropr
+//! task #571) where a handback was typed, submitted, and acted on by the
+//! worker — yet `confirm_delivered` exhausted `CONFIRM_TIMEOUT` without ever
+//! seeing the marker, so the caller retried, and the retry alone reached
+//! `undeliverable` and escalated the entry to an operator while the worker was
+//! already fixing the exact failure it had been handed. Widening the windows
+//! here does not fix that class of failure by itself — task #455's evidence
+//! shows confirmed deliveries skew toward *larger* prompts than unconfirmed
+//! ones, the opposite of what a slow-paste theory predicts. Task #457 tracks
+//! making the caller's retry safe against this false negative (skip resending
+//! into a session that is already busy) rather than tuning these constants
+//! further.
 
 use crate::{Result, tmux};
 
