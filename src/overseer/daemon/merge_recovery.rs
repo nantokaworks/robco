@@ -15,7 +15,7 @@
 //! Overseer keeps sole possession of the merge throughout: the worker fixes and
 //! pushes, and the next merge pass re-evaluates the pull request normally.
 
-use super::merge_delivery::{DeliveryConfirmation, confirm_delivered, send};
+use super::merge_delivery::{DeliveryConfirmation, confirm_delivered, is_busy, send};
 use crate::{
     Result,
     overseer::{
@@ -30,7 +30,7 @@ use crate::{
 
 #[path = "merge_recovery_plan.rs"]
 mod plan;
-use plan::disabled;
+use plan::{disabled, is_retry_of_undelivered};
 pub(super) use plan::{CAP_REACHED, RecoveryPlan, plan};
 
 /// Reason recorded when a failure was handed back, carrying the failure verbatim
@@ -157,6 +157,18 @@ fn dispatch(
         let reason = skipped(&format!("missing_session:{}", entry.agent_id));
         return log(entry, DecisionKind::Escalate, &reason, "");
     };
+    if is_retry_of_undelivered(entry) && is_busy(&session) {
+        // The previous attempt's send may already be running as a real turn —
+        // task #457's evidence shows a `NotConfirmed` probe false-negatives on
+        // deliveries that did land. Retyping the prompt now would duplicate
+        // that handback instead of confirming it, so this poll is un-charged
+        // and left for the next pass rather than counted toward either
+        // budget: `charged` because nothing was sent, and `undelivered_charged`
+        // because this poll neither confirms nor disproves the earlier send.
+        refund(entry);
+        let reason = skipped(&format!("session_busy:{reason}"));
+        return log(entry, DecisionKind::Hold, &reason, "");
+    }
     let prompt = templates::merge_recovery_prompt(
         &entry.display_id,
         &entry.task_id,
