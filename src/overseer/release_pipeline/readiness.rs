@@ -13,11 +13,11 @@ use crate::{exec::run_timeout, overseer::exec::COMMAND_TIMEOUT};
 /// an operator's own working tree, dirty or not, is never this module's to
 /// change. A checkout behind or diverged from that commit is left exactly
 /// as it is; the pipeline waits for whatever already keeps it current.
-pub(super) fn ready(repo: &Path) -> std::result::Result<(), &'static str> {
+pub(super) fn ready(repo: &Path) -> std::result::Result<(), String> {
     match crate::git::worktree_is_clean(repo) {
         Ok(true) => {}
-        Ok(false) => return Err("working_tree_dirty"),
-        Err(_) => return Err("working_tree_check_failed"),
+        Ok(false) => return Err("working_tree_dirty".into()),
+        Err(_) => return Err("working_tree_check_failed".into()),
     }
     // Checked ahead of the commit comparison below so a checkout left
     // detached or on another branch gets its own named reason — dropr:429 —
@@ -25,16 +25,19 @@ pub(super) fn ready(repo: &Path) -> std::result::Result<(), &'static str> {
     // which reads as "just behind" and hides the real cause.
     match crate::git::current_branch(repo) {
         Ok(Some(branch)) if branch == "main" => {}
-        Ok(Some(_)) => return Err("checkout_not_on_main"),
-        Ok(None) => return Err("checkout_detached"),
-        Err(_) => return Err("checkout_branch_check_failed"),
+        // The branch name rides along in the reason (`checkout_not_on_main:
+        // <branch>`) so the operator-facing message can name it — see
+        // `discord::humanize`'s prefix entry for this reason.
+        Ok(Some(branch)) => return Err(format!("checkout_not_on_main:{branch}")),
+        Ok(None) => return Err("checkout_detached".into()),
+        Err(_) => return Err("checkout_branch_check_failed".into()),
     }
     let Ok(merged_commit) = crate::git::remote_branch_commit(repo, "main") else {
-        return Err("checkout_not_on_merged_commit");
+        return Err("checkout_not_on_merged_commit".into());
     };
     match head_commit(repo) {
         Some(head) if head == merged_commit => Ok(()),
-        _ => Err("checkout_not_on_merged_commit"),
+        _ => Err("checkout_not_on_merged_commit".into()),
     }
 }
 

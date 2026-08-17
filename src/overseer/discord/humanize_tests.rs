@@ -91,11 +91,21 @@ fn a_release_pipeline_skip_reason_maps_to_a_sentence() {
 #[test]
 fn a_release_pipeline_skip_reason_names_a_checkout_off_main() {
     assert_eq!(
-        sentence("release_pipeline_skipped:checkout_not_on_main").as_deref(),
-        Some("The release checkout is on another branch, not main, so the release did not run.")
-    );
-    assert_eq!(
         sentence("release_pipeline_skipped:checkout_detached").as_deref(),
         Some("The release checkout has a detached HEAD, so the release did not run.")
+    );
+}
+
+/// dropr:444 — the branch name rides along after the prefix; the sentence
+/// names the fix, and the raw reason (still shown next to it) names the
+/// branch.
+#[test]
+fn a_release_pipeline_skip_reason_names_the_fix_for_a_checkout_off_main() {
+    assert_eq!(
+        sentence("release_pipeline_skipped:checkout_not_on_main:operator-wip").as_deref(),
+        Some(
+            "The release checkout is on another branch, not main, so the release did not run. \
+             Move the checkout back to main to unblock the release."
+        )
     );
 }
