@@ -61,6 +61,26 @@ fn a_task_create_names_the_workspace_author_and_title() {
     );
 }
 
+/// A blank `workspace_id` — the failure mode a bad overlay parse produces —
+/// is refused locally rather than round-tripped to `dropr mcp-stdio`, which
+/// would otherwise answer with a refusal that reads like a caller bug in
+/// dropr rather than the empty value it actually is (dropr task #445).
+#[test]
+fn a_blank_workspace_id_is_refused_before_the_round_trip() {
+    assert_eq!(
+        task_create_timeout("", "title", None, Duration::from_millis(50)),
+        Err(WriteError::Refused(
+            "task_create_timeout: workspace_id is blank".into()
+        ))
+    );
+    assert_eq!(
+        task_create_timeout("   ", "title", None, Duration::from_millis(50)),
+        Err(WriteError::Refused(
+            "task_create_timeout: workspace_id is blank".into()
+        ))
+    );
+}
+
 /// dropr has no `ready` status and rejects the transition outright, so triage's
 /// word for "released" has to become dropr's before the call goes out.
 #[test]

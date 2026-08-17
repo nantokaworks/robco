@@ -58,10 +58,32 @@ pub(super) fn watch_pass(config: &Config, now: DateTime<Utc>) -> Result<()> {
         if !due(state.repos.get(&key), now, interval) {
             continue;
         }
-        if let Err(error) = super::repo_watch_advisory::run(&repo.path, &workspace.id, &repo.name) {
+        if workspace.id.trim().is_empty() {
+            // A materialised workspace with no usable id would otherwise reach
+            // `task_create` and be refused there instead of here — caught
+            // early and named so the cause (a bad overlay parse, most likely)
+            // is visible in the log rather than read as a dropr-side refusal
+            // (dropr task #445). Gated on `due` and recorded like a real
+            // check below, so a broken workspace does not re-log every tick.
             logging::log_message(
                 None,
-                &format!("advisory watch skipped for {}: {error}", repo.name),
+                &format!(
+                    "repo watch skipped for {}: workspace {:?} is materialised but has no usable id",
+                    repo.name, workspace.name
+                ),
+            )?;
+            state.repos.insert(key, now);
+            continue;
+        }
+        if let Err(error) = super::repo_watch_advisory::run(
+            &repo.path,
+            &workspace.id,
+            &repo.name,
+            &mut state.reported_missing_tools,
+        ) {
+            logging::log_message(
+                None,
+                &format!("advisory watch failed for {}: {error}", repo.name),
             )?;
         }
         if let Err(error) = super::repo_watch_dependabot::run(
