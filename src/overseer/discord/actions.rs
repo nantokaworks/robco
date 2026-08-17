@@ -153,7 +153,7 @@ fn status_line(config: &OverseerConfig, active: usize, dispatched_today: u32) ->
         format!("**dispatch** {}", on_off(config.dispatch_enabled)),
         format!("**automerge** {}", on_off(config.auto_merge)),
         format!("**autonomy** {}", config.autonomy_level.label()),
-        format!("**workers** {active}/{}", config.max_workers),
+        format!("**workers** {active}"),
         format!(
             "**today** {dispatched_today}/{}",
             format_dispatch_limit(config.daily_dispatch_limit)

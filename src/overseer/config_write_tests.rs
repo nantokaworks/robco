@@ -16,7 +16,7 @@ fn operator_edit_during_a_pass_survives_the_daemon_write_back() {
 
     // The operator edits fields the daemon does not own while the pass runs.
     let mut edited = Config::load_at(&path).unwrap();
-    edited.overseer.max_workers = 9;
+    edited.overseer.parallel_limit = 9;
     edited.poll_interval_ms = 1234;
     edited.merge_strategy = MergeStrategy::Squash;
     edited.save_at(&path).unwrap();
@@ -24,7 +24,7 @@ fn operator_edit_during_a_pass_survives_the_daemon_write_back() {
     assert!(persist_dispatch_enabled_at(&path, !stale.overseer.dispatch_enabled).unwrap());
 
     let after = Config::load_at(&path).unwrap();
-    assert_eq!(after.overseer.max_workers, 9);
+    assert_eq!(after.overseer.parallel_limit, 9);
     assert_eq!(after.poll_interval_ms, 1234);
     assert_eq!(after.merge_strategy, MergeStrategy::Squash);
     assert_eq!(

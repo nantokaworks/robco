@@ -5,7 +5,20 @@ fn loads_a_config_that_still_carries_the_removed_enabled_key() {
     let raw = r#"{"enabled": false, "dispatch_enabled": true, "max_workers": 5}"#;
     let config: OverseerConfig = serde_json::from_str(raw).unwrap();
     assert!(config.dispatch_enabled);
-    assert_eq!(config.max_workers, 5);
+}
+
+/// dropr:452 — `max_workers` / `per_repo_limit` retired in favor of
+/// `parallel_limit`. A config file written before the slot model existed
+/// still loads without error, and the next save drops both retired keys
+/// rather than round-tripping them forever.
+#[test]
+fn a_config_still_carrying_the_retired_worker_caps_loads_and_drops_them() {
+    let raw = r#"{"dispatch_enabled": true, "max_workers": 5, "per_repo_limit": 2}"#;
+    let config: OverseerConfig = serde_json::from_str(raw).unwrap();
+    assert_eq!(config.parallel_limit, 0);
+    let serialized = serde_json::to_value(&config).unwrap();
+    assert!(serialized.get("max_workers").is_none());
+    assert!(serialized.get("per_repo_limit").is_none());
 }
 
 #[test]

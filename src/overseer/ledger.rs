@@ -10,6 +10,8 @@ mod budgets;
 pub use budgets::{LedgerCounters, MergeHold, MergeRecovery, MergeSettling, OperatorOverride};
 mod phase;
 pub use phase::{LedgerPhase, holds_capacity, terminal, waiting_on_prerequisite};
+mod slots;
+pub use slots::ActiveWorkers;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
@@ -175,33 +177,7 @@ pub struct Ledger {
     pub branch_exists_holds: BTreeMap<String, u32>,
 }
 
-/// Live workers counted globally and per repository.
-#[derive(Debug, Default, Eq, PartialEq)]
-pub struct ActiveWorkers {
-    pub count: usize,
-    pub repos: BTreeMap<String, usize>,
-}
-
 impl Ledger {
-    /// The workers occupying capacity right now. The dispatch gate and
-    /// `robco overseer status` both read this one helper, so the count that
-    /// enforces `max_workers` / `per_repo_limit` is the count the operator sees.
-    ///
-    /// Management mode is deliberately not a filter. Manual suppresses Overseer
-    /// *intervention* — the worker belongs to a human, so it is never killed,
-    /// restarted, or re-dispatched — but it still holds a worktree, a branch, a
-    /// tmux session, and CPU in its repository. Exempting it from the caps would
-    /// let a mode toggle free a slot the resources never released.
-    pub fn active_workers(&self) -> ActiveWorkers {
-        let mut repos: BTreeMap<String, usize> = BTreeMap::new();
-        let mut count = 0;
-        for entry in self.entries.iter().filter(|entry| holds_capacity(entry)) {
-            count += 1;
-            *repos.entry(entry.repo.clone()).or_default() += 1;
-        }
-        ActiveWorkers { count, repos }
-    }
-
     /// Live merge candidates the merge pass is declining because their worker is
     /// manual-managed.
     ///

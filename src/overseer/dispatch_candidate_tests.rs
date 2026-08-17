@@ -10,6 +10,13 @@ fn candidate_filters_report_exact_reason() {
     }
     let mut active = Ledger::default();
     active.entries.push(entry(LedgerPhase::Working));
+    let mut doubly_active = Ledger::default();
+    let mut secondary = entry(LedgerPhase::Working);
+    secondary.task_id = "task-2".into();
+    secondary.display_id = "#2".into();
+    doubly_active
+        .entries
+        .extend([entry(LedgerPhase::Working), secondary]);
     let mut skipped = Ledger::default();
     skipped.skip_list.push("task-1".into());
     let mut retried = Ledger::default();
@@ -19,20 +26,19 @@ fn candidate_filters_report_exact_reason() {
     retried.entries.push(failed);
     let cases = vec![
         Case {
-            reason: "per_repo_limit",
+            reason: "primary_slot_taken",
             config: OverseerConfig::default(),
-            ledger: active.clone(),
+            ledger: active,
             candidate: candidate("/repo"),
         },
         Case {
-            reason: "max_workers",
+            reason: "parallel_slot_taken",
             config: OverseerConfig {
-                max_workers: 1,
-                per_repo_limit: 2,
+                parallel_limit: 1,
                 ..OverseerConfig::default()
             },
-            ledger: active,
-            candidate: candidate("/other"),
+            ledger: doubly_active,
+            candidate: candidate("/repo"),
         },
         Case {
             reason: "skip_list",
@@ -94,7 +100,7 @@ fn a_live_auto_worker_suppresses_redispatch() {
         live.task_id = "task-1".into();
         live.display_id = "#1".into();
         live.agent_id = "auto-agent".into();
-        // A repository the candidate does not share, so per_repo_limit cannot be
+        // A repository the candidate does not share, so its primary slot cannot be
         // what rejects it.
         live.repo = "/elsewhere".into();
         ledger.entries.push(live);
@@ -256,15 +262,62 @@ fn reopening_a_blocked_task_makes_it_dispatchable_again() {
     assert!(plan.decisions[0].dispatch);
 }
 
+/// dropr:452 acceptance: with `parallel_limit: 0` a second candidate in an
+/// already-occupied repository holds on the primary slot alone; opening one
+/// secondary slot lets exactly one more candidate through before the next
+/// one holds on the secondary tier instead.
 #[test]
-fn judgment_cannot_add_a_candidate_rejected_by_rust_caps() {
+fn parallel_limit_opens_exactly_that_many_secondary_slots() {
+    let mut primary_active = Ledger::default();
+    let mut primary = entry(LedgerPhase::Working);
+    primary.task_id = "primary".into();
+    primary.repo = "/repo".into();
+    primary_active.entries.push(primary);
+
+    // parallel_limit: 0 — the sole secondary candidate holds on the primary
+    // slot, not the parallel one, because none exist to be taken.
+    let serialized = plan_dispatch(
+        &OverseerConfig::default(),
+        &primary_active,
+        &[candidate("/repo")],
+        now(),
+        &HashMap::new(),
+    );
+    assert_eq!(serialized.decisions[0].reason, "primary_slot_taken");
+    assert!(!serialized.decisions[0].dispatch);
+
+    // parallel_limit: 1 — one secondary candidate dispatches into the open
+    // slot; a second one in the same pass finds it already spent.
     let config = OverseerConfig {
-        max_workers: 1,
+        parallel_limit: 1,
         ..OverseerConfig::default()
     };
-    let mut first = candidate("/first");
+    let mut second = candidate("/repo");
+    second.task_id = "second".into();
+    let mut third = candidate("/repo");
+    third.task_id = "third".into();
+    let parallel = plan_dispatch(
+        &config,
+        &primary_active,
+        &[second, third],
+        now(),
+        &HashMap::new(),
+    );
+    assert_eq!(parallel.decisions[0].reason, "ready");
+    assert!(parallel.decisions[0].dispatch);
+    assert_eq!(parallel.decisions[1].reason, "parallel_slot_taken");
+    assert!(!parallel.decisions[1].dispatch);
+}
+
+#[test]
+fn judgment_cannot_add_a_candidate_rejected_by_rust_caps() {
+    // Same repository, default `parallel_limit: 0`: only the first candidate
+    // clears the gate's own slot check, so the second is rejected before the
+    // judge ever sees it.
+    let config = OverseerConfig::default();
+    let mut first = candidate("/repo");
     first.task_id = "first".into();
-    let mut second = candidate("/second");
+    let mut second = candidate("/repo");
     second.task_id = "second".into();
     let candidates = [first, second];
     let plan = plan_dispatch(
@@ -295,7 +348,7 @@ fn judgment_cannot_add_a_candidate_rejected_by_rust_caps() {
             && decision
                 .candidate
                 .as_ref()
-                .is_some_and(|item| item.repo == "/second")
+                .is_some_and(|item| item.task_id == "second")
     }));
 }
 

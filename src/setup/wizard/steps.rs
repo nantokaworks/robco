@@ -98,19 +98,11 @@ pub(crate) fn overseer<R: BufRead, W: Write>(
         "Triage profile",
         &overseer.triage_profile,
     )?;
-    overseer.max_workers = prompt::number(
+    overseer.parallel_limit = prompt::number(
         input,
         output,
-        "Maximum workers",
-        overseer.max_workers,
-        0,
-        999,
-    )?;
-    overseer.per_repo_limit = prompt::number(
-        input,
-        output,
-        "Per-repository worker limit",
-        overseer.per_repo_limit,
+        "Parallel workers per repository (0 = one at a time)",
+        overseer.parallel_limit,
         0,
         999,
     )?;
