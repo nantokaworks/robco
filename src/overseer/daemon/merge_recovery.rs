@@ -30,8 +30,8 @@ use crate::{
 
 #[path = "merge_recovery_plan.rs"]
 mod plan;
-use plan::{disabled, is_retry_of_undelivered};
 pub(super) use plan::{CAP_REACHED, RecoveryPlan, plan};
+use plan::{disabled, is_retry_of_undelivered};
 
 /// Reason recorded when a failure was handed back, carrying the failure verbatim
 /// so the decision log says what the worker was asked to fix.
