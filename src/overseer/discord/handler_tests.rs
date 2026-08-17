@@ -165,6 +165,7 @@ fn every_risk_increasing_mutation_requires_confirmation() {
         "!approve worker",
         "!answer worker proceed",
         "!dispatch on",
+        "!merge task",
     ] {
         let mut handler = handler(10, 60);
         let mut executor = FakeExecutor::default();
@@ -195,6 +196,17 @@ fn generated_confirmation_describes_the_validated_command() {
             .starts_with("Confirm: kill worker-x — reply `CONFIRM ")
     );
     assert!(executor.calls.is_empty());
+}
+
+#[test]
+fn diff_executes_immediately_without_confirmation() {
+    let mut handler = handler(10, 60);
+    let mut executor = FakeExecutor::default();
+    assert_eq!(
+        handler.handle("10", "20", "!diff task", 1, &mut executor),
+        Some("ok".into())
+    );
+    assert!(matches!(executor.calls[0].0, Command::Diff(_)));
 }
 
 #[test]

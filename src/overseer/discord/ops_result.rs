@@ -87,6 +87,8 @@ fn parse_action(mut value: Value) -> Result<Command, String> {
         "robco_approve" => Command::Approve(text("agent_id")?),
         "robco_kill" => Command::Kill(text("agent_id")?),
         "panic" | "robco_panic" => Command::Panic,
+        "merge" | "robco_merge" => Command::Merge(text("task_id")?),
+        "diff" | "robco_diff" => Command::Diff(text("task_id")?),
         _ => {
             return Err(format!(
                 "action `{name}` is outside the Discord command set"
@@ -138,6 +140,17 @@ mod tests {
                 description: Some("details".into()),
             })
         );
+    }
+
+    #[test]
+    fn parses_merge_and_diff() {
+        let raw = br#"{"reply":"ok","actions":[
+            {"name":"merge","task_id":"task-448"},
+            {"name":"robco_diff","task_id":"task-448"}
+        ]}"#;
+        let actions = parse(raw).unwrap().actions;
+        assert_eq!(actions[0], Ok(Command::Merge("task-448".into())));
+        assert_eq!(actions[1], Ok(Command::Diff("task-448".into())));
     }
 
     #[test]

@@ -20,6 +20,8 @@ pub enum Command {
     Kill(String),
     Log(usize),
     Panic,
+    Merge(String),
+    Diff(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +50,8 @@ pub fn parse(message: &str) -> Option<Input> {
         "retry" => Command::Retry(single(&mut parts)?),
         "approve" => Command::Approve(single(&mut parts)?),
         "kill" => Command::Kill(single(&mut parts)?),
+        "merge" => Command::Merge(single(&mut parts)?),
+        "diff" => Command::Diff(single(&mut parts)?),
         "log" => {
             let limit = match parts.next() {
                 Some(value) => value.parse().ok()?,
@@ -113,5 +117,14 @@ mod tests {
             Some(Input::Confirm("123456".into()))
         );
         assert_eq!(parse("!kill a extra"), None);
+        assert_eq!(
+            parse("!merge #448"),
+            Some(Input::Command(Command::Merge("#448".into())))
+        );
+        assert_eq!(
+            parse("!diff #448"),
+            Some(Input::Command(Command::Diff("#448".into())))
+        );
+        assert_eq!(parse("!merge"), None);
     }
 }

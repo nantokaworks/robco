@@ -7,6 +7,7 @@ pub mod handler;
 pub(crate) mod humanize;
 pub(crate) mod ledger_requests;
 mod localize;
+mod merge_actions;
 mod message_split;
 mod notifications;
 mod notify;
