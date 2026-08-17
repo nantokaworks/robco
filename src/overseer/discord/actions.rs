@@ -1,7 +1,9 @@
 use super::{
     commands::Command,
     handler::{CommandExecutor, describe_command},
+    help,
     ledger_requests::LedgerRequest,
+    merge_actions,
     respond::{bounded_rows, code_block},
     task_create::create_task,
 };
@@ -120,6 +122,9 @@ fn execute(
             command::panic_stop_attributed("discord", Some(user_id))?;
             Ok("panic stop complete".into())
         }
+        Command::Merge(task) => merge_actions::merge(task),
+        Command::Diff(task) => merge_actions::diff(task),
+        Command::Help => Ok(help::help_message()),
     }
 }
 
@@ -260,6 +265,7 @@ fn audit_entry(command: &Command, user_id: &str, outcome: &str) -> DecisionEntry
     let kind = match command {
         Command::Skip(_) => DecisionKind::Skip,
         Command::Retry(_) => DecisionKind::Dispatch,
+        Command::Merge(_) => DecisionKind::Merge,
         _ => DecisionKind::Hold,
     };
     let mut entry = DecisionEntry::new(
@@ -269,7 +275,9 @@ fn audit_entry(command: &Command, user_id: &str, outcome: &str) -> DecisionEntry
     entry.source = Some("discord".into());
     entry.user_id = Some(user_id.into());
     entry.task = match command {
-        Command::Skip(task) | Command::Retry(task) => Some(task.clone()),
+        Command::Skip(task) | Command::Retry(task) | Command::Merge(task) | Command::Diff(task) => {
+            Some(task.clone())
+        }
         _ => None,
     };
     entry

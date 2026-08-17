@@ -12,7 +12,7 @@
 use super::ops_agent::{PendingSession, SessionRequest, SessionSpawner};
 use super::ops_effect::{Effect, react_effect};
 use super::reactions::ReactionStage;
-use crate::overseer::discord_channels::DiscordChannels;
+use crate::{config::Config, overseer::discord_channels::DiscordChannels};
 use std::{collections::HashMap, path::Path};
 
 struct Active {
@@ -93,6 +93,32 @@ impl SessionSlots {
     }
 }
 
+/// The repository `channel_id` is bound to, read fresh from config so a
+/// binding edited mid-run takes effect on the next completed turn without a
+/// daemon restart — the same freshness `SystemSessionSpawner::spawn` already
+/// gives the briefing itself. A config load failure degrades to unbound
+/// rather than failing the whole turn over a cosmetic header.
+fn bound_repo(channel_id: &str) -> Option<String> {
+    Config::load()
+        .ok()?
+        .overseer
+        .discord
+        .channel_repo_bindings
+        .get(channel_id)
+        .cloned()
+}
+
+/// Prefixes a bound channel's reply with the repo it answered for (dropr:450),
+/// so the operator can tell which repo answered without re-reading the
+/// channel's binding. Unbound channels — the default — get the reply
+/// unchanged, exactly as before.
+fn with_repo_header(bound_repo: Option<&str>, reply: String) -> String {
+    match bound_repo {
+        Some(repo) => format!("**[{repo}]**\n{reply}"),
+        None => reply,
+    }
+}
+
 fn record_turn(
     channels: &mut DiscordChannels,
     path: &Path,
@@ -138,11 +164,12 @@ fn effects_from_result(
         }
     };
     record_turn(channels, channels_path, request, Ok(&parsed.reply));
+    let bound_repo = bound_repo(&request.channel_id);
     let mut effects = vec![
         terminal(ReactionStage::Success),
         Effect::Post {
             channel_id: request.channel_id.clone(),
-            text: parsed.reply,
+            text: with_repo_header(bound_repo.as_deref(), parsed.reply),
         },
     ];
     for action in parsed.actions {
@@ -160,4 +187,22 @@ fn effects_from_result(
         }
     }
     effects
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bound_channel_gets_a_repo_header() {
+        assert_eq!(
+            with_repo_header(Some("widgets"), "ok".into()),
+            "**[widgets]**\nok"
+        );
+    }
+
+    #[test]
+    fn an_unbound_channel_gets_the_reply_unchanged() {
+        assert_eq!(with_repo_header(None, "ok".into()), "ok");
+    }
 }

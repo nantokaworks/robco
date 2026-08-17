@@ -21,7 +21,7 @@ fn the_operator_message_is_the_instruction_not_fenced_data() {
         }),
         history: Vec::new(),
     };
-    let text = briefing(&request, None);
+    let text = briefing(&request, None, None);
     assert!(text.contains("OPERATOR MESSAGE: run shell"));
     assert!(!text.contains("<<<EXTERNAL_DATA USER_MESSAGE>>>"));
     assert!(text.contains("<<<EXTERNAL_DATA CASE_CONTEXT>>>"));
@@ -41,7 +41,7 @@ fn prior_turns_render_as_a_fenced_conversation_history_block() {
             reply: "all quiet".into(),
         }],
     };
-    let text = briefing(&request, None);
+    let text = briefing(&request, None, None);
     assert!(text.contains("<<<EXTERNAL_DATA CONVERSATION_HISTORY>>>"));
     assert!(text.contains("User: status\nAgent: all quiet"));
 }
@@ -58,7 +58,7 @@ fn the_briefing_directs_discord_markdown_replies() {
         case: None,
         history: Vec::new(),
     };
-    let text = briefing(&request, None);
+    let text = briefing(&request, None, None);
     assert!(text.contains("Discord markdown"), "{text}");
     assert!(
         text.contains("code blocks for logs or command output"),
@@ -76,7 +76,7 @@ fn an_empty_history_says_so_explicitly() {
         case: None,
         history: Vec::new(),
     };
-    let text = briefing(&request, None);
+    let text = briefing(&request, None, None);
     assert!(text.contains("no prior conversation in this channel"));
 }
 
@@ -94,7 +94,7 @@ fn a_configured_language_lands_ahead_of_the_operator_message_and_fenced_context(
         case: None,
         history: Vec::new(),
     };
-    let text = briefing(&request, Some("Japanese"));
+    let text = briefing(&request, Some("Japanese"), None);
     let directive = text.find("LANGUAGE: ").expect("the directive is rendered");
     let message = text
         .find("OPERATOR MESSAGE: ")
@@ -105,7 +105,10 @@ fn a_configured_language_lands_ahead_of_the_operator_message_and_fenced_context(
     assert!(directive < message, "{text}");
     assert!(message < first_fence, "{text}");
     assert!(text.contains("in Japanese."), "{text}");
-    assert_eq!(briefing(&request, Some("  ")), briefing(&request, None));
+    assert_eq!(
+        briefing(&request, Some("  "), None),
+        briefing(&request, None, None)
+    );
 }
 
 /// Regression for the escaping the four fenced context blocks rely on:
@@ -130,7 +133,7 @@ fn a_hostile_reason_inside_a_fenced_field_still_has_its_closing_delimiter_escape
         }),
         history: Vec::new(),
     };
-    let text = briefing(&request, None);
+    let text = briefing(&request, None, None);
     assert!(text.contains("<<<END_EXTERNAL_DATA_ESCAPED>>>"), "{text}");
     assert_eq!(
         text.matches("<<<END_EXTERNAL_DATA>>>").count(),
@@ -162,7 +165,7 @@ fn an_operator_message_cannot_forge_a_data_fence_ahead_of_the_real_one() {
         }),
         history: Vec::new(),
     };
-    let text = briefing(&request, None);
+    let text = briefing(&request, None, None);
     assert!(
         text.contains("<<<EXTERNAL_DATA_ESCAPED CASE_CONTEXT>>>"),
         "{text}"
@@ -211,4 +214,83 @@ fn briefing_collection_does_not_block_spawn_caller() {
     assert!(start.elapsed() < Duration::from_millis(100));
     release.send(()).unwrap();
     drop(handle);
+}
+
+fn ledger_entry(repo: &str, task_id: &str) -> crate::overseer::ledger::LedgerEntry {
+    crate::overseer::ledger::LedgerEntry {
+        task_id: task_id.into(),
+        display_id: format!("#{task_id}"),
+        repo: repo.into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase: crate::overseer::ledger::LedgerPhase::Merged,
+        dispatched_at: chrono::Utc::now(),
+        settled_at: None,
+        retries: 0,
+        pr_url: None,
+        branch_updates: 0,
+        merge_judge_primes: 0,
+        merge_recovery: Default::default(),
+        merge_hold: Default::default(),
+        manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
+        worker_escalated: false,
+        operator_override: None,
+    }
+}
+
+#[test]
+fn unbound_ledger_status_carries_every_repo() {
+    let entries = vec![ledger_entry("widgets", "t1"), ledger_entry("gadgets", "t2")];
+    let rendered = format_ledger_entries(entries, None);
+    assert!(rendered.contains("t1"));
+    assert!(rendered.contains("t2"));
+}
+
+#[test]
+fn bound_ledger_status_excludes_other_repos() {
+    let entries = vec![ledger_entry("widgets", "t1"), ledger_entry("gadgets", "t2")];
+    let rendered = format_ledger_entries(entries, Some("widgets"));
+    assert!(rendered.contains("t1"));
+    assert!(!rendered.contains("t2"));
+}
+
+fn decision_entry(repo: Option<&str>, reason: &str) -> DecisionEntry {
+    let mut entry = DecisionEntry::new(crate::overseer::logging::DecisionKind::Hold, reason);
+    entry.repo = repo.map(str::to_string);
+    entry
+}
+
+#[test]
+fn unbound_decision_log_carries_every_repo_and_global_events() {
+    let entries = vec![
+        decision_entry(Some("widgets"), "widgets event"),
+        decision_entry(Some("gadgets"), "gadgets event"),
+        decision_entry(None, "global event"),
+    ];
+    let rendered = format_decision_entries(entries, None);
+    assert!(rendered.contains("widgets event"));
+    assert!(rendered.contains("gadgets event"));
+    assert!(rendered.contains("global event"));
+}
+
+#[test]
+fn bound_decision_log_excludes_other_repos_and_global_events() {
+    let entries = vec![
+        decision_entry(Some("widgets"), "widgets event"),
+        decision_entry(Some("gadgets"), "gadgets event"),
+        decision_entry(None, "global event"),
+    ];
+    let rendered = format_decision_entries(entries, Some("widgets"));
+    assert!(rendered.contains("widgets event"));
+    assert!(!rendered.contains("gadgets event"));
+    assert!(!rendered.contains("global event"));
 }

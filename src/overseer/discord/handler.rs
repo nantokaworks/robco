@@ -253,6 +253,9 @@ pub(super) fn describe_command(command: &Command) -> String {
         Command::Kill(agent) => format!("kill {agent}"),
         Command::Log(limit) => format!("log {limit}"),
         Command::Panic => "panic".into(),
+        Command::Merge(task) => format!("merge {task}"),
+        Command::Diff(task) => format!("diff {task}"),
+        Command::Help => "help".into(),
     }
 }
 
@@ -271,6 +274,7 @@ fn impactful(command: &Command) -> bool {
             | Command::Answer { .. }
             | Command::Dispatch(true)
             | Command::TaskCreate { .. }
+            | Command::Merge(_)
     )
     // Risk-reducing `dispatch off` and `automerge off` remain immediate so an
     // incident responder is never delayed by the confirmation round trip.
@@ -279,7 +283,12 @@ fn impactful(command: &Command) -> bool {
 fn mutating(command: &Command) -> bool {
     !matches!(
         command,
-        Command::Status | Command::Workers | Command::Tasks | Command::Log(_)
+        Command::Status
+            | Command::Workers
+            | Command::Tasks
+            | Command::Log(_)
+            | Command::Diff(_)
+            | Command::Help
     )
 }
 

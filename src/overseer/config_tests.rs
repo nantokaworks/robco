@@ -92,6 +92,25 @@ fn discord_config_round_trips_the_notify_channel() {
 }
 
 #[test]
+fn a_discord_config_written_before_channel_repo_bindings_existed_has_no_bindings() {
+    let raw = r#"{"enabled": true, "channel_id": "1", "allowed_user_ids": ["9"]}"#;
+    let config: DiscordConfig = serde_json::from_str(raw).unwrap();
+    assert!(config.channel_repo_bindings.is_empty());
+}
+
+#[test]
+fn discord_config_round_trips_channel_repo_bindings() {
+    let raw = r#"{"enabled": true, "channel_repo_bindings": {"111": "widgets"}}"#;
+    let config: DiscordConfig = serde_json::from_str(raw).unwrap();
+    assert_eq!(
+        config.channel_repo_bindings.get("111").map(String::as_str),
+        Some("widgets")
+    );
+    let value = serde_json::to_value(&config).unwrap();
+    assert_eq!(value["channel_repo_bindings"]["111"], "widgets");
+}
+
+#[test]
 fn serialized_config_carries_no_enabled_key() {
     let value = serde_json::to_value(OverseerConfig::default()).unwrap();
     assert!(value.get("enabled").is_none());

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::NotifyLevel;
@@ -43,6 +45,15 @@ pub struct DiscordConfig {
     pub chat_concurrency_cap: usize,
     pub action_limit_per_hour: usize,
     pub confirmation_ttl_secs: u64,
+    /// Binds a chat channel id to one repository name, so the ops agent's
+    /// briefing can scope its ledger rows, decisions, and tasks to that repo
+    /// instead of every repo the daemon manages (dropr:450). An operator
+    /// edits this map directly, the same way every other Discord setting
+    /// here is set — there is no dedicated command, deliberately: binding is
+    /// routing configuration, not an action the closed `Command` enum should
+    /// grow a variant for. A channel id absent from this map is unbound and
+    /// keeps today's unscoped behaviour.
+    pub channel_repo_bindings: BTreeMap<String, String>,
 }
 
 impl Default for DiscordConfig {
@@ -59,6 +70,7 @@ impl Default for DiscordConfig {
             chat_concurrency_cap: 3,
             action_limit_per_hour: 30,
             confirmation_ttl_secs: 120,
+            channel_repo_bindings: BTreeMap::new(),
         }
     }
 }

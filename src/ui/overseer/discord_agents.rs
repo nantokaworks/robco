@@ -4,7 +4,7 @@
 //! item rows already use (dropr:371), so Enter can attach the channel's live
 //! tmux session the same way Enter attaches any other AI session.
 
-use ratatui::text::{Line, Span};
+use ratatui::text::{Line, Span, Text};
 
 use crate::{
     locale::{Locale, fmt, t},
@@ -103,6 +103,61 @@ fn channel_line(
     ])
 }
 
+/// The Discord channel row's own preview: its retained conversation turns,
+/// oldest first, the same thread the phone shows (dropr:451). `preview.rs`'s
+/// `Selection::DiscordChannel` arm reaches this only once it has already
+/// checked there is no live tmux session to mirror for the channel — a turn
+/// in progress still shows the live session, exactly as before.
+pub(in crate::ui) fn channel_preview(app: &App, index: usize) -> (String, Text<'static>) {
+    let channels = &app.overseer_snapshot.discord_channels;
+    let ids = ordered_channel_ids(channels);
+    let Some(channel_id) = ids.get(index) else {
+        return (
+            "OVERSEER / Discord".to_string(),
+            vec![Line::styled(
+                t(app.locale, "channel is no longer listed"),
+                THEME.muted_style(),
+            )]
+            .into(),
+        );
+    };
+    let title = format!("Discord / {}", channels.display_label(channel_id));
+    let turns = channels.history(channel_id);
+    if turns.is_empty() {
+        return (
+            title,
+            vec![Line::styled(
+                t(app.locale, "no turns yet"),
+                THEME.muted_style(),
+            )]
+            .into(),
+        );
+    }
+    let mut lines = Vec::new();
+    for (index, turn) in turns.iter().enumerate() {
+        if index > 0 {
+            lines.push(Line::from(""));
+        }
+        lines.push(turn_label("User"));
+        lines.extend(turn_body(&turn.user_message));
+        lines.push(turn_label("Agent"));
+        lines.extend(turn_body(&turn.reply));
+    }
+    (title, lines.into())
+}
+
+/// `User:` / `Agent:` are UI item labels, not prose — English regardless of
+/// `language`, the same rule `inbox_rows::field` follows for its own labels.
+fn turn_label(label: &'static str) -> Line<'static> {
+    Line::styled(format!("{label}:"), THEME.muted_style())
+}
+
+fn turn_body(text: &str) -> Vec<Line<'static>> {
+    text.lines()
+        .map(|line| Line::styled(line.to_string(), THEME.accent_style()))
+        .collect()
+}
+
 /// Coarse "Xm/Xh/Xd ago" rendering — no existing helper in this codebase
 /// scales past raw seconds (`overseer.rs`'s heartbeat age deliberately stays
 /// at that resolution since it is always fresh), but a channel's
@@ -121,111 +176,5 @@ fn relative_age(locale: Locale, at: chrono::DateTime<chrono::Utc>) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::Config;
-    use crate::registry::Registry;
-    use chrono::Utc;
-
-    fn agent(status: ChannelAgentStatus, turns: u64, minutes_ago: i64) -> ChannelAgent {
-        let now = Utc::now();
-        ChannelAgent {
-            first_seen_at: now,
-            last_active_at: now - chrono::Duration::minutes(minutes_ago),
-            turn_count: turns,
-            status,
-            last_error: None,
-            history: Vec::new(),
-            channel_name: None,
-        }
-    }
-
-    fn app_with_channels(channels: DiscordChannels) -> App {
-        let temp = tempfile::tempdir().unwrap();
-        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-        app.overseer_visible = true;
-        app.overseer_snapshot.discord_channels = channels;
-        app
-    }
-
-    #[test]
-    fn no_channels_renders_an_explicit_empty_state() {
-        let app = app_with_channels(DiscordChannels::default());
-        let lines = detail_lines(&app);
-        assert_eq!(lines.len(), 1);
-        assert!(text_of(&lines[0]).contains("no retained channel agents"));
-    }
-
-    #[test]
-    fn channels_are_ordered_newest_activity_first() {
-        let mut channels = DiscordChannels::default();
-        channels
-            .channels
-            .insert("older".into(), agent(ChannelAgentStatus::Idle, 3, 30));
-        channels
-            .channels
-            .insert("newer".into(), agent(ChannelAgentStatus::Idle, 1, 1));
-
-        assert_eq!(
-            ordered_channel_ids(&channels),
-            vec!["newer".to_string(), "older".to_string()]
-        );
-    }
-
-    #[test]
-    fn the_selected_channel_row_carries_the_marker() {
-        let mut channels = DiscordChannels::default();
-        channels
-            .channels
-            .insert("c1".into(), agent(ChannelAgentStatus::Running, 1, 0));
-        let mut app = app_with_channels(channels);
-        app.selected = 0;
-        app.set_overseer_category_expanded(crate::model::OverseerCategory::Discord, true);
-        app.selected = app
-            .visible()
-            .iter()
-            .position(|row| matches!(row, Selection::DiscordChannel(0)))
-            .expect("no discord channel row");
-
-        let lines = detail_lines(&app);
-        assert!(text_of(&lines[0]).starts_with('>'));
-    }
-
-    #[test]
-    fn a_named_channel_renders_its_name_and_an_unnamed_one_falls_back_to_the_id() {
-        let mut channels = DiscordChannels::default();
-        let mut named = agent(ChannelAgentStatus::Idle, 1, 1);
-        named.channel_name = Some("general".into());
-        channels.channels.insert("111222333".into(), named);
-        channels
-            .channels
-            .insert("999888777".into(), agent(ChannelAgentStatus::Idle, 1, 30));
-
-        let app = app_with_channels(channels);
-        let lines = detail_lines(&app);
-        assert!(text_of(&lines[0]).contains("#general"));
-        assert!(!text_of(&lines[0]).contains("111222333"));
-        assert!(text_of(&lines[1]).contains("999888777"));
-    }
-
-    #[test]
-    fn a_failed_channel_renders_its_error_on_the_next_line() {
-        let mut channels = DiscordChannels::default();
-        let mut failing = agent(ChannelAgentStatus::Failed, 2, 5);
-        failing.last_error = Some("session timed out".into());
-        channels.channels.insert("c1".into(), failing);
-
-        let app = app_with_channels(channels);
-        let lines = detail_lines(&app);
-        assert_eq!(lines.len(), 2);
-        assert!(text_of(&lines[0]).contains("dead"));
-        assert!(text_of(&lines[1]).contains("session timed out"));
-    }
-
-    fn text_of(line: &Line<'static>) -> String {
-        line.spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect()
-    }
-}
+#[path = "discord_agents_tests.rs"]
+mod tests;
