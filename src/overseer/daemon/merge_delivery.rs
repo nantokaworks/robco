@@ -22,10 +22,13 @@ use crate::{Result, tmux};
 /// does. Sending `Enter` in the same instant lands inside that paste handling
 /// instead of submitting, which is how a long judge verdict (the
 /// merge-recovery template embeds it verbatim, often ~2,500 characters) ended
-/// up sitting unsent in the input box. This settle window gives the paste
-/// handling time to finish before the submit key follows; `confirm_delivered`
-/// is the safety net for whatever this guess does not cover.
-const SUBMIT_SETTLE: std::time::Duration = std::time::Duration::from_millis(120);
+/// up sitting unsent in the input box. 120ms only covered a fraction of real
+/// deliveries (`merge_recovery_dispatched` landed in about 5% of attempts
+/// against a live worker); this window is widened well past that margin.
+/// This settle window gives the paste handling time to finish before the
+/// submit key follows; `confirm_delivered` is the safety net for whatever
+/// this guess does not cover.
+const SUBMIT_SETTLE: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// Types `prompt` into `session` and submits it, the way triage drives a live
 /// worker through `TriageAction::RobcoAnswer`.
@@ -36,23 +39,59 @@ pub(super) fn send(session: &str, prompt: &str) -> Result<()> {
 }
 
 /// How long to wait for a session to show it started a turn before treating a
-/// send as unconfirmed.
-const CONFIRM_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+/// send as unconfirmed. Widened alongside `SUBMIT_SETTLE`: 1500ms left too
+/// little room after a slow paste settle for the working marker to appear at
+/// all, which is consistent with confirmation failing on ~95% of real
+/// deliveries.
+const CONFIRM_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
 const CONFIRM_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(150);
 
+/// Outcome of [`confirm_delivered`]. A capture error and a session that
+/// simply has not started a turn yet are different facts — one says the probe
+/// itself is untrustworthy, the other says the send may genuinely not have
+/// landed — so the caller (and the decision log) must be able to tell them
+/// apart instead of both reading as an identical `false`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum DeliveryConfirmation {
+    /// The session showed it started a turn.
+    Confirmed,
+    /// The deadline elapsed; every capture that succeeded showed no working
+    /// marker.
+    NotConfirmed,
+    /// The deadline elapsed and the most recent capture attempt itself
+    /// failed — the probe never got a clean read on the pane, so nothing it
+    /// saw can be read as evidence either way.
+    CaptureFailed(String),
+}
+
 /// Whether `session` shows it started a turn after a send, polling until
-/// `CONFIRM_TIMEOUT` elapses. A capture failure never confirms — a probe that
-/// cannot see the pane must not be read as a successful delivery.
-pub(super) fn confirm_delivered(session: &str) -> bool {
+/// `CONFIRM_TIMEOUT` elapses.
+pub(super) fn confirm_delivered(session: &str) -> DeliveryConfirmation {
     let deadline = std::time::Instant::now() + CONFIRM_TIMEOUT;
+    let mut last_capture_error: Option<String>;
     loop {
-        if tmux::capture_plain(session).is_ok_and(|capture| looks_working(&capture)) {
-            return true;
+        match tmux::capture_plain(session) {
+            Ok(capture) if looks_working(&capture) => return DeliveryConfirmation::Confirmed,
+            Ok(_) => last_capture_error = None,
+            Err(error) => last_capture_error = Some(error.to_string()),
         }
         if std::time::Instant::now() >= deadline {
-            return false;
+            return confirmation_at_deadline(last_capture_error);
         }
         std::thread::sleep(CONFIRM_POLL_INTERVAL);
+    }
+}
+
+/// Resolves what a bounded confirmation loop should report once its deadline
+/// elapses without ever seeing the working marker, from the most recent
+/// capture attempt's outcome. Split out of the poll loop above so this
+/// decision — a capture failure is reported apart from a clean read that
+/// simply never showed the marker — is testable without a real tmux session
+/// or the wall-clock delay.
+fn confirmation_at_deadline(last_capture_error: Option<String>) -> DeliveryConfirmation {
+    match last_capture_error {
+        Some(error) => DeliveryConfirmation::CaptureFailed(error),
+        None => DeliveryConfirmation::NotConfirmed,
     }
 }
 
