@@ -1,5 +1,9 @@
 use super::*;
-use crate::overseer::{config::OverseerConfig, ledger::LedgerEntry};
+use crate::overseer::{
+    config::OverseerConfig,
+    ledger::{LedgerEntry, LedgerPhase},
+    monitor::{Action, FailureOrigin},
+};
 
 fn failures(origin: FailureOrigin, count: u32) -> Vec<Action> {
     (0..count)

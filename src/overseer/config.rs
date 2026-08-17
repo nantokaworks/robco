@@ -1,6 +1,5 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 use super::autonomy::AutonomyLevel;
@@ -9,39 +8,19 @@ use super::autonomy::AutonomyLevel;
 mod notify_level;
 pub use notify_level::{NotifyLevel, NotifyTier};
 
-/// How strictly the auto-merge gate requires the base branch to be protected.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ValueEnum)]
-#[serde(rename_all = "snake_case")]
-#[clap(rename_all = "kebab-case")]
-pub enum ProtectionMode {
-    /// Require both a pull-request requirement and at least one required status check.
-    #[default]
-    Required,
-    /// Require only that changes go through a pull request.
-    Relaxed,
-    /// Skip the protection probe and rely on GitHub's mergeability signal alone.
-    Off,
-}
+#[path = "config_discord.rs"]
+mod discord_config;
+pub use discord_config::DiscordConfig;
 
-impl ProtectionMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Required => "required",
-            Self::Relaxed => "relaxed",
-            Self::Off => "off",
-        }
-    }
-}
+#[path = "config_protection_mode.rs"]
+mod protection_mode;
+pub use protection_mode::ProtectionMode;
 
 fn default_worker_blocklist() -> Vec<String> {
     ["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]
         .into_iter()
         .map(str::to_string)
         .collect()
-}
-
-fn default_discord_token_env() -> String {
-    "ROBCO_DISCORD_TOKEN".to_string()
 }
 
 /// Matches `max_branch_updates`: both bound how many times one entry may spend a
@@ -302,63 +281,6 @@ impl Default for OverseerConfig {
             repo_watch_interval_hours: 24,
             dependabot_stale_after_days: 3,
             discord: DiscordConfig::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct DiscordConfig {
-    pub enabled: bool,
-    pub token_env: String,
-    pub channel_id: Option<String>,
-    /// Channel that receives the Overseer's reports — decision notifications
-    /// and digests. Unset, reports fall back to `channel_id`, so a config
-    /// written before this field existed keeps its single-channel behavior.
-    /// Chat replies, command responses, and confirmations never route
-    /// through this; they stay on the channel the message came from.
-    pub notify_channel_id: Option<String>,
-    pub allowed_user_ids: Vec<String>,
-    /// Notification verbosity baseline; the sole gate for which events post.
-    pub notify_level: NotifyLevel,
-    /// Runs notification titles and descriptions through an LLM pass in
-    /// `language` before posting. Independent of `language` itself, which
-    /// also governs the ops-agent reply and every worker/judge prompt — an
-    /// operator may want those localized but keep templated notifications
-    /// in English for speed and cost. Has no effect while `language` is
-    /// unset or blank; the pass is skipped either way.
-    pub notify_localize: bool,
-    /// Discord category IDs whose text channels get a conversational reply
-    /// to plain chat, the same way `channel_id` already does. Empty by
-    /// default, so the feature is off until an operator opts in — an
-    /// operator may want every message under that category answered without
-    /// naming each channel, e.g. as channels are added or renamed.
-    pub chat_category_ids: Vec<String>,
-    /// Concurrent ops-agent sessions across `channel_id` and every
-    /// `chat_category_ids` channel combined. Each session is a spawned OS
-    /// thread running an agent CLI, so this is a real resource bound, not
-    /// just a Discord-noise knob — see `OpsAgent`'s per-channel session map.
-    /// Beyond the cap a channel gets the same busy reply a single-slot agent
-    /// already returned, rather than a dropped message.
-    pub chat_concurrency_cap: usize,
-    pub action_limit_per_hour: usize,
-    pub confirmation_ttl_secs: u64,
-}
-
-impl Default for DiscordConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            token_env: default_discord_token_env(),
-            channel_id: None,
-            notify_channel_id: None,
-            allowed_user_ids: Vec::new(),
-            notify_level: NotifyLevel::default(),
-            notify_localize: true,
-            chat_category_ids: Vec::new(),
-            chat_concurrency_cap: 3,
-            action_limit_per_hour: 30,
-            confirmation_ttl_secs: 120,
         }
     }
 }
