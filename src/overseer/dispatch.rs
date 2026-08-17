@@ -14,6 +14,7 @@ mod decision_log;
 mod drain;
 mod entries;
 mod gate;
+mod gather;
 pub(crate) mod naming;
 mod order;
 mod route;

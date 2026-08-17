@@ -219,6 +219,3 @@ fn the_failure_budget_accumulates_per_candidate_across_an_interleaved_success() 
     }
     assert!(!streaks.contains_key("broken"));
 }
-
-#[path = "dispatch_runtime_gather_tests.rs"]
-mod gather_tests;
