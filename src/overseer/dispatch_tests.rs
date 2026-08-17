@@ -15,6 +15,7 @@ fn candidate(repo: &str) -> Candidate {
         workspace: "workspace-1".into(),
         priority_score: None,
         status: "open".into(),
+        parent_task_id: None,
     }
 }
 
@@ -175,6 +176,8 @@ fn zero_daily_limit_means_unlimited() {
     assert_eq!(plan.decisions[0].reason, "ready");
 }
 
+#[path = "dispatch_candidate_parent_tests.rs"]
+mod candidate_parent_tests;
 #[path = "dispatch_candidate_tests.rs"]
 mod candidate_tests;
 #[path = "dispatch_manual_tests.rs"]

@@ -9,7 +9,7 @@ use crate::overseer::{config::OverseerConfig, ledger::Ledger};
 
 use super::{
     Candidate, DispatchPlan, GateDecision,
-    entries::{holds_capacity, task_entries, worker_mode},
+    entries::{has_active_worker, holds_capacity, task_entries, worker_mode},
 };
 
 pub(super) fn apply_candidate_gates(
@@ -101,6 +101,17 @@ fn candidate_skip<'a>(
         } else {
             "active_worker"
         });
+    }
+    // A RUN dispatch against the parent already covers this subtask's own
+    // implementation (dropr:yD5Gf6TX23VMvuSLFsmvO): the parent's own ledger
+    // entry is recorded under the parent's task/display id, not this
+    // candidate's, so `recorded` above never sees it. Without this check a
+    // free worker slot dispatches the subtask separately while the parent's
+    // worker is still building the same change.
+    if let Some(parent_task_id) = &candidate.parent_task_id
+        && has_active_worker(ledger, parent_task_id, parent_task_id)
+    {
+        return Some("parent_worker_active");
     }
     if ledger
         .skip_list

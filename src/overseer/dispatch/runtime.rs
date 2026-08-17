@@ -254,13 +254,25 @@ fn gather_candidates(
                 continue;
             }
         };
-        for task in tasks {
-            candidates.push(Candidate {
-                task_id: if task.id.is_empty() {
+        let repo_ids = tasks
+            .iter()
+            .map(|task| {
+                if task.id.is_empty() {
                     task.task.display_id.clone()
                 } else {
-                    task.id
-                },
+                    task.id.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        // Batched once per repo rather than once per candidate: `dropr task
+        // ready` does not carry `parent_task_id` itself (dropr:yD5Gf6TX23VMvuSLFsmvO),
+        // so this is the extra round-trip `gate::candidate_skip`'s ancestor
+        // check needs — kept out of the gate itself, which stays pure.
+        let parents = dropr::fetch_parents(&workspace.id, &repo_ids, COMMAND_TIMEOUT);
+        for (task, task_id) in tasks.into_iter().zip(repo_ids) {
+            let parent_task_id = parents.get(&task_id).cloned().flatten();
+            candidates.push(Candidate {
+                task_id,
                 display_id: task.task.display_id,
                 title: task.task.title,
                 repo: repo.path.to_string_lossy().into_owned(),
@@ -269,6 +281,7 @@ fn gather_candidates(
                 workspace: workspace.id.clone(),
                 priority_score: task.task.priority_score,
                 status: task.task.status,
+                parent_task_id,
             });
         }
     }

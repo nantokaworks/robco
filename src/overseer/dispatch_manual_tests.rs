@@ -30,6 +30,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             workspace: "workspace-1".into(),
             priority_score: None,
             status: "open".into(),
+            parent_task_id: None,
         },
         Candidate {
             task_id: "auto-task".into(),
@@ -41,6 +42,7 @@ fn manual_worker_is_excluded_and_auto_worker_is_included() {
             workspace: "workspace-1".into(),
             priority_score: None,
             status: "open".into(),
+            parent_task_id: None,
         },
     ];
 

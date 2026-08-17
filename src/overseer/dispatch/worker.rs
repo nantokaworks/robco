@@ -3,12 +3,13 @@ use chrono::{DateTime, Utc};
 use super::{Candidate, claim, naming, naming::TaskSource};
 use crate::overseer::{
     OVERSEER_AGENT_ID,
+    exec::COMMAND_TIMEOUT,
     ledger::{Ledger, LedgerEntry, LedgerPhase},
     logging::DecisionKind,
     other_prs::OtherPrs,
     templates::worker_prompt,
 };
-use crate::{Result, config::Config, spawn};
+use crate::{Result, config::Config, dropr, spawn};
 
 /// What an approved candidate produced. A held candidate is not a spawn fault
 /// and must not consume the failure budget the circuit reserves for genuine
@@ -75,11 +76,16 @@ pub(super) fn spawn_candidate(
         .find(|profile| profile.name == worker_config.default_program)
         .map(|profile| profile.autonomous_args.clone())
         .unwrap_or_default();
+    // Read next to where the display id is captured, the way defect 1
+    // (dropr:yD5Gf6TX23VMvuSLFsmvO) asks: a leaf task simply comes back
+    // empty, which renders the same childless prompt as before.
+    let subtasks = dropr::fetch_subtasks(&task.workspace, &task.task_id, COMMAND_TIMEOUT);
     let prompt = worker_prompt(
         &task.display_id,
         &task.task_id,
         &task.title,
         &task.repo,
+        &subtasks,
         config.language.as_deref(),
     );
     let outcome = match spawn::spawn_in_repo(

@@ -57,6 +57,7 @@ fn a_failed_spawn_still_counts_against_max_retries() {
             workspace: "workspace-1".into(),
             priority_score: None,
             status: "open".into(),
+            parent_task_id: None,
         }],
         Utc::now(),
         &HashMap::new(),
@@ -76,6 +77,7 @@ fn candidate(display_id: &str, title: &str) -> Candidate {
         workspace: "workspace-1".into(),
         priority_score: None,
         status: "open".into(),
+        parent_task_id: None,
     }
 }
 
