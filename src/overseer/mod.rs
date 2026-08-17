@@ -22,6 +22,7 @@ pub mod monitor;
 pub mod other_prs;
 pub(crate) mod release_pipeline;
 pub(crate) mod remedy;
+pub(crate) mod repo_watch;
 pub mod review;
 pub mod runtime_request;
 pub(crate) mod session;
@@ -178,6 +179,13 @@ pub fn merge_pass_path() -> Result<PathBuf> {
 /// `ledger.json`: the ledger records only what Overseer itself dispatched.
 pub fn other_prs_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("other_prs.json"))
+}
+
+/// When each managed repository's periodic advisory/Dependabot health watch
+/// last ran — see [`repo_watch`]. Its own file for the same reason
+/// `other_prs_path` gets one: this cadence cache is not the ledger.
+pub fn repo_watch_path() -> Result<PathBuf> {
+    Ok(overseer_home()?.join("repo_watch.json"))
 }
 
 /// Whether the dispatch pass's ready-candidate gather found the board

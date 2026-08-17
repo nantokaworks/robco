@@ -22,6 +22,15 @@ const EXACT: &[(&str, &str)] = &[
         "The worker is blocked and asked for help.",
     ),
     ("queue_drained", "The task queue is empty."),
+    // Repository health watch (`daemon::repo_watch`).
+    (
+        "advisory_task_filed",
+        "A security advisory is failing this repository's checks. A task was filed.",
+    ),
+    (
+        "dependabot_task_filed",
+        "Dependabot pull requests need a coordinated rebase. A task was filed.",
+    ),
     // Merge-gate hold reasons (`daemon::merge_gate`, `merge_state`,
     // `merge_queue`).
     (
