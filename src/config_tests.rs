@@ -221,6 +221,41 @@ fn a_configured_language_survives_a_save_and_load_round_trip() {
     );
 }
 
+/// The five judge keys are pure deletions, not a value migration like
+/// `merge_strategy`: nothing on `OverseerConfig` denies unknown fields, so a
+/// config file still carrying them simply drops the extra keys on load, and
+/// the next save never writes them back because the struct no longer has the
+/// fields at all.
+#[test]
+fn a_config_carrying_the_removed_judge_keys_loads_and_drops_them_on_save() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("config.json");
+    let mut value = serde_json::to_value(Config::default()).unwrap();
+    let overseer = value["overseer"].as_object_mut().unwrap();
+    overseer.insert("judge_profile".into(), "judge".into());
+    overseer.insert("merge_judge_profile".into(), "judge".into());
+    overseer.insert("max_concurrent_judges".into(), 4.into());
+    overseer.insert("max_merge_judge_primes".into(), 3.into());
+    overseer.insert("max_merge_judge_fail_safes".into(), 3.into());
+    fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
+
+    let config = Config::load_at(&path).unwrap();
+    config.save_at(&path).unwrap();
+
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    let overseer = saved["overseer"].as_object().unwrap();
+    for key in [
+        "judge_profile",
+        "merge_judge_profile",
+        "max_concurrent_judges",
+        "max_merge_judge_primes",
+        "max_merge_judge_fail_safes",
+    ] {
+        assert!(overseer.get(key).is_none(), "{key} should not survive a save");
+    }
+}
+
 #[test]
 fn project_icon_defaults_and_maps_markers() {
     assert_eq!(ProjectIcon::default(), ProjectIcon::None);

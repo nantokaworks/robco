@@ -22,8 +22,7 @@ use crate::{config::Config, overseer::ledger::LedgerEntry, registry::Registry};
 const CHECKS_FAILED: &str = "checks_not_green";
 
 /// Reason recorded when the checks have not finished. Nothing has failed, so nothing
-/// is handed back. `pub(super)` because `merge_judge_gate::prime` treats this as one
-/// of the two waits a merge judgment may run underneath.
+/// is handed back.
 pub(super) const CHECKS_WAITING: &str = "checks_waiting";
 
 /// Only `DIRTY` is checked ahead of the checks stage: a conflicting head reports zero

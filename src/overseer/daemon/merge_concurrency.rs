@@ -3,28 +3,11 @@
 //!
 //! Every blocking `gh`/`git` call the pass makes (`run_timeout`, throughout
 //! `daemon/`) is a plain `std::process::Command`, not an async future, so
-//! there is no async runtime to hand this work to. `JudgmentQueue` already
-//! bounds its own concurrent model sessions the same way — a fixed number of
-//! `std::thread` handles, refilled from a queue — and this mirrors that
-//! shape rather than introducing a second concurrency idiom.
+//! there is no async runtime to hand this work to. This pool mirrors that
+//! shape — a fixed number of `std::thread` handles, refilled from a queue —
+//! rather than introducing a second concurrency idiom.
 
 use std::sync::Mutex;
-
-use crate::overseer::judge::JudgmentQueue;
-
-/// The judgment queue, shared across every repository's worker thread for the
-/// duration of one auto-merge pass.
-///
-/// `JudgmentQueue` itself keeps its `&mut self` API unchanged — everywhere
-/// outside the concurrent section of the pass (`tick`, `dispatch_pass`, every
-/// existing test) still owns it outright and pays no locking cost. Only the
-/// handful of calls a repository's evaluation makes while several
-/// repositories run at once (`prime_merge`, `merge_advice`,
-/// `has_terminal_merge`, `forget_terminal_merge`, `llm_calls_today`) go
-/// through this lock, and each holds it only for an in-memory lookup or a
-/// small audit-log append — never across a `gh`/`git` call, which is what
-/// would serialise the repositories again.
-pub(super) type SharedJudgments<'a> = Mutex<&'a mut JudgmentQueue>;
 
 /// Runs `work` once for each item in `items`, using up to `ceiling` OS threads
 /// at a time, and returns one result per item in the same order as `items`

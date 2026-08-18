@@ -23,16 +23,9 @@ fn default_worker_blocklist() -> Vec<String> {
         .collect()
 }
 
-/// Matches `max_branch_updates`: both bound how many times one entry may spend a
-/// resource on catching up to a base that keeps moving, and a pull request that
-/// needs more looks than this is one an operator should see anyway.
-fn default_max_merge_judge_primes() -> u32 {
-    3
-}
-
-/// Matches `max_concurrent_judges`'s default: a small ceiling that overlaps a
-/// handful of repositories' `gh`/`git` calls without spraying enough
-/// concurrent requests to trip GitHub's own rate limiting.
+/// A small ceiling that overlaps a handful of repositories' `gh`/`git` calls
+/// without spraying enough concurrent requests to trip GitHub's own rate
+/// limiting.
 fn default_max_concurrent_merge_repos() -> usize {
     4
 }
@@ -66,10 +59,6 @@ pub struct OverseerConfig {
     pub legacy_merge_strategy: Option<String>,
     /// See `ledger::LedgerEntry::branch_updates` for what this still bounds.
     pub max_branch_updates: u32,
-    /// See `ledger::LedgerEntry::merge_judge_primes`. `0` turns early judgments
-    /// off entirely, leaving every merge judgment to run after the gate clears.
-    #[serde(default = "default_max_merge_judge_primes")]
-    pub max_merge_judge_primes: u32,
     /// Auto-merge passes one repository may be held waiting for its post-merge
     /// fast-forward of local `main` before the barrier is lifted without it.
     /// The bound is what stops a fast-forward that never succeeds from
@@ -94,19 +83,12 @@ pub struct OverseerConfig {
     /// past the 5-15 minutes a healthy check run takes, and still well inside an
     /// hour. `0` escalates on the first held pass.
     pub max_merge_holds: u32,
-    /// Fail-safe merge verdicts (the judge session itself failed rather than
-    /// saying anything about the change) one pull request may receive before it
-    /// escalates for real. A fail-safe verdict is not cached as a terminal
-    /// judgment, so the next pass re-asks the judge — but a permanently broken
-    /// judge must still converge instead of spending model budget in a loop,
-    /// which is what this bounds. `0` escalates on the first fail-safe verdict.
-    pub max_merge_judge_fail_safes: u32,
     /// Reconsiderations one entry the hold cap escalated may be given, each a
     /// full pass back through the gate to check whether the condition it held
     /// on has cleared — an operator flipping a setting, or a probe that
     /// answers now instead of timing out. Unlike `max_merge_holds`, this is not
     /// keyed on the reason staying the same: it exists precisely because a
-    /// pre-judge condition (protection, checks, merge state) is never cached
+    /// gate condition (protection, checks, merge state) is never cached
     /// anywhere the gate can watch for a change on its own, so it must be
     /// re-tried instead. Bounded so a condition that never clears still stops
     /// being reconsidered rather than polling forever. `0` never reconsiders a
@@ -137,17 +119,13 @@ pub struct OverseerConfig {
     pub failure_circuit_threshold: u32,
     pub triage_enabled: bool,
     pub triage_profile: Option<String>,
-    pub judge_profile: Option<String>,
-    pub merge_judge_profile: Option<String>,
-    pub max_concurrent_judges: usize,
     /// Repositories the auto-merge pass evaluates at once. Each repository's
     /// own queue still runs its entries one at a time and in order — this
     /// only bounds how many *different* repositories' `gh`/`git` calls may be
     /// in flight in the same pass, so one repository's slow check fetch or
     /// branch update no longer holds every other repository's ledger entries
-    /// until it finishes. Matches `max_concurrent_judges`'s role for the
-    /// judge layer: a ceiling on concurrent OS threads, not on GitHub API
-    /// rate limits, which `gh` itself already backs off for.
+    /// until it finishes. A ceiling on concurrent OS threads, not on GitHub
+    /// API rate limits, which `gh` itself already backs off for.
     #[serde(default = "default_max_concurrent_merge_repos")]
     pub max_concurrent_merge_repos: usize,
     /// Profile the periodic board reviewer runs under. `None` disables the
@@ -157,8 +135,9 @@ pub struct OverseerConfig {
     pub review_profile: Option<String>,
     pub review_interval_mins: u64,
     /// Daily call budget for the board reviewer, deliberately separate from
-    /// `daily_llm_budget`. The reviewer runs on a clock rather than on demand,
-    /// so sharing one budget would let it starve dispatch and merge judgement.
+    /// `daily_llm_budget` (the autonomy envelope's own budget risk category).
+    /// The reviewer runs on a clock rather than on demand, so sharing one
+    /// budget would let it starve whatever else draws against it.
     pub daily_review_budget: u32,
     pub triage_timeout_mins: u64,
     pub worker_env_blocklist: Vec<String>,
@@ -166,7 +145,7 @@ pub struct OverseerConfig {
     /// layer of the credential channel documented in
     /// `crate::overseer::session::env`. A launchd agent has no access to the
     /// interactive login session's keychain, so this — or the env file below —
-    /// is how a `claude setup-token` credential reaches a judge, triage, or
+    /// is how a `claude setup-token` credential reaches a worker, triage, or
     /// review session at all.
     ///
     /// Names set here are exempt from `worker_env_blocklist`: the blocklist
@@ -180,7 +159,8 @@ pub struct OverseerConfig {
     pub session_env_file: Option<PathBuf>,
     /// Whether the daemon spawns one probe session at start-up to confirm the
     /// credential channel actually authenticates. Default-on: the failure it
-    /// catches is otherwise only visible as merge judgments escalating.
+    /// catches is otherwise only visible as worker, triage, or review
+    /// sessions failing to authenticate once they run.
     pub session_preflight: bool,
     pub dispatch_task_authors: Vec<String>,
     /// Hours a ledger entry may sit waiting on a dropr `blocks` dependency
@@ -243,12 +223,10 @@ impl Default for OverseerConfig {
             daily_llm_budget: 200,
             legacy_merge_strategy: None,
             max_branch_updates: 3,
-            max_merge_judge_primes: default_max_merge_judge_primes(),
             max_merge_settle_passes: 5,
             merge_recovery_enabled: false,
             max_merge_recoveries: 2,
             max_merge_holds: 30,
-            max_merge_judge_fail_safes: 3,
             max_merge_hold_rechecks: 10,
             worker_profile: None,
             parallel_limit: 0,
@@ -264,9 +242,6 @@ impl Default for OverseerConfig {
             failure_circuit_threshold: 3,
             triage_enabled: true,
             triage_profile: None,
-            judge_profile: None,
-            merge_judge_profile: None,
-            max_concurrent_judges: 4,
             max_concurrent_merge_repos: default_max_concurrent_merge_repos(),
             review_profile: None,
             review_interval_mins: 20,

@@ -29,11 +29,9 @@ fn ledger_entry(phase: LedgerPhase) -> LedgerEntry {
         retries: 0,
         pr_url: None,
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -77,8 +75,8 @@ fn summarize_reason_leaves_a_short_single_line_reason_untouched() {
 
 #[test]
 fn summarize_reason_keeps_only_the_first_line_of_a_multi_paragraph_verdict() {
-    // A judge escalation reason can run to several paragraphs; the CLI answer
-    // has to stay scannable even when the underlying reason does not.
+    // An escalation reason can run to several lines; the CLI answer has to
+    // stay scannable even when the underlying reason does not.
     let verdict = "line one of the verdict\nline two continues here\nline three";
     let summarized = summarize_reason(verdict);
     assert_eq!(summarized, "line one of the verdict…");
@@ -185,7 +183,7 @@ fn stuck_reasons_is_empty_for_a_healthy_daemon_with_nothing_open() {
 fn running_line_reports_no_active_workers_plainly() {
     let active = ActiveWorkers::default();
     let registry = registry_with(vec![]);
-    let line = running_line(&active, &BTreeMap::new(), &registry, 3, "10", &[]);
+    let line = running_line(&active, &BTreeMap::new(), &registry, 3, "10");
     assert_eq!(
         line,
         "running now: no active workers · dispatched today 3/10"
@@ -193,24 +191,17 @@ fn running_line_reports_no_active_workers_plainly() {
 }
 
 #[test]
-fn running_line_names_repos_and_active_judgments() {
+fn running_line_names_repos() {
     let mut active = ActiveWorkers {
         count: 1,
         ..ActiveWorkers::default()
     };
     active.repos.insert("/tmp/robco".into(), 1);
     let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
-    let line = running_line(
-        &active,
-        &BTreeMap::new(),
-        &registry,
-        5,
-        "∞",
-        &["merge:task-1".to_string()],
-    );
+    let line = running_line(&active, &BTreeMap::new(), &registry, 5, "∞");
     assert_eq!(
         line,
-        "running now: 1 worker(s) (robco=1) · dispatched today 5/∞ · judging merge:task-1"
+        "running now: 1 worker(s) (robco=1) · dispatched today 5/∞"
     );
     assert!(!line.contains("/tmp"));
 }
@@ -224,7 +215,7 @@ fn running_line_names_the_primary_holder_per_repository() {
     active.repos.insert("/tmp/robco".into(), 2);
     let primary_holders = BTreeMap::from([("/tmp/robco".to_string(), "#452".to_string())]);
     let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
-    let line = running_line(&active, &primary_holders, &registry, 0, "20", &[]);
+    let line = running_line(&active, &primary_holders, &registry, 0, "20");
     assert_eq!(
         line,
         "running now: 2 worker(s) (robco=2 (primary #452)) · dispatched today 0/20"

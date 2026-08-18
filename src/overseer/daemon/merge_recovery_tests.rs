@@ -14,11 +14,9 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -63,8 +61,8 @@ fn every_recorded_reason_names_the_merge_recovery_step() {
     // The decision log is the only place the whole cycle is visible, so each
     // reason has to be greppable and carry what actually happened.
     assert_eq!(
-        dispatched("judge_veto:no rollback"),
-        "merge_recovery_dispatched:judge_veto:no rollback"
+        dispatched("merge_state:dirty"),
+        "merge_recovery_dispatched:merge_state:dirty"
     );
     assert_eq!(
         skipped("missing_session:worker-3"),
@@ -75,8 +73,8 @@ fn every_recorded_reason_names_the_merge_recovery_step() {
         "merge_recovery_skipped:send_failed:tmux send-keys failed"
     );
     assert_eq!(
-        undelivered("judge_veto:no rollback"),
-        "merge_recovery_undelivered:judge_veto:no rollback"
+        undelivered("merge_state:dirty"),
+        "merge_recovery_undelivered:merge_state:dirty"
     );
 }
 
@@ -124,8 +122,8 @@ fn refund_never_underflows_a_charge_that_was_never_taken() {
 #[test]
 fn every_undeliverable_reason_names_the_merge_recovery_step() {
     assert_eq!(
-        undeliverable("judge_veto:no rollback"),
-        "merge_recovery_undeliverable:judge_veto:no rollback"
+        undeliverable("merge_state:dirty"),
+        "merge_recovery_undeliverable:merge_state:dirty"
     );
 }
 

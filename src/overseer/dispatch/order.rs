@@ -1,17 +1,13 @@
 //! The deterministic ordering the dispatch gate applies to its candidates.
 //!
 //! Without one, "which ready task runs first" was whatever order the registry
-//! happened to list repositories in, and the only thing that could impose an
-//! order was the LLM judge. That made the judge load-bearing for something the
-//! gate can decide by itself, and left a judge-less daemon dispatching
-//! arbitrarily.
+//! happened to list repositories in — arbitrary, and nothing in the gate
+//! itself decided otherwise.
 //!
 //! The order is: highest priority first, then highest `priority_score` first,
 //! then oldest task first. It is applied *before* the capacity gates in
 //! [`super::apply_candidate_gates`], so priority decides who wins the last
-//! worker slot rather than merely who spawns first; and it is the same list a
-//! judge round receives, so a judge reorders a defined baseline instead of an
-//! arbitrary one.
+//! worker slot rather than merely who spawns first.
 
 use super::Candidate;
 

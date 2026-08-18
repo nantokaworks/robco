@@ -33,10 +33,9 @@ pub(super) enum SpawnOutcome {
 /// instead of surfacing it.
 const MAX_BRANCH_EXISTS_HOLDS: u32 = 5;
 
-/// `route` names how this pass chose its dispatch set (see
-/// `super::route::Route`). It is written into the spawn's decision entry so the
-/// log distinguishes a dispatch an LLM judge approved from one the
-/// deterministic gate made on its own.
+/// `route` names how this pass chose its dispatch set — `"auto"` for the
+/// polled pass, `"operator_run"` for `!run` — and is written into the spawn's
+/// decision entry so the log distinguishes the two.
 pub(super) fn spawn_candidate(
     config: &Config,
     ledger: &mut Ledger,
@@ -78,9 +77,9 @@ pub(super) fn spawn_candidate(
     // inheriting one from a branch that is already gone.
     ledger.branch_exists_holds.remove(&task.task_id);
     // The ledger only knows about workers this overseer started. Re-read the
-    // task in dropr and take its claim here, so an agent that claimed it while
-    // the judge round was in flight is seen now rather than discovered when two
-    // workers are already sharing a branch.
+    // task in dropr and take its claim here, so an agent that claimed it since
+    // this pass started gathering candidates is seen now rather than
+    // discovered when two workers are already sharing a branch.
     if let claim::Acquired::Held(reason) = claim::acquire(task, OVERSEER_AGENT_ID, now)? {
         return Ok(SpawnOutcome::Held(reason));
     }
@@ -144,11 +143,9 @@ pub(super) fn spawn_candidate(
         retries: attempts,
         pr_url: None,
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,

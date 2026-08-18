@@ -348,9 +348,7 @@ pub enum MergeLifecycle {
     ChecksRunning,
     /// CI checks came back red.
     ChecksFailing,
-    /// Checks are clean; the pull request is waiting on the merge judge.
-    WaitingJudge,
-    /// Held for a reason outside the three above (behind its base branch,
+    /// Held for a reason outside the two above (behind its base branch,
     /// missing branch protection, and the like). The detail lives in the
     /// Info pane rather than in the glyph vocabulary.
     OnHold,
@@ -361,7 +359,6 @@ impl MergeLifecycle {
         match self {
             MergeLifecycle::ChecksRunning => "↻",
             MergeLifecycle::ChecksFailing => "‼",
-            MergeLifecycle::WaitingJudge => "⚖",
             MergeLifecycle::OnHold => "⏸",
         }
     }
@@ -442,7 +439,6 @@ mod tests {
         let lifecycle_glyphs = [
             MergeLifecycle::ChecksRunning.glyph(),
             MergeLifecycle::ChecksFailing.glyph(),
-            MergeLifecycle::WaitingJudge.glyph(),
             MergeLifecycle::OnHold.glyph(),
         ];
         for glyph in lifecycle_glyphs {

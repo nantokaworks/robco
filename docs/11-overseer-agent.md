@@ -72,24 +72,10 @@ each repository's slots are self-contained.
 Candidates are ordered before those gates run, by dropr task priority (`high`, `medium`,
 `low`, then anything else) and then by ascending display id, which dropr assigns in
 creation order — so the oldest task of the highest priority wins the last free worker
-slot rather than whichever repository the registry happened to list first. The judge, when
-one runs, receives this same ordering as its input, so it reorders a defined baseline.
-
-A dispatch pass consults the LLM judge only when it is contended — when the approved
-candidates outnumber the worker slots still available (each repository's own open
-primary/secondary slot, bounded by one new worker per repository per pass). Otherwise
-approving everything is the
-only verdict the judge's authority can produce, so the pass dispatches its own ordering
-immediately instead of spending a call and a whole extra poll cycle waiting for the
-verdict. With `judge_profile` unset no dispatch judgment is ever enqueued, at any
-candidate count. Each spawn records which path it took — `worker spawned:judge_approved`,
-`worker spawned:judge_bypassed_uncontended`, or `worker spawned:judge_unconfigured` — so
-the log says which dispatches an LLM had a hand in. A cached verdict whose candidate set
-changed underneath it is dropped with a `judgment_discarded:candidate_set_changed:<key>`
-entry rather than vanishing.
+slot rather than whichever repository the registry happened to list first.
 
 Those gates only see workers this Overseer started, and the ready list they run against
-is minutes old by the time a judgment comes back. So immediately before a worker is
+is minutes old by the time a worker actually spawns. So immediately before a worker is
 spawned, Overseer re-reads the task in dropr and takes its claim itself:
 
 - A task another agent holds is not dispatched; the pass records a hold with reason
@@ -269,18 +255,18 @@ other escalation; a finding that persists is escalated once, not once per interv
 review's own entries are excluded from the next digest so it cannot diagnose itself.
 
 The digest and those findings are then handed to a reviewer session under
-`~/.robco/overseer/review/`, which is charged to `daily_review_budget` rather than
-`daily_llm_budget` — at a 15-minute cadence a shared budget would starve dispatch and
-merge judgement. Its result schema carries a severity and a sentence and nothing else:
-`warn` and `critical` findings become escalations, `info` is recorded only, and there is
-no field through which the reviewer can dispatch, merge, unblock, or write the ledger. An
-exhausted budget stops the session but not the deterministic findings, and records
-`review_budget_exhausted` so a quiet reviewer does not read as a healthy board. A missing
-profile stops the session too, and records nothing: no budget is charged and no session is
-spawned, because there is no model to run. `robco overseer status --debug` reports the
-judge and review counts separately, and names the two states apart — `findings every 20m,
-no reviewer model` against `every 20m via <profile>` — so a quiet board can be read as
-"nothing was found" rather than "nothing looked".
+`~/.robco/overseer/review/`, which is charged to its own `daily_review_budget` rather
+than sharing a budget with anything else — at a 15-minute cadence a shared budget would
+starve whatever else drew against it. Its result schema carries a severity and a sentence
+and nothing else: `warn` and `critical` findings become escalations, `info` is recorded
+only, and there is no field through which the reviewer can dispatch, merge, unblock, or
+write the ledger. An exhausted budget stops the session but not the deterministic
+findings, and records `review_budget_exhausted` so a quiet reviewer does not read as a
+healthy board. A missing profile stops the session too, and records nothing: no budget is
+charged and no session is spawned, because there is no model to run. `robco overseer
+status --debug` names the two states apart — `findings every 20m, no reviewer model`
+against `every 20m via <profile>` — so a quiet board can be read as "nothing was found"
+rather than "nothing looked".
 
 Task text, exception reasons, tmux capture, and other external values are each placed in
 explicit `EXTERNAL_DATA` delimiters. Closing delimiter text inside a value is escaped. The
@@ -301,12 +287,11 @@ these defaults.
 
 One setting outside this object changes what the Overseer writes: the top-level
 [`language`](09-config-reference.md#language) key. Every LLM surface the Overseer drives —
-board review, exception triage, the dispatch and merge judges, the Discord ops agent, and
-the prompts it hands to workers — is told to write its human-readable prose in that
-language, so the review summaries and judge reasons that land in the Inbox come back in it.
-The Overseer's own deterministic strings, including the halt reasons the merge-recovery
-classifier matches on, stay in English. With the key unset the Overseer sends the prompts it
-always has.
+board review, exception triage, the Discord ops agent, and the prompts it hands to
+workers — is told to write its human-readable prose in that language, so the review
+summaries and triage reasons that land in the Inbox come back in it. The Overseer's own
+deterministic strings, including the halt reasons the merge-recovery classifier matches
+on, stay in English. With the key unset the Overseer sends the prompts it always has.
 
 ```json
 {
@@ -317,7 +302,6 @@ always has.
     "allow_unverifiable_protection": false,
     "autonomy_level": "conservative",
     "max_branch_updates": 3,
-    "max_merge_judge_primes": 3,
     "merge_recovery_enabled": false,
     "max_merge_recoveries": 2,
     "max_merge_holds": 30,
@@ -372,11 +356,10 @@ always has.
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
 | `max_branch_updates` | non-negative integer | `3` | Times the auto-merge gate may update one pull request's branch onto its base before escalating that entry. Each attempt is charged before it runs, so an update that fails still spends budget. `0` never updates a branch and escalates the first time one falls behind. |
-| `max_merge_judge_primes` | non-negative integer | `3` | Merge judgements the gate may start for one pull request *early* — while it is still waiting on its checks — rather than after the gate clears. A judgement is keyed on the change, and every push mints a new one, so without this a worker pushing many CI fixes could spend the whole `daily_llm_budget` on one pull request. Charged before the judgement is queued. `0` turns early judgements off, leaving every merge judgement to run after the gate clears. |
 | `merge_recovery_enabled` | boolean | `false` | Hands a merge failure the owning worker could fix back to that worker's live session instead of parking the pull request. Default-off, so a daemon that has never heard of merge recovery behaves exactly as it did before it existed. Switched off, each failure it would have acted on is still recorded once per revision as `merge_recovery_disabled:<reason>` and counted into `merge-recovery: off (N dropped)`. |
 | `max_merge_recoveries` | non-negative integer | `2` | Handbacks one pull request may be charged before it escalates to an operator. Each attempt is charged before it runs, so a handback that never reaches its worker still spends budget. `0` never hands anything back and escalates the first recoverable failure. |
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
-| `max_merge_hold_rechecks` | non-negative integer | `10` | Further looks through the gate an entry escalated by `max_merge_holds` is given, so a condition an operator fixes afterwards is noticed instead of leaving the pull request parked for good. Only a pass that re-read the gate and found it still holding spends one; a pass waiting on a judgment spends nothing. The pass that spends the last look records `merge_hold_recheck_exhausted:<reason>`. `0` leaves an escalated entry where it is, which is how Overseer behaved before this budget existed. |
+| `max_merge_hold_rechecks` | non-negative integer | `10` | Further looks through the gate an entry escalated by `max_merge_holds` is given, so a condition an operator fixes afterwards is noticed instead of leaving the pull request parked for good. Only a pass that re-read the gate and found it still holding spends one. The pass that spends the last look records `merge_hold_recheck_exhausted:<reason>`. `0` leaves an escalated entry where it is, which is how Overseer behaved before this budget existed. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `parallel_limit` | non-negative integer | `0` | Secondary dispatch slots opened per repository, on top of the one always-present primary slot. `0` runs every repository serialized, one worker at a time. Manual entries count too — see below. There is no global cap; the number of registered repositories bounds the total, since each repository's slots are self-contained. |
 | `terminal_retention_per_repo` | non-negative integer | `50` | Settled (`merged`, `failed`, `escalated`) ledger entries kept per repository. The oldest beyond the window are dropped at the end of a pass — see below. `0` keeps every settled entry, which is how the ledger behaved before the window existed. |
@@ -390,7 +373,7 @@ always has.
 | `review_profile` | string or `null` | `null` | Profile used by the periodic board review's model stage. `null` runs the pass without a model: the digest is still built and the deterministic findings still escalate, but no session is spawned and no review budget is charged. A named profile that does not exist fails the session rather than falling back. |
 | `review_interval_mins` | non-negative integer | `20` | Minimum minutes between board reviews. The last run time is persisted, so a daemon that restarts often still reviews on this cadence rather than on every start-up. |
 | `daily_review_budget` | non-negative integer | `96` | Board-review sessions per UTC date, counted separately from `daily_llm_budget`. Exhausting it stops the reviewer session, not the deterministic findings. |
-| `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage, judgment, or board-review LLM process. |
+| `triage_timeout_mins` | non-negative integer | `15` | Timeout for each triage, board-review, or Discord ops-agent LLM process. |
 | `worker_env_blocklist` | array of strings | `["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]` | Case-sensitive `*` globs for environment names neutralized in autonomous workers. Names the session credential channel resolves are exempt — see [Session credentials](#session-credentials). |
 | `session_env` | object of string → string | `{}` | Environment applied to every session the daemon spawns and to every agent robco launches (dispatched workers and TUI-created agents alike). Highest layer of the credential channel; also written into the launchd plist by the installer. See [Session credentials](#session-credentials). |
 | `session_env_file` | string (path) or `null` | `null` | `KEY=VALUE` file read below `session_env`. `null` reads `~/.robco/env`. A leading `~` is expanded. Read at spawn time, so a rotated token needs no reinstall. |
@@ -526,13 +509,12 @@ could authenticate.
 
 - **Workers** are launched into the tmux server, which belongs to the user's login session.
   They inherit that session's environment and its keychain access.
-- **Ephemeral sessions** — exception triage, the dispatch and merge judges, the board
-  reviewer, the Discord ops agent — are spawned as direct children of the daemon. Under the
+- **Ephemeral sessions** — exception triage, the board reviewer, the Discord ops agent —
+  are spawned as direct children of the daemon. Under the
   installed launchd service the daemon has no login session behind it, so those children
   cannot reach the macOS keychain item the Claude CLI keeps its OAuth credential in. Every
   such session failed in ~25 ms with `Failed to authenticate: OAuth session expired and
-  could not be refreshed`, wrote no `result.json`, and the merge judge turned the silence
-  into a fail-safe escalation.
+  could not be refreshed`, and wrote no `result.json`.
 
 A service daemon is not supposed to borrow an interactive login session's secret store. The
 answer is the same one systemd (`Environment=` / `EnvironmentFile=`), the AWS CLI (`AWS_*`
@@ -634,10 +616,9 @@ never has to know to pass `--debug` to learn a worker cannot authenticate.
 A failed state also prints a warning naming the recovery. Each session's stderr is captured
 to `session.log` in its case directory, which is where the detail comes from.
 
-A judgment refused on credentials is recorded with the reason `session_auth_failed:` instead
-of the generic `judgment fail-safe:` wording, so `~/.robco/overseer/decisions.jsonl` can be
-grepped for the cause. It is still a fail-safe verdict — the pull request is escalated, not
-merged — because a session that never ran has produced no opinion worth acting on.
+A triage or review session refused on credentials is recorded with the reason
+`session_auth_failed:` rather than a generic parse-failure wording, so
+`~/.robco/overseer/decisions.jsonl` can be grepped for the cause.
 
 ## Security model
 
@@ -725,19 +706,6 @@ queue — it merged, or it escalated — so the pull request behind it starts it
 in the same pass rather than a poll interval later. Draining a queue of ready pull
 requests therefore costs one branch update each, not one pass each.
 
-The merge judgement runs alongside that wait rather than after it. A pull request the gate
-holds under `checks_waiting` or `behind_branch_updated` — or one whose repository is still
-settling — is on its way to a merge and the change the judge would read is already final,
-so the judgement is started then and the verdict is usually in hand by the time the checks
-report. Three bounds keep that from spending model time on changes that never merge: one
-pull request per repository per pass, `max_merge_judge_primes` per entry, and the autonomy
-envelope, which refuses a change the judge would never be asked about anyway. The
-judgement is fingerprinted by the change itself and not by the head commit, so a branch
-update does not buy the same verdict twice.
-
-An early judgement is only ever *started* here; the verdict is read where it always was,
-by the gate that is ready to act on it.
-
 Each update is charged to the entry's `branch_updates` before it runs, and
 `max_branch_updates` bounds it. A branch that keeps losing the race against other merges —
 or one whose update keeps failing — escalates with `behind_update_cap_reached` instead of
@@ -771,14 +739,9 @@ of leaving it to accumulate identical lines.
 
 An entry escalated that way is not abandoned. The condition it stopped on — protection,
 checks, merge state — is one an operator can fix, and nothing else would ever bring the
-entry back: a pre-judge hold never reaches the judge, so the judge-verdict re-entry path
-has nothing to offer it. So such an entry is given `max_merge_hold_rechecks` further looks
+entry back on its own. So such an entry is given `max_merge_hold_rechecks` further looks
 through the gate. A look is spent only by a pass that re-read the gate and found it still
-holding; a pass that clears the gate and waits on a judgment spends nothing, because a
-judgment arrives on the judge queue's own schedule — one session at a time — and can
-outlast the whole budget, which would strand the entry exactly the way the rechecks exist
-to prevent. Once a verdict lands the judge becomes the authority reconsidering the entry
-and the remaining looks are retired. The pass that spends the last look records
+holding. The pass that spends the last look records
 `merge_hold_recheck_exhausted:<reason>` once, so the log distinguishes an entry still being
 re-checked from one nothing will look at again.
 
@@ -787,9 +750,9 @@ family is bounded by `max_branch_updates`, the settle barrier by `max_merge_sett
 and a skip leaves the entry terminal already. One condition must never spend two budgets
 and escalate under whichever ran out first.
 
-An entry that gets past the deterministic gate — it merged, or only its judgment is
-outstanding — forgets what it was held on, so a condition that comes back after clearing
-starts from a full budget rather than inheriting the old one's residue.
+An entry that gets past the deterministic gate and merges forgets what it was held on, so
+a condition that comes back after clearing starts from a full budget rather than
+inheriting the old one's residue.
 
 ### A pull request that has already settled
 
@@ -817,13 +780,6 @@ reads made stale by a merge *this pass* performed, and it is lowered by the `git
 gone. An external merge advanced the base long ago, so raising the barrier would park the
 repository until `repo_merge_settle_cap_reached` for nothing.
 
-Both conclusions also drop any terminal verdict the merge judge left for that pull
-request. That verdict is what keeps an escalated entry re-entering the gate every pass to
-be reconsidered, and a pull request that can never be merged again has nothing left to
-re-judge. It is what holds the invariant this exit exists for: every exit taken for a
-pull request that is no longer open leaves the reconsidering set, so the same decision is
-recorded once instead of once per poll interval.
-
 ### Merge recovery
 
 A merge failure is not always an operator's problem. The worker that wrote the branch is
@@ -836,14 +792,12 @@ pull request until a human looks.
 Overseer keeps sole possession of the merge throughout. The remediation prompt asks the
 worker to fix the branch it was already assigned, push it, and report done; it restates
 the `never merge / never force push / never push to main / never create extra worktrees`
-rails, and the merge gate and merge judge remain the only path to a merge.
+rails, and the merge gate remains the only path to a merge.
 
 Reasons are classified into the worker's and the operator's:
 
 - **Worker-fixable:** `merge_state:dirty`, `merge_state:blocked`, `checks_not_green`,
-  `behind_update_cap_reached`, `merge_exit:<status>`, `merge_error:<error>`,
-  `judge_veto:<reason>`, and `judge_escalate:<reason>`. The judge's reason is passed to the
-  worker verbatim, because it is the actual instruction.
+  `behind_update_cap_reached`, `merge_exit:<status>`, and `merge_error:<error>`.
 - **Operator-only:** `unprotected:*`, `missing_pr_url`, `autonomy_envelope`,
   `repo_merged_this_pass`, `behind_branch_updated` (already the recovery), `checks_waiting`
   (nothing has failed yet), `pr_already_merged` (the pull request landed, so there is
@@ -896,9 +850,9 @@ the setting now reads as a consequence rather than a flag. Operator-only failure
 nothing either way — they were never a worker's to fix. Whether to switch the setting on
 stays the operator's call; this is the evidence for making it.
 
-A handback returns the entry to `pr_opened` so the next pass re-evaluates it normally; a
-judge veto had escalated it, and that escalation is superseded rather than left to strand
-the pull request. Manual-managed workers are never handed back to, since `worker_is_auto`
+A handback returns the entry to `pr_opened` so the next pass re-evaluates it normally; an
+earlier escalation had parked it there, and that escalation is superseded rather than left
+to strand the pull request. Manual-managed workers are never handed back to, since `worker_is_auto`
 already gates the whole merge pass. A worker that is no longer registered, or whose tmux
 session is gone, escalates under
 `merge_recovery_skipped:missing_session:<agent>` rather than being silently dropped.
@@ -1026,7 +980,7 @@ to clear it; nothing restarts it automatically on drift.
    already resolvable untouched. The typed value is written to the session env file
    (`overseer.session_env_file`, or `~/.robco/env`) at mode `600` — never into
    `config.json` — so it reaches the gateway the same way a `claude setup-token`
-   credential reaches a judge or triage session; see
+   credential reaches a triage or review session; see
    [Session credentials](#session-credentials). Exporting the variable yourself
    before running the wizard, or writing it into the env file by hand, both still
    work exactly as before.
@@ -1047,7 +1001,7 @@ This writes `~/Library/LaunchAgents/com.robco.overseer.plist` with `RunAtLoad` a
 `overseer.session_env`, and is written mode `600`; a launchd agent inherits nothing else,
 so anything the daemon needs in its environment has to be there. Configure the credential
 its sessions run under **before** installing — see
-[Session credentials](#session-credentials) — or the judge, triage, and review sessions
+[Session credentials](#session-credentials) — or the triage and review sessions
 will fail to authenticate even though an interactive `claude` on the same machine works.
 
 If Discord is enabled and the token lives in the session env file — because the wizard
@@ -1096,7 +1050,7 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
 
 Daemon stdout and stderr go to `~/.robco/overseer/overseer.log` under launchd. Each spawned
 session's stderr goes to `session.log` in its own case directory under
-`~/.robco/overseer/{judge,triage,review,preflight}/`.
+`~/.robco/overseer/{triage,review,preflight}/`.
 
 ## Failure and recovery semantics
 
@@ -1167,7 +1121,7 @@ frame, so what the right pane happens to display never decides what acting on it
 
 A row reads `[ESC] REVIEW #296`: the kind code (`ESC` or `?`, the dismissal identity) stays,
 and the resolved move's tag replaces the raw reason that used to fill the row — the raw
-reason rarely fit the sidebar anyway, and a bare code or a judge's full sentence said
+reason rarely fit the sidebar anyway, and a bare code or a free-text sentence said
 nothing about what to *do*. A `WATCH` tag renders muted; every other tag renders like the
 rest of the row.
 

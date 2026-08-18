@@ -9,8 +9,6 @@ fn every_reason_the_merge_gate_emits_resolves_to_one_class() {
         "behind_update_cap_reached",
         "merge_exit:exit status: 1",
         "merge_error:timed out after 15s",
-        "judge_veto:the migration has no rollback",
-        "judge_escalate:the diff touches the release pipeline",
     ];
     for reason in recoverable {
         assert_eq!(

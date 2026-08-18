@@ -12,12 +12,10 @@
 //! `entries` and `settling` arrive owned by [`RepoWork`], extracted from the
 //! ledger and the settling map before any worker thread starts — so nothing
 //! this function touches is shared with another repository's run of it. The
-//! two things that genuinely are shared — the protection cache and the
-//! judgment queue — are passed in already synchronised (`ProtectionCache` is
-//! internally locked; `judgments` is `SharedJudgments`).
+//! one thing that genuinely is shared — the protection cache — is passed in
+//! already synchronised (`ProtectionCache` is internally locked).
 
 use super::{
-    merge_concurrency::SharedJudgments,
     merge_decision::{Halt, Outcome, log, log_halt, manual_skip},
     merge_evaluate::evaluate,
     merge_hold::{self, HoldPlan},
@@ -64,13 +62,11 @@ pub(super) struct RepoOutcome {
     pub(super) duration: Duration,
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn run(
     mut work: RepoWork,
     config: &Config,
     cache: &ProtectionCache,
     registry: &Registry,
-    judgments: &SharedJudgments,
     consecutive_failures: u32,
     max_rechecks: u32,
     max_settle_passes: u32,
@@ -89,19 +85,14 @@ pub(super) fn run(
         // — most of all on a pass that clears the gate and only waits on a
         // judgment, which arrives once and is not a condition to re-check.
         let recheck = merge_hold_recheck::due(entry, max_rechecks);
-        // An operator-granted bypass earns its own look even when neither the
-        // judge queue nor the hold-cap budget would otherwise grant one — the
-        // autonomy envelope's own hard stop never enters either, so without
-        // this an envelope-escalated entry with a pending override would sit
-        // parked forever the same way it does without one. See
-        // `merge_judge_gate::take_operator_override`.
+        // An operator-granted bypass earns its own look even when the hold-cap
+        // budget would not otherwise grant one — the autonomy envelope's own
+        // hard stop never enters that budget, so without this an
+        // envelope-escalated entry with a pending override would sit parked
+        // forever the same way it does without one. See
+        // `merge_allow::take_operator_override`.
         let reconsidering = entry.phase == LedgerPhase::Escalated
-            && (judgments
-                .lock()
-                .unwrap()
-                .has_terminal_merge(&entry.task_id, entry.pr_url.as_deref())
-                || recheck
-                || entry.operator_override.is_some());
+            && (recheck || entry.operator_override.is_some());
         if entry.phase != LedgerPhase::PrOpened && !reconsidering {
             continue;
         }
@@ -167,7 +158,6 @@ pub(super) fn run(
             config,
             cache,
             registry,
-            judgments,
             consecutive_failures,
             &mut heads,
             settling,
@@ -196,19 +186,9 @@ pub(super) fn run(
                 }
                 hold(entry, &halt, &head, &base, config, registry)?;
             }
-            // The deterministic gate cleared and only the judgment is outstanding,
-            // so whatever this entry was last held on is no longer what is holding
-            // it. Forgetting it here is what keeps a condition that came back after
-            // clearing from inheriting the old condition's spent budget. The
-            // recheck budget is deliberately not charged: the gate is no longer
-            // what holds this entry, and a judgment round trip can outlast the
-            // whole budget on a busy queue — spending it here would strand the
-            // entry exactly the way this module exists to prevent.
-            Outcome::Pending => merge_hold::cleared(entry),
-            // Recorded, not charged, for the same reason `Pending` is not: the
-            // gate is no longer what holds this entry, and the repository's own
-            // post-merge pull is not a condition an entry can escalate its way
-            // out of.
+            // Recorded, not charged: the gate is no longer what holds this
+            // entry, and the repository's own post-merge pull is not a
+            // condition an entry can escalate its way out of.
             Outcome::Settling => {
                 log(entry, DecisionKind::Hold, merge_settle::SETTLING, "")?;
                 merge_hold::cleared(entry);

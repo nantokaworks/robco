@@ -131,7 +131,7 @@ mod tests {
             "tasks unavailable",
             "none",
             "worker blocked",
-            "waiting on merge judge",
+            "waiting on the merge gate",
             "no retained channel agents yet",
             "no retained channels",
             "{}/{} actionable",

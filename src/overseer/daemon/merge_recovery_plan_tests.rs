@@ -14,11 +14,9 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -52,7 +50,7 @@ fn a_disabled_recovery_records_the_failure_it_did_not_hand_back() {
     assert_eq!(entry.merge_recovery.head, None);
 
     // One decision per revision, not one per poll. A new head is a new failure.
-    for reason in ["merge_state:dirty", "judge_veto:still not right"] {
+    for reason in ["merge_state:dirty", "checks_not_green"] {
         assert_eq!(
             plan(&mut entry, reason, "sha-1", "base-1", false, 2),
             RecoveryPlan::Idle
@@ -143,7 +141,7 @@ fn the_same_failure_on_the_same_head_is_handed_back_once() {
     assert_eq!(entry.merge_recovery.charged, 1);
     // The next poll interval finds the same revision failing the same way against
     // the same base; the worker is already working on it.
-    for reason in ["merge_state:dirty", "judge_veto:still not right"] {
+    for reason in ["merge_state:dirty", "checks_not_green"] {
         assert_eq!(
             plan(&mut entry, reason, "sha-1", "base-1", true, 2),
             RecoveryPlan::Idle
@@ -208,7 +206,7 @@ fn a_moved_base_resets_the_dedupe_but_never_the_budget() {
 fn a_zero_budget_escalates_without_ever_prompting() {
     let mut entry = entry();
     assert_eq!(
-        plan(&mut entry, "judge_veto:no", "sha-1", "base-1", true, 0),
+        plan(&mut entry, "merge_error:x", "sha-1", "base-1", true, 0),
         RecoveryPlan::CapReached
     );
     assert_eq!(entry.merge_recovery.charged, 0);
@@ -236,7 +234,7 @@ fn a_disabled_recovery_never_reaches_a_worker() {
     let mut entry = entry();
     for reason in [
         "merge_state:dirty",
-        "judge_veto:no rollback",
+        "checks_not_green",
         "unprotected:unknown_remote",
     ] {
         for head in ["sha-1", "sha-2", ""] {

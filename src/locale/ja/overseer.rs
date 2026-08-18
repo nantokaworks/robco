@@ -9,7 +9,7 @@
 //! Row-level strings are chrome too and stay English: sidebar category
 //! summary values (`{} retained`, `{}/{} actionable`, …), list placeholders
 //! like `none`, and short status values fed into field rows (`worker
-//! blocked`, `waiting on merge judge`) belong there, not here (dropr:388).
+//! blocked`, `waiting on the merge gate`) belong there, not here (dropr:388).
 //! Relative ages are values, not chrome, and stay translated.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {

@@ -17,7 +17,6 @@ use crate::{
         command::on_off,
         config::OverseerConfig,
         daemon::merge_pass_telemetry::MergePassTelemetry,
-        judge::JudgmentQueue,
         ledger::{Ledger, waiting_on_prerequisite},
         logging,
         review::ReviewPass,
@@ -30,7 +29,6 @@ use crate::{
 pub(super) fn print_debug_section(
     config: &Config,
     ledger: &Ledger,
-    judgments: &JudgmentQueue,
     registry: &Registry,
     session_health: Option<&SessionHealth>,
     healthy: bool,
@@ -61,11 +59,10 @@ pub(super) fn print_debug_section(
         ledger.active_workers().count,
         config.overseer.parallel_limit
     );
-    println!("{}", llm_line(config, judgments)?);
+    println!("{}", llm_line(config)?);
     println!("{}", merge_pass_line(merge_pass));
     println!("{}", discord_line(&config.overseer.discord));
     println!("{}", session_auth_line(session_health));
-    println!("{}", judgments.snapshot().summary());
     println!("workers by repo: {:?}", ledger.active_workers().repos);
     println!("primary holder by repo: {:?}", ledger.primary_holders());
     println!("{}", repos_line(registry));
@@ -142,18 +139,11 @@ fn merge_pass_line(merge_pass: Option<&MergePassTelemetry>) -> String {
     )
 }
 
-/// Today's LLM spend, per surface.
-///
-/// The board reviewer runs on a clock and would consume most of a shared budget
-/// on its own, so it carries its own. Reporting the two counts separately is
-/// what lets an operator see which surface exhausted which budget instead of
-/// inferring it from a single number.
-fn llm_line(config: &Config, judgments: &JudgmentQueue) -> Result<String> {
-    let judge = judgments.llm_calls_today();
+/// Today's board-review LLM spend.
+fn llm_line(config: &Config) -> Result<String> {
     let review = ReviewPass::load()?.calls_today();
     Ok(format!(
-        "llm today: judge {judge}/{}  review {review}/{} ({})",
-        config.overseer.daily_llm_budget,
+        "llm today: review {review}/{} ({})",
         config.overseer.daily_review_budget,
         review_state(&config.overseer)
     ))

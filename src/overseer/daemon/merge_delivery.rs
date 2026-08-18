@@ -34,9 +34,9 @@ use crate::{Result, tmux};
 /// tmux wraps a literal `send-keys -l` this size in bracketed-paste markers
 /// when the destination pane has requested bracketed paste — Claude Code's TUI
 /// does. Sending `Enter` in the same instant lands inside that paste handling
-/// instead of submitting, which is how a long judge verdict (the
-/// merge-recovery template embeds it verbatim, often ~2,500 characters) ended
-/// up sitting unsent in the input box. 120ms only covered a fraction of real
+/// instead of submitting, which is how a long merge-recovery message (the
+/// template embeds the escalation reason verbatim, often ~2,500 characters)
+/// ended up sitting unsent in the input box. 120ms only covered a fraction of real
 /// deliveries (`merge_recovery_dispatched` landed in about 5% of attempts
 /// against a live worker); this window is widened well past that margin.
 /// This settle window gives the paste handling time to finish before the

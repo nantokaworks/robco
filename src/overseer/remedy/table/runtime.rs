@@ -134,7 +134,7 @@ pub(super) const PREFIX: &[(&str, Remedy)] = &[
         Remedy {
             step: Move::Review,
             means: "the session could not authenticate",
-            next: "check the credentials for the worker or judge backend, then retry",
+            next: "check the credentials for the worker, triage, or review backend, then retry",
         },
     ),
 ];

@@ -128,10 +128,9 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
     // `discord::notifications` already builds Discord descriptions from, so
     // the two surfaces read the same reason the same way. The raw code
     // always stays, verbatim and untranslated, beneath it — accent-styled
-    // when it is the only line (an unrecognised reason, or a judge's own
-    // wrapped prose, which is already a sentence — see
-    // `humanize::sentence`), muted once the sentence above it carries the
-    // primary reading.
+    // when it is the only line (an unrecognised reason, or wrapped prose
+    // that is already a sentence — see `humanize::sentence`), muted once
+    // the sentence above it carries the primary reading.
     let known_sentence = humanize::static_sentence(&item.detail);
     if let Some(known) = known_sentence {
         lines.push(Line::from(Span::styled(

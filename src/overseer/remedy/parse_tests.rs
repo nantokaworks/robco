@@ -40,14 +40,6 @@ fn a_move_that_is_not_an_answer_ignores_session_state() {
 }
 
 #[test]
-fn a_wrapped_reason_takes_its_remedy_from_the_inner_one() {
-    let wrapped = for_reason("judge_veto:touches the migration registry without a rollback");
-    // The inner text is a sentence, not a code, so it resolves as a judge
-    // verdict — the same shape `judge_veto:`'s own classification implies.
-    assert_eq!(wrapped.step, Move::Answer);
-}
-
-#[test]
 fn a_cap_wrapper_promotes_a_watch_into_a_review() {
     let promoted = for_reason("merge_hold_cap_reached:checks_waiting");
     assert_eq!(promoted.step, Move::Review);
@@ -72,17 +64,15 @@ fn a_disabled_recovery_wrapper_leaves_a_non_watch_move_unchanged() {
 }
 
 #[test]
-fn the_three_level_live_string_resolves_to_the_judgment_fail_safe_guidance_never_watch() {
-    let reason = "repeating_hold: 3× merge_recovery_disabled:judge_escalate:\
-                  judgment fail-safe: session exited without result.json";
+fn a_multi_level_wrapped_reason_never_resolves_to_watch() {
+    // Nested wrappers (a repeated hold around a disabled-recovery skip around
+    // an unrecognised code) must still bottom out in something actionable —
+    // an automated path gave up at every layer, so `Watch` ("nothing to do")
+    // can never survive the promotion chain.
+    let reason = "repeating_hold: 3× merge_recovery_disabled:some_unrecognised_code";
     let remedy = for_reason(reason);
     assert_ne!(remedy.step, Move::Watch);
     assert_eq!(remedy.step, Move::Review);
-    assert!(
-        remedy.means.contains("judge")
-            && (remedy.means.contains("session failed") || remedy.means.contains("own session")),
-        "expected the judgment-fail-safe guidance, got: {remedy:?}"
-    );
 }
 
 #[test]
@@ -90,8 +80,8 @@ fn a_repeat_count_is_only_stripped_when_it_actually_parses() {
     // "many" is not a count, so this must not be mistaken for the
     // `repeating_hold: <n>× ` wrapper. Nothing unwraps it, and the text ahead
     // of the first `:` (`repeating_hold`) is itself snake_case, so the prose
-    // test reads the whole thing as an unrecognised code rather than a judge
-    // sentence — the safe operator-review default, not a silently lost prefix.
+    // test reads the whole thing as an unrecognised code rather than free
+    // text — the safe operator-review default, not a silently lost prefix.
     let remedy = for_reason("repeating_hold: many× something odd");
     assert_eq!(remedy.step, Move::Review);
 }
@@ -123,7 +113,7 @@ fn rejected_triage_action_resolves_to_review() {
 }
 
 #[test]
-fn a_judge_sentence_with_no_colon_is_still_read_as_a_verdict() {
+fn a_free_text_sentence_with_no_colon_is_still_read_as_a_verdict() {
     assert_eq!(
         for_reason("touches the migration registry without a rollback").step,
         Move::Answer

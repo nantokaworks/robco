@@ -86,8 +86,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
 
         // table::runtime::PREFIX — "session_auth_failed:"
         "the session could not authenticate" => "セッションが認証できませんでした",
-        "check the credentials for the worker or judge backend, then retry" => {
-            "workerまたはjudgeのbackendの認証情報を確認し、再試行してください"
+        "check the credentials for the worker, triage, or review backend, then retry" => {
+            "worker、triage、reviewのbackendの認証情報を確認し、再試行してください"
         }
         _ => return None,
     })

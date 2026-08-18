@@ -219,8 +219,9 @@ fn dispatch(
     }
     clear_undelivered(entry);
     // The worker now owns the failure, so the entry returns to the phase the
-    // merge pass reads. A judge veto had already escalated it; that escalation
-    // is superseded rather than left to strand the pull request. Whatever
+    // merge pass reads. An earlier escalation had already parked it here;
+    // that escalation is superseded rather than left to strand the pull
+    // request. Whatever
     // escalation the entry is leaving behind is over too, so its age marker,
     // stuck notice, and last-notified (reason, head) pair go with it — a later
     // re-escalation starts fresh rather than inheriting one that already ran

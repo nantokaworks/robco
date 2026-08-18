@@ -14,11 +14,9 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -107,7 +105,7 @@ fn only_a_gated_halt_carries_the_strictness_mode() {
     // reason string; only the protection-governed one also names the mode.
     assert_eq!(Halt::hold("checks_not_green").kind, DecisionKind::Hold);
     assert_eq!(
-        Halt::escalate("judge_veto:no rollback").kind,
+        Halt::escalate("operator_flagged:no rollback").kind,
         DecisionKind::Escalate
     );
     let gated = Halt::gated("unprotected:unknown_remote");
@@ -170,12 +168,12 @@ fn an_escalate_decision_is_tagged_by_the_merge_escalation_vocabulary() {
     );
     assert_eq!(transient.escalation_notify, Some(false));
 
-    // Outside the vocabulary entirely — a judge veto, say — still notifies the
+    // Outside the vocabulary entirely — an unrecognised custom reason, say — still notifies the
     // first time it is seen for this (reason, head) pair...
     let unclassified = decision(
         &mut entry,
         DecisionKind::Escalate,
-        "judge_veto:no rollback",
+        "operator_flagged:no rollback",
         "abc",
     );
     assert_eq!(unclassified.escalation_notify, Some(true));
@@ -185,7 +183,7 @@ fn an_escalate_decision_is_tagged_by_the_merge_escalation_vocabulary() {
     let repeat = decision(
         &mut entry,
         DecisionKind::Escalate,
-        "judge_veto:no rollback",
+        "operator_flagged:no rollback",
         "abc",
     );
     assert_eq!(repeat.escalation_notify, Some(false));
@@ -194,7 +192,7 @@ fn an_escalate_decision_is_tagged_by_the_merge_escalation_vocabulary() {
     let new_head = decision(
         &mut entry,
         DecisionKind::Escalate,
-        "judge_veto:no rollback",
+        "operator_flagged:no rollback",
         "def",
     );
     assert_eq!(new_head.escalation_notify, Some(true));

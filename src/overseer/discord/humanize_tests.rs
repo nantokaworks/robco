@@ -44,17 +44,9 @@ fn free_form_prose_is_not_mapped() {
 }
 
 #[test]
-fn a_judge_wrapper_unwraps_to_the_judge_own_words() {
-    assert_eq!(
-        sentence("judge_escalate:The change needs a rebase first.").as_deref(),
-        Some("The change needs a rebase first.")
-    );
-}
-
-#[test]
-fn an_empty_judge_wrapper_is_not_mapped() {
-    assert_eq!(sentence("judge_escalate:"), None);
-    assert_eq!(sentence("judge_veto:   "), None);
+fn an_empty_release_pipeline_wrapper_is_not_mapped() {
+    assert_eq!(sentence("release_published:"), None);
+    assert_eq!(sentence("release_failed:   "), None);
 }
 
 #[test]

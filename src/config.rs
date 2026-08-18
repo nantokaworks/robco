@@ -266,5 +266,5 @@ impl Config {
 }
 
 #[cfg(test)]
-#[path = "overseer/judge/config_tests.rs"]
+#[path = "config_tests.rs"]
 mod tests;

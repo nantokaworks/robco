@@ -128,33 +128,6 @@ fn free_reports_the_slot_without_taking_it() {
 }
 
 #[test]
-fn the_judgment_slot_is_separate_from_the_action_slot() {
-    // A pull request waiting on its checks primes a judgment but touches nothing
-    // on GitHub, so it must not take the slot that gates the branch update — the
-    // pull request behind it would then stall on a wait it cannot shorten.
-    let mut heads = Heads::new();
-    assert!(heads.claim_judge("/repo"));
-    assert!(heads.free("/repo"));
-    assert!(heads.claim("/repo", "a"));
-    assert!(!heads.claim_judge("/repo"));
-}
-
-#[test]
-fn only_one_pull_request_per_repository_primes_a_judgment_each_pass() {
-    // A judgment costs model time. Priming the whole queue at once would buy
-    // verdicts for pull requests that are not the ones about to merge.
-    let mut heads = Heads::new();
-    assert!(heads.claim_judge("/repo-a"));
-    assert!(!heads.claim_judge("/repo-a"));
-    assert!(heads.claim_judge("/repo-b"));
-    // Releasing the action slot does not hand out a second judgment either: the
-    // point of the early judgment is the overlap, and the promoted pull request
-    // still reaches the judge the ordinary way once its gate clears.
-    heads.release("/repo-a", "a");
-    assert!(!heads.claim_judge("/repo-a"));
-}
-
-#[test]
 fn a_repository_drains_in_one_pass_once_each_head_gives_its_slot_back() {
     // Same three pull requests as the test below, but now each pass merges the
     // head and releases the slot instead of ending there. Every pull request

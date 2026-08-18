@@ -40,14 +40,6 @@ pub struct LedgerEntry {
     /// looping. Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub branch_updates: u32,
-    /// Merge judgments started early — while this pull request was still waiting
-    /// on its checks — rather than after the gate cleared. Bounded by
-    /// `overseer.max_merge_judge_primes`, because a judgment is keyed on the
-    /// change and every push mints a new one, so an unbounded count would let one
-    /// pull request spend the whole `daily_llm_budget`. Defaulted so ledgers
-    /// written before the field existed still load.
-    #[serde(default)]
-    pub merge_judge_primes: u32,
     /// Handbacks of a failed merge to the worker that owns this branch.
     /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
@@ -66,16 +58,6 @@ pub struct LedgerEntry {
     /// the field existed still load.
     #[serde(default)]
     pub manual_merge_skip: Option<String>,
-    /// Fail-safe merge verdicts this pull request has received — the judge
-    /// session itself failed rather than saying anything about the change.
-    /// Bounded by `overseer.max_merge_judge_fail_safes`, so a judge that never
-    /// recovers still escalates instead of re-asking forever. Kept apart from
-    /// `merge_hold`: that budget resets on the ordinary `Pending` pass between
-    /// one fail-safe verdict and the next, which would otherwise never let this
-    /// one accumulate. Reset once the judge answers with a real verdict.
-    /// Defaulted so ledgers written before the field existed still load.
-    #[serde(default)]
-    pub merge_judge_fail_safes: u32,
     /// Whether this entry sits in `Escalated` because the merge-hold budget ran
     /// out. Kept apart from `merge_hold`, which resets on the reconsideration
     /// pass this flag grants. Cleared on merge.
@@ -120,8 +102,8 @@ pub struct LedgerEntry {
     pub merge_hold_stuck_notified: bool,
     /// `(reason, head)` the last immediate Discord escalation for this entry
     /// reported, for an escalation reason outside `merge_escalation`'s
-    /// terminal/transient vocabulary (a judge veto, the autonomy envelope, a
-    /// branch-update cap). A later pass reporting the identical pair is the
+    /// terminal/transient vocabulary (the autonomy envelope, a branch-update
+    /// cap). A later pass reporting the identical pair is the
     /// same unresolved condition already shown to the operator, not a new
     /// one, and suppresses its notification (dropr:414). Reset alongside
     /// `settled_at` wherever the entry leaves this escalation behind:
@@ -137,7 +119,7 @@ pub struct LedgerEntry {
     /// `monitor::apply::apply_escalation_resolution` — see there for why.
     #[serde(default)]
     pub worker_escalated: bool,
-    /// A pending one-time operator bypass for the judge/envelope verdict
+    /// A pending one-time operator bypass for the autonomy-envelope verdict
     /// blocking this entry — see [`OperatorOverride`]. Defaulted so ledgers
     /// written before the field existed still load.
     #[serde(default)]

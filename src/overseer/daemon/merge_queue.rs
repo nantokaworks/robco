@@ -26,7 +26,7 @@
 //! is one action per repository at a time, not one action per repository per
 //! pass.
 
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, hash_map::Entry};
 
 /// Reason recorded for a pull request that is behind its base but is not next
 /// in its repository's merge order. Kept apart from
@@ -38,22 +38,16 @@ use std::collections::{HashMap, HashSet, hash_map::Entry};
 /// instead of falling through to the generic operator fallback.
 pub(crate) const WAITING_TURN: &str = "behind_not_next";
 
-/// Which repositories have already spent this pass's per-repository slots.
+/// Which repositories have already spent this pass's per-repository action
+/// slot.
 ///
 /// Built fresh in `auto_merge_pass` and threaded through every entry it
 /// evaluates that pass — never stored on the ledger, because "who is head"
 /// is recomputed from scratch every pass rather than remembered from the
 /// last one.
 ///
-/// Two slots, because the two things they bound cost different resources and
-/// are spent at different points of the gate: `acting` bounds the branch
-/// update and the merge (GitHub writes), `priming` bounds starting a merge
-/// judgment early (model time). Sharing one slot would make a pull request
-/// waiting on its checks — which never touches GitHub — block the pull request
-/// behind it from updating its branch.
-///
-/// `acting` records *who* holds each slot, not merely that it is held. Only the
-/// holder may give it back — see [`Heads::release`].
+/// Records *who* holds the slot, not merely that it is held. Only the holder
+/// may give it back — see [`Heads::release`].
 #[derive(Debug, Default)]
 pub(super) struct Heads {
     /// Repository path to the agent id of the entry holding its action slot.
@@ -66,7 +60,6 @@ pub(super) struct Heads {
     /// `observations::adopt_registry_children` dedupes entries on the agent id,
     /// and `discord_events` already treats it as the per-entry key.
     acting: HashMap<String, String>,
-    priming: HashSet<String>,
 }
 
 impl Heads {
@@ -128,19 +121,6 @@ impl Heads {
         if self.acting.get(repo).is_some_and(|held| held == agent_id) {
             self.acting.remove(repo);
         }
-    }
-
-    /// Claims the early-judgment slot for `repo`, reporting whether this call
-    /// is the one that got it.
-    ///
-    /// Kept to one pull request per repository per pass because a judgment is
-    /// paid for in model time: the point of starting one early is to overlap
-    /// it with the checks the head is already waiting on, not to buy verdicts
-    /// for every pull request in the queue at once. The pull requests behind
-    /// the head still reach the judge the ordinary way, once the gate clears
-    /// them.
-    pub(super) fn claim_judge(&mut self, repo: &str) -> bool {
-        self.priming.insert(repo.to_owned())
     }
 }
 

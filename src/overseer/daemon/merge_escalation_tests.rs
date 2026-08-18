@@ -19,7 +19,6 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: MergeHold {
             reason: Some("merge_state:dirty".into()),
@@ -28,7 +27,6 @@ fn entry() -> LedgerEntry {
             escalated: true,
         },
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: true,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: Some("merge_state:dirty".into()),
@@ -47,7 +45,6 @@ fn entry() -> LedgerEntry {
 fn terminal_reasons_are_named_by_the_module() {
     for reason in [
         merge_recovery::CAP_REACHED,
-        merge_judge_fail_safe::CAP_REACHED,
         super::super::merge_decision::CLOSED_UNMERGED,
         "merge_hold_recheck_exhausted:merge_state:dirty",
         "merge_recovery_skipped:missing_session:agent-1",
@@ -68,8 +65,8 @@ fn the_hold_cap_reason_is_transient() {
 #[test]
 fn reasons_outside_the_vocabulary_notify_once_per_reason_and_head() {
     for reason in [
-        "judge_veto:no rollback",
-        "judge_escalate:risky",
+        "some_unrecognised_code",
+        "a free-text escalation reason",
         "autonomy_envelope",
         "behind_update_cap_reached",
         "worker blocked",

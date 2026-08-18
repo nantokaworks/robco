@@ -148,12 +148,4 @@ pub enum Action {
     /// scope, checkout readiness) is evaluated where the process actually
     /// runs. See `overseer::release_pipeline::consider`.
     CheckReleasePipeline { task_id: String, repo: String, pr_url: Option<String> },
-    /// Drops the merge judge's memoized terminal verdict for one pull request,
-    /// so the next merge pass asks the judge fresh instead of reading the
-    /// verdict it cached — see `monitor::apply::apply_inbox`'s `"done"` arm.
-    /// Pushed only for an entry the merge subsystem itself escalated
-    /// (`LedgerPhase::Escalated`), never for a fresh dispatch: the merge gate
-    /// stays the sole authority on whether the pull request actually merges,
-    /// so this asks it to look again rather than answering on its behalf.
-    ReconsiderMergeJudgment { task_id: String, pr_url: String },
 }

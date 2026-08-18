@@ -158,16 +158,14 @@ impl Theme {
     }
 
     /// Style for a merge-lifecycle glyph. Checks failing reuses `dead`'s
-    /// colour — both mean "something is wrong, look at this" — while the two
-    /// pending states and the generic hold reuse `waiting`'s: all three mean
+    /// colour — both mean "something is wrong, look at this" — while the
+    /// pending state and the generic hold reuse `waiting`'s: both mean
     /// "nothing is wrong, something else has to happen first". The glyphs
     /// carry the distinction the colour does not.
     pub fn merge_lifecycle_style(self, lifecycle: MergeLifecycle) -> Style {
         let color = match lifecycle {
             MergeLifecycle::ChecksFailing => self.dead,
-            MergeLifecycle::ChecksRunning
-            | MergeLifecycle::WaitingJudge
-            | MergeLifecycle::OnHold => self.waiting,
+            MergeLifecycle::ChecksRunning | MergeLifecycle::OnHold => self.waiting,
         };
         Style::default().fg(color)
     }

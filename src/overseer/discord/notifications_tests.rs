@@ -80,26 +80,9 @@ fn an_unknown_reason_code_still_reads_verbatim_without_a_reason_field() {
     assert_eq!(field_value(&notification, "Reason"), None);
 }
 
-/// A judge's own words are already a sentence: the wrapper is stripped for
-/// the description and the full wrapped reason stays in the `Reason` field.
-#[test]
-fn a_judge_wrapped_reason_shows_the_judge_own_words() {
-    let mut entry = DecisionEntry::new(
-        DecisionKind::Escalate,
-        "judge_escalate:The change needs a rebase first.",
-    );
-    entry.source = Some("auto_merge".into());
-    let notification = from_decision(&DiscordConfig::default(), &entry).unwrap();
-    assert_eq!(notification.description, "The change needs a rebase first.");
-    assert_eq!(
-        field_value(&notification, "Reason"),
-        Some("`judge_escalate:The change needs a rebase first.`")
-    );
-}
-
-/// `overseer::release_pipeline` wraps its own words the same way a judge
-/// does: the prefix picks the title/tier/color here, and `humanize::sentence`
-/// separately strips that same prefix for the description.
+/// `overseer::release_pipeline` wraps its own words: the prefix picks the
+/// title/tier/color here, and `humanize::sentence` separately strips that
+/// same prefix for the description.
 #[test]
 fn a_published_release_reads_as_a_summary_tier_notification() {
     let mut entry = DecisionEntry::new(

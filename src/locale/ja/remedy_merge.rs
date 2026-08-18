@@ -6,15 +6,14 @@
 //! Labels (`what this means`, `next step`, `reason`) stay English per the
 //! overseer localization policy (dropr:377) and have no entry here; only
 //! the `means` / `next` sentence content is translated. Some `next`
-//! sentences repeat verbatim across table entries (e.g. the judge-backend
-//! recheck instruction); one arm covers every call site that produces the
-//! same English text.
+//! sentences repeat verbatim across table entries; one arm covers every
+//! call site that produces the same English text.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
         // table::merge::EXACT — "autonomy_envelope"
-        "the merge judge's autonomy envelope held this back, not a real veto" => {
-            "merge judgeのautonomy envelopeがこれを保留しました。実際のvetoではありません"
+        "the autonomy envelope held this back for an operator's own decision" => {
+            "autonomy envelopeが、operator自身の判断のためにこれを保留しました"
         }
         "merge it by hand (`m` on the agent row), or raise it with `robco overseer autonomy <level>`" => {
             "手動でmergeする（agent行で`m`）か、`robco overseer autonomy <level>`でautonomyレベルを引き上げてください"
@@ -86,15 +85,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "PRを手動で確認してください。自動handbackは繰り返し試行した末に諦めました"
         }
 
-        // table::merge::EXACT — "merge_judge_fail_safe_cap_reached" and
-        // table::merge::PREFIX — "judgment fail-safe:" (shares this `next`)
-        "the merge judge's own session kept failing and the re-ask budget is spent" => {
-            "merge judge自身のセッションが失敗し続け、再質問の予算を使い切りました"
-        }
-        "check the judge backend is reachable, then let the next pass re-ask it" => {
-            "judgeのbackendに到達できるか確認し、次のpassで再質問させてください"
-        }
-
         // table::merge::PREFIX — merge_dependency::PREREQUISITE_UNMERGED_PREFIX
         "this pull request's task depends on another task that has not merged yet" => {
             "このPRのタスクは、まだmergeされていない別タスクに依存しています"
@@ -129,11 +119,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "fix the branch protection settings, or switch `protection_mode`" => {
             "branch protectionの設定を修正するか、`protection_mode`を切り替えてください"
-        }
-
-        // table::merge::PREFIX — "judgment fail-safe:"
-        "the merge or triage judge's own session failed; this is not a real verdict" => {
-            "mergeまたはtriage judge自身のセッションが失敗しました。これは実際の判定ではありません"
         }
         _ => return None,
     })

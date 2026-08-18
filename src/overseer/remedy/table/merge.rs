@@ -4,14 +4,14 @@ use crate::overseer::remedy::{Move, Remedy};
 
 pub(super) const EXACT: &[(&str, Remedy)] = &[
     (
-        // `daemon::merge::judge_allows` — the merge judge would have escalated
-        // or vetoed, but the autonomy envelope stopped it before it was asked.
-        // There is no worker fix for a policy line, so this is the operator's
-        // call to make, either once by hand or by moving the line itself.
+        // `daemon::merge_allow::merge_allows` — the autonomy envelope
+        // escalated this change rather than clearing it. There is no worker
+        // fix for a policy line, so this is the operator's call to make,
+        // either once by hand or by moving the line itself.
         "autonomy_envelope",
         Remedy {
             step: Move::Merge,
-            means: "the merge judge's autonomy envelope held this back, not a real veto",
+            means: "the autonomy envelope held this back for an operator's own decision",
             next: "merge it by hand (`m` on the agent row), or raise it with \
                    `robco overseer autonomy <level>`",
         },
@@ -113,16 +113,6 @@ pub(super) const EXACT: &[(&str, Remedy)] = &[
                    after repeated attempts",
         },
     ),
-    (
-        // `daemon::merge_judge_fail_safe::CAP_REACHED` — the merge judge kept
-        // failing to produce a real verdict and the re-ask budget is spent.
-        "merge_judge_fail_safe_cap_reached",
-        Remedy {
-            step: Move::Review,
-            means: "the merge judge's own session kept failing and the re-ask budget is spent",
-            next: "check the judge backend is reachable, then let the next pass re-ask it",
-        },
-    ),
 ];
 
 pub(super) const PREFIX: &[(&str, Remedy)] = &[
@@ -175,19 +165,6 @@ pub(super) const PREFIX: &[(&str, Remedy)] = &[
             step: Move::Review,
             means: "the base branch or repository fails a protection requirement",
             next: "fix the branch protection settings, or switch `protection_mode`",
-        },
-    ),
-    (
-        // `judge::completion::parse_failed` — the judge session itself failed
-        // (timed out, launched wrong, exited without writing a result) and
-        // said nothing about the change under review. Matched on its own
-        // sentence rather than a snake_case code because that is the only
-        // shape the judge ever writes it in.
-        "judgment fail-safe:",
-        Remedy {
-            step: Move::Review,
-            means: "the merge or triage judge's own session failed; this is not a real verdict",
-            next: "check the judge backend is reachable, then let the next pass re-ask it",
         },
     ),
 ];

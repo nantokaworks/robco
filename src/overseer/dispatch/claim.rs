@@ -1,8 +1,8 @@
 //! The claim the overseer takes on a candidate immediately before it spawns.
 //!
-//! Everything upstream of this point — the ready list, the deterministic gate,
-//! the judge round — reasons about a snapshot that is minutes old by the time a
-//! worker actually starts. This is the last read, and it is followed
+//! Everything upstream of this point — the ready list, the deterministic gate
+//! — reasons about a snapshot that is minutes old by the time a worker
+//! actually starts. This is the last read, and it is followed
 //! immediately by the write that makes the task ours, so an agent that claimed
 //! the task in the meantime is seen rather than raced.
 
@@ -159,7 +159,8 @@ mod tests {
     #[test]
     fn a_task_claimed_since_the_candidate_was_gathered_stands_off() {
         // The race this gate exists for: the ready list said `open`, an operator
-        // claimed it during the judge round, and the spawn is now a duplicate.
+        // claimed it while this pass was still gathering candidates, and the
+        // spawn is now a duplicate.
         assert_eq!(
             evaluate(
                 Some(&state("in_progress", Some("manual-run"), Some(30))),

@@ -60,7 +60,7 @@ fn ledger_parked_resumable_is_a_non_actionable_watch_remedy() {
 #[test]
 fn an_unrecognised_reason_falls_back_to_operator_review() {
     // Not in any table and not classified recoverable, but still shaped like
-    // a code — the prose test must not mistake it for a judge sentence.
+    // a code — the prose test must not mistake it for free text.
     let remedy = resolve("something_github_added_later", true);
     assert_eq!(remedy.step, Move::Review);
     assert!(!remedy.means.is_empty());

@@ -1,11 +1,12 @@
 //! The periodic board review: the only Overseer surface that reads its own
 //! history.
 //!
-//! Every other surface answers one case at a time. The dispatch judge sees a
+//! Every other surface answers one case at a time. Dispatch decides a
 //! candidate list by construction; triage sees one failed worker; the merge
-//! judge sees one diff. None of them can see that the same spawn failure has
-//! now happened three times, or that nothing has merged for an hour, because
-//! nothing was ever wrong enough in a single pass to be worth reporting.
+//! gate sees one pull request. None of them can see that the same spawn
+//! failure has now happened three times, or that nothing has merged for an
+//! hour, because nothing was ever wrong enough in a single pass to be worth
+//! reporting.
 //!
 //! So this runs on its own clock rather than every poll, reads a bounded digest
 //! of recent decisions and ledger state, and reports what it finds. Its
@@ -74,8 +75,8 @@ impl ReviewPass {
     }
 
     /// Reviewer calls spent today, against `daily_review_budget`. Reported
-    /// separately from the judge's count so an operator can see which surface
-    /// is spending.
+    /// separately from the autonomy envelope's own budget so an operator can
+    /// see which surface is spending.
     pub fn calls_today(&self) -> u32 {
         self.counter.count_today()
     }

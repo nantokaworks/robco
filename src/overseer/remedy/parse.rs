@@ -2,9 +2,8 @@
 //!
 //! A reason is not always the thing to look up directly: the review pass
 //! wraps a repeated reason in `repeating_hold: <n>× ` or
-//! `repeating_failure: <n>× `, `merge_recovery` wraps a reason it dispatched,
-//! skipped, or declined to hand back at all, and the merge judge's own words
-//! arrive wrapped in `judge_veto:` or `judge_escalate:`. Each wrapper is
+//! `repeating_failure: <n>× `, and `merge_recovery` wraps a reason it
+//! dispatched, skipped, or declined to hand back at all. Each wrapper is
 //! stripped in turn, bounded to [`MAX_DEPTH`] layers so a malformed or
 //! adversarial chain cannot recurse forever, until what is left is either a
 //! table entry or plain enough for the prose test at the bottom to call.
@@ -13,13 +12,7 @@ use super::{Move, Remedy, classify_fallback, table};
 
 /// Wrappers that carry no information of their own — the inner reason is the
 /// whole story, so resolution recurses straight into it.
-const UNWRAP_PREFIXES: &[&str] = &[
-    "judge_escalate:",
-    "judge_veto:",
-    "judge_fail_safe:",
-    "merge_recovery_dispatched:",
-    "merge_recovery_skipped:",
-];
+const UNWRAP_PREFIXES: &[&str] = &["merge_recovery_dispatched:", "merge_recovery_skipped:"];
 
 /// A wrapper meaning an automated path gave up on the inner reason. The inner
 /// reason still resolves normally, except that a `Watch` verdict — normally
@@ -59,12 +52,14 @@ const EMPTY_REASON: Remedy = Remedy {
     next: "check the decision log and the pull request directly",
 };
 
-/// A judge's free-text verdict rather than a snake_case code — `judge_veto:`
-/// and `judge_escalate:` unwrap straight into this shape, and the words
-/// themselves are the instruction, exactly like a table-matched `Answer`.
-const JUDGE_VERDICT: Remedy = Remedy {
+/// A free-text reason rather than a snake_case code — the words themselves
+/// are the instruction, exactly like a table-matched `Answer`. Defensive
+/// fallback: nothing in the vocabulary produces free-text reasons today, but
+/// an unrecognised sentence-shaped reason still needs a sensible remedy
+/// rather than falling through to the generic operator fallback.
+const FREE_TEXT_VERDICT: Remedy = Remedy {
     step: Move::Answer,
-    means: "a judge gave this verdict in its own words",
+    means: "this reason reads as free text rather than a known code",
     next: "press Enter and relay the reason to the worker, or act on it yourself",
 };
 
@@ -127,7 +122,7 @@ fn resolve_at(reason: &str, depth: u8) -> Remedy {
     if looks_like_code(trimmed) {
         classify_fallback(trimmed)
     } else {
-        JUDGE_VERDICT
+        FREE_TEXT_VERDICT
     }
 }
 
@@ -145,7 +140,7 @@ fn strip_repeat_count<'a>(reason: &'a str, label: &str) -> Option<&'a str> {
 }
 
 /// A reason is a code when everything before its first `:` is snake_case; a
-/// sentence — spaces, punctuation, capitals — is a judge verdict instead.
+/// sentence — spaces, punctuation, capitals — is free text instead.
 fn looks_like_code(reason: &str) -> bool {
     let head = reason.split(':').next().unwrap_or(reason);
     !head.is_empty()
