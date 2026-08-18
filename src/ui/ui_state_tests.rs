@@ -124,30 +124,28 @@ fn expand_and_collapse_flags_survive_a_restart() {
     app.set_other_collapsed(true);
     app.set_orphans_collapsed(true);
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
-    app.set_overseer_category_expanded(OverseerCategory::Details, true);
+    app.set_overseer_category_expanded(OverseerCategory::Discord, true);
 
     let restarted = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));
     assert_eq!(restarted.expanded, vec![true, false]);
     assert!(restarted.other_collapsed);
     assert!(restarted.orphans_collapsed);
     assert!(restarted.overseer_category_expanded(OverseerCategory::Inbox));
-    assert!(restarted.overseer_category_expanded(OverseerCategory::Details));
+    assert!(restarted.overseer_category_expanded(OverseerCategory::Discord));
     assert!(!restarted.overseer_category_expanded(OverseerCategory::Health));
 }
 
 #[test]
-fn stale_ledger_and_decisions_labels_in_the_file_are_ignored_without_a_reset_of_the_rest() {
-    // Before dropr:378 folded them under `Details`, `Ledger` and `Decisions`
-    // were top-level categories whose labels could be persisted. A file written
-    // back then must load cleanly: the stale labels read as nothing, the labels
-    // the current list still carries keep working.
+fn an_unrecognised_expanded_category_label_in_the_file_is_ignored_without_a_reset_of_the_rest() {
+    // A label the current category list carries nothing for — neither a
+    // current label nor one `migrate_expanded_category_labels` maps — must
+    // read as nothing rather than erroring or resetting the labels around it.
     let temp = tempfile::tempdir().unwrap();
     let mut store = UiStateStore::at(temp.path().join("ui-state.json"));
     store.update(|state| {
-        state.expanded_overseer_categories.insert("Ledger".into());
         state
             .expanded_overseer_categories
-            .insert("Decisions".into());
+            .insert("SomeRetiredCategory".into());
         state
             .expanded_overseer_categories
             .insert(OverseerCategory::Inbox.label().to_string());
@@ -155,9 +153,45 @@ fn stale_ledger_and_decisions_labels_in_the_file_are_ignored_without_a_reset_of_
 
     let flags = store.state().overseer_expanded();
     assert!(flags[OverseerCategory::Inbox.index()]);
-    assert!(!flags[OverseerCategory::Details.index()]);
+    assert!(!flags[OverseerCategory::Health.index()]);
     assert!(!flags[OverseerCategory::Ledger.index()]);
     assert!(!flags[OverseerCategory::Decisions.index()]);
+    assert!(!flags[OverseerCategory::Discord.index()]);
+}
+
+#[test]
+fn a_ui_state_file_written_by_0_2_0_survives_the_details_and_inbox_label_retirement() {
+    // 0.2.0 persisted the pre-dropr:469 category shape: `Inbox` under its old
+    // "Waiting on you" label, and `Details` expanded — Ledger and Decisions did
+    // not yet exist as top-level rows to persist a label of their own.
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ui-state.json");
+    fs::write(
+        &path,
+        r#"{
+            "collapsed_repos": [],
+            "expanded_children": [],
+            "other_collapsed": false,
+            "orphans_collapsed": false,
+            "expanded_overseer_categories": ["Waiting on you", "Details"],
+            "project_order": []
+        }"#,
+    )
+    .unwrap();
+
+    let flags = UiStateStore::at(path).state().overseer_expanded();
+    assert!(
+        flags[OverseerCategory::Inbox.index()],
+        "Inbox expansion lost on migration: {flags:?}"
+    );
+    assert!(
+        flags[OverseerCategory::Ledger.index()],
+        "Details fold did not reach Ledger: {flags:?}"
+    );
+    assert!(
+        flags[OverseerCategory::Decisions.index()],
+        "Details fold did not reach Decisions: {flags:?}"
+    );
 }
 
 #[test]

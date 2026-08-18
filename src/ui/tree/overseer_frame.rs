@@ -11,15 +11,18 @@ use crate::model::{OverseerCategory, Selection, Status};
 use super::{IndicatorState, indicator, label, select};
 use crate::ui::{App, theme::DEFAULT as THEME};
 
+mod inbox_indicator;
+use inbox_indicator::category_indicator;
+
 /// The separator between a label and the value that describes it — the header's
 /// status glyph and a category's summary both sit one of these off their label.
 const GAP: &str = "  ";
 
-/// Indent of every nested row — Inbox items, Discord channels, and the
-/// Details children. It matches the column `category_line` puts every category
-/// label at, so the nested rows read as sitting under their label instead of
-/// being outdented past it. On a 24-column sidebar every column spent here is
-/// a column of content lost, so the frame nests in one step and stops.
+/// Indent of every nested row — Inbox items and Discord channels. It matches
+/// the column `category_line` puts every category label at, so the nested
+/// rows read as sitting under their label instead of being outdented past it.
+/// On a 24-column sidebar every column spent here is a column of content
+/// lost, so the frame nests in one step and stops.
 const DETAIL_INDENT: &str = "    ";
 
 pub(in crate::ui) struct FrameContent {
@@ -95,31 +98,11 @@ fn build_content_with_warnings(
             summary,
             *warn,
         ));
-        // Only a category with rows of its own expands here. Health keeps its
-        // one-line summary; its detail stays reachable, unchanged, in the Info
-        // preview tab via `overseer::category_preview`.
+        // Only a category with rows of its own expands here. Health, Ledger,
+        // and Decisions keep their one-line summary; their detail stays
+        // reachable, unchanged, in the Info preview tab via
+        // `overseer::category_preview`.
         if !category.has_children() || !app.overseer_category_expanded(category) {
-            continue;
-        }
-        if category == OverseerCategory::Details {
-            // Details expands into the two category rows it folded away
-            // (dropr:378), not into read-only detail text: each child is a
-            // selection target with a summary of its own, drawn with the same
-            // row idiom as its parent and nested by the frame's one indent.
-            for child in OverseerCategory::DETAILS_CHILDREN {
-                let child_selected = selected == Some(Selection::OverseerCategory(child));
-                if child_selected {
-                    selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-                }
-                let (summary, warn) = crate::ui::overseer::category_summary(app, child);
-                lines.push(indent_detail(category_line(
-                    app,
-                    child,
-                    child_selected,
-                    &summary,
-                    warn,
-                )));
-            }
             continue;
         }
         let first_detail = lines.len();
@@ -237,10 +220,10 @@ fn category_line(
     warn: bool,
 ) -> Line<'static> {
     // Every category row reserves the arrow cell and a leaf leaves it blank, so
-    // all four labels line up on one column and the arrow reads as an
-    // affordance rather than as an indent. `label::agent_row_prefix` reserves
-    // the management marker the same way; this follows that precedent rather
-    // than inventing a second convention.
+    // every label lines up on one column and the arrow reads as an affordance
+    // rather than as an indent. `label::agent_row_prefix` reserves the
+    // management marker the same way; this follows that precedent rather than
+    // inventing a second convention.
     let arrow = if !category.has_children() {
         " "
     } else if app.overseer_category_expanded(category) {
@@ -248,22 +231,25 @@ fn category_line(
     } else {
         "▸"
     };
-    Line::from(vec![
-        Span::styled(
-            format!("{} {arrow} {}{GAP}", marker(selected), category.label()),
-            row_style(selected),
-        ),
-        Span::styled(
-            summary.to_string(),
-            if warn {
-                warning_style(selected)
-            } else if selected {
-                THEME.selection_style()
-            } else {
-                THEME.muted_style()
-            },
-        ),
-    ])
+    let mut spans = vec![Span::styled(
+        format!("{} {arrow} {}{GAP}", marker(selected), category.label()),
+        row_style(selected),
+    )];
+    if let Some(indicator) = category_indicator(app, category, selected) {
+        spans.push(indicator);
+        spans.push(Span::styled(GAP, row_style(selected)));
+    }
+    spans.push(Span::styled(
+        summary.to_string(),
+        if warn {
+            warning_style(selected)
+        } else if selected {
+            THEME.selection_style()
+        } else {
+            THEME.muted_style()
+        },
+    ));
+    Line::from(spans)
 }
 
 /// Nests the Inbox item rows directly under its label, which [`category_line`]

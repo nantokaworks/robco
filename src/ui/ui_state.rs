@@ -60,10 +60,10 @@ impl UiState {
     /// Expanded flags for the OVERSEER categories, indexed by
     /// [`OverseerCategory::index`] — the order `App::overseer_expanded` is
     /// indexed in. Only [`OverseerCategory::ALL`] labels are read back: a label
-    /// the current category list no longer carries top-level (a stale `Ledger`
-    /// or `Decisions` from before dropr:378 folded them under `Details`) is
-    /// silently ignored rather than a crash, and the next toggle rewrites the
-    /// file without it.
+    /// the current category list no longer carries (anything
+    /// `migrate_expanded_category_labels` did not map onto one) is silently
+    /// ignored rather than a crash, and the next toggle rewrites the file
+    /// without it.
     pub(in crate::ui) fn overseer_expanded(&self) -> [bool; OverseerCategory::COUNT] {
         let mut flags = [false; OverseerCategory::COUNT];
         for category in OverseerCategory::ALL {
@@ -138,8 +138,41 @@ impl UiStateStore {
 fn read_at(path: &Path) -> UiState {
     fs::read_to_string(path)
         .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .and_then(|raw| serde_json::from_str::<UiState>(&raw).ok())
+        .map(|mut state| {
+            state.expanded_overseer_categories =
+                migrate_expanded_category_labels(state.expanded_overseer_categories);
+            state
+        })
         .unwrap_or_default()
+}
+
+/// Maps `expanded_overseer_categories` labels a pre-dropr:469 release could
+/// have persisted onto their current equivalents, so a `ui_state.json` written
+/// by 0.2.0 keeps its expansion state after the `Details` wrapper is retired
+/// and `Inbox` drops its old "Waiting on you" label:
+///
+/// - `"Waiting on you"` (the retired `Inbox` label) maps to the current one.
+/// - `"Details"` (the retired wrapper) folds into the two rows it used to
+///   nest, `Ledger` and `Decisions`, so expanding it is remembered as
+///   expanding both.
+/// - Any other label that still names a current category passes through
+///   unchanged; anything else is dropped quietly rather than erroring — the
+///   same fate `overseer_expanded` already gives an unrecognised label.
+fn migrate_expanded_category_labels(labels: BTreeSet<String>) -> BTreeSet<String> {
+    let current: BTreeSet<&str> = OverseerCategory::ALL.map(OverseerCategory::label).into();
+    labels
+        .into_iter()
+        .flat_map(|label| match label.as_str() {
+            "Waiting on you" => vec![OverseerCategory::Inbox.label().to_string()],
+            "Details" => vec![
+                OverseerCategory::Ledger.label().to_string(),
+                OverseerCategory::Decisions.label().to_string(),
+            ],
+            other if current.contains(other) => vec![other.to_string()],
+            _ => vec![],
+        })
+        .collect()
 }
 
 /// Atomic temp-file-plus-rename, the same shape `Config::save_at` uses, so a

@@ -59,8 +59,8 @@ const INBOX_CATEGORY_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
-/// Discord and Details: expandable categories whose only footer-worthy action
-/// is the expand itself.
+/// Discord: the other expandable category, whose only footer-worthy action is
+/// the expand itself.
 const EXPANDABLE_CATEGORY_HINTS: Hints = &[
     ("l", "expand"),
     ("R", "reset"),
@@ -113,9 +113,7 @@ fn hints_for(selection: Option<Selection>) -> Hints {
         Some(Selection::Repo(_)) => REPO_HINTS,
         Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::OverseerCategory(OverseerCategory::Inbox)) => INBOX_CATEGORY_HINTS,
-        Some(Selection::OverseerCategory(
-            OverseerCategory::Discord | OverseerCategory::Details,
-        )) => EXPANDABLE_CATEGORY_HINTS,
+        Some(Selection::OverseerCategory(OverseerCategory::Discord)) => EXPANDABLE_CATEGORY_HINTS,
         Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
         Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,
