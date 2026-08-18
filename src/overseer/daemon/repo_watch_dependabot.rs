@@ -131,7 +131,10 @@ fn list_dependabot_prs(repo_path: &Path) -> Result<Vec<RawPr>, String> {
     }
     let prs: Vec<RawPr> = serde_json::from_slice(&output.stdout)
         .map_err(|error| format!("gh pr list JSON unreadable: {error}"))?;
-    Ok(prs.into_iter().filter(|pr| is_dependabot(&pr.author.login)).collect())
+    Ok(prs
+        .into_iter()
+        .filter(|pr| is_dependabot(&pr.author.login))
+        .collect())
 }
 
 fn is_dependabot(login: &str) -> bool {
