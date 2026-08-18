@@ -14,8 +14,13 @@ use crate::overseer::exec::run_timeout;
 
 const PR_FIELDS: &str = "number,title,url,author,mergeStateStatus,createdAt";
 
-/// GitHub's login for pull requests Dependabot itself opens.
-const DEPENDABOT_LOGIN: &str = "dependabot[bot]";
+/// GitHub's login for pull requests Dependabot itself opens. `gh pr list
+/// --json author` has answered both forms depending on `gh` version: the
+/// classic bot-account form and the newer app-slug form. Neither has ever
+/// been observed to include an "s" (`dependabot-preview[bot]` is a distinct,
+/// unrelated legacy bot), so both are checked rather than picking one and
+/// leaving the watch silently blind again on the next `gh` upgrade.
+const DEPENDABOT_LOGINS: [&str; 2] = ["dependabot[bot]", "app/dependabot"];
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawPr {
@@ -128,8 +133,12 @@ fn list_dependabot_prs(repo_path: &Path) -> Result<Vec<RawPr>, String> {
         .map_err(|error| format!("gh pr list JSON unreadable: {error}"))?;
     Ok(prs
         .into_iter()
-        .filter(|pr| pr.author.login == DEPENDABOT_LOGIN)
+        .filter(|pr| is_dependabot(&pr.author.login))
         .collect())
+}
+
+fn is_dependabot(login: &str) -> bool {
+    DEPENDABOT_LOGINS.contains(&login)
 }
 
 #[cfg(test)]

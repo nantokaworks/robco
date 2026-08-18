@@ -32,13 +32,19 @@ fn a_status_update_names_the_claim_holder() {
     );
 }
 
+/// `workspace_id` MUST sit on the bulk envelope, not inside the item. The
+/// installed `dropr mcp-stdio` server only honors it there — an item-level
+/// `workspace_id` is refused with "exactly one of workspace_id,
+/// canonical_repo, repo_url must be set" even though the tool's advertised
+/// schema allows either placement (dropr:467). Verified live against a
+/// scratch dropr workspace before writing this test.
 #[test]
-fn a_task_create_names_the_workspace_author_and_title() {
+fn a_task_create_names_the_workspace_on_the_envelope() {
     assert_eq!(
         task_create_arguments("Xdin9xDHmhuOohKzCBmZX", "file the follow-up", None),
         json!({
+            "workspace_id": "Xdin9xDHmhuOohKzCBmZX",
             "items": [{
-                "workspace_id": "Xdin9xDHmhuOohKzCBmZX",
                 "agent_id": "overseer",
                 "title": "file the follow-up",
             }],
@@ -51,8 +57,8 @@ fn a_task_create_names_the_workspace_author_and_title() {
             Some("more detail"),
         ),
         json!({
+            "workspace_id": "Xdin9xDHmhuOohKzCBmZX",
             "items": [{
-                "workspace_id": "Xdin9xDHmhuOohKzCBmZX",
                 "agent_id": "overseer",
                 "title": "file the follow-up",
                 "description": "more detail",
