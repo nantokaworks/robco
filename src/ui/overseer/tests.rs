@@ -655,23 +655,6 @@ fn every_category_has_summary_detail_and_preview() {
 }
 
 #[test]
-fn details_detail_combines_what_its_folded_children_carry() {
-    // The Details row previews the ledger and the decisions in one read
-    // (dropr:378): everything each folded child renders on its own must appear,
-    // verbatim, in the combined detail.
-    let app = management_app();
-    let combined = category_text(&app, OverseerCategory::Details);
-    for child in OverseerCategory::DETAILS_CHILDREN {
-        let child_text = category_text(&app, child);
-        assert!(
-            combined.contains(&child_text),
-            "{} detail missing from Details: {combined:?}",
-            child.label()
-        );
-    }
-}
-
-#[test]
 fn stale_dispatch_counter_renders_zero() {
     let today = Utc::now().date_naive();
     let mut ledger = Ledger::default();

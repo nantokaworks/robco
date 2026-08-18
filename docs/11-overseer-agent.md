@@ -1109,7 +1109,9 @@ many of the listed items resolve to something other than `WATCH`. This is indepe
 whether the item has a live tmux session — merging a pull request by hand, resetting a
 tripped circuit, or reviewing a parked ledger entry needs no session at all, so those rows
 count even when their worker is gone. Only `WATCH` — nothing has failed and nothing is
-waiting on a human, e.g. checks still running — is excluded.
+waiting on a human, e.g. checks still running — is excluded. The row also carries the same
+`?` waiting glyph an agent row shows, lit whenever `N` is above zero, so the row's own
+attention state reads at a glance without parsing the `N/M` count.
 
 Expanding the category (`l`, `→`, or `Enter` on the category row) turns each item into a
 row of its own — one level, with no repeated count row between the category and its items,

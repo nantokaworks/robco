@@ -27,7 +27,9 @@ mod render_format;
 
 #[cfg(test)]
 pub(in crate::ui) use categories::health_warnings_from;
-pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
+pub(in crate::ui) use categories::{
+    category_detail, category_summary, health_warnings, inbox_actionable_count,
+};
 pub(in crate::ui) use discord_agents::{
     channel_preview as discord_channel_preview, ordered_channel_ids,
 };

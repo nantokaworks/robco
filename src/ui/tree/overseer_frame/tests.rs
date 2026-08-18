@@ -143,6 +143,45 @@ fn an_empty_inbox_still_renders_a_visible_empty_state() {
 }
 
 #[test]
+fn the_inbox_row_indicator_lights_only_when_something_is_actionable() {
+    let (_, mut app) = warning_state();
+    app.overseer_visible = true;
+
+    let unlit = build_content_with_warnings(&app, Some(23), &[])
+        .lines
+        .iter()
+        .map(ToString::to_string)
+        .find(|line| line.contains(OverseerCategory::Inbox.label()))
+        .expect("no Inbox row");
+    assert!(
+        !unlit.contains(crate::model::Status::Waiting.glyph()),
+        "an empty Inbox carries the waiting glyph: {unlit:?}"
+    );
+
+    app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
+        kind: crate::ui::inbox::InboxKind::Escalation,
+        target_session: None,
+        target_id: "task-1".into(),
+        label: "task-1".into(),
+        detail: "needs user".into(),
+        at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
+    }];
+    let lit = build_content_with_warnings(&app, Some(23), &[])
+        .lines
+        .iter()
+        .map(ToString::to_string)
+        .find(|line| line.contains(OverseerCategory::Inbox.label()))
+        .expect("no Inbox row");
+    assert!(
+        lit.contains(crate::model::Status::Waiting.glyph()),
+        "an actionable Inbox is missing the waiting glyph: {lit:?}"
+    );
+}
+
+#[test]
 fn active_health_warnings_have_dedicated_narrow_rows() {
     let (warnings, app) = warning_state();
     assert_eq!(
@@ -387,62 +426,37 @@ fn a_leaf_categorys_detail_is_still_reachable_in_the_preview() {
 }
 
 #[test]
-fn the_details_row_folds_ledger_and_decisions_away_until_expanded() {
+fn ledger_and_decisions_are_plain_top_level_rows() {
+    // dropr:469 retired the `Details` wrapper `Ledger` and `Decisions` used to
+    // nest under (dropr:378): both render as their own row, unconditionally,
+    // the same as `Health`.
     let (_, mut app) = warning_state();
     app.overseer_visible = true;
-
-    // Collapsed — the default — neither folded category renders a row.
-    let collapsed = build_content_with_warnings(&app, Some(23), &[])
+    let rendered = build_content_with_warnings(&app, Some(23), &[])
         .lines
         .iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    for child in OverseerCategory::DETAILS_CHILDREN {
-        assert!(
-            !collapsed.iter().any(|line| line.contains(child.label())),
-            "{} row rendered while Details is collapsed: {collapsed:?}",
-            child.label()
-        );
-    }
 
-    app.set_overseer_category_expanded(OverseerCategory::Details, true);
-    let content = build_content_with_warnings(&app, Some(23), &[]);
-    let rendered = content
-        .lines
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    let details_row = rendered
-        .iter()
-        .position(|line| line.contains(OverseerCategory::Details.label()))
-        .expect("no Details category row");
-    // The child rows sit directly under the Details row, in declared order,
-    // nested by the frame's single indent.
-    for (offset, child) in OverseerCategory::DETAILS_CHILDREN.into_iter().enumerate() {
-        let row = &rendered[details_row + 1 + offset];
+    for category in [OverseerCategory::Ledger, OverseerCategory::Decisions] {
         assert!(
-            row.contains(child.label()),
-            "{} row missing: {row:?}",
-            child.label()
+            rendered.iter().any(|line| line.contains(category.label())),
+            "{} row missing: {rendered:?}",
+            category.label()
         );
-        assert!(
-            row.starts_with(DETAIL_INDENT),
-            "{} row is not nested: {row:?}",
-            child.label()
-        );
+        assert!(!category.has_children(), "{}", category.label());
     }
 }
 
 #[test]
-fn a_selected_details_child_is_the_row_the_frame_scrolls_to() {
+fn a_selected_top_level_category_is_the_row_the_frame_scrolls_to() {
     let (_, mut app) = warning_state();
     app.overseer_visible = true;
-    app.set_overseer_category_expanded(OverseerCategory::Details, true);
     app.selected = app
         .visible()
         .iter()
         .position(|row| *row == Selection::OverseerCategory(OverseerCategory::Decisions))
-        .expect("no Decisions child row");
+        .expect("no Decisions row");
 
     let content = build_content_with_warnings(&app, Some(23), &[]);
     let selected = content.lines[usize::from(content.selected_row)].to_string();
@@ -465,8 +479,8 @@ fn warning_rows_are_included_in_selected_category_scroll_position() {
 
     let content = build_content_with_warnings(&app, Some(23), &warnings);
 
-    assert_eq!(content.selected_row, 8);
-    assert_eq!(content.scroll_offset(6), 3);
+    assert_eq!(content.selected_row, 9);
+    assert_eq!(content.scroll_offset(6), 4);
     assert!(content.selected_row - content.scroll_offset(6) < 6);
 }
 

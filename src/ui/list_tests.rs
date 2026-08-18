@@ -124,7 +124,7 @@ fn selection_identity_survives_overseer_row_toggle() {
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
     app.set_overseer_visibility(true);
-    assert_eq!(app.selected, 5);
+    assert_eq!(app.selected, 6);
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
     // Moving up off the first repo row lands on the last OVERSEER category —
     // never on the header, which is no longer a row.
