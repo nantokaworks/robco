@@ -35,9 +35,7 @@ pub(super) fn extract(value: &Value) -> Option<PrFacts> {
     Some(PrFacts {
         title,
         files_changed: files_changed.min(u64::from(u32::MAX)) as u32,
-        lines_changed: additions
-            .saturating_add(deletions)
-            .min(u64::from(u32::MAX)) as u32,
+        lines_changed: additions.saturating_add(deletions).min(u64::from(u32::MAX)) as u32,
         failed_checks,
     })
 }
