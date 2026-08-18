@@ -110,10 +110,13 @@ pub struct OperatorOverride {
     pub granted_at: DateTime<Utc>,
 }
 
-/// A merge approval Discord's `!merge` queued against a pull request that had
-/// not yet reached `Escalated` when the operator approved it — see
-/// `overseer::discord::merge_actions::merge`'s queue path and
-/// `overseer::discord::ledger_requests::LedgerRequest::Approve`.
+/// A merge approval Discord's `!merge` queued against a pull request's
+/// ledger entry, whatever phase it was in when the operator approved it —
+/// see `overseer::discord::merge_actions::merge`'s queue path and
+/// `overseer::discord::ledger_requests::LedgerRequest::Approve`. Applying the
+/// request also resets `merge_hold_recheck`
+/// (`LedgerEntry::grant_merge_reconsideration`), so an entry whose hold-cap
+/// budget was already spent is still reconsidered on the next merge pass.
 ///
 /// Scoped to the head sha the operator saw, the same way [`OperatorOverride`]
 /// is: a later push presents a revision the operator never approved, and this

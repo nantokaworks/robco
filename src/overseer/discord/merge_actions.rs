@@ -1,35 +1,28 @@
-//! `!merge <task>` / `!diff <task>`: the two Discord commands that act on an
-//! escalated pull request's ledger entry.
+//! `!merge <task>` / `!diff <task>`: the two Discord commands that act on a
+//! pull request's ledger entry.
 //!
-//! Split out of `actions.rs` to keep both files under the size limit, and
-//! because the merge path pulls in a distinct set of dependencies
-//! ([`MergeFlow`], [`Registry`]) that the rest of `actions.rs` does not need.
+//! Split out of `actions.rs` to keep both files under the size limit.
 
 use std::{process::Command as ProcessCommand, sync::mpsc::Sender};
 
-use crate::{
-    agent,
-    config::Config,
-    git::merge_flow::{MergeFlow, MergeMode},
-    model::{AgentNode, RepoNode},
-    overseer::{
-        exec::{COMMAND_TIMEOUT, run_timeout},
-        ledger::{Ledger, LedgerEntry, LedgerPhase},
-    },
-    registry::Registry,
+use crate::overseer::{
+    exec::{COMMAND_TIMEOUT, run_timeout},
+    ledger::{Ledger, LedgerEntry},
 };
 
 use super::ledger_requests::LedgerRequest;
 
-/// Merges an escalated pull request's ledger entry, reusing the exact
-/// sequence the TUI merge key and the `robco_merge` MCP tool run
-/// ([`MergeFlow`]) so a merge landed from Discord ends in the same state.
+/// Queues an operator's merge approval against its ledger entry, whatever
+/// phase the entry is in.
 ///
-/// An entry that has not reached `Escalated` yet cannot merge immediately —
-/// its checks may still be running, or the deterministic gate may not have
-/// looked at it at all — so the operator's approval is queued instead (see
-/// [`queue_approval`]) and satisfies only the autonomy envelope once the gate
-/// itself clears, on a later poll pass.
+/// Never merges here, in any phase. The TUI merge key and the `robco_merge`
+/// MCP tool merge immediately (`git::merge_flow::MergeFlow`) because a person
+/// is watching them in real time; `!merge` runs unattended inside the Discord
+/// command handler, so an immediate merge there would skip the daemon's
+/// per-repository merge serialization the same way a second concurrent
+/// `!merge` would. Queuing instead — see [`queue_approval`] — lets the
+/// daemon's own merge pass, which already serializes every other merge, land
+/// this one too.
 pub(super) fn merge(
     task: &str,
     user_id: &str,
@@ -37,37 +30,18 @@ pub(super) fn merge(
 ) -> crate::Result<String> {
     let ledger = Ledger::load()?;
     let entry = find_ledger_entry(&ledger, task)?;
-    if entry.phase != LedgerPhase::Escalated {
-        if entry.pr_url.is_none() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("{task}: no pull request recorded"),
-            )
-            .into());
-        }
-        queue_approval(ledger_requests, task, user_id)?;
-        return Ok(format!(
-            "{task}: merge queued (phase: {})",
-            entry.phase.label()
-        ));
+    if entry.pr_url.is_none() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("{task}: no pull request recorded"),
+        )
+        .into());
     }
-    let registry = Registry::load()?;
-    let (repo, agent_node) = find_agent(&registry, &entry.agent_id)?;
-    let strategy = Config::load()?.merge_strategy;
-    let mut steps = Vec::new();
-    MergeFlow {
-        repo: &repo.path,
-        branch: &agent_node.branch,
-        worktree: &agent_node.worktree_path,
-        tmux_session: &agent_node.tmux_session,
-        shell_session: &agent::shell_session_name(agent_node),
-        mode: MergeMode::MergeThenClean,
-        strategy,
-        source: "discord",
-    }
-    .run(|step| steps.push(step))?;
-    forget_agent(&entry.agent_id);
-    Ok(format!("{task}: merged ({})", steps.join(" -> ")))
+    queue_approval(ledger_requests, task, user_id)?;
+    Ok(format!(
+        "{task}: merge queued (phase: {})",
+        entry.phase.label()
+    ))
 }
 
 /// Shows what an escalated pull request changes, so the operator can decide
@@ -140,42 +114,6 @@ fn find_ledger_entry<'a>(ledger: &'a Ledger, task: &str) -> crate::Result<&'a Le
             )
             .into()
         })
-}
-
-fn find_agent<'a>(
-    registry: &'a Registry,
-    agent_id: &str,
-) -> crate::Result<(&'a RepoNode, &'a AgentNode)> {
-    registry
-        .repos
-        .iter()
-        .find_map(|repo| {
-            repo.agents
-                .iter()
-                .find(|agent| agent.id == agent_id)
-                .map(|agent| (repo, agent))
-        })
-        .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("agent_id not found: {agent_id}"),
-            )
-            .into()
-        })
-}
-
-/// Drops the merged worker's registry row, the same cleanup
-/// `mcp/tools/merge.rs::forget_agent` does after an MCP-issued merge.
-/// Best effort: the pull request is already merged and the branch already
-/// gone by the time this runs, so a failure here must not be reported as a
-/// failed merge. The Overseer's next reconcile pass drops rows for merged
-/// workers anyway.
-fn forget_agent(agent_id: &str) {
-    let _ = Registry::locked_update(|registry| {
-        for repo in &mut registry.repos {
-            repo.agents.retain(|agent| agent.id != agent_id);
-        }
-    });
 }
 
 #[cfg(test)]
