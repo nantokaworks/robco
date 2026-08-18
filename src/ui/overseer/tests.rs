@@ -102,6 +102,7 @@ fn management_app() -> App {
             worker_escalated: false,
             operator_override: None,
             merge_approval: None,
+            pr_facts: None,
         },
         LedgerEntry {
             task_id: "manual-task".into(),
@@ -129,6 +130,7 @@ fn management_app() -> App {
             worker_escalated: false,
             operator_override: None,
             merge_approval: None,
+            pr_facts: None,
         },
     ];
     app
@@ -743,6 +745,7 @@ fn active_phases_excludes_terminal_entries() {
                 worker_escalated: false,
                 operator_override: None,
                 merge_approval: None,
+                pr_facts: None,
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -770,6 +773,7 @@ fn active_phases_excludes_terminal_entries() {
                 worker_escalated: false,
                 operator_override: None,
                 merge_approval: None,
+                pr_facts: None,
             },
         ],
         ..Ledger::default()
@@ -823,6 +827,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
             worker_escalated: false,
             operator_override: None,
             merge_approval: None,
+            pr_facts: None,
         }],
         ..Ledger::default()
     };
@@ -881,6 +886,7 @@ fn primary_holder_names_the_repo_and_the_task() {
             worker_escalated: false,
             operator_override: None,
             merge_approval: None,
+            pr_facts: None,
         }],
         ..Ledger::default()
     };

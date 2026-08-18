@@ -10,6 +10,8 @@ fn live_escalation(target_id: &str) -> InboxItem {
         label: "label".into(),
         detail: "worker_blocked".into(),
         at: Utc::now(),
+        pr_url: None,
+        pr_facts: None,
     }
 }
 

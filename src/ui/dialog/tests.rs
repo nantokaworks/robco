@@ -139,6 +139,8 @@ fn inbox_prompt_caret_tracks_a_mid_string_cursor() {
                 label: "agent — worker".to_string(),
                 detail: "worker_blocked".to_string(),
                 at: chrono::Utc::now(),
+                pr_url: None,
+                pr_facts: None,
             },
             input: edited("ship it", 4),
         },

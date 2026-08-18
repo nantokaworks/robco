@@ -47,6 +47,7 @@ fn entry(task: &str, phase: LedgerPhase) -> crate::overseer::ledger::LedgerEntry
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     }
 }
 

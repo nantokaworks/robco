@@ -37,6 +37,8 @@ fn inbox_app(target_session: Option<&str>) -> App {
         label: "agent-1 — worker".into(),
         detail: "worker_blocked".into(),
         at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
     app.selected = app

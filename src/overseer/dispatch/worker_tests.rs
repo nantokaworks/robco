@@ -30,6 +30,7 @@ fn entry(task_id: &str, retries: u32) -> LedgerEntry {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     }
 }
 

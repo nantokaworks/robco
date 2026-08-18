@@ -22,6 +22,8 @@ fn item(kind: InboxKind, target_id: &str, second: u32) -> InboxItem {
         label: format!("{target_id} — escalated"),
         detail: "needs user".into(),
         at: at(second),
+        pr_url: None,
+        pr_facts: None,
     }
 }
 

@@ -7,7 +7,7 @@ use crate::{
     model::Status,
     overseer::{
         dismissals::Dismissals,
-        ledger::{Ledger, LedgerPhase},
+        ledger::{Ledger, LedgerPhase, PrFacts},
         logging::{self, DecisionEntry, DecisionKind},
         remedy::{self, Remedy},
     },
@@ -52,6 +52,15 @@ pub(crate) struct InboxItem {
     /// the operator can read the whole escalation before acting on it.
     pub detail: String,
     pub at: DateTime<Utc>,
+    /// The pull request this row is about, when the ledger entry behind it has
+    /// one — used only to show the number in the preview; `remedy` never
+    /// reads this.
+    pub pr_url: Option<String>,
+    /// The pull request's own title, size, and failing check, as of the
+    /// daemon's last successful read (dropr:461). `None` when the row has no
+    /// matching ledger entry, or the daemon has not read one yet — the row
+    /// still renders, just without this part of the preview.
+    pub pr_facts: Option<PrFacts>,
 }
 
 /// Every ledger-sourced row's `detail` starts with this, so [`InboxItem::remedy`]
@@ -176,6 +185,8 @@ pub(crate) fn aggregate(
             label: format!("{target_id} — {}", decision.reason),
             detail: decision.reason.clone(),
             at: decision.at,
+            pr_url: ledger_entry.and_then(|entry| entry.pr_url.clone()),
+            pr_facts: ledger_entry.and_then(|entry| entry.pr_facts.clone()),
         });
     }
     for entry in ledger
@@ -210,6 +221,8 @@ pub(crate) fn aggregate(
                 entry.agent_id, entry.branch
             ),
             at: entry.dispatched_at,
+            pr_url: entry.pr_url.clone(),
+            pr_facts: entry.pr_facts.clone(),
         });
     }
     items.sort_by_key(|item| std::cmp::Reverse(item.at));

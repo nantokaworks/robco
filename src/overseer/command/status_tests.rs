@@ -43,6 +43,7 @@ fn ledger_entry(phase: LedgerPhase) -> LedgerEntry {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     }
 }
 
@@ -54,6 +55,8 @@ fn answerable_escalation() -> InboxItem {
         label: "agent-1 — worker title".into(),
         detail: "worker_blocked".into(),
         at: Utc::now(),
+        pr_url: None,
+        pr_facts: None,
     }
 }
 
@@ -65,6 +68,8 @@ fn watch_only_escalation() -> InboxItem {
         label: "#99 — checks_waiting".into(),
         detail: "checks_waiting".into(),
         at: Utc::now(),
+        pr_url: None,
+        pr_facts: None,
     }
 }
 

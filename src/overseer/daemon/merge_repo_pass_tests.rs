@@ -31,6 +31,7 @@ fn a_manual_worker_never_reaches_the_gate_or_its_recovery() {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     };
     let now = chrono::Local::now();
     let agent = |management| crate::model::AgentNode {
@@ -135,6 +136,7 @@ fn a_repo_opted_out_of_the_overseer_blocks_auto_merge_for_every_worker_in_it() {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     };
     let now = chrono::Local::now();
     let agent = crate::model::AgentNode {

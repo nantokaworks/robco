@@ -21,6 +21,8 @@ fn item(kind: InboxKind, target_id: &str, session: Option<&str>) -> InboxItem {
         label: format!("{target_id} — {LONG_REASON}"),
         detail: LONG_REASON.into(),
         at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
     }
 }
 
@@ -116,6 +118,41 @@ fn a_display_only_item_says_why_it_cannot_be_answered() {
         body.contains("display-only — no live session to answer or approve"),
         "{body}"
     );
+}
+
+/// dropr:461 — a row with a matching ledger entry's facts shows its number,
+/// title, size, and failing check.
+#[test]
+fn a_row_with_pr_facts_shows_its_own_case() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.pr_url = Some("https://github.com/nantokaworks/robco/pull/42".into());
+    row.pr_facts = Some(crate::overseer::ledger::PrFacts {
+        title: "Fix the thing".into(),
+        files_changed: 4,
+        lines_changed: 42,
+        failed_checks: vec!["validate / Validate".into()],
+    });
+    let app = inbox_app(vec![row]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(body.contains("pull request: #42"), "{body}");
+    assert!(body.contains("title: Fix the thing"), "{body}");
+    assert!(body.contains("size: 4 files, 42 lines"), "{body}");
+    assert!(body.contains("failed check: validate / Validate"), "{body}");
+}
+
+#[test]
+fn a_row_with_no_pr_facts_renders_without_them() {
+    let app = inbox_app(vec![item(InboxKind::Escalation, "#159", None)]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(!body.contains("pull request:"), "{body}");
+    assert!(!body.contains("size:"), "{body}");
+    assert!(!body.contains("failed check:"), "{body}");
 }
 
 #[test]

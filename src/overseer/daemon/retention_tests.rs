@@ -40,6 +40,7 @@ fn entry(task: &str, repo: &str, phase: LedgerPhase, minute: i64) -> LedgerEntry
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     }
 }
 

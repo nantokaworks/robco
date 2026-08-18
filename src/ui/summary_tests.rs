@@ -142,6 +142,7 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
             worker_escalated: false,
             operator_override: None,
             merge_approval: None,
+            pr_facts: None,
         }],
         ..Default::default()
     };
