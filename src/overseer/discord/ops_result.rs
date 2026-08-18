@@ -90,6 +90,43 @@ fn parse_action(mut value: Value) -> Result<Command, String> {
         "merge" | "robco_merge" => Command::Merge(text("task_id")?),
         "diff" | "robco_diff" => Command::Diff(text("task_id")?),
         "help" | "robco_help" => Command::Help,
+        "whoami" | "robco_whoami" => Command::Whoami,
+        "report" | "robco_report" => Command::Report {
+            message: text("message")?,
+            target_agent_id: object
+                .get("target_agent_id")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+        },
+        "agentcreate" | "robco_agent_create" => Command::AgentCreate {
+            repo: text("repo")?,
+            title: text("title")?,
+            prompt: object
+                .get("prompt")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+            parent_agent_id: object
+                .get("parent_agent_id")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+            autonomous: object
+                .get("autonomous")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        },
+        "questionlist" | "robco_question_list" => Command::QuestionList,
+        "prstatus" | "robco_pr_status" => Command::PrStatus(text("agent_id")?),
+        "prrequest" | "robco_pr_request" => Command::PrRequest {
+            agent: text("agent_id")?,
+            prompt: object
+                .get("prompt")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string),
+        },
         _ => {
             return Err(format!(
                 "action `{name}` is outside the Discord command set"
@@ -168,5 +205,72 @@ mod tests {
         let missing_title =
             br#"{"reply":"no","actions":[{"name":"dropr_task_create","repo":"robco"}]}"#;
         assert!(parse(missing_title).unwrap().actions[0].is_err());
+    }
+
+    #[test]
+    fn parses_the_six_commands_shared_with_mcp() {
+        let raw = br#"{"reply":"ok","actions":[
+            {"name":"robco_whoami"},
+            {"name":"robco_report","message":"turn done"},
+            {"name":"robco_question_list"},
+            {"name":"robco_pr_status","agent_id":"a1"},
+            {"name":"robco_pr_request","agent_id":"a1"},
+            {"name":"robco_agent_create","repo":"robco","title":"fix the thing"}
+        ]}"#;
+        let actions = parse(raw).unwrap().actions;
+        assert_eq!(actions[0], Ok(Command::Whoami));
+        assert_eq!(
+            actions[1],
+            Ok(Command::Report {
+                message: "turn done".into(),
+                target_agent_id: None,
+            })
+        );
+        assert_eq!(actions[2], Ok(Command::QuestionList));
+        assert_eq!(actions[3], Ok(Command::PrStatus("a1".into())));
+        assert_eq!(
+            actions[4],
+            Ok(Command::PrRequest {
+                agent: "a1".into(),
+                prompt: None,
+            })
+        );
+        assert_eq!(
+            actions[5],
+            Ok(Command::AgentCreate {
+                repo: "robco".into(),
+                title: "fix the thing".into(),
+                prompt: None,
+                parent_agent_id: None,
+                autonomous: false,
+            })
+        );
+    }
+
+    #[test]
+    fn report_carries_an_explicit_target_agent_id() {
+        let raw = br#"{"reply":"ok","actions":[
+            {"name":"report","message":"hi","target_agent_id":"a1"}
+        ]}"#;
+        assert_eq!(
+            parse(raw).unwrap().actions[0],
+            Ok(Command::Report {
+                message: "hi".into(),
+                target_agent_id: Some("a1".into()),
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_the_six_shared_commands_missing_required_fields() {
+        for raw in [
+            br#"{"reply":"no","actions":[{"name":"robco_report"}]}"# as &[u8],
+            br#"{"reply":"no","actions":[{"name":"robco_pr_status"}]}"#,
+            br#"{"reply":"no","actions":[{"name":"robco_pr_request"}]}"#,
+            br#"{"reply":"no","actions":[{"name":"robco_agent_create","title":"x"}]}"#,
+            br#"{"reply":"no","actions":[{"name":"robco_agent_create","repo":"robco"}]}"#,
+        ] {
+            assert!(parse(raw).unwrap().actions[0].is_err());
+        }
     }
 }

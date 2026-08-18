@@ -23,6 +23,24 @@ pub enum Command {
     Merge(String),
     Diff(String),
     Help,
+    Whoami,
+    Report {
+        message: String,
+        target_agent_id: Option<String>,
+    },
+    AgentCreate {
+        repo: String,
+        title: String,
+        prompt: Option<String>,
+        parent_agent_id: Option<String>,
+        autonomous: bool,
+    },
+    QuestionList,
+    PrStatus(String),
+    PrRequest {
+        agent: String,
+        prompt: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
+use super::command_gate::{describe_command, impactful, mutating};
 use super::commands::{Command, Input, parse};
 use crate::overseer::config::DiscordConfig;
 
@@ -236,60 +237,6 @@ impl Handler {
             outcome: HandledOutcome::AwaitingConfirmation,
         }
     }
-}
-
-pub(super) fn describe_command(command: &Command) -> String {
-    match command {
-        Command::Status => "status".into(),
-        Command::Dispatch(value) => format!("dispatch {}", on_off(*value)),
-        Command::AutoMerge(value) => format!("automerge {}", on_off(*value)),
-        Command::Workers => "workers".into(),
-        Command::Tasks => "tasks".into(),
-        Command::Skip(task) => format!("skip {task}"),
-        Command::Retry(task) => format!("retry {task}"),
-        Command::TaskCreate { repo, title, .. } => format!("create task \"{title}\" in {repo}"),
-        Command::Answer { agent, .. } => format!("answer {agent}"),
-        Command::Approve(agent) => format!("approve {agent}"),
-        Command::Kill(agent) => format!("kill {agent}"),
-        Command::Log(limit) => format!("log {limit}"),
-        Command::Panic => "panic".into(),
-        Command::Merge(task) => format!("merge {task}"),
-        Command::Diff(task) => format!("diff {task}"),
-        Command::Help => "help".into(),
-    }
-}
-
-fn on_off(value: bool) -> &'static str {
-    if value { "on" } else { "off" }
-}
-
-fn impactful(command: &Command) -> bool {
-    matches!(
-        command,
-        Command::Kill(_)
-            | Command::Panic
-            | Command::Retry(_)
-            | Command::Skip(_)
-            | Command::Approve(_)
-            | Command::Answer { .. }
-            | Command::Dispatch(true)
-            | Command::TaskCreate { .. }
-            | Command::Merge(_)
-    )
-    // Risk-reducing `dispatch off` and `automerge off` remain immediate so an
-    // incident responder is never delayed by the confirmation round trip.
-}
-
-fn mutating(command: &Command) -> bool {
-    !matches!(
-        command,
-        Command::Status
-            | Command::Workers
-            | Command::Tasks
-            | Command::Log(_)
-            | Command::Diff(_)
-            | Command::Help
-    )
 }
 
 #[cfg(test)]

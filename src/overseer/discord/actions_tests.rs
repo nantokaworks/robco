@@ -2,7 +2,12 @@ use super::*;
 
 #[test]
 fn audit_entries_identify_discord_user() {
-    let entry = audit_entry(&Command::Skip("task-1".into()), "user-7", "failed: denied");
+    let entry = audit_entry(
+        &Command::Skip("task-1".into()),
+        "user-7",
+        "discord",
+        "failed: denied",
+    );
     assert_eq!(entry.source.as_deref(), Some("discord"));
     assert_eq!(entry.user_id.as_deref(), Some("user-7"));
     assert_eq!(entry.task.as_deref(), Some("task-1"));
@@ -10,16 +15,9 @@ fn audit_entries_identify_discord_user() {
 }
 
 #[test]
-fn status_line_reports_no_switch_the_daemon_ignores() {
-    let config = OverseerConfig::default();
-    assert!(config.dispatch_enabled);
-    let line = status_line(&config, 1, 4);
-    assert_eq!(
-        line,
-        "**dispatch** on\n**automerge** off\n**autonomy** conservative\n**workers** 1\n**today** 4/20"
-    );
-    // A dispatching daemon must never be described as switched off.
-    assert!(!line.contains("overseer=off"));
+fn audit_entries_identify_the_mcp_caller() {
+    let entry = audit_entry(&Command::Help, "mcp", "mcp", "succeeded");
+    assert_eq!(entry.source.as_deref(), Some("mcp"));
 }
 
 #[test]
@@ -31,6 +29,7 @@ fn audit_reasons_carry_no_debug_output() {
             description: None,
         },
         "user-7",
+        "discord",
         "succeeded",
     );
     assert_eq!(

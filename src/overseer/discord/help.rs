@@ -80,6 +80,30 @@ pub(super) fn describe(command: &Command) -> Entry {
             usage: "!diff <task>",
             description: "Show what an escalated task's pull request changes.",
         },
+        Command::Whoami => Entry {
+            usage: "whoami",
+            description: "Report the calling agent's inherited identity. Conversational only, no ! syntax.",
+        },
+        Command::Report { .. } => Entry {
+            usage: "report <text> [to agent]",
+            description: "Send a labeled report to a controller agent. Conversational only, no ! syntax.",
+        },
+        Command::AgentCreate { .. } => Entry {
+            usage: "create agent <repo> <title> [prompt]",
+            description: "Create a worker agent in a registered repository. Conversational only, no ! syntax.",
+        },
+        Command::QuestionList => Entry {
+            usage: "questions",
+            description: "List agents awaiting confirmation prompts. Conversational only, no ! syntax.",
+        },
+        Command::PrStatus(_) => Entry {
+            usage: "pr status <agent>",
+            description: "Report a worker's pull request state. Conversational only, no ! syntax.",
+        },
+        Command::PrRequest { .. } => Entry {
+            usage: "pr request <agent> [prompt]",
+            description: "Ask a worker to open its pull request. Conversational only, no ! syntax.",
+        },
     }
 }
 
@@ -110,6 +134,24 @@ pub(super) fn samples() -> Vec<Command> {
         Command::Merge(String::new()),
         Command::Diff(String::new()),
         Command::Help,
+        Command::Whoami,
+        Command::Report {
+            message: String::new(),
+            target_agent_id: None,
+        },
+        Command::AgentCreate {
+            repo: String::new(),
+            title: String::new(),
+            prompt: None,
+            parent_agent_id: None,
+            autonomous: false,
+        },
+        Command::QuestionList,
+        Command::PrStatus(String::new()),
+        Command::PrRequest {
+            agent: String::new(),
+            prompt: None,
+        },
     ]
 }
 
@@ -117,11 +159,16 @@ pub(super) fn samples() -> Vec<Command> {
 /// cap is handled generically by `gateway::send_text`'s call to
 /// `message_split::split_message` — the same path every other reply goes
 /// through — so nothing here needs to chunk the text itself.
-pub(super) fn help_message() -> String {
+pub(crate) fn help_message() -> String {
     samples()
         .iter()
-        .map(describe)
-        .map(|entry| format!("`{}` — {}", entry.usage, entry.description))
+        .map(|command| {
+            let entry = describe(command);
+            match super::mcp_bridge::mcp_tool_name(command) {
+                Some(_) => format!("`{}` — {} (mcp)", entry.usage, entry.description),
+                None => format!("`{}` — {}", entry.usage, entry.description),
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

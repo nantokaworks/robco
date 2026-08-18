@@ -46,7 +46,7 @@ fn initialize_requesting_an_unknown_version_falls_back_to_the_default() {
 #[test]
 fn tools_list_returns_every_tool() {
     let response = handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap();
-    assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 12);
+    assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 16);
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn stateless_request_with_2026_meta_and_no_handshake_is_served() {
             "params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}"#,
     )
     .unwrap();
-    assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 12);
+    assert_eq!(response["result"]["tools"].as_array().unwrap().len(), 16);
 }
 
 #[test]

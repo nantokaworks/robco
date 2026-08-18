@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 use crate::{
     model::{AgentNode, RepoNode, Status},
+    overseer::discord::{commands::Command, mcp_bridge},
     registry::Registry,
     status::{self, StatusReport, WatchStatusState},
     subagents::{SubagentReader, SubagentStatus, claude::ClaudeSubagentReader, read_allowed},
@@ -19,11 +20,14 @@ mod identity;
 mod merge;
 mod policy;
 mod pr;
+mod questions;
 mod report;
+mod shared;
 mod spawn;
 
 pub use catalog::list_tools;
 pub(crate) use report::{deliver_report, report_exit_code};
+pub(crate) use shared::{agent_create, pr_request, pr_status, question_list, whoami};
 
 #[derive(Debug)]
 pub enum ToolError {
@@ -66,10 +70,7 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
             let registry = Registry::load().map_err(exec_err)?;
             agent_status(&registry, &args.agent_id)
         }
-        "robco_question_list" => {
-            let registry = Registry::load().map_err(exec_err)?;
-            question_list(&registry)
-        }
+        "robco_question_list" => questions::list(),
         "robco_answer" => {
             let args: AnswerArgs = parse_args(arguments)?;
             validate_non_blank("agent_id", &args.agent_id)?;
@@ -86,6 +87,17 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
         "robco_pr_status" => pr::pr_status(parse_args(arguments)?),
         "robco_pr_request" => pr::pr_request(parse_args(arguments)?),
         "robco_merge" => merge::merge(parse_args(arguments)?),
+        "robco_tasks" => mcp_bridge::text_result(&Command::Tasks),
+        "robco_log" => {
+            let args: LogArgs = parse_args(arguments)?;
+            mcp_bridge::text_result(&Command::Log(args.limit.unwrap_or(10).min(50)))
+        }
+        "robco_diff" => {
+            let args: DiffArgs = parse_args(arguments)?;
+            validate_non_blank("task_id", &args.task_id)?;
+            mcp_bridge::text_result(&Command::Diff(args.task_id))
+        }
+        "robco_help" => mcp_bridge::text_result(&Command::Help),
         _ => Err(invalid_params(format!("unknown tool: {name}"))),
     }
 }
@@ -165,28 +177,6 @@ fn live_activity(agent: &AgentNode, status: Status) -> (Option<String>, usize) {
     (tracked_command, subagents_active)
 }
 
-fn question_list(registry: &Registry) -> ToolResult<Value> {
-    let questions = registry
-        .repos
-        .iter()
-        .flat_map(|repo| {
-            repo.agents.iter().filter_map(move |agent| {
-                let report = live_status(repo, agent);
-                (report.status == Status::Waiting && report.awaiting_confirmation).then(|| {
-                    json!({
-                        "agent_id": agent.id,
-                        "title": agent.title,
-                        "tmux_session": agent.tmux_session,
-                        "worktree_missing": report.worktree_missing,
-                        "prompt": prompt_tail(&agent.tmux_session)
-                    })
-                })
-            })
-        })
-        .collect::<Vec<_>>();
-    Ok(json!({ "questions": questions }))
-}
-
 fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> {
     let (_, agent) = find_agent(registry, agent_id)?;
     tmux::send_literal_text(&agent.tmux_session, text).map_err(exec_err)?;
@@ -194,7 +184,7 @@ fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> 
     Ok(json!({ "ok": true }))
 }
 
-fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
+pub(super) fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
     let mut state = WatchStatusState::default();
     let panes = tmux::capture_panes().ok();
     status::classify_agent_status(
@@ -213,7 +203,7 @@ fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
     })
 }
 
-fn prompt_tail(session: &str) -> String {
+pub(super) fn prompt_tail(session: &str) -> String {
     tmux::capture_plain(session)
         .or_else(|_| tmux::capture_text(session))
         .map(|capture| tail_non_empty_lines(&capture, PROMPT_LINES))
@@ -281,4 +271,15 @@ struct AgentIdArgs {
 struct AnswerArgs {
     agent_id: String,
     text: String,
+}
+
+#[derive(Deserialize)]
+struct LogArgs {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct DiffArgs {
+    task_id: String,
 }
