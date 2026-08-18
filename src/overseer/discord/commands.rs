@@ -41,6 +41,8 @@ pub enum Command {
         agent: String,
         prompt: Option<String>,
     },
+    Run(String),
+    Inbox,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +66,7 @@ pub fn parse(message: &str) -> Option<Input> {
         "workers" if parts.next().is_none() => Command::Workers,
         "tasks" if parts.next().is_none() => Command::Tasks,
         "panic" if parts.next().is_none() => Command::Panic,
+        "inbox" if parts.next().is_none() => Command::Inbox,
         "dispatch" => Command::Dispatch(on_off(parts.next()?, parts.next())?),
         "automerge" => Command::AutoMerge(on_off(parts.next()?, parts.next())?),
         "skip" => Command::Skip(single(&mut parts)?),
@@ -72,6 +75,7 @@ pub fn parse(message: &str) -> Option<Input> {
         "kill" => Command::Kill(single(&mut parts)?),
         "merge" => Command::Merge(single(&mut parts)?),
         "diff" => Command::Diff(single(&mut parts)?),
+        "run" => Command::Run(single(&mut parts)?),
         "log" => {
             let limit = match parts.next() {
                 Some(value) => value.parse().ok()?,
@@ -148,5 +152,17 @@ mod tests {
         assert_eq!(parse("!merge"), None);
         assert_eq!(parse("!help"), Some(Input::Command(Command::Help)));
         assert_eq!(parse("!help extra"), None);
+    }
+
+    #[test]
+    fn parses_run_and_inbox() {
+        assert_eq!(
+            parse("!run #448"),
+            Some(Input::Command(Command::Run("#448".into())))
+        );
+        assert_eq!(parse("!run"), None);
+        assert_eq!(parse("!run #448 extra"), None);
+        assert_eq!(parse("!inbox"), Some(Input::Command(Command::Inbox)));
+        assert_eq!(parse("!inbox extra"), None);
     }
 }

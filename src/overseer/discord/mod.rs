@@ -8,6 +8,7 @@ mod gateway;
 pub mod handler;
 pub(crate) mod help;
 pub(crate) mod humanize;
+mod inbox_reply;
 pub(crate) mod ledger_requests;
 mod localize;
 pub(crate) mod mcp_bridge;

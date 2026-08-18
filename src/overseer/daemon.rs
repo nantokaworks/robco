@@ -36,6 +36,7 @@ pub(crate) use support::terminal;
 use support::{account_failures, persist_drained_config};
 
 use super::{
+    dispatch,
     dispatch::dispatch_pass,
     exec::{PidGuard, append_jsonl, execute_actions},
     heartbeat, heartbeat_path,
@@ -131,7 +132,7 @@ pub async fn run_daemon() -> Result<()> {
             &config,
             &ledger_request_tx,
         );
-        discord_sync::apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
+        let pending_runs = discord_sync::apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
         match runtime_request::drain(&mut ledger, &mut config) {
             Ok(config_changed) => {
                 if config_changed {
@@ -224,6 +225,40 @@ pub async fn run_daemon() -> Result<()> {
             &mut dispatch_hold_logged,
             &mut dispatch_global_hold_logged,
         )?;
+        // Named dispatch, not a normal pass: one candidate at a time, against
+        // the same ledger and gate `dispatch_pass` just used, so a slot it
+        // already spent this tick is respected here too. See `!run`
+        // (dropr:465) and `dispatch::run_named`'s own doc comment.
+        for pending in pending_runs {
+            let outcome = dispatch::run_named(
+                &config,
+                &mut next,
+                &pending.task,
+                now,
+                &mut unmaterialised_logged,
+                &mut dispatch_global_hold_logged,
+            );
+            // A dispatched run's own decision entry (`worker spawned:operator_run`,
+            // from `dispatch::run_named` -> `spawn_candidate`) already carries the
+            // full record; this is only for the refused/failed case, so the
+            // requesting operator is attributed the same way a refused Skip or
+            // Retry already is below.
+            let refusal = match &outcome {
+                Ok(dispatch::RunOutcome::Dispatched(_)) => None,
+                Ok(dispatch::RunOutcome::Refused(reason)) => Some(reason.clone()),
+                Err(error) => Some(error.to_string()),
+            };
+            if let Some(reason) = refusal {
+                let mut entry = logging::DecisionEntry::new(
+                    logging::DecisionKind::Hold,
+                    format!("!run refused: {reason}"),
+                );
+                entry.task = Some(pending.task);
+                entry.user_id = Some(pending.user_id);
+                entry.source = Some("discord".into());
+                logging::append(&entry)?;
+            }
+        }
         // Last, so every pass above reads the board it was given: retention only
         // decides how much of the settled past the *next* pass inherits, and a
         // drop must never take an entry out from under the reconcile, notify,

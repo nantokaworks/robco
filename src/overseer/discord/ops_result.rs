@@ -90,6 +90,8 @@ fn parse_action(mut value: Value) -> Result<Command, String> {
         "merge" | "robco_merge" => Command::Merge(text("task_id")?),
         "diff" | "robco_diff" => Command::Diff(text("task_id")?),
         "help" | "robco_help" => Command::Help,
+        "run" | "robco_run" => Command::Run(text("task_id")?),
+        "inbox" | "robco_inbox" => Command::Inbox,
         "whoami" | "robco_whoami" => Command::Whoami,
         "report" | "robco_report" => Command::Report {
             message: text("message")?,

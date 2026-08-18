@@ -35,6 +35,8 @@ pub(super) fn describe_command(command: &Command) -> String {
         Command::QuestionList => "questions".into(),
         Command::PrStatus(agent) => format!("pr status {agent}"),
         Command::PrRequest { agent, .. } => format!("pr request {agent}"),
+        Command::Run(task) => format!("run {task}"),
+        Command::Inbox => "inbox".into(),
     }
 }
 
@@ -54,6 +56,7 @@ pub(super) fn impactful(command: &Command) -> bool {
             | Command::Dispatch(true)
             | Command::TaskCreate { .. }
             | Command::Merge(_)
+            | Command::Run(_)
     )
     // Risk-reducing `dispatch off` and `automerge off` remain immediate so an
     // incident responder is never delayed by the confirmation round trip.
@@ -63,6 +66,9 @@ pub(super) fn impactful(command: &Command) -> bool {
     // already runs each of them with no confirmation step, so requiring one
     // only on Discord would make the two surfaces disagree about the same
     // command's risk instead of resolving it.
+    //
+    // `Run` spawns a worker exactly like `TaskCreate`/`Kill` change something
+    // real, so it keeps the confirmation round trip; `Inbox` is a read.
 }
 
 pub(super) fn mutating(command: &Command) -> bool {
@@ -77,6 +83,7 @@ pub(super) fn mutating(command: &Command) -> bool {
             | Command::Whoami
             | Command::QuestionList
             | Command::PrStatus(_)
+            | Command::Inbox
     )
 }
 

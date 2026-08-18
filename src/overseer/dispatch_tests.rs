@@ -183,3 +183,5 @@ mod candidate_parent_tests;
 mod candidate_tests;
 #[path = "dispatch_manual_tests.rs"]
 mod manual_tests;
+#[path = "dispatch_run_named_tests.rs"]
+mod run_named_tests;

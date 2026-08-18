@@ -104,6 +104,14 @@ pub(super) fn describe(command: &Command) -> Entry {
             usage: "pr request <agent> [prompt]",
             description: "Ask a worker to open its pull request. Conversational only, no ! syntax.",
         },
+        Command::Run(_) => Entry {
+            usage: "!run <task>",
+            description: "Dispatch one named task through the normal gate. Requires confirmation.",
+        },
+        Command::Inbox => Entry {
+            usage: "!inbox",
+            description: "List the same rows the TUI Inbox shows.",
+        },
     }
 }
 
@@ -152,6 +160,8 @@ pub(super) fn samples() -> Vec<Command> {
             agent: String::new(),
             prompt: None,
         },
+        Command::Run(String::new()),
+        Command::Inbox,
     ]
 }
 

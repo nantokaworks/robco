@@ -51,11 +51,25 @@ pub(super) fn sync_discord(
     }
 }
 
+/// A `!run <task>` request pulled off the queue. `apply_ledger_requests`
+/// cannot dispatch it itself — that needs `Config`, `now`, and the
+/// post-reconcile ledger, none of which it has — so it hands these back for
+/// the caller to feed to `dispatch::run_named` alongside `dispatch_pass`.
+pub(super) struct PendingRun {
+    pub(super) task: String,
+    pub(super) user_id: String,
+}
+
 pub(super) fn apply_ledger_requests(
     ledger: &mut Ledger,
     requests: &Receiver<LedgerRequest>,
-) -> Result<()> {
+) -> Result<Vec<PendingRun>> {
+    let mut pending_runs = Vec::new();
     while let Ok(request) = requests.try_recv() {
+        if let LedgerRequest::Run { task, user_id } = request {
+            pending_runs.push(PendingRun { task, user_id });
+            continue;
+        }
         let (task, user_id) = request.attribution();
         let task = task.to_string();
         let user_id = user_id.to_string();
@@ -70,5 +84,5 @@ pub(super) fn apply_ledger_requests(
             logging::append(&entry)?;
         }
     }
-    Ok(())
+    Ok(pending_runs)
 }

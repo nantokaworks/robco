@@ -75,6 +75,12 @@ pub(crate) fn mcp_tool_name(command: &Command) -> Option<&'static str> {
         Command::QuestionList => Some("robco_question_list"),
         Command::PrStatus(_) => Some("robco_pr_status"),
         Command::PrRequest { .. } => Some("robco_pr_request"),
+        // `Run` spawns a worker exactly like `Skip`/`Retry`/`TaskCreate`/`Kill`/
+        // `Panic` change something real, so it stays in the same
+        // confirmation-gated, Discord-only group as those five — see dropr:463's
+        // decision scribble.
+        Command::Run(_) => None,
+        Command::Inbox => Some("robco_inbox"),
     }
 }
 

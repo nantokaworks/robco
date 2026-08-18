@@ -97,6 +97,7 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
             validate_non_blank("task_id", &args.task_id)?;
             mcp_bridge::text_result(&Command::Diff(args.task_id))
         }
+        "robco_inbox" => mcp_bridge::text_result(&Command::Inbox),
         "robco_help" => mcp_bridge::text_result(&Command::Help),
         _ => Err(invalid_params(format!("unknown tool: {name}"))),
     }

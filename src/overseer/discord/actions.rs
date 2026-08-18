@@ -1,6 +1,7 @@
 use super::{
     agent_actions, command_gate::describe_command, commands::Command, handler::CommandExecutor,
-    help, ledger_requests::LedgerRequest, merge_actions, reports, task_create::create_task,
+    help, inbox_reply, ledger_requests::LedgerRequest, merge_actions, reports,
+    task_create::create_task,
 };
 use crate::{
     cli::OverseerSetting,
@@ -142,6 +143,15 @@ pub(crate) fn execute(
         Command::QuestionList => agent_actions::question_list(),
         Command::PrStatus(agent) => agent_actions::pr_status(agent),
         Command::PrRequest { agent, prompt } => agent_actions::pr_request(agent, prompt.as_deref()),
+        Command::Run(task) => queue_ledger(
+            ledger_requests,
+            LedgerRequest::Run {
+                task: task.clone(),
+                user_id: user_id.into(),
+            },
+            task,
+        ),
+        Command::Inbox => inbox_reply::inbox(),
     }
 }
 
@@ -212,9 +222,11 @@ fn audit_entry(command: &Command, user_id: &str, source: &str, outcome: &str) ->
     entry.source = Some(source.into());
     entry.user_id = Some(user_id.into());
     entry.task = match command {
-        Command::Skip(task) | Command::Retry(task) | Command::Merge(task) | Command::Diff(task) => {
-            Some(task.clone())
-        }
+        Command::Skip(task)
+        | Command::Retry(task)
+        | Command::Merge(task)
+        | Command::Diff(task)
+        | Command::Run(task) => Some(task.clone()),
         _ => None,
     };
     entry

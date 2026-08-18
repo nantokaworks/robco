@@ -18,8 +18,10 @@ mod gather;
 pub(crate) mod naming;
 mod order;
 mod route;
+mod run;
 mod runtime;
 mod worker;
+pub(crate) use run::{RunOutcome, run_named};
 pub use runtime::dispatch_pass;
 
 /// Renders a daily dispatch limit for display, mapping the `0 = unlimited`
