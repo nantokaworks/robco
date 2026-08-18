@@ -236,8 +236,11 @@ fn take_operator_override(entry: &mut LedgerEntry, head: &str, bypassed: &str) -
 
 /// Consumes `entry.merge_approval` if it is still live and its head matches
 /// the pull request's current one — the approval Discord's `!merge` queued
-/// against a pull request that had not reached `Escalated` yet (see
-/// `discord::ledger_requests::LedgerRequest::Approve`).
+/// (see `discord::ledger_requests::LedgerRequest::Approve`). This is the
+/// bypass an entry's own reconsideration reaches this arm to spend: the
+/// approval also reset `merge_hold_recheck`
+/// (`discord::ledger_requests::record_approval`), which is what let this
+/// entry's escalated phase be looked at again in the first place.
 ///
 /// Narrower than [`take_operator_override`]: only the autonomy envelope's
 /// decision to escalate is ever bypassed here, never a judge veto or
