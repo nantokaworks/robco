@@ -4,14 +4,15 @@ use crate::overseer::remedy::{Move, Remedy};
 
 pub(super) const EXACT: &[(&str, Remedy)] = &[
     (
-        // `daemon::merge_allow::merge_allows` — the autonomy envelope
+        // `daemon::merge_allow::merge_allows` — the configured `autonomy_level`
         // escalated this change rather than clearing it. There is no worker
         // fix for a policy line, so this is the operator's call to make,
         // either once by hand or by moving the line itself.
         "autonomy_envelope",
         Remedy {
             step: Move::Merge,
-            means: "the autonomy envelope held this back for an operator's own decision",
+            means: "this change is outside what `autonomy_level` lets the machine merge \
+                    on its own, so a person has to decide",
             next: "merge it by hand (`m` on the agent row), or raise it with \
                    `robco overseer autonomy <level>`",
         },

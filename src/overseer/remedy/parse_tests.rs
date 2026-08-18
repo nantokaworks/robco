@@ -52,6 +52,35 @@ fn a_cap_wrapper_promotes_a_watch_into_a_review() {
 }
 
 #[test]
+fn a_cap_wrapper_promotes_even_when_the_inner_reason_is_not_a_watch() {
+    // The cap means the automated path already retried this exact condition
+    // and gave up — repeating the inner reason's own "press Enter and tell
+    // the worker" wording here would look like a fresh instruction, when the
+    // whole point is that this has already been tried past its budget.
+    let promoted = for_reason("merge_hold_cap_reached:merge_state:dirty");
+    assert_eq!(promoted.step, Move::Review);
+    assert_ne!(promoted.means, for_reason("merge_state:dirty").means);
+}
+
+#[test]
+fn an_undeliverable_handback_resolves_to_its_own_review_entry() {
+    let remedy = for_reason("merge_recovery_undeliverable:merge_state:dirty");
+    assert_eq!(remedy.step, Move::Review);
+    assert_ne!(remedy.means, for_reason("merge_state:dirty").means);
+}
+
+#[test]
+fn a_repeating_hold_always_promotes_regardless_of_the_inner_move() {
+    // Repetition is itself the signal that nothing is moving, even when the
+    // wrapped reason would otherwise resolve to something else entirely.
+    let watch_inner = for_reason("repeating_hold: 3× checks_waiting");
+    let answer_inner = for_reason("repeating_hold: 4× merge_exit:143");
+    assert_eq!(watch_inner.step, Move::Review);
+    assert_eq!(answer_inner.step, Move::Review);
+    assert_eq!(watch_inner.means, answer_inner.means);
+}
+
+#[test]
 fn a_disabled_recovery_wrapper_promotes_a_watch_into_a_review() {
     let promoted = for_reason("merge_recovery_disabled:checks_waiting");
     assert_eq!(promoted.step, Move::Review);

@@ -31,8 +31,16 @@ fn format_inbox(items: &[inbox::InboxItem], locale: Locale) -> String {
         .iter()
         .map(|item| {
             let remedy = item.remedy();
+            // The board reviewer's sentence is model-written, already in the
+            // configured language, and never itself run through `t` — same
+            // as the TUI preview (dropr:462).
+            let sentence = item
+                .sentence
+                .as_deref()
+                .map(|sentence| format!(" — {sentence}"))
+                .unwrap_or_default();
             format!(
-                "{} {} — {} {}",
+                "{} {} — {} {}{sentence}",
                 remedy.tag(),
                 item.target_id,
                 locale::t(locale, remedy.means),

@@ -137,4 +137,15 @@ pub(super) const PREFIX: &[(&str, Remedy)] = &[
             next: "check the credentials for the worker, triage, or review backend, then retry",
         },
     ),
+    (
+        // `review::findings::stalls` (dropr:460) — a live ledger entry has
+        // not reached a terminal phase in twice `stuck_after_mins`; nothing
+        // failed, it simply never advanced.
+        "stalled:",
+        Remedy {
+            step: Move::Review,
+            means: "this entry has not advanced in twice the usual stuck window",
+            next: "open the task or pull request directly to see what stage it is stuck in",
+        },
+    ),
 ];

@@ -23,22 +23,26 @@ mod briefing;
 mod digest;
 mod findings;
 mod result;
+mod rows;
 mod session;
 mod state;
 
 use chrono::{DateTime, Utc};
-use std::{path::PathBuf, sync::mpsc::TryRecvError};
+use std::{collections::BTreeMap, path::PathBuf, sync::mpsc::TryRecvError};
 
 use crate::{
     Result,
     config::Config,
     overseer::{
         daily::DailyCounter,
+        dismissals::Dismissals,
         ledger::Ledger,
         logging::{self, DecisionEntry, DecisionKind},
         monitor::Observations,
+        row_summaries::RowSummaries,
         session::{SessionHandle, SessionResult},
     },
+    registry::Registry,
 };
 
 /// `source` written on every decision this pass records. Also what the digest
@@ -52,7 +56,17 @@ pub struct ReviewPass {
     counter: DailyCounter,
     state_path: PathBuf,
     state: state::State,
+    row_summaries_path: PathBuf,
     active: Option<SessionHandle>,
+    /// `target_id -> case signature`, captured for every current Inbox row
+    /// when the active session was spawned — the model only ever sees
+    /// `rows::MAX_ROWS` of these, but this carries every row that was live at
+    /// spawn time, so `record` can prune `RowSummaries` down to rows that are
+    /// still actually in the Inbox without evicting one the model simply
+    /// was not asked about this pass. Captured at spawn time, not read time,
+    /// because a signature read again once the model answers could belong to
+    /// a case that has already moved on (dropr:462).
+    pending_rows: BTreeMap<String, String>,
 }
 
 impl ReviewPass {
@@ -63,6 +77,7 @@ impl ReviewPass {
     fn new(root: PathBuf, log_path: PathBuf) -> Result<Self> {
         let counter_path = root.join("queue.json");
         let state_path = root.join("state.json");
+        let row_summaries_path = root.join("row_summaries.json");
         Ok(Self {
             counter: DailyCounter::load(&counter_path)?,
             state: state::State::load(&state_path)?,
@@ -70,7 +85,9 @@ impl ReviewPass {
             log_path,
             counter_path,
             state_path,
+            row_summaries_path,
             active: None,
+            pending_rows: BTreeMap::new(),
         })
     }
 
@@ -147,7 +164,29 @@ impl ReviewPass {
             return self.log(DecisionKind::Hold, "review_budget_exhausted");
         }
         self.counter.increment(&self.counter_path)?;
-        self.active = Some(session::spawn_session(config, &digest, &found, &self.root));
+        // Built from `ledger` and `decisions` already in hand — not
+        // `ui::inbox::current`, which would re-read the ledger from disk and
+        // could describe a revision older than the one this very pass is
+        // reasoning about. The registry and dismissal list are not part of
+        // this pass's own state, so those two are a best-effort read: a
+        // failure still runs the session for `summary`/`findings`, just with
+        // no rows to describe.
+        let registry = Registry::load().unwrap_or_default();
+        let dismissals = Dismissals::load().unwrap_or_default();
+        let inbox_items = crate::ui::inbox::aggregate(
+            ledger,
+            &decisions,
+            &[],
+            &dismissals,
+            &registry,
+            &RowSummaries::default(),
+        )
+        .items;
+        self.pending_rows = rows::pending_signatures(&inbox_items);
+        let rows = rows::cases(&inbox_items);
+        self.active = Some(session::spawn_session(
+            config, &digest, &found, &rows, &self.root,
+        ));
         Ok(())
     }
 
@@ -207,7 +246,14 @@ impl ReviewPass {
             };
             self.log(kind, &format!("review {key}"))?;
         }
-        self.state.save(&self.state_path)
+        self.state.save(&self.state_path)?;
+        // Never merges or changes anything about a row — this is the
+        // model's text reaching disk and nothing else.
+        rows::apply(
+            &self.row_summaries_path,
+            std::mem::take(&mut self.pending_rows),
+            &review.rows,
+        )
     }
 
     fn log(&self, kind: DecisionKind, reason: &str) -> Result<()> {

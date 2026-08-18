@@ -11,7 +11,7 @@ use super::{
     merge_allow::{Judgment, merge_allows},
     merge_apply::merge_now,
     merge_decision::{self, Halt, Outcome},
-    merge_dependency, merge_gate, merge_queue,
+    merge_dependency, merge_gate, merge_queue, pr_facts,
     protection::ProtectionCache,
     pull_request::{self, base_sha, head_sha},
 };
@@ -43,6 +43,10 @@ pub(super) fn evaluate(
         // The read failed, so there is no revision to attribute a failure to.
         Err(reason) => return Ok(Halt::hold(reason).on("", "")),
     };
+    // Captured on every successful read, whatever the pass concludes below —
+    // an Inbox row needs these facts regardless of which step ends up holding
+    // the pull request (dropr:461).
+    entry.pr_facts = pr_facts::extract(&value);
     let head = head_sha(&value).to_owned();
     let base = base_sha(&value).to_owned();
     // A pull request GitHub no longer reports as open is a fact rather than

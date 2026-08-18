@@ -98,6 +98,37 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
                 ),
             ),
         },
+    ];
+    // Per-case facts (dropr:461) — absent when the row has no matching pull
+    // request, or the daemon has not read one yet. The row renders the same
+    // without them; this only ever adds to it.
+    if let Some(url) = &item.pr_url {
+        lines.push(field("pull request", pr_label(url)));
+    }
+    if let Some(facts) = &item.pr_facts {
+        if !facts.title.is_empty() {
+            lines.push(field("title", facts.title.clone()));
+        }
+        lines.push(field(
+            "size",
+            format!(
+                "{} files, {} lines",
+                facts.files_changed, facts.lines_changed
+            ),
+        ));
+        if !facts.failed_checks.is_empty() {
+            lines.push(field("failed check", facts.failed_checks.join(", ")));
+        }
+    }
+    // The board reviewer's own one-sentence description of this case
+    // (dropr:462) — model-written, already in the operator's configured
+    // language, and never itself localized. Absent whenever `review_profile`
+    // is unset, the session failed, or the case has since changed; the row
+    // renders the same without it.
+    if let Some(sentence) = &item.sentence {
+        lines.push(field("summary", sentence.clone()));
+    }
+    lines.extend([
         // With the year, unlike the Decisions detail's `%m-%d %H:%M`: a stale
         // escalation can sit here for months, and the row is exactly the one
         // whose age the operator needs in order to judge it.
@@ -122,7 +153,7 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         )),
         Line::from(""),
         Line::from(Span::styled(t(app.locale, "reason"), THEME.muted_style())),
-    ];
+    ]);
     // A known code-shaped reason gets one readable, localized sentence ahead
     // of the raw code — reusing the same vocabulary table
     // `discord::notifications` already builds Discord descriptions from, so
@@ -153,6 +184,16 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         format!("OVERSEER / Inbox / {}", item.target_id),
         lines.into(),
     )
+}
+
+/// `#123` when `url` has the usual `/pull/123` shape, or the raw url
+/// otherwise — the same reading `discord::notifications::pr_link` gives the
+/// same shape of url, kept as its own copy since that one also wraps the
+/// number in a markdown link this plain-text pane has no use for.
+fn pr_label(url: &str) -> String {
+    url.rsplit_once("/pull/")
+        .map(|(_, number)| format!("#{number}"))
+        .unwrap_or_else(|| url.to_string())
 }
 
 fn field(name: &str, value: String) -> Line<'static> {

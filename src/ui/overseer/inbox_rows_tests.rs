@@ -21,6 +21,9 @@ fn item(kind: InboxKind, target_id: &str, session: Option<&str>) -> InboxItem {
         label: format!("{target_id} — {LONG_REASON}"),
         detail: LONG_REASON.into(),
         at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
     }
 }
 
@@ -39,10 +42,9 @@ fn rendered(lines: &[Line<'static>]) -> Vec<String> {
 
 #[test]
 fn the_category_expands_straight_into_item_rows() {
-    let app = inbox_app(vec![
-        item(InboxKind::Escalation, "#159", None),
-        item(InboxKind::Question, "agent-1", Some("robco-agent-1")),
-    ]);
+    let mut answerable = item(InboxKind::Escalation, "agent-1", Some("robco-agent-1"));
+    answerable.detail = "checks_not_green".into();
+    let app = inbox_app(vec![item(InboxKind::Escalation, "#159", None), answerable]);
     let lines = rendered(&detail_lines(&app));
 
     // No count header ahead of the items: item `n` is row `n`, which is what
@@ -50,26 +52,25 @@ fn the_category_expands_straight_into_item_rows() {
     assert_eq!(lines.len(), 2);
     // `LONG_REASON` is a free-text sentence with no live session for the
     // first item, so it resolves to `Answer` and is then orphaned to
-    // `Review`; the second is a `Question`, always answerable.
+    // `Review`; the second has a live session and a table-known reason, so
+    // it stays `Answer`.
     assert!(lines[0].contains("[ESC] REVIEW #159"), "{lines:?}");
-    assert!(lines[1].contains("[?] ANSWER agent-1"), "{lines:?}");
+    assert!(lines[1].contains("[ESC] ANSWER agent-1"), "{lines:?}");
     assert!(!lines.iter().any(|line| line.contains("inbox (")));
 }
 
 #[test]
 fn the_category_numerator_equals_the_non_watch_rendered_rows() {
     // Mixed remedies: `autonomy_envelope` resolves to `Merge` regardless of
-    // session, `checks_waiting` resolves to `Watch`, and the `Question` is
-    // always `Answer` — two of the three are actionable.
+    // session, `checks_waiting` resolves to `Watch`, and a table-known reason
+    // with a live session stays `Answer` — two of the three are actionable.
     let mut watching = item(InboxKind::Escalation, "#1", None);
     watching.detail = "checks_waiting".into();
     let mut merge_by_hand = item(InboxKind::Escalation, "#2", None);
     merge_by_hand.detail = "autonomy_envelope".into();
-    let app = inbox_app(vec![
-        watching,
-        merge_by_hand,
-        item(InboxKind::Question, "agent-1", Some("robco-agent-1")),
-    ]);
+    let mut answerable = item(InboxKind::Escalation, "agent-1", Some("robco-agent-1"));
+    answerable.detail = "checks_not_green".into();
+    let app = inbox_app(vec![watching, merge_by_hand, answerable]);
 
     let (summary, _) = crate::ui::overseer::category_summary(&app, OverseerCategory::Inbox);
     assert_eq!(summary, "2/3 actionable", "{summary}");
@@ -90,7 +91,7 @@ fn an_empty_inbox_renders_its_empty_state() {
 fn the_preview_describes_the_selected_item_and_not_the_other_items() {
     let app = inbox_app(vec![
         item(InboxKind::Escalation, "#159", Some("robco-agent-1")),
-        item(InboxKind::Question, "agent-2", Some("robco-agent-2")),
+        item(InboxKind::Escalation, "agent-2", Some("robco-agent-2")),
     ]);
 
     let (title, text) = item_preview(&app, 0);
@@ -120,23 +121,58 @@ fn a_display_only_item_says_why_it_cannot_be_answered() {
     );
 }
 
+/// dropr:461 — a row with a matching ledger entry's facts shows its number,
+/// title, size, and failing check.
+#[test]
+fn a_row_with_pr_facts_shows_its_own_case() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.pr_url = Some("https://github.com/nantokaworks/robco/pull/42".into());
+    row.pr_facts = Some(crate::overseer::ledger::PrFacts {
+        title: "Fix the thing".into(),
+        files_changed: 4,
+        lines_changed: 42,
+        failed_checks: vec!["validate / Validate".into()],
+    });
+    let app = inbox_app(vec![row]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(body.contains("pull request: #42"), "{body}");
+    assert!(body.contains("title: Fix the thing"), "{body}");
+    assert!(body.contains("size: 4 files, 42 lines"), "{body}");
+    assert!(body.contains("failed check: validate / Validate"), "{body}");
+}
+
+#[test]
+fn a_row_with_no_pr_facts_renders_without_them() {
+    let app = inbox_app(vec![item(InboxKind::Escalation, "#159", None)]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(!body.contains("pull request:"), "{body}");
+    assert!(!body.contains("size:"), "{body}");
+    assert!(!body.contains("failed check:"), "{body}");
+}
+
 #[test]
 fn a_japanese_locale_localizes_the_remedy_means_and_next_sentences() {
-    let mut app = inbox_app(vec![item(InboxKind::Question, "agent-1", Some("robco-1"))]);
+    // An `Answer` move with no live session downgrades to `ORPHANED`, a
+    // fixed remedy independent of the reason text — see `locale::ja::remedy`.
+    let mut orphaned = item(InboxKind::Escalation, "agent-1", None);
+    orphaned.detail = "merge_state:dirty".into();
+    let mut app = inbox_app(vec![orphaned]);
     app.locale = Locale::Ja;
 
     let (_, text) = item_preview(&app, 0);
     let body = rendered(&text.lines).join("\n");
 
-    // WORKER_QUESTION's means / next — see `locale::ja::remedy`.
     assert!(
-        body.contains("workerは自分のセッション内で確認プロンプトを待っています"),
+        body.contains("回答が必要でしたが、workerのセッションは既に終了しています"),
         "{body}"
     );
-    assert!(
-        body.contains("Enterを押して回答を入力してください"),
-        "{body}"
-    );
+    assert!(body.contains("修正を送るセッションがありません"), "{body}");
     // Labels stay English even in the Japanese locale (dropr:377).
     assert!(body.contains("what this means"), "{body}");
     assert!(body.contains("next step"), "{body}");

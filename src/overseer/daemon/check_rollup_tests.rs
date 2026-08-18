@@ -145,3 +145,26 @@ fn a_commit_status_reports_under_its_context() {
         Checks::Green
     );
 }
+
+#[test]
+fn failed_names_lists_only_checks_whose_latest_run_failed() {
+    assert_eq!(
+        failed_names(&[
+            json!({"name": "build", "conclusion": "FAILURE"}),
+            json!({"name": "lint", "conclusion": "SUCCESS"}),
+        ]),
+        vec!["build".to_string()],
+    );
+    // A superseded failed run must not still be reported once the re-run of
+    // the same name passed — the same reduction `classify` itself reads.
+    assert!(
+        failed_names(&[
+            json!({"name": "build", "conclusion": "FAILURE", "startedAt": "2026-01-01T00:00:00Z"}),
+            json!({"name": "build", "conclusion": "SUCCESS", "startedAt": "2026-01-01T01:00:00Z"}),
+        ])
+        .is_empty()
+    );
+    // An unnamed entry cannot be matched to any other, but it also cannot be
+    // shown as a check name an operator could look for on GitHub.
+    assert!(failed_names(&[json!({"conclusion": "FAILURE"})]).is_empty());
+}

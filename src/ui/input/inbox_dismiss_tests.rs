@@ -22,6 +22,9 @@ fn item(kind: InboxKind, target_id: &str, second: u32) -> InboxItem {
         label: format!("{target_id} — escalated"),
         detail: "needs user".into(),
         at: at(second),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
     }
 }
 
@@ -37,7 +40,7 @@ fn inbox_app() -> App {
     app.overseer_visible = true;
     app.overseer_inbox = vec![
         item(InboxKind::Escalation, "#159", 20),
-        item(InboxKind::Question, "agent-1", 10),
+        item(InboxKind::Escalation, "agent-1", 10),
     ];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
     app.selected = app
@@ -54,7 +57,7 @@ fn dismissing_one_row_names_that_row_alone_with_the_timestamp_it_carries() {
 
     assert_eq!(
         app.inbox_dismissal_rows(Some(1)),
-        vec![("?", "agent-1".to_string(), at(10))]
+        vec![("ESC", "agent-1".to_string(), at(10))]
     );
     // Out of range: the list re-aggregates under the cursor, so an index can
     // outlive the row it pointed at.
@@ -69,7 +72,7 @@ fn clearing_names_every_listed_row_by_its_own_identity() {
         app.inbox_dismissal_rows(None),
         vec![
             ("ESC", "#159".to_string(), at(20)),
-            ("?", "agent-1".to_string(), at(10)),
+            ("ESC", "agent-1".to_string(), at(10)),
         ]
     );
 }

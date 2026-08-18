@@ -240,5 +240,6 @@ fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     }
 }

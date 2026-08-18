@@ -42,6 +42,9 @@ fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
         label: format!("{target_id} — escalated"),
         detail: format!("{target_id} escalated"),
         at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
     }
 }
 

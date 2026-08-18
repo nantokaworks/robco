@@ -1,9 +1,9 @@
 //! Japanese translations for `src/overseer/remedy.rs` — the fixed remedy
-//! constants (`WORKER_QUESTION`, `LEDGER_PARKED`, `ORPHANED`,
-//! `RECOVERABLE_FALLBACK`, `OPERATOR_FALLBACK`) whose `means` / `next`
-//! sentences the Inbox preview renders under `what this means` / `next
-//! step` (dropr:400). Table-driven remedies have their own translation
-//! files: `remedy_merge.rs` and `remedy_runtime.rs`.
+//! constants (`LEDGER_PARKED`, `ORPHANED`, `RECOVERABLE_FALLBACK`,
+//! `OPERATOR_FALLBACK`) whose `means` / `next` sentences the Inbox preview
+//! renders under `what this means` / `next step` (dropr:400). Table-driven
+//! remedies have their own translation files: `remedy_merge.rs` and
+//! `remedy_runtime.rs`.
 //!
 //! Labels (`what this means`, `next step`, `reason`) stay English per the
 //! overseer localization policy (dropr:377) and have no entry here; only
@@ -11,14 +11,6 @@
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
-        // remedy::WORKER_QUESTION
-        "the worker is waiting on a confirmation prompt in its own session" => {
-            "workerは自分のセッション内で確認プロンプトを待っています"
-        }
-        "press Enter and type the answer, or `y` if it is a yes/no prompt" => {
-            "Enterを押して回答を入力してください（yes/noプロンプトなら`y`）"
-        }
-
         // remedy::LEDGER_PARKED
         "this ledger entry is parked at phase=escalated with no recorded reason, and the daemon will not retry it on its own" => {
             "このledgerエントリはphase=escalatedのまま理由が記録されず止まっており、daemonが自動で再試行することはありません"

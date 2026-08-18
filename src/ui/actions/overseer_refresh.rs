@@ -50,13 +50,14 @@ pub(super) fn capture_overseer(
         .and_then(|dir| DiscordChannels::load(&dir.join("channels.json")).ok())
         .unwrap_or_default();
     let decisions = logging::tail(DECISION_SNAPSHOT_LIMIT).unwrap_or_default();
-    let reports = inbox::question_reports(registry);
+    let reports = inbox::agent_session_reports(registry);
     let inbox = inbox::aggregate(
         &ledger,
         &decisions,
         &reports,
         &Dismissals::load().unwrap_or_default(),
         registry,
+        &crate::overseer::row_summaries::RowSummaries::load().unwrap_or_default(),
     );
     let heartbeat = crate::overseer::heartbeat_path().ok();
     let heartbeat_age = heartbeat
@@ -201,6 +202,7 @@ mod tests {
                     &[],
                     &Dismissals::default(),
                     &Registry::default(),
+                    &crate::overseer::row_summaries::RowSummaries::default(),
                 ),
                 snapshot: OverseerSnapshot::default(),
                 control_watch: ControlWatch::default(),

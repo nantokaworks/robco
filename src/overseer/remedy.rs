@@ -128,20 +128,9 @@ impl Remedy {
     }
 }
 
-/// The worker is sitting on a confirmation prompt, not an escalated failure —
-/// [`InboxItem`](crate::ui::inbox::InboxItem) routes `Question` rows here
-/// directly rather than through [`resolve`], because there is no reason
-/// string to parse: the fact of the prompt *is* the remedy.
-pub(crate) const WORKER_QUESTION: Remedy = Remedy {
-    step: Move::Answer,
-    means: "the worker is waiting on a confirmation prompt in its own session",
-    next: "press Enter and type the answer, or `y` if it is a yes/no prompt",
-};
-
 /// A ledger entry parked at `phase=escalated` with no decision reason
 /// attached — nothing recorded why, and no pull request for the merge pass
-/// to reconsider. `InboxItem::remedy` routes here for that shape directly,
-/// the same way it routes a `Question` to [`WORKER_QUESTION`]: there is no
+/// to reconsider. `InboxItem::remedy` routes here directly: there is no
 /// reason string to resolve, only the bare fact of the parked entry.
 pub(crate) const LEDGER_PARKED: Remedy = Remedy {
     step: Move::Review,

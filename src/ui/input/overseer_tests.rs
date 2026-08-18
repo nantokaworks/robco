@@ -31,12 +31,15 @@ fn inbox_app(target_session: Option<&str>) -> App {
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
     app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
-        kind: crate::ui::inbox::InboxKind::Question,
+        kind: crate::ui::inbox::InboxKind::Escalation,
         target_session: target_session.map(ToString::to_string),
         target_id: "agent-1".into(),
         label: "agent-1 — worker".into(),
-        detail: "worker is waiting on a confirmation prompt: worker".into(),
+        detail: "worker_blocked".into(),
         at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
     app.selected = app

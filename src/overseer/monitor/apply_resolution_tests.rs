@@ -34,6 +34,7 @@ fn escalated(settled_at: Option<DateTime<Utc>>, worker_escalated: bool) -> Ledge
         worker_escalated,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     }
 }
 

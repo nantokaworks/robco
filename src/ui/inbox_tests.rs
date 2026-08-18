@@ -11,7 +11,7 @@ fn at(second: u32) -> DateTime<Utc> {
 fn items(
     ledger: &Ledger,
     decisions: &[DecisionEntry],
-    reports: &[AgentQuestionReport],
+    reports: &[AgentSessionReport],
 ) -> Vec<InboxItem> {
     aggregate(
         ledger,
@@ -19,25 +19,16 @@ fn items(
         reports,
         &Dismissals::default(),
         &Registry::default(),
+        &RowSummaries::default(),
     )
     .items
 }
 
-fn report(awaiting_confirmation: bool) -> AgentQuestionReport {
-    AgentQuestionReport {
+fn report_with_status(status: Status) -> AgentSessionReport {
+    AgentSessionReport {
         agent_id: "agent-1".into(),
-        title: "worker".into(),
         tmux_session: "robco-agent-1".into(),
-        status: Status::Waiting,
-        awaiting_confirmation,
-        at: at(3),
-    }
-}
-
-fn report_with_status(status: Status) -> AgentQuestionReport {
-    AgentQuestionReport {
         status,
-        ..report(false)
     }
 }
 
@@ -69,6 +60,7 @@ fn escalated_ledger() -> Ledger {
             worker_escalated: false,
             operator_override: None,
             merge_approval: None,
+            pr_facts: None,
         }],
         ..Ledger::default()
     }
@@ -82,24 +74,17 @@ fn escalation(reason: &str, second: u32) -> DecisionEntry {
 }
 
 #[test]
-fn question_and_live_escalation_are_answerable() {
+fn a_live_escalation_resolves_the_workers_session() {
     let items = items(
         &escalated_ledger(),
         &[escalation("needs user", 2)],
-        &[report(true)],
+        &[report_with_status(Status::Running)],
     );
 
-    assert_eq!(items.len(), 2);
-    assert_eq!(items[0].kind, InboxKind::Question);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].kind, InboxKind::Escalation);
     assert_eq!(items[0].target_session.as_deref(), Some("robco-agent-1"));
-    assert_eq!(items[1].kind, InboxKind::Escalation);
-    assert_eq!(items[1].target_session.as_deref(), Some("robco-agent-1"));
-    assert!(items[1].label.contains("needs user"));
-}
-
-#[test]
-fn excludes_waiting_agents_without_confirmation_prompt() {
-    assert!(items(&Ledger::default(), &[], &[report(false)]).is_empty());
+    assert!(items[0].label.contains("needs user"));
 }
 
 #[test]
@@ -175,7 +160,14 @@ fn a_ledger_parked_escalation_names_the_repo_never_its_absolute_path() {
         repos: vec![repo],
     };
 
-    let inbox = aggregate(&ledger, &[], &[], &Dismissals::default(), &registry);
+    let inbox = aggregate(
+        &ledger,
+        &[],
+        &[],
+        &Dismissals::default(),
+        &registry,
+        &RowSummaries::default(),
+    );
 
     assert_eq!(inbox.items.len(), 1);
     assert!(inbox.items[0].label.contains("robco"));
@@ -237,6 +229,7 @@ fn a_dismissed_item_is_filtered_out_but_still_counts_as_a_live_target() {
         &[],
         &dismissals,
         &Registry::default(),
+        &RowSummaries::default(),
     );
 
     assert!(inbox.items.is_empty());
@@ -263,6 +256,7 @@ fn a_newer_escalation_for_a_dismissed_target_comes_back() {
         &[],
         &dismissals,
         &Registry::default(),
+        &RowSummaries::default(),
     );
 
     assert_eq!(inbox.items.len(), 1);

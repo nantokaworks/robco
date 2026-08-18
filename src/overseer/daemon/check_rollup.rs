@@ -78,14 +78,12 @@ enum Check {
     Unnamed(usize),
 }
 
-/// Classifies the rollup of an open pull request.
-///
-/// Each check name is reduced to its most recent run, so a superseded run cannot veto
-/// the re-run that replaced it: a `CANCELLED` half of a duplicated workflow trigger is
-/// a fact about a run GitHub abandoned, not about the head. A name whose newest run is
-/// a genuine failure still fails, because that run is the one the branch protection
-/// reads too.
-pub(super) fn classify(rollup: &[Value]) -> Checks {
+/// Reduces the rollup to one (name, run) per check — its most recent run, so a
+/// superseded run cannot veto the re-run that replaced it: a `CANCELLED` half of a
+/// duplicated workflow trigger is a fact about a run GitHub abandoned, not about the
+/// head. Shared between [`classify`] and [`failed_names`] so both read the same
+/// per-check verdict.
+fn latest_runs(rollup: &[Value]) -> HashMap<Check, (String, Run)> {
     let mut latest: HashMap<Check, (String, Run)> = HashMap::new();
     for (position, entry) in rollup.iter().enumerate() {
         let candidate = (started_at(entry).to_owned(), run(entry));
@@ -96,6 +94,15 @@ pub(super) fn classify(rollup: &[Value]) -> Checks {
             *held = candidate;
         }
     }
+    latest
+}
+
+/// Classifies the rollup of an open pull request.
+///
+/// A name whose newest run is a genuine failure still fails, because that run is the
+/// one the branch protection reads too.
+pub(super) fn classify(rollup: &[Value]) -> Checks {
+    let latest = latest_runs(rollup);
     // A head whose checks have not been created yet is not green.
     if latest.is_empty() {
         return Checks::Waiting;
@@ -107,6 +114,22 @@ pub(super) fn classify(rollup: &[Value]) -> Checks {
         return Checks::Waiting;
     }
     Checks::Green
+}
+
+/// Names of the checks whose most recent run failed, sorted for a stable
+/// display order — an Inbox row shows these verbatim (dropr:461), so an
+/// operator sees the same check name branch protection would have blocked on.
+pub(super) fn failed_names(rollup: &[Value]) -> Vec<String> {
+    let mut names: Vec<String> = latest_runs(rollup)
+        .into_iter()
+        .filter(|(_, (_, run))| *run == Run::Failed)
+        .filter_map(|(check, _)| match check {
+            Check::Named(name) => Some(name),
+            Check::Unnamed(_) => None,
+        })
+        .collect();
+    names.sort_unstable();
+    names
 }
 
 /// The check the entry reports on: `name` is a check run's, `context` a commit

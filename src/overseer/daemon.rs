@@ -22,6 +22,7 @@ mod merge_repo_pass;
 mod merge_settle;
 pub(crate) mod merge_state;
 mod observations;
+mod pr_facts;
 mod protection;
 pub(crate) mod pull_request;
 mod repo_watch;

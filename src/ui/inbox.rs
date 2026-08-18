@@ -7,30 +7,30 @@ use crate::{
     model::Status,
     overseer::{
         dismissals::Dismissals,
-        ledger::{Ledger, LedgerPhase},
+        ledger::{Ledger, LedgerPhase, PrFacts},
         logging::{self, DecisionEntry, DecisionKind},
         remedy::{self, Remedy},
+        row_summaries::RowSummaries,
     },
     registry::Registry,
-    status::{self, WatchStatusState},
-    tmux,
 };
 
+/// The one kind of row the Inbox raises: something waiting for an operator's
+/// decision. `Question` — a worker sitting on a confirmation prompt — never
+/// fired once in 32 days of `inbox.jsonl` and was removed (dropr:460); every
+/// row is now an escalation of one shape or another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum InboxKind {
     Escalation,
-    Question,
 }
 
 impl InboxKind {
     /// Short tag at the head of an inbox row. It doubles as the kind half of an
     /// item's stable identity, so the row the cursor sits on survives a refresh
-    /// that re-sorts the list — and so a dismissal recorded against one kind
-    /// cannot hide the other kind's row for the same target.
+    /// that re-sorts the list.
     pub(crate) fn code(self) -> &'static str {
         match self {
             Self::Escalation => "ESC",
-            Self::Question => "?",
         }
     }
 
@@ -38,7 +38,6 @@ impl InboxKind {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Escalation => "escalation",
-            Self::Question => "question",
         }
     }
 }
@@ -54,6 +53,21 @@ pub(crate) struct InboxItem {
     /// the operator can read the whole escalation before acting on it.
     pub detail: String,
     pub at: DateTime<Utc>,
+    /// The pull request this row is about, when the ledger entry behind it has
+    /// one — used only to show the number in the preview; `remedy` never
+    /// reads this.
+    pub pr_url: Option<String>,
+    /// The pull request's own title, size, and failing check, as of the
+    /// daemon's last successful read (dropr:461). `None` when the row has no
+    /// matching ledger entry, or the daemon has not read one yet — the row
+    /// still renders, just without this part of the preview.
+    pub pr_facts: Option<PrFacts>,
+    /// A one-sentence, model-written description of this row's own case
+    /// (dropr:462), when the board review has written one and it still
+    /// matches [`case_signature`](Self::case_signature). `None` renders the
+    /// row exactly as it did before the reviewer model existed — a missing or
+    /// stale summary is never worse than no summary at all.
+    pub sentence: Option<String>,
 }
 
 /// Every ledger-sourced row's `detail` starts with this, so [`InboxItem::remedy`]
@@ -79,13 +93,12 @@ impl InboxItem {
 
     /// What the operator should do about this row.
     ///
-    /// `Question` and the ledger-parked shape of `Escalation` carry no reason
-    /// string to resolve — the fact of the row *is* the remedy — so they route
-    /// straight to a fixed constant. A decision-sourced `Escalation` carries
-    /// its reason verbatim in `detail`, resolved against a live session.
+    /// The ledger-parked shape carries no reason string to resolve — the fact
+    /// of the row *is* the remedy — so it routes straight to a fixed constant.
+    /// Every other row carries its reason verbatim in `detail`, resolved
+    /// against a live session.
     pub(crate) fn remedy(&self) -> Remedy {
         match self.kind {
-            InboxKind::Question => remedy::WORKER_QUESTION,
             InboxKind::Escalation if self.detail.starts_with(LEDGER_PARKED_RESUMABLE_MARKER) => {
                 remedy::LEDGER_PARKED_RESUMABLE
             }
@@ -102,6 +115,16 @@ impl InboxItem {
     pub(crate) fn actionable(&self) -> bool {
         self.remedy().actionable()
     }
+
+    /// A fingerprint of this row's own case — its reason and, when known, its
+    /// pull request's facts. The board review stores this alongside the
+    /// sentence it writes about a row (`row_summaries::RowSummary::signature`);
+    /// a row whose `detail` or `pr_facts` has since changed no longer matches
+    /// it, so a stored sentence about a case that has moved on is never read
+    /// back as current.
+    pub(crate) fn case_signature(&self) -> String {
+        format!("{}|{:?}", self.detail, self.pr_facts)
+    }
 }
 
 /// One aggregation of the Inbox.
@@ -115,22 +138,22 @@ pub(crate) struct Inbox {
     pub targets: HashSet<(String, String)>,
 }
 
+/// What an escalation row needs to know about the agent it names: whether its
+/// session is still alive, and where to send a response.
 #[derive(Debug, Clone)]
-pub(crate) struct AgentQuestionReport {
+pub(crate) struct AgentSessionReport {
     pub agent_id: String,
-    pub title: String,
     pub tmux_session: String,
     pub status: Status,
-    pub awaiting_confirmation: bool,
-    pub at: DateTime<Utc>,
 }
 
 pub(crate) fn aggregate(
     ledger: &Ledger,
     decisions: &[DecisionEntry],
-    reports: &[AgentQuestionReport],
+    reports: &[AgentSessionReport],
     dismissals: &Dismissals,
     registry: &Registry,
+    summaries: &RowSummaries,
 ) -> Inbox {
     let agents = reports
         .iter()
@@ -180,6 +203,9 @@ pub(crate) fn aggregate(
             label: format!("{target_id} — {}", decision.reason),
             detail: decision.reason.clone(),
             at: decision.at,
+            pr_url: ledger_entry.and_then(|entry| entry.pr_url.clone()),
+            pr_facts: ledger_entry.and_then(|entry| entry.pr_facts.clone()),
+            sentence: None,
         });
     }
     for entry in ledger
@@ -214,25 +240,11 @@ pub(crate) fn aggregate(
                 entry.agent_id, entry.branch
             ),
             at: entry.dispatched_at,
+            pr_url: entry.pr_url.clone(),
+            pr_facts: entry.pr_facts.clone(),
+            sentence: None,
         });
     }
-    for report in reports
-        .iter()
-        .filter(|report| report.status == Status::Waiting && report.awaiting_confirmation)
-    {
-        items.push(InboxItem {
-            kind: InboxKind::Question,
-            target_session: Some(report.tmux_session.clone()),
-            target_id: report.agent_id.clone(),
-            label: format!("{} — {}", report.agent_id, report.title),
-            detail: format!(
-                "worker is waiting on a confirmation prompt: {}",
-                report.title
-            ),
-            at: report.at,
-        });
-    }
-
     items.sort_by_key(|item| std::cmp::Reverse(item.at));
     let mut seen = HashSet::new();
     items.retain(|item| seen.insert((item.kind, item.target_id.clone())));
@@ -240,6 +252,11 @@ pub(crate) fn aggregate(
     // The suppression filter is the last step, so `targets` still names every
     // identity the sources produced.
     items.retain(|item| !dismissals.suppresses(item.kind.code(), &item.target_id, item.at));
+    for item in &mut items {
+        item.sentence = summaries
+            .get(&item.target_id, &item.case_signature())
+            .map(str::to_owned);
+    }
     Inbox { items, targets }
 }
 
@@ -249,41 +266,25 @@ pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
     Ok(aggregate(
         &Ledger::load()?,
         &logging::tail(super::overseer::DECISION_SNAPSHOT_LIMIT)?,
-        &question_reports(registry),
+        &agent_session_reports(registry),
         &Dismissals::load()?,
         registry,
+        // Loaded once per aggregation rather than per row: the table is
+        // small, and a per-item load would turn one refresh into one file
+        // read per row.
+        &RowSummaries::load().unwrap_or_default(),
     ))
 }
 
-pub(crate) fn question_reports(registry: &Registry) -> Vec<AgentQuestionReport> {
-    let panes = tmux::capture_panes().ok();
+pub(crate) fn agent_session_reports(registry: &Registry) -> Vec<AgentSessionReport> {
     registry
         .repos
         .iter()
         .flat_map(|repo| {
-            let panes = panes.as_ref();
-            repo.agents.iter().map(move |agent| {
-                let awaiting_confirmation = if agent.status == Status::Waiting {
-                    status::classify_agent_status(
-                        &repo.path,
-                        &agent.worktree_path,
-                        &agent.branch,
-                        &agent.tmux_session,
-                        &mut WatchStatusState::default(),
-                        panes,
-                    )
-                    .is_some_and(|report| report.awaiting_confirmation)
-                } else {
-                    false
-                };
-                AgentQuestionReport {
-                    agent_id: agent.id.clone(),
-                    title: agent.title.clone(),
-                    tmux_session: agent.tmux_session.clone(),
-                    status: agent.status,
-                    awaiting_confirmation,
-                    at: agent.updated_at.with_timezone(&Utc),
-                }
+            repo.agents.iter().map(|agent| AgentSessionReport {
+                agent_id: agent.id.clone(),
+                tmux_session: agent.tmux_session.clone(),
+                status: agent.status,
             })
         })
         .collect()
@@ -292,3 +293,7 @@ pub(crate) fn question_reports(registry: &Registry) -> Vec<AgentQuestionReport> 
 #[cfg(test)]
 #[path = "inbox_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "inbox_summary_tests.rs"]
+mod summary_tests;

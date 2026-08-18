@@ -81,6 +81,7 @@ fn newly_merged_task_resets_failure_counter() {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     };
     let mut previous = Ledger {
         entries: vec![entry(LedgerPhase::Working)],

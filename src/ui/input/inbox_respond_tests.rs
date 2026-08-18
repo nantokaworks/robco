@@ -53,12 +53,15 @@ fn inbox_app(target_id: &str) -> App {
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_visible = true;
     app.overseer_inbox = vec![InboxItem {
-        kind: InboxKind::Question,
+        kind: InboxKind::Escalation,
         target_session: Some(format!("robco-{target_id}")),
         target_id: target_id.into(),
         label: format!("{target_id} — worker"),
-        detail: "worker is waiting on a confirmation prompt: worker".into(),
+        detail: "worker_blocked".into(),
         at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
     app.selected = app

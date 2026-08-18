@@ -275,6 +275,7 @@ fn off_mode_skips_the_probe_entirely() {
         worker_escalated: false,
         operator_override: None,
         merge_approval: None,
+        pr_facts: None,
     };
     let registry = Registry::default();
     let cache = ProtectionCache::default();

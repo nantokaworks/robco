@@ -12,6 +12,8 @@ pub use budgets::{
 };
 mod phase;
 pub use phase::{LedgerPhase, holds_capacity, terminal, waiting_on_prerequisite};
+mod pr_facts;
+pub use pr_facts::PrFacts;
 mod slots;
 pub use slots::ActiveWorkers;
 
@@ -129,6 +131,13 @@ pub struct LedgerEntry {
     /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub merge_approval: Option<MergeApproval>,
+    /// The pull request's own title, size, and any failing check, as of the
+    /// gate's last successful read — see [`PrFacts`]. `None` before the first
+    /// successful read, or for a ledger written before the field existed;
+    /// [`InboxItem::remedy`](crate::ui::inbox::InboxItem) never depends on
+    /// it, so a row with no facts yet still renders, just without them.
+    #[serde(default)]
+    pub pr_facts: Option<PrFacts>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

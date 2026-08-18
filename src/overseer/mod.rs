@@ -24,6 +24,7 @@ pub(crate) mod release_pipeline;
 pub(crate) mod remedy;
 pub(crate) mod repo_watch;
 pub mod review;
+pub mod row_summaries;
 pub mod runtime_request;
 pub(crate) mod session;
 pub(crate) mod statefile;
