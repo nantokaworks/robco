@@ -115,6 +115,22 @@ fn looks_working(capture: &str) -> bool {
     capture.to_ascii_lowercase().contains("esc to interrupt")
 }
 
+/// A single, immediate read of whether `session` is mid-turn right now.
+///
+/// Unlike [`confirm_delivered`], this does not poll toward a deadline — it
+/// exists for `merge_recovery::dispatch` to ask, right before retyping a
+/// prompt that a previous attempt could not confirm, whether the session
+/// might already be running that earlier attempt for real. A capture that
+/// fails is reported as "not busy": it says nothing about whether the
+/// session is working, and treating it as busy would let a session this
+/// probe can never read stall a retry forever instead of falling through to
+/// the existing undelivered/undeliverable bound.
+pub(super) fn is_busy(session: &str) -> bool {
+    tmux::capture_plain(session)
+        .map(|capture| looks_working(&capture))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 #[path = "merge_delivery_tests.rs"]
 mod tests;

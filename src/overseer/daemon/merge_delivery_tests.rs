@@ -60,3 +60,26 @@ fn confirm_delivered_reports_a_capture_failure_for_a_session_that_does_not_exist
     );
     assert!(matches!(result, DeliveryConfirmation::CaptureFailed(_)));
 }
+
+/// `is_busy` is the immediate read `merge_recovery::dispatch` uses to decide
+/// whether retyping a prompt would land on top of a still-running turn. A
+/// missing session must not read as busy — that would let an unreadable pane
+/// stall a retry the undelivered/undeliverable bound is supposed to resolve.
+#[test]
+fn is_busy_is_false_for_a_session_that_does_not_exist() {
+    assert!(!is_busy("robco-test-is-busy-missing-session"));
+}
+
+#[test]
+fn is_busy_reflects_the_sessions_working_marker() {
+    let session = format!("robco-test-is-busy-{}", std::process::id());
+    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+        // No usable tmux in this environment — the pure-logic tests above
+        // already cover the branch this test would exercise.
+        return;
+    }
+    assert!(!is_busy(&session));
+    let _ = crate::tmux::send_literal_text(&session, "esc to interrupt");
+    assert!(is_busy(&session));
+    let _ = crate::tmux::kill_session(&session);
+}
