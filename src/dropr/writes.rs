@@ -124,14 +124,13 @@ fn status_arguments(task_id: &str, status: &str) -> Value {
 
 fn task_create_arguments(workspace_id: &str, title: &str, description: Option<&str>) -> Value {
     let mut item = json!({
-        "workspace_id": workspace_id,
         "agent_id": OVERSEER_AGENT_ID,
         "title": title,
     });
     if let Some(description) = description {
         item["description"] = Value::String(description.to_string());
     }
-    json!({ "items": [item] })
+    json!({ "workspace_id": workspace_id, "items": [item] })
 }
 
 /// Triage spells the released state `ready`; dropr's lifecycle has no such

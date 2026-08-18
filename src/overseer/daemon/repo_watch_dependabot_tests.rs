@@ -10,7 +10,7 @@ fn pr(number: u64, merge_state_status: &str, age_days: i64) -> RawPr {
         title: format!("Bump dep #{number}"),
         url: format!("https://github.com/nantokaworks/nex/pull/{number}"),
         author: RawAuthor {
-            login: DEPENDABOT_LOGIN.into(),
+            login: DEPENDABOT_LOGINS[0].into(),
         },
         merge_state_status: merge_state_status.into(),
         created_at: now() - chrono::Duration::days(age_days),
@@ -51,4 +51,16 @@ fn the_title_carries_the_marker_verbatim_for_dedup_matching() {
     let marker = marker("nex", &[561, 562]);
     let title = title("nex", 2, &marker);
     assert!(title.contains(&marker));
+}
+
+#[test]
+fn both_known_dependabot_login_forms_match() {
+    assert!(is_dependabot("dependabot[bot]"));
+    assert!(is_dependabot("app/dependabot"));
+}
+
+#[test]
+fn an_unrelated_login_does_not_match() {
+    assert!(!is_dependabot("ichi0g0y"));
+    assert!(!is_dependabot("dependabot-preview[bot]"));
 }
