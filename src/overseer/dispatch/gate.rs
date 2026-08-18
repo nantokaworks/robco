@@ -21,9 +21,8 @@ pub(super) fn apply_candidate_gates(
 ) {
     // Every live worker is counted, Auto or Manual: `Ledger::active_workers` is
     // the one accounting both this gate and `robco overseer status` read, so the
-    // cap enforced here is the count the operator sees.
+    // slots enforced here are the count the operator sees.
     let active = ledger.active_workers();
-    let mut global = active.count;
     let mut per_repo = active.repos;
     let mut selected_repos = HashSet::new();
     for candidate in candidates {
@@ -31,16 +30,15 @@ pub(super) fn apply_candidate_gates(
             config,
             ledger,
             candidate,
+            candidates,
             plan.dispatched_today
                 .saturating_add(selected_repos.len() as u32),
-            global,
             &per_repo,
             &selected_repos,
             worker_modes,
         );
         let dispatch = reason.is_none();
         if dispatch {
-            global += 1;
             *per_repo.entry(candidate.repo.clone()).or_default() += 1;
             selected_repos.insert(candidate.repo.as_str());
         }
@@ -57,8 +55,8 @@ fn candidate_skip<'a>(
     config: &OverseerConfig,
     ledger: &Ledger,
     candidate: &Candidate,
+    candidates: &[Candidate],
     dispatched_today: u32,
-    global: usize,
     per_repo: &BTreeMap<String, usize>,
     selected_repos: &HashSet<&str>,
     worker_modes: &HashMap<String, ManagementMode>,
@@ -113,6 +111,21 @@ fn candidate_skip<'a>(
     {
         return Some("parent_worker_active");
     }
+    // A subtask whose parent is also a ready candidate this pass would, left
+    // to `order_candidates`'s priority-only ordering, sometimes dispatch
+    // before its own parent (a subtask carrying a higher priority than its
+    // parent's). Dispatching the parent then builds the same change the
+    // subtask's own RUN already covers. `gather.rs` resolves `parent_task_id`
+    // for every candidate, so the data to prefer the ancestor is already in
+    // hand; this is a gate, not a silent sort change, so the hold is named in
+    // `decisions.jsonl` rather than just reordering quietly.
+    if let Some(parent_task_id) = &candidate.parent_task_id
+        && candidates
+            .iter()
+            .any(|other| &other.task_id == parent_task_id)
+    {
+        return Some("ancestor_candidate");
+    }
     if ledger
         .skip_list
         .iter()
@@ -136,12 +149,24 @@ fn candidate_skip<'a>(
     {
         return Some("author");
     }
-    if global >= config.max_workers {
-        return Some("max_workers");
+    // One primary slot per repository, always; `parallel_limit` secondary
+    // slots on top of it. The two tiers are told apart in the reason so an
+    // operator can see whether a repository is running serialized (no
+    // secondaries allowed at all) or is genuinely out of parallel headroom.
+    let repo_active = per_repo.get(candidate.repo.as_str()).copied().unwrap_or(0);
+    if repo_active > 0 {
+        if config.parallel_limit == 0 {
+            return Some("primary_slot_taken");
+        }
+        if repo_active > config.parallel_limit {
+            return Some("parallel_slot_taken");
+        }
     }
-    if per_repo.get(candidate.repo.as_str()).copied().unwrap_or(0) >= config.per_repo_limit {
-        return Some("per_repo_limit");
-    }
+    // At most one *new* dispatch per repository per pass, however much slot
+    // headroom `parallel_limit` still leaves — see `order.rs`'s module doc.
+    // With `parallel_limit: 0` this is redundant with `primary_slot_taken`
+    // above; above `0` it is what stops one pass from filling every slot in
+    // a repository at once.
     if selected_repos.contains(candidate.repo.as_str()) {
         return Some("one_per_repo");
     }

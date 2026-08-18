@@ -55,12 +55,11 @@ pub(super) fn print_debug_section(
         )
     );
     println!(
-        "today: {}/{}  workers: {}/{}  per-repo cap: {}",
+        "today: {}/{}  workers: {}  parallel_limit: {}",
         ledger.counters.dispatched_today,
         crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
         ledger.active_workers().count,
-        config.overseer.max_workers,
-        config.overseer.per_repo_limit
+        config.overseer.parallel_limit
     );
     println!("{}", llm_line(config, judgments)?);
     println!("{}", merge_pass_line(merge_pass));
@@ -68,6 +67,7 @@ pub(super) fn print_debug_section(
     println!("{}", session_auth_line(session_health));
     println!("{}", judgments.snapshot().summary());
     println!("workers by repo: {:?}", ledger.active_workers().repos);
+    println!("primary holder by repo: {:?}", ledger.primary_holders());
     println!("{}", repos_line(registry));
     let mut phases = BTreeMap::new();
     for entry in &ledger.entries {
@@ -90,6 +90,10 @@ pub(super) fn print_debug_section(
     let manual_merges = ledger.manual_merge_skips();
     if manual_merges != 0 {
         println!("merge-eligible, manual: {manual_merges}");
+    }
+    let queued_approvals = ledger.queued_merge_approvals();
+    if queued_approvals != 0 {
+        println!("merges queued (operator approved): {queued_approvals}");
     }
     println!("skip list: {:?}", ledger.skip_list);
     println!("recent decisions:");

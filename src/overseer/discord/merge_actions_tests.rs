@@ -30,6 +30,7 @@ fn entry(task_id: &str, display_id: &str, phase: LedgerPhase) -> LedgerEntry {
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     }
 }
 
@@ -107,4 +108,24 @@ fn find_agent_looks_up_by_id_across_repos() {
     };
     assert!(find_agent(&registry, "agent-1").is_ok());
     assert!(find_agent(&registry, "missing").is_err());
+}
+
+#[test]
+fn queue_approval_sends_an_approve_request_naming_the_task_and_user() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    queue_approval(&tx, "task-1", "user-1").unwrap();
+    assert_eq!(
+        rx.try_recv().unwrap(),
+        LedgerRequest::Approve {
+            task: "task-1".into(),
+            user_id: "user-1".into(),
+        }
+    );
+}
+
+#[test]
+fn queue_approval_errs_when_the_daemon_channel_is_closed() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    drop(rx);
+    assert!(queue_approval(&tx, "task-1", "user-1").is_err());
 }

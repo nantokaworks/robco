@@ -8,17 +8,19 @@
 //! Such a pass dispatches the gate's own ordering immediately instead.
 //!
 //! Note that today's gates cap approvals at capacity themselves (see
-//! `candidate_skip`'s `max_workers` / `per_repo_limit` / `one_per_repo` rules),
-//! so [`Route::Judged`] is reachable only if that ever changes. The check is
+//! `candidate_skip`'s primary/secondary slot and `one_per_repo` rules), so
+//! [`Route::Judged`] is reachable only if that ever changes. The check is
 //! written against capacity rather than hard-coded to "always bypass" so the
 //! judge comes back on its own the moment a contended pass can occur again.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
-use crate::model::ManagementMode;
-use crate::overseer::{config::OverseerConfig, ledger::Ledger};
+use crate::overseer::{
+    config::OverseerConfig,
+    ledger::{ActiveWorkers, Ledger},
+};
 
-use super::{Candidate, entries::worker_mode, terminal};
+use super::Candidate;
 
 /// How a pass reached its dispatch set. The label is written into
 /// `decisions.jsonl` with every spawn, so an operator reading the log can tell
@@ -55,38 +57,41 @@ pub(super) fn route(approved: usize, capacity: usize, judge_configured: bool) ->
 
 /// Worker slots this pass could still fill.
 ///
-/// The global term counts Auto workers only — a Manual worker is a human's, and
-/// the operator who started it did not thereby ask for a judge round. The
-/// per-repository term is capped at one per repository because the gate admits
-/// at most one new worker per repository per pass, so extra per-repository
-/// headroom cannot be spent today however large `per_repo_limit` is.
+/// Capped at one per repository, mirroring `candidate_skip`'s own
+/// one-new-worker-per-repository-per-pass stagger: extra slot headroom in a
+/// repository cannot be spent in a single pass, however large
+/// `parallel_limit` is. There is no cross-repository term any more — each
+/// repository's primary/secondary slots are self-contained, so the number of
+/// repositories with an approved candidate already bounds the total.
 pub(super) fn remaining_capacity(
     config: &OverseerConfig,
     ledger: &Ledger,
     approved: &[Candidate],
-    worker_modes: &HashMap<String, ManagementMode>,
 ) -> usize {
     let active = ledger.active_workers();
-    let auto = ledger
-        .entries
-        .iter()
-        .filter(|entry| !terminal(entry.phase))
-        .filter(|entry| worker_mode(entry, worker_modes) == ManagementMode::Auto)
-        .count();
-    let global = config.max_workers.saturating_sub(auto);
-    let per_repo: usize = approved
+    approved
         .iter()
         .map(|candidate| candidate.repo.as_str())
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .map(|repo| {
-            config
-                .per_repo_limit
-                .saturating_sub(active.repos.get(repo).copied().unwrap_or(0))
-                .min(1)
-        })
-        .sum();
-    global.min(per_repo)
+        .map(|repo| repo_capacity(config, &active, repo))
+        .sum()
+}
+
+/// Whether one more worker could dispatch into `repo` right now: the primary
+/// slot when nothing is active there yet, a secondary slot when
+/// `parallel_limit` still leaves room, and nothing otherwise. Mirrors
+/// `candidate_skip`'s own slot check so the judge-routing estimate never
+/// disagrees with what the real gate will do.
+fn repo_capacity(config: &OverseerConfig, active: &ActiveWorkers, repo: &str) -> usize {
+    let repo_active = active.repos.get(repo).copied().unwrap_or(0);
+    if repo_active == 0 {
+        return 1;
+    }
+    if config.parallel_limit == 0 {
+        return 0;
+    }
+    usize::from(repo_active <= config.parallel_limit)
 }
 
 #[cfg(test)]
@@ -138,6 +143,7 @@ mod tests {
             escalation_notified_head: None,
             worker_escalated: false,
             operator_override: None,
+            merge_approval: None,
         }
     }
 
@@ -187,56 +193,56 @@ mod tests {
     }
 
     #[test]
-    fn manual_workers_do_not_spend_judge_capacity() {
-        // They do occupy a dispatch slot (the gate counts them), but a human's
-        // worker is not a reason to ask an LLM which task to start next.
-        let config = OverseerConfig {
-            max_workers: 3,
-            per_repo_limit: 2,
-            ..OverseerConfig::default()
-        };
+    fn a_manual_worker_still_spends_the_repositorys_primary_slot() {
+        // A Manual worker still holds the branch and worktree the primary
+        // slot accounts for, so it must count toward capacity exactly like
+        // the real gate counts it — a human's worker is still occupancy.
+        let config = OverseerConfig::default();
         let ledger = Ledger {
             entries: vec![entry("/one", "manual-agent"), entry("/two", "auto-agent")],
             ..Ledger::default()
         };
-        let modes = HashMap::from([
-            ("manual-agent".to_string(), ManagementMode::Manual),
-            ("auto-agent".to_string(), ManagementMode::Auto),
-        ]);
 
-        let capacity = remaining_capacity(
-            &config,
-            &ledger,
-            &[candidate("/one"), candidate("/two")],
-            &modes,
+        let capacity =
+            remaining_capacity(&config, &ledger, &[candidate("/one"), candidate("/two")]);
+        assert_eq!(capacity, 0);
+        assert_eq!(
+            remaining_capacity(&config, &ledger, &[candidate("/three")]),
+            1
         );
-        assert_eq!(capacity, 2);
     }
 
     #[test]
-    fn a_repository_at_its_limit_contributes_no_capacity() {
+    fn a_repository_at_its_primary_slot_contributes_no_capacity_without_parallel_limit() {
+        let config = OverseerConfig::default();
+        let ledger = Ledger {
+            entries: vec![entry("/full", "auto-agent")],
+            ..Ledger::default()
+        };
+
+        assert_eq!(
+            remaining_capacity(&config, &ledger, &[candidate("/full")]),
+            0
+        );
+        assert_eq!(
+            remaining_capacity(&config, &ledger, &[candidate("/full"), candidate("/free")]),
+            1
+        );
+    }
+
+    #[test]
+    fn a_parallel_limit_opens_secondary_capacity_in_the_same_repository() {
         let config = OverseerConfig {
-            max_workers: 5,
-            per_repo_limit: 1,
+            parallel_limit: 1,
             ..OverseerConfig::default()
         };
         let ledger = Ledger {
             entries: vec![entry("/full", "auto-agent")],
             ..Ledger::default()
         };
-        let modes = HashMap::from([("auto-agent".to_string(), ManagementMode::Auto)]);
 
         assert_eq!(
-            remaining_capacity(&config, &ledger, &[candidate("/full")], &modes),
-            0
-        );
-        assert_eq!(
-            remaining_capacity(
-                &config,
-                &ledger,
-                &[candidate("/full"), candidate("/free")],
-                &modes
-            ),
+            remaining_capacity(&config, &ledger, &[candidate("/full")]),
             1
         );
     }

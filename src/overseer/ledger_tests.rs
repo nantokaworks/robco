@@ -32,6 +32,7 @@ fn save_load_round_trip() {
             escalation_notified_head: None,
             worker_escalated: false,
             operator_override: None,
+            merge_approval: None,
         }],
         skip_list: vec!["task-2".into()],
         counters: LedgerCounters {
@@ -115,6 +116,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     };
     let ledger = Ledger {
         entries: vec![
@@ -194,6 +196,7 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     };
     let ledger = Ledger {
         entries: vec![
@@ -207,6 +210,54 @@ fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
     };
 
     assert_eq!(ledger.manual_merge_skips(), 2);
+}
+
+#[test]
+fn queued_merge_approvals_count_only_non_terminal_entries_with_a_live_approval() {
+    let entry = |phase, approved: bool| LedgerEntry {
+        task_id: "task-1".into(),
+        display_id: "#1".into(),
+        repo: "/one".into(),
+        agent_id: "agent".into(),
+        branch: "branch".into(),
+        phase,
+        dispatched_at: Utc::now(),
+        settled_at: None,
+        retries: 0,
+        pr_url: Some("https://pr/1".into()),
+        branch_updates: 0,
+        merge_judge_primes: 0,
+        merge_recovery: Default::default(),
+        merge_hold: Default::default(),
+        manual_merge_skip: None,
+        merge_judge_fail_safes: 0,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
+        worker_escalated: false,
+        operator_override: None,
+        merge_approval: approved.then(|| MergeApproval {
+            head: "abc123".into(),
+            granted_at: Utc::now(),
+        }),
+    };
+    let ledger = Ledger {
+        entries: vec![
+            entry(LedgerPhase::PrOpened, true),
+            entry(LedgerPhase::PrOpened, true),
+            entry(LedgerPhase::PrOpened, false),
+            // Already merged: its approval no longer describes anything pending.
+            entry(LedgerPhase::Merged, true),
+        ],
+        ..Ledger::default()
+    };
+
+    assert_eq!(ledger.queued_merge_approvals(), 2);
 }
 
 #[test]
@@ -260,6 +311,7 @@ fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     };
 
     entry.grant_merge_reconsideration("killed_session");

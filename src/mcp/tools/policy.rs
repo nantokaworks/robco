@@ -56,7 +56,7 @@ fn policy_with(
         // via `robco overseer status`.
         "daily_dispatch_limit": config.daily_dispatch_limit,
         "dispatched_today": ledger.counters.dispatched_today,
-        "max_workers": config.max_workers,
+        "parallel_limit": config.parallel_limit,
         "daemon_alive": daemon_alive,
         "dispatch_without_daemon": config.dispatch_enabled && !daemon_alive,
         "circuit_open": circuit_open,
@@ -76,7 +76,7 @@ mod tests {
             || {
                 let mut config = Config::default();
                 config.overseer.dispatch_enabled = false;
-                config.overseer.max_workers = 2;
+                config.overseer.parallel_limit = 2;
                 config.overseer.autonomy_level = crate::overseer::autonomy::AutonomyLevel::FullAuto;
                 config.overseer.daily_llm_budget = 17;
                 Ok(config)
@@ -90,7 +90,7 @@ mod tests {
             || {
                 let mut config = Config::default();
                 config.overseer.dispatch_enabled = true;
-                config.overseer.max_workers = 7;
+                config.overseer.parallel_limit = 7;
                 Ok(config)
             },
             || Ok(Ledger::default()),
@@ -99,11 +99,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(first["dispatch_enabled"], false);
-        assert_eq!(first["max_workers"], 2);
+        assert_eq!(first["parallel_limit"], 2);
         assert_eq!(first["autonomy_level"], "full_auto");
         assert_eq!(first["daily_llm_budget"], 17);
         assert_eq!(second["dispatch_enabled"], true);
-        assert_eq!(second["max_workers"], 7);
+        assert_eq!(second["parallel_limit"], 7);
         assert_eq!(second["daemon_alive"], true);
         assert_eq!(second["dispatch_without_daemon"], false);
 

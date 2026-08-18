@@ -84,6 +84,7 @@ fn merge_case_saturates_additions_independently() {
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     };
     let value = json!({
         "headRefOid":"new-sha", "additions":u64::MAX, "deletions":u32::MAX,

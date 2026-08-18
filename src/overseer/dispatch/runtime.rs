@@ -75,7 +75,7 @@ pub fn dispatch_pass(
     // dead whether or not this pass wants a judge, and it must not vanish
     // unrecorded.
     judgments.discard_stale_dispatch(&approved)?;
-    let capacity = remaining_capacity(&config.overseer, ledger, &approved, &worker_modes);
+    let capacity = remaining_capacity(&config.overseer, ledger, &approved);
     let taken = route(
         approved.len(),
         capacity,

@@ -122,7 +122,7 @@ fn execute(
             command::panic_stop_attributed("discord", Some(user_id))?;
             Ok("panic stop complete".into())
         }
-        Command::Merge(task) => merge_actions::merge(task),
+        Command::Merge(task) => merge_actions::merge(task, user_id, ledger_requests),
         Command::Diff(task) => merge_actions::diff(task),
         Command::Help => Ok(help::help_message()),
     }
@@ -153,7 +153,7 @@ fn status_line(config: &OverseerConfig, active: usize, dispatched_today: u32) ->
         format!("**dispatch** {}", on_off(config.dispatch_enabled)),
         format!("**automerge** {}", on_off(config.auto_merge)),
         format!("**autonomy** {}", config.autonomy_level.label()),
-        format!("**workers** {active}/{}", config.max_workers),
+        format!("**workers** {active}"),
         format!(
             "**today** {dispatched_today}/{}",
             format_dispatch_limit(config.daily_dispatch_limit)

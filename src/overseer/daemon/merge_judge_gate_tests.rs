@@ -1,5 +1,5 @@
 use super::*;
-use crate::overseer::ledger::{LedgerPhase, OperatorOverride};
+use crate::overseer::ledger::{LedgerPhase, MergeApproval, OperatorOverride};
 
 fn base_entry(phase: LedgerPhase) -> LedgerEntry {
     LedgerEntry {
@@ -29,6 +29,7 @@ fn base_entry(phase: LedgerPhase) -> LedgerEntry {
         escalation_notified_head: None,
         worker_escalated: false,
         operator_override: None,
+        merge_approval: None,
     }
 }
 
@@ -138,4 +139,41 @@ fn take_operator_override_bypasses_on_a_matching_head() {
     // bypassed entry stays whatever phase it already was instead of being
     // marked `Escalated` right before it merges.
     assert_eq!(entry.phase, LedgerPhase::Escalated);
+}
+
+#[test]
+fn take_merge_approval_returns_false_and_leaves_the_entry_alone_when_none_is_pending() {
+    let mut entry = base_entry(LedgerPhase::PrOpened);
+    assert!(!take_merge_approval(&mut entry, "head1").unwrap());
+    assert!(entry.merge_approval.is_none());
+}
+
+#[test]
+fn take_merge_approval_consumes_but_refuses_a_mismatched_head() {
+    let mut entry = base_entry(LedgerPhase::PrOpened);
+    entry.merge_approval = Some(MergeApproval {
+        head: "old-head".into(),
+        granted_at: chrono::Utc::now(),
+    });
+
+    assert!(!take_merge_approval(&mut entry, "new-head").unwrap());
+
+    // Taken either way, and the drop itself is recorded (dropr:456): a
+    // silently dropped approval would look like a merge that should
+    // already have happened.
+    assert!(entry.merge_approval.is_none());
+}
+
+#[test]
+fn take_merge_approval_bypasses_on_a_matching_head() {
+    let mut entry = base_entry(LedgerPhase::PrOpened);
+    entry.merge_approval = Some(MergeApproval {
+        head: "abc123".into(),
+        granted_at: chrono::Utc::now(),
+    });
+
+    assert!(take_merge_approval(&mut entry, "abc123").unwrap());
+
+    assert!(entry.merge_approval.is_none());
+    assert_eq!(entry.phase, LedgerPhase::PrOpened);
 }

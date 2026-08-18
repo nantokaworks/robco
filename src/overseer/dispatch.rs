@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::model::ManagementMode;
 
 use super::{config::OverseerConfig, judge::DispatchAdvice, ledger::Ledger};
-use entries::{has_active_worker, task_entries, terminal};
+use entries::{has_active_worker, task_entries};
 use gate::apply_candidate_gates;
 use order::order_candidates;
 
@@ -158,9 +158,10 @@ pub fn plan_dispatch(
         };
         return global_skip(plan, reason);
     }
-    // A limit of 0 means unlimited: dispatch is capped only by max_workers and
-    // per_repo_limit. Guarding the comparison keeps `0` from reading as "already
-    // at limit" (`0 >= 0`), which would silently skip every tick.
+    // A limit of 0 means unlimited: dispatch is capped only by the per-repository
+    // primary/secondary slots `apply_candidate_gates` enforces. Guarding the
+    // comparison keeps `0` from reading as "already at limit" (`0 >= 0`), which
+    // would silently skip every tick.
     if config.daily_dispatch_limit != 0 && today >= config.daily_dispatch_limit {
         return global_skip(plan, "daily_limit");
     }
