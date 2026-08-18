@@ -174,13 +174,8 @@ mod tests {
 
     #[test]
     fn recovery_prompt_carries_the_reason_verbatim_and_the_rails() {
-        let prompt = merge_recovery_prompt(
-            "#132",
-            "abc",
-            "https://pr/1",
-            "merge_state:dirty",
-            None,
-        );
+        let prompt =
+            merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty", None);
         assert!(prompt.contains("merge_state:dirty"));
         assert!(prompt.contains("https://pr/1"));
         assert!(prompt.contains("(refs dropr:abc)"));

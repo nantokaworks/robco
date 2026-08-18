@@ -91,8 +91,8 @@ pub(super) fn run(
         // envelope-escalated entry with a pending override would sit parked
         // forever the same way it does without one. See
         // `merge_allow::take_operator_override`.
-        let reconsidering = entry.phase == LedgerPhase::Escalated
-            && (recheck || entry.operator_override.is_some());
+        let reconsidering =
+            entry.phase == LedgerPhase::Escalated && (recheck || entry.operator_override.is_some());
         if entry.phase != LedgerPhase::PrOpened && !reconsidering {
             continue;
         }

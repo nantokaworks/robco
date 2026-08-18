@@ -4,8 +4,7 @@ use std::{
 };
 
 use super::{
-    merge_concurrency,
-    merge_pass_telemetry,
+    merge_concurrency, merge_pass_telemetry,
     merge_repo_pass::{self, RepoOutcome, RepoWork},
     merge_settle,
     protection::ProtectionCache,

@@ -88,7 +88,9 @@ pub(super) fn merge_allows(
     ) {
         return Ok(Judgment::Allow);
     }
-    if take_operator_override(entry, head, "autonomy_envelope")? || take_merge_approval(entry, head)? {
+    if take_operator_override(entry, head, "autonomy_envelope")?
+        || take_merge_approval(entry, head)?
+    {
         return Ok(Judgment::Allow);
     }
     Ok(Judgment::Halt(Halt::escalate("autonomy_envelope")))

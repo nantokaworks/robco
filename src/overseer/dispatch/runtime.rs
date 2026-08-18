@@ -10,7 +10,11 @@ use super::{
     plan_dispatch,
     worker::{SpawnOutcome, spawn_candidate},
 };
-use crate::overseer::{config_write, ledger::Ledger, logging::{self, DecisionKind}};
+use crate::overseer::{
+    config_write,
+    ledger::Ledger,
+    logging::{self, DecisionKind},
+};
 use crate::{Result, config::Config, registry::Registry};
 
 pub fn dispatch_pass(

@@ -252,7 +252,10 @@ fn a_config_carrying_the_removed_judge_keys_loads_and_drops_them_on_save() {
         "max_merge_judge_primes",
         "max_merge_judge_fail_safes",
     ] {
-        assert!(overseer.get(key).is_none(), "{key} should not survive a save");
+        assert!(
+            overseer.get(key).is_none(),
+            "{key} should not survive a save"
+        );
     }
 }
 

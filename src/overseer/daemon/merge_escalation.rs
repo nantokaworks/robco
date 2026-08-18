@@ -96,7 +96,10 @@ pub(super) fn notify(
 pub(super) const STUCK_AFTER: Duration = Duration::hours(2);
 
 /// Reasons meaning nothing will reconsider this escalation. Exact matches.
-const TERMINAL_EXACT: &[&str] = &[merge_recovery::CAP_REACHED, super::merge_decision::CLOSED_UNMERGED];
+const TERMINAL_EXACT: &[&str] = &[
+    merge_recovery::CAP_REACHED,
+    super::merge_decision::CLOSED_UNMERGED,
+];
 
 /// Reasons meaning nothing will reconsider this escalation. Prefix matches,
 /// because each carries the condition it stopped on after the colon.
