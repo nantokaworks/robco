@@ -5,10 +5,7 @@
 //! — the raw code itself is never translated, so it stays a stable anchor
 //! back to the source.
 //!
-//! Only the vocabulary-table sentences are covered here. A judge's own
-//! wrapped words (`judge_escalate:`, `judge_veto:`, `judge_fail_safe:`) are
-//! free-form prose already, not table vocabulary, and render verbatim in
-//! every locale — see `humanize::sentence`'s doc comment.
+//! Only the vocabulary-table sentences are covered here.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -46,9 +43,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "The automated handback gave up after repeated attempts." => {
             "自動handbackは繰り返し試行した末に諦めました。"
-        }
-        "The merge judge kept failing, so the gate stopped asking it." => {
-            "merge judgeが失敗し続けたため、gateは質問を止めました。"
         }
         "Repeated spawn failures tripped the circuit for this task." => {
             "起動失敗が繰り返され、このタスクの回路がtripしました。"

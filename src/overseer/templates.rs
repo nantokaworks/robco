@@ -72,10 +72,10 @@ fn close_directive_instruction(display_id: &str, subtasks: &[Subtask]) -> String
 
 /// What a worker is told when Overseer could not merge the pull request it opened.
 ///
-/// The failure reason is passed through verbatim: for a judge veto it is the
-/// judge's own words and therefore the actual instruction, and for a merge state
-/// it names the state to resolve. Paraphrasing it here would put an Overseer-side
-/// guess between the verdict and the worker acting on it.
+/// The failure reason is passed through verbatim — for a merge state it names
+/// the state to resolve, for an autonomy-envelope hold it says so directly.
+/// Paraphrasing it here would put an Overseer-side guess between the reason
+/// and the worker acting on it.
 ///
 /// The rails are restated rather than assumed. A merge failure is exactly the
 /// situation where a worker is most tempted to merge the pull request itself, and
@@ -174,14 +174,9 @@ mod tests {
 
     #[test]
     fn recovery_prompt_carries_the_reason_verbatim_and_the_rails() {
-        let prompt = merge_recovery_prompt(
-            "#132",
-            "abc",
-            "https://pr/1",
-            "judge_veto:touches the migration registry without a rollback",
-            None,
-        );
-        assert!(prompt.contains("judge_veto:touches the migration registry without a rollback"));
+        let prompt =
+            merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty", None);
+        assert!(prompt.contains("merge_state:dirty"));
         assert!(prompt.contains("https://pr/1"));
         assert!(prompt.contains("(refs dropr:abc)"));
         for rail in [

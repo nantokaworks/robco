@@ -5,8 +5,9 @@
 //! CLI refreshes belongs to the user's interactive session rather than to the
 //! agent. A session spawned as a direct child of the daemon therefore cannot
 //! borrow the credential an interactive `claude` run uses, which is why every
-//! judge session started under the service died on authentication while
-//! dispatched workers — children of the login-owned tmux server — kept working.
+//! ephemeral session (triage, review, preflight) started under the service
+//! died on authentication while dispatched workers — children of the
+//! login-owned tmux server — kept working.
 //!
 //! Service daemons answer this with an explicit, non-interactive channel rather
 //! than by reaching into a login session's secret store: systemd has

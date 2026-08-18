@@ -3,10 +3,10 @@
 //!
 //! Without this the daemon sees only "the process exited and wrote nothing",
 //! which is the same shape as a model that ran out of turns or a briefing it
-//! refused — and a merge judge that reports the generic shape escalates the
-//! pull request without ever naming the credential as the cause. The agent CLIs
-//! do say so on stderr, so the session captures stderr to `session.log` and this
-//! module reads the tail of it.
+//! refused — and a triage or review session that reports the generic shape
+//! fails silently without ever naming the credential as the cause. The agent
+//! CLIs do say so on stderr, so the session captures stderr to `session.log`
+//! and this module reads the tail of it.
 
 use std::{
     fs::File,

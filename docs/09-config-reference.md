@@ -150,8 +150,6 @@ Every long-form string an LLM writes for you to read:
 |---------|------------------|
 | Overseer board review | the review `summary` and each finding's `summary`, which become Inbox rows |
 | Exception triage | the triage `reason` |
-| Dispatch judge | the dispatch `reason` |
-| Merge judge | the merge `reason`, including a veto or escalation the Inbox shows |
 | Discord ops agent | the `reply` posted back to the channel |
 | Worker dispatch and merge-recovery prompts | the prose a dispatched worker is instructed in |
 

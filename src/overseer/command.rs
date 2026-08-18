@@ -304,9 +304,9 @@ mod daemon_lifecycle_tests {
 
     #[test]
     fn a_bootout_that_has_not_landed_yet_reports_still_shutting_down_not_failure() {
-        // The daemon may still be finishing a merge/judge pass past the
-        // settle window; bootout is already durable at that point, so this
-        // must read as an honest in-progress status, not a flaky failure.
+        // The daemon may still be finishing a merge pass past the settle
+        // window; bootout is already durable at that point, so this must
+        // read as an honest in-progress status, not a flaky failure.
         let outcome = stop_daemon_with(
             || ServiceState::Loaded,
             || Ok(StopOutcome::StillShuttingDown),

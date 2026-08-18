@@ -48,7 +48,7 @@ fn the_category_expands_straight_into_item_rows() {
     // No count header ahead of the items: item `n` is row `n`, which is what
     // the OVERSEER frame's scroll arithmetic relies on.
     assert_eq!(lines.len(), 2);
-    // `LONG_REASON` is a judge-shaped sentence with no live session for the
+    // `LONG_REASON` is a free-text sentence with no live session for the
     // first item, so it resolves to `Answer` and is then orphaned to
     // `Review`; the second is a `Question`, always answerable.
     assert!(lines[0].contains("[ESC] REVIEW #159"), "{lines:?}");

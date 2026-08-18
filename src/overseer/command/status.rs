@@ -24,7 +24,6 @@ use crate::{
         daemon::merge_pass_telemetry,
         exec::process_alive,
         heartbeat, heartbeat_path,
-        judge::JudgmentQueue,
         ledger::{ActiveWorkers, Ledger, terminal},
         logging, merge_pass_path,
         session::health::SessionHealth,
@@ -39,7 +38,6 @@ use status_debug::print_debug_section;
 
 pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
     let ledger = Ledger::load()?;
-    let judgments = JudgmentQueue::load()?;
     let registry = Registry::load()?;
     let pid = read_pid();
     let heartbeat = heartbeat_path()?;
@@ -75,7 +73,6 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
             &registry,
             ledger.counters.dispatched_today,
             &crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
-            &judgments.snapshot().active,
         )
     );
 
@@ -84,7 +81,6 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
         print_debug_section(
             config,
             &ledger,
-            &judgments,
             &registry,
             session_health.as_ref(),
             healthy,
@@ -107,10 +103,11 @@ fn print_section(summary: &str, reasons: &[String]) {
     }
 }
 
-/// Longest a summarized reason is allowed to run, in characters. A judge's
-/// escalation reason can be a multi-paragraph verdict (dropr:357) — readable
-/// in the TUI's Inbox preview or under `--debug`'s decision-log tail, but the
-/// opposite of "answerable at a glance" printed whole into a terminal.
+/// Longest a summarized reason is allowed to run, in characters. An
+/// escalation reason can run to a multi-line explanation (dropr:357) —
+/// readable in the TUI's Inbox preview or under `--debug`'s decision-log
+/// tail, but the opposite of "answerable at a glance" printed whole into a
+/// terminal.
 const REASON_LINE_LIMIT: usize = 160;
 
 /// Reduces a reason to the one line an operator needs to tell this row apart
@@ -229,17 +226,15 @@ fn stuck_summary(reasons: &[String]) -> String {
 
 /// "What is running right now?" — active workers by repository (named, never
 /// by the absolute path the ledger records them under), which task holds
-/// each repository's primary slot, today's dispatch throughput, and anything
-/// the judge is actively evaluating. A worker holding a slot and a judgment
-/// holding a queue are both "running" in the sense an operator means it; a
-/// completed or terminal entry is not.
+/// each repository's primary slot, and today's dispatch throughput. A
+/// completed or terminal entry is not "running" in the sense an operator
+/// means it.
 fn running_line(
     active: &ActiveWorkers,
     primary_holders: &BTreeMap<String, String>,
     registry: &Registry,
     dispatched_today: u32,
     dispatch_limit_label: &str,
-    judging: &[String],
 ) -> String {
     let workers = if active.count == 0 {
         "no active workers".to_string()
@@ -258,14 +253,7 @@ fn running_line(
             .join(", ");
         format!("{} worker(s) ({by_repo})", active.count)
     };
-    let judging_suffix = if judging.is_empty() {
-        String::new()
-    } else {
-        format!(" · judging {}", judging.join(", "))
-    };
-    format!(
-        "running now: {workers} · dispatched today {dispatched_today}/{dispatch_limit_label}{judging_suffix}"
-    )
+    format!("running now: {workers} · dispatched today {dispatched_today}/{dispatch_limit_label}")
 }
 
 /// A decision-log line that exists but does not parse is silently skipped by

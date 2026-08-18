@@ -2,7 +2,7 @@
 //!
 //! `decisions.jsonl` and the ledger record *why* something stopped moving, in
 //! whatever vocabulary the recorder used — a snake_case code, a wrapped and
-//! re-wrapped chain of codes, or a judge's own sentence. None of that says
+//! re-wrapped chain of codes, or a free-text sentence. None of that says
 //! *what to do*. This module is the one place that answers that question, so
 //! the Inbox row, its preview, and the `N/M actionable` count all read the
 //! same verdict instead of three call sites guessing at the same reason.
@@ -51,9 +51,6 @@ pub(crate) fn classify(reason: &str) -> FailureClass {
         // `gh pr merge` refused or failed; the branch itself is the thing to fix.
         "merge_exit:",
         "merge_error:",
-        // The merge judge's own words are the remediation instruction.
-        "judge_veto:",
-        "judge_escalate:",
     ]
     .iter()
     .any(|prefix| reason.starts_with(prefix));

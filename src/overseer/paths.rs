@@ -85,13 +85,8 @@ pub fn triage_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("triage"))
 }
 
-pub fn judge_dir() -> Result<PathBuf> {
-    Ok(overseer_home()?.join("judge"))
-}
-
-/// Case directory for the start-up credential probe. Its own directory rather
-/// than a judge case so a probe never looks like a judgment in the retained
-/// case history.
+/// Case directory for the start-up credential probe. Its own directory so a
+/// probe never looks like a worker session in the retained case history.
 pub fn preflight_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("preflight"))
 }

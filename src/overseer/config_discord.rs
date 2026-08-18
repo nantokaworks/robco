@@ -25,10 +25,10 @@ pub struct DiscordConfig {
     pub notify_level: NotifyLevel,
     /// Runs notification titles and descriptions through an LLM pass in
     /// `language` before posting. Independent of `language` itself, which
-    /// also governs the ops-agent reply and every worker/judge prompt — an
-    /// operator may want those localized but keep templated notifications
-    /// in English for speed and cost. Has no effect while `language` is
-    /// unset or blank; the pass is skipped either way.
+    /// also governs the ops-agent reply and every worker/triage/review
+    /// prompt — an operator may want those localized but keep templated
+    /// notifications in English for speed and cost. Has no effect while
+    /// `language` is unset or blank; the pass is skipped either way.
     pub notify_localize: bool,
     /// Discord category IDs whose text channels get a conversational reply
     /// to plain chat, the same way `channel_id` already does. Empty by

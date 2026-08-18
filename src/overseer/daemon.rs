@@ -3,6 +3,7 @@ mod discord_events;
 mod discord_sync;
 mod external_prs;
 mod merge;
+mod merge_allow;
 mod merge_apply;
 mod merge_concurrency;
 mod merge_decision;
@@ -13,8 +14,6 @@ mod merge_evaluate;
 mod merge_gate;
 mod merge_hold;
 mod merge_hold_recheck;
-mod merge_judge_fail_safe;
-mod merge_judge_gate;
 pub(crate) mod merge_pass_telemetry;
 pub(crate) mod merge_queue;
 mod merge_recovery;
@@ -41,7 +40,6 @@ use super::{
     exec::{PidGuard, append_jsonl, execute_actions},
     heartbeat, heartbeat_path,
     inbox::InboxReader,
-    judge::JudgmentQueue,
     ledger::Ledger,
     logging,
     monitor::{ObservationError, ObservationSnapshot, reconcile},
@@ -76,8 +74,8 @@ pub async fn run_daemon() -> Result<()> {
         logging::log_message(None, notice)?;
     }
     // Before the first pass, and never inside one: a daemon whose spawned
-    // sessions cannot authenticate answers every judgment with a fail-safe, and
-    // the operator's only signal used to be pull requests quietly piling up.
+    // sessions cannot authenticate fails triage and review silently, and the
+    // operator's only signal used to be those passes quietly doing nothing.
     if let Err(error) = session::preflight::run(&config) {
         logging::log_message(None, &format!("session preflight failed: {error}"))?;
     }
@@ -96,7 +94,6 @@ pub async fn run_daemon() -> Result<()> {
     let mut inbox = InboxReader::new()?;
     let mut protections = protection::ProtectionCache::default();
     let mut exceptions = ExceptionQueue::load()?;
-    let mut judgments = JudgmentQueue::load()?;
     let mut review = ReviewPass::load()?;
     // Installed before the first pass so a wake or a signal delivered while a
     // pass is running is remembered rather than missed.
@@ -182,7 +179,6 @@ pub async fn run_daemon() -> Result<()> {
             exceptions.enqueue(&actions, &next, &observed)?;
             exceptions.tick(&config, &mut next)?;
         }
-        judgments.tick(&config)?;
         // Read-only, and deliberately placed before the acting passes: it
         // reviews the board the pass inherited rather than the one this pass is
         // in the middle of changing.
@@ -191,7 +187,6 @@ pub async fn run_daemon() -> Result<()> {
             &actions,
             config.overseer.release_pipeline_enabled,
             &mut cleanup_notes_logged,
-            &mut judgments,
         )?;
         // Snapshot before the pass mutates `next.entries` in place: neither
         // `merge_apply::merge_now` nor `merge_decision::concluded` (the two
@@ -199,18 +194,11 @@ pub async fn run_daemon() -> Result<()> {
         // so this before/after diff is the only place that transition is
         // ever seen. See `merge_release_check::newly_merged`.
         let before_merge = next.entries.clone();
-        merge::auto_merge_pass(
-            &config,
-            &mut next,
-            &mut protections,
-            &mut judgments,
-            &pulled,
-        )?;
+        merge::auto_merge_pass(&config, &mut next, &mut protections, &pulled)?;
         execute_actions(
             &merge_release_check::newly_merged(&before_merge, &next.entries),
             config.overseer.release_pipeline_enabled,
             &mut cleanup_notes_logged,
-            &mut judgments,
         )?;
         // After the merge pass, not before: the recheck budget it reads
         // (`merge_hold_recheck::due`) only reflects this tick's escalations
@@ -220,7 +208,6 @@ pub async fn run_daemon() -> Result<()> {
             &mut config,
             &mut next,
             now,
-            &mut judgments,
             &mut unmaterialised_logged,
             &mut dispatch_hold_logged,
             &mut dispatch_global_hold_logged,

@@ -14,11 +14,9 @@ pub(super) fn ledger() -> Ledger {
             retries: 0,
             pr_url: None,
             branch_updates: 0,
-            merge_judge_primes: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
             manual_merge_skip: None,
-            merge_judge_fail_safes: 0,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
@@ -308,65 +306,6 @@ fn delayed_done_does_not_revive_escalated_entry() {
         LedgerPhase::Escalated
     );
 }
-#[test]
-fn a_done_report_after_a_merge_escalation_requests_judgment_reconsideration() {
-    let mut escalated = ledger();
-    escalated.entries[0].phase = LedgerPhase::Escalated;
-    escalated.entries[0].pr_url = Some("https://github.test/pull/1".into());
-    escalated.entries[0].settled_at = Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap());
-    let observations: Observations = serde_json::from_str(
-        r#"{"inbox":[{"at":"2026-07-16T00:03:00Z","agent_id":"worker-1","kind":"done"}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 4, 0).unwrap();
-    let (result, actions) = reconcile(&escalated, &observations, now, 30, 72);
-    // The judge, not this report, still decides whether the pull request
-    // merges — so the phase stays put; only a fresh look is requested.
-    assert_eq!(result.entries[0].phase, LedgerPhase::Escalated);
-    assert!(actions.iter().any(|action| matches!(
-        action,
-        Action::ReconsiderMergeJudgment { task_id, pr_url }
-            if task_id == "task-131" && pr_url == "https://github.test/pull/1"
-    )));
-}
-
-#[test]
-fn a_done_report_predating_the_escalation_does_not_request_reconsideration() {
-    let mut escalated = ledger();
-    escalated.entries[0].phase = LedgerPhase::Escalated;
-    escalated.entries[0].pr_url = Some("https://github.test/pull/1".into());
-    escalated.entries[0].settled_at = Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 5, 0).unwrap());
-    let observations: Observations = serde_json::from_str(
-        r#"{"inbox":[{"at":"2026-07-16T00:03:00Z","agent_id":"worker-1","kind":"done"}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 6, 0).unwrap();
-    let (_, actions) = reconcile(&escalated, &observations, now, 30, 72);
-    assert!(
-        !actions
-            .iter()
-            .any(|action| matches!(action, Action::ReconsiderMergeJudgment { .. }))
-    );
-}
-
-#[test]
-fn a_done_report_after_escalation_with_no_pull_request_requests_nothing() {
-    let mut escalated = ledger();
-    escalated.entries[0].phase = LedgerPhase::Escalated;
-    escalated.entries[0].settled_at = Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 2, 0).unwrap());
-    let observations: Observations = serde_json::from_str(
-        r#"{"inbox":[{"at":"2026-07-16T00:03:00Z","agent_id":"worker-1","kind":"done"}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 0, 4, 0).unwrap();
-    let (_, actions) = reconcile(&escalated, &observations, now, 30, 72);
-    assert!(
-        !actions
-            .iter()
-            .any(|action| matches!(action, Action::ReconsiderMergeJudgment { .. }))
-    );
-}
-
 #[test]
 fn blocked_dead_and_unknown_observations_degrade_safely() {
     let malformed: Observations = serde_json::from_str(

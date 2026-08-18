@@ -118,13 +118,12 @@ pub(super) fn merge_lifecycle(ledger: &Ledger, agent_id: &str) -> Option<MergeLi
         Some("checks_waiting") => MergeLifecycle::ChecksRunning,
         Some("checks_not_green") => MergeLifecycle::ChecksFailing,
         Some(reason) if reason.starts_with("merge_error:") => MergeLifecycle::ChecksFailing,
-        // The deterministic gate (protection, checks, branch position) has
-        // nothing to hold on; the only step left that clears its hold on
-        // `Pending` rather than recording one is the merge judge
-        // (`overseer::daemon::merge`), so an unset reason on an open pull
-        // request reads as "waiting on the judge".
-        None => MergeLifecycle::WaitingJudge,
-        Some(_) => MergeLifecycle::OnHold,
+        // Every gate exit — clearing all the way through to a merge, or
+        // halting with a recorded reason — resolves within the same pass
+        // (`overseer::daemon::merge_evaluate::evaluate`), so a `PrOpened`
+        // entry with no hold reason recorded is not a state the ledger is
+        // ever saved in. Defensive fallback only.
+        Some(_) | None => MergeLifecycle::OnHold,
     })
 }
 
@@ -142,7 +141,7 @@ pub(super) fn merge_hold_detail(locale: Locale, ledger: &Ledger, agent_id: &str)
             .merge_hold
             .reason
             .clone()
-            .unwrap_or_else(|| t(locale, "waiting on merge judge").to_string()),
+            .unwrap_or_else(|| t(locale, "waiting on the merge gate").to_string()),
     )
 }
 

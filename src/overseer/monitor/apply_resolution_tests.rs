@@ -20,11 +20,9 @@ fn escalated(settled_at: Option<DateTime<Utc>>, worker_escalated: bool) -> Ledge
         retries: 0,
         pr_url: None,
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -178,10 +176,10 @@ fn a_non_escalated_entry_is_left_alone() {
     assert!(actions.is_empty());
 }
 
-/// The judge-veto regression: `LedgerPhase::Escalated` is shared with the
-/// merge subsystem's own safety-valve escalations (a judge veto, an
-/// exhausted recovery or reconsideration budget, a pull request closed
-/// without merging), whose worktree and tmux session stay alive exactly like
+/// The merge-escalation regression: `LedgerPhase::Escalated` is shared with
+/// the merge subsystem's own safety-valve escalations (an autonomy-envelope
+/// hard stop, an exhausted recovery or reconsideration budget, a pull request
+/// closed without merging), whose worktree and tmux session stay alive exactly like
 /// a worker-blocked entry's do. Every one of the three signals can fire for
 /// such an entry too, but none of them says anything about whether the
 /// specific condition the merge gate raised has cleared — so an entry that

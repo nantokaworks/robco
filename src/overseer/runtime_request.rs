@@ -38,9 +38,9 @@ pub(crate) enum RuntimeRequest {
         repo: String,
         at: DateTime<Utc>,
     },
-    /// A one-time operator decision to bypass the judge veto/escalate verdict
-    /// or the autonomy envelope's hard stop currently blocking one escalated
-    /// pull request — granted by `mcp::tools::approve`'s fallback when the
+    /// A one-time operator decision to bypass the autonomy envelope's hard
+    /// stop currently blocking one escalated pull request — granted by
+    /// `mcp::tools::approve`'s fallback when the
     /// worker's own session that would otherwise receive the decision is no
     /// longer live to answer into. `target` is the ledger entry's `agent_id`
     /// or `display_id`, the same two keys `robco_approve` and the Inbox

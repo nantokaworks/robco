@@ -267,6 +267,6 @@ fn merge_lifecycle_is_inert_off_the_done_status() {
     // `merge_lifecycle` is only ever consulted in place of `Status::Done`;
     // setting it alongside `Idle` must not conjure a glyph out of nothing.
     let mut state = IndicatorState::with_status(Some(Status::Idle));
-    state.merge_lifecycle = Some(MergeLifecycle::WaitingJudge);
+    state.merge_lifecycle = Some(MergeLifecycle::OnHold);
     assert_eq!(select(state), Some(Indicator::Status(Status::Idle)));
 }

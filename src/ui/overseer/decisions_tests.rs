@@ -25,11 +25,9 @@ fn ledger_entry(
         retries: 0,
         pr_url: None,
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -154,15 +152,15 @@ fn a_merge_error_reads_as_checks_failing() {
 }
 
 #[test]
-fn a_cleared_hold_on_an_open_pr_reads_as_waiting_on_the_judge() {
-    // `overseer::daemon::merge` clears `merge_hold` on `Outcome::Pending`
-    // (the judge queued the request but has not answered yet) — the
-    // deterministic gate has nothing left to hold on, so an unset reason
-    // on a still-open pull request means the judge is what is pending.
+fn an_open_pr_with_no_hold_reason_falls_back_to_on_hold() {
+    // Every gate exit resolves within one pass (`overseer::daemon::merge_evaluate::evaluate`)
+    // — a merge either lands or records a hold reason — so a `PrOpened` entry
+    // with no reason recorded is a state the ledger should not actually be
+    // saved in. Defensive fallback, not a state this path is meant to reach.
     let ledger = pr_opened_ledger("worker-1", "#359", None);
     assert_eq!(
         merge_lifecycle(&ledger, "worker-1"),
-        Some(MergeLifecycle::WaitingJudge)
+        Some(MergeLifecycle::OnHold)
     );
 }
 
@@ -200,11 +198,11 @@ fn merge_hold_detail_is_the_raw_reason_verbatim() {
 }
 
 #[test]
-fn merge_hold_detail_names_the_judge_when_no_reason_is_recorded() {
+fn merge_hold_detail_names_the_merge_gate_when_no_reason_is_recorded() {
     let ledger = pr_opened_ledger("worker-1", "#359", None);
     assert_eq!(
         merge_hold_detail(Locale::En, &ledger, "worker-1"),
-        Some("waiting on merge judge".into())
+        Some("waiting on the merge gate".into())
     );
 }
 

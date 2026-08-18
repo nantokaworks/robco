@@ -2,7 +2,7 @@
 //!
 //! Every LLM surface gets its own file and its own budget. Sharing one counter
 //! would let a surface on a fixed cadence — the board reviewer runs whether or
-//! not there is work — starve an on-demand one like dispatch judgement.
+//! not there is work — starve an on-demand one.
 
 use crate::Result;
 use chrono::{NaiveDate, Utc};
@@ -45,12 +45,6 @@ impl DailyCounter {
         save(path, &next)?;
         *self = next;
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_today(&mut self, count: u32) {
-        self.date = Some(Utc::now().date_naive());
-        self.count = count;
     }
 }
 

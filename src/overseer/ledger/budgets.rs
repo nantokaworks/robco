@@ -95,15 +95,14 @@ pub struct MergeSettling {
     pub passes_held: u32,
 }
 
-/// A one-time operator decision to bypass the judge veto/escalate verdict or
-/// the autonomy envelope's hard stop currently blocking a pull request —
-/// granted through `overseer::runtime_request::RuntimeRequest::OperatorMergeOverride`
-/// when the worker's own tmux session is no longer live to answer a fix into
-/// (see `mcp::tools::approve`'s fallback). Scoped to the head the operator
-/// saw: `daemon::merge_judge_gate` consumes it only when the pull request's
-/// current head still matches, and clears it either way once consumed, so a
-/// later, unreviewed push cannot ride on a decision made about an older
-/// revision.
+/// A one-time operator decision to bypass the autonomy envelope's hard stop
+/// currently blocking a pull request — granted through
+/// `overseer::runtime_request::RuntimeRequest::OperatorMergeOverride` when the
+/// worker's own tmux session is no longer live to answer a fix into (see
+/// `mcp::tools::approve`'s fallback). Scoped to the head the operator saw:
+/// `daemon::merge_allow` consumes it only when the pull request's current
+/// head still matches, and clears it either way once consumed, so a later,
+/// unreviewed push cannot ride on a decision made about an older revision.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OperatorOverride {
     pub head: String,
@@ -124,11 +123,8 @@ pub struct OperatorOverride {
 /// recorded in `decisions.jsonl`, because a silently dropped approval looks to
 /// the operator like a merge that should already have happened.
 ///
-/// Deliberately narrower than [`OperatorOverride`]: `daemon::merge_judge_gate`
-/// consumes it only to satisfy the autonomy envelope's decision to escalate,
-/// never a judge veto or escalate verdict. An operator approving from Discord
-/// before the judge has spoken has not reviewed a verdict there is anything to
-/// bypass.
+/// Deliberately narrower than [`OperatorOverride`]: `daemon::merge_allow`
+/// consumes it only to satisfy the autonomy envelope's decision to escalate.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MergeApproval {
     pub head: String,

@@ -1,12 +1,10 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::Mutex,
     time::Instant,
 };
 
 use super::{
-    merge_concurrency::{self, SharedJudgments},
-    merge_pass_telemetry,
+    merge_concurrency, merge_pass_telemetry,
     merge_repo_pass::{self, RepoOutcome, RepoWork},
     merge_settle,
     protection::ProtectionCache,
@@ -15,7 +13,6 @@ use crate::{
     Result,
     config::Config,
     overseer::{
-        judge::JudgmentQueue,
         ledger::{Ledger, LedgerEntry},
         logging::{self, DecisionEntry, DecisionKind},
         merge_pass_path,
@@ -31,16 +28,15 @@ use crate::{
 /// (`merge_repo_pass::run`) runs on its own worker thread; see
 /// `merge_concurrency` for the bounded pool that schedules them and
 /// `merge_repo_pass` for what one repository's walk actually does. What is
-/// shared — the protection cache and the judgment queue — is synchronised
-/// there; what is not (`Heads`, each repository's settling barrier, each
-/// entry's own mutable state) is extracted per repository before any worker
-/// starts and folded back here once every worker has finished, so nothing is
-/// ever written from two threads at once.
+/// shared — the protection cache — is synchronised there; what is not
+/// (`Heads`, each repository's settling barrier, each entry's own mutable
+/// state) is extracted per repository before any worker starts and folded
+/// back here once every worker has finished, so nothing is ever written from
+/// two threads at once.
 pub(super) fn auto_merge_pass(
     config: &Config,
     ledger: &mut Ledger,
     cache: &mut ProtectionCache,
-    judgments: &mut JudgmentQueue,
     pulled: &HashSet<String>,
 ) -> Result<()> {
     if !config.overseer.auto_merge {
@@ -94,7 +90,6 @@ pub(super) fn auto_merge_pass(
     let repos_evaluated = work.len();
 
     let cache: &ProtectionCache = &*cache;
-    let judgments: SharedJudgments = Mutex::new(judgments);
     let ceiling = config.overseer.max_concurrent_merge_repos;
     let outcomes = merge_concurrency::run_bounded(work, ceiling, |item| {
         merge_repo_pass::run(
@@ -102,7 +97,6 @@ pub(super) fn auto_merge_pass(
             config,
             cache,
             &registry,
-            &judgments,
             consecutive_failures,
             max_rechecks,
             max_settle_passes,
@@ -155,7 +149,3 @@ fn log_repo(repo: &str, reason: &str) -> Result<()> {
     decision.source = Some("auto_merge".into());
     logging::append(&decision)
 }
-
-#[cfg(test)]
-#[path = "../judge/merge_tests.rs"]
-mod tests;

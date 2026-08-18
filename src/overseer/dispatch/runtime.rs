@@ -8,12 +8,10 @@ use super::{
     drain,
     gather::gather_candidates,
     plan_dispatch,
-    route::{Route, remaining_capacity, route},
     worker::{SpawnOutcome, spawn_candidate},
 };
 use crate::overseer::{
     config_write,
-    judge::JudgmentQueue,
     ledger::Ledger,
     logging::{self, DecisionKind},
 };
@@ -23,7 +21,6 @@ pub fn dispatch_pass(
     config: &mut Config,
     ledger: &mut Ledger,
     now: DateTime<Utc>,
-    judgments: &mut JudgmentQueue,
     unmaterialised_logged: &mut BTreeSet<String>,
     dispatch_hold_logged: &mut BTreeMap<String, String>,
     dispatch_global_hold_logged: &mut Option<String>,
@@ -65,41 +62,16 @@ pub fn dispatch_pass(
     dispatch_hold_logged.retain(|task_id, _| candidate_ids.contains(task_id.as_str()));
     drain::check(&candidates, ledger)?;
     let plan = plan_dispatch(&config.overseer, ledger, &candidates, now, &worker_modes);
-    let approved = plan
-        .decisions
-        .iter()
-        .filter(|decision| decision.dispatch)
-        .filter_map(|decision| decision.candidate.clone())
-        .collect::<Vec<_>>();
-    // Before routing, and on every pass: a round the candidate set outran is
-    // dead whether or not this pass wants a judge, and it must not vanish
-    // unrecorded.
-    judgments.discard_stale_dispatch(&approved)?;
-    let capacity = remaining_capacity(&config.overseer, ledger, &approved);
-    let taken = route(
-        approved.len(),
-        capacity,
-        config.overseer.judge_profile.is_some(),
-    );
-    let decisions = match taken {
-        Route::Direct(_) => plan.decisions,
-        Route::Judged => {
-            let Some(advice) = judgments.dispatch_advice(&approved) else {
-                return Ok(());
-            };
-            super::apply_judgment(plan.decisions, &advice)
-        }
-    };
     // Taken out of the ledger rather than borrowed from it: `spawn` below needs
     // `ledger` mutably too, and the two budgets are unrelated (see
     // `Ledger::dispatch_failure_streaks`), so there is nothing to reconcile by
     // keeping them aliased for the loop's duration.
     let mut streaks = mem::take(&mut ledger.dispatch_failure_streaks);
     let tripped = execute_plan(
-        decisions,
+        plan.decisions,
         config.overseer.failure_circuit_threshold,
         &mut streaks,
-        |candidate| spawn_candidate(config, ledger, candidate, now, taken.label()),
+        |candidate| spawn_candidate(config, ledger, candidate, now, "auto"),
         |kind, candidate, reason| {
             log_candidate_once(
                 kind,
@@ -210,5 +182,5 @@ fn open_circuit(config: &mut Config) -> Result<()> {
 }
 
 #[cfg(test)]
-#[path = "../judge/dispatch_runtime_tests.rs"]
+#[path = "runtime_tests.rs"]
 mod tests;

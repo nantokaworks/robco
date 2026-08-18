@@ -15,7 +15,6 @@ pub mod dispatch;
 pub mod exec;
 pub mod heartbeat;
 pub mod inbox;
-pub mod judge;
 pub mod ledger;
 pub mod logging;
 pub mod monitor;

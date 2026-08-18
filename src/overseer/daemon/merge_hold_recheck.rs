@@ -2,17 +2,15 @@
 //! cleared.
 //!
 //! `merge_hold::charge` moves an entry to `Escalated` once its hold budget is
-//! spent, but the condition it escalated on — a pre-judge gate like protection,
-//! checks, or merge state — is never cached anywhere the ordinary
-//! `has_terminal_merge` re-entry check (the judge-veto/escalation path) can
-//! see. Left alone, an entry escalated this way never returns to the gate even
-//! after an operator fixes exactly the condition it was held on.
+//! spent, but the condition it escalated on — protection, checks, merge
+//! state, or the autonomy envelope — is never cached anywhere else. Left
+//! alone, an entry escalated this way never returns to the gate even after an
+//! operator fixes exactly the condition it was held on.
 //!
 //! `merge_hold` itself cannot carry the marker this needs: `merge_hold::cleared`
 //! resets it to default the moment a pass gets past whatever it held on —
 //! including the very reconsideration pass this module grants — so the signal
-//! has to live apart from it, the same way `merge_judge_fail_safe`'s budget
-//! lives apart from `merge_hold` for the same reason. But `merge_hold.escalated`
+//! has to live apart from it. But `merge_hold.escalated`
 //! is exactly what `merge_hold::charge` already leaves behind on every entry a
 //! prior build escalated this way, so `due` also accepts that as proof, which
 //! is what lets an already-escalated entry sitting in a ledger written before
@@ -62,8 +60,8 @@ pub(super) fn escalated(entry: &mut LedgerEntry, reason: &str, head: &str) {
 ///
 /// Reads only. [`charge`] is what spends a look, and the caller charges it on
 /// the one outcome the budget is for — a pass that re-read the gate and found
-/// it still holding. An escalation from a judge veto or a closed pull request
-/// never sets either signal, so this budget leaves those alone.
+/// it still holding. An escalation from a closed pull request never sets
+/// either signal, so this budget leaves it alone.
 pub(super) fn due(entry: &LedgerEntry, max: u32) -> bool {
     entry.phase == LedgerPhase::Escalated
         && (entry.merge_hold_cap_escalated || entry.merge_hold.escalated)
@@ -74,14 +72,9 @@ pub(super) fn due(entry: &LedgerEntry, max: u32) -> bool {
 /// something, and reports whether that was the last one.
 ///
 /// Kept apart from `due` because the two questions have different answers on
-/// the same pass. A reconsidered entry that clears the gate and waits on a
-/// judgment is not being re-checked — the gate already answered — and a
-/// judgment round trip runs on the judge queue's own schedule, one session at a
-/// time, which on a busy queue outlasts the whole budget. Charging every pass
-/// that merely *looked* would therefore spend the budget on waiting rather than
-/// on re-checking, and an entry whose verdict arrived one pass too late would be
-/// stranded in `Escalated` with nothing left to bring it back: exactly the
-/// failure this module exists to end.
+/// the same pass. A reconsidered entry that clears the gate is not being
+/// re-checked — the gate already answered, one way or the other, in the same
+/// pass.
 ///
 /// Charging is further narrowed to passes where `reason` or `head` differs
 /// from `merge_hold_recheck_reason` / `merge_hold_recheck_head` — the pair the
@@ -113,8 +106,8 @@ pub(super) fn exhausted(reason: &str) -> String {
 }
 
 /// Retires the marker once the entry leaves `Escalated` for good by merging,
-/// or once the deterministic gate clears and a real judge verdict becomes
-/// the entry's authority instead (see `merge_judge_gate::judge_allows`).
+/// or once the deterministic gate and the autonomy envelope clear it instead
+/// (see `merge_allow::merge_allows`).
 ///
 /// Also retires `settled_at` and `merge_hold_stuck_notified` —
 /// `merge_escalation::sweep_stuck`'s own markers for the same escalation —

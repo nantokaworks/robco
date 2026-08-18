@@ -97,9 +97,10 @@ fn a_same_pass_resolve_then_re_escalate_still_gets_a_fresh_clock() {
     assert_eq!(result.entries[0].settled_at, Some(at(6)));
 }
 
-/// The judge-veto regression at the `reconcile()` level: an entry escalated by
-/// the merge subsystem (`worker_escalated: false`, e.g. a judge veto or an
-/// exhausted recovery budget) must not be resolved by either path — not the
+/// The merge-escalation regression at the `reconcile()` level: an entry
+/// escalated by the merge subsystem (`worker_escalated: false`, e.g. an
+/// autonomy-envelope hard stop or an exhausted recovery budget) must not be
+/// resolved by either path — not the
 /// daemon's own observed activity, and not a worker's `unblocked` report,
 /// since the worker's worktree and session stay alive through a merge-gate
 /// escalation too and it may not know the block is not its own.

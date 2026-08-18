@@ -1,7 +1,6 @@
 //! `robco_approve` — confirm a live worker's prompt, or, when no live
 //! session is left to confirm into, grant a one-time operator bypass for the
-//! judge veto/escalate verdict or autonomy-envelope hard stop currently
-//! blocking its pull request instead.
+//! autonomy-envelope hard stop currently blocking its pull request instead.
 //!
 //! The two paths answer the same operator intent — "yes, proceed" — over
 //! whichever channel still reaches the work: typing into a live tmux session
@@ -14,8 +13,8 @@
 //! mutating tool here, `robco_merge` included. The live-session path is
 //! low-stakes (it can only answer a prompt the target agent itself is
 //! already, visibly, waiting on) and stays ungated. The session-less
-//! fallback is not: it lets the merge pass skip the merge judge's own
-//! verdict, so it is gated the same way `robco_merge` gates deleting a
+//! fallback is not: it lets the merge pass skip the autonomy envelope's own
+//! hard stop, so it is gated the same way `robco_merge` gates deleting a
 //! worktree and branch — an explicit `confirm: true` the caller cannot pass
 //! by accident. As with `robco_merge`, the gate signals intent; it does not
 //! authenticate the caller. Agents operating under RUN/orchestration
@@ -106,8 +105,7 @@ fn approve_with(
     if !args.confirm {
         return Err(invalid_params(
             "no live session for agent_id; confirm must be true to grant a one-time bypass \
-             for the judge veto/escalate verdict or autonomy-envelope hard stop currently \
-             blocking its pull request",
+             for the autonomy-envelope hard stop currently blocking its pull request",
         ));
     }
     grant_operator_override(&args.agent_id, load_ledger, enqueue)

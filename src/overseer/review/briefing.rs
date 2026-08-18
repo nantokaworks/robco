@@ -1,11 +1,11 @@
 //! The reviewer's prompt.
 //!
-//! Same posture as the judge briefing: everything derived from outside the
-//! daemon — task ids, failure text a tool wrote, pull-request titles quoted in a
-//! reason — is delimited and declared untrusted, and the closing delimiter is
-//! escaped inside values. The one difference is authority: the judge may
-//! reorder work, the reviewer may not touch anything at all. Its result schema
-//! has no action field, so there is nothing for a prompt injection to aim at.
+//! Everything derived from outside the daemon — task ids, failure text a tool
+//! wrote, pull-request titles quoted in a reason — is delimited and declared
+//! untrusted, and the closing delimiter is escaped inside values. The
+//! reviewer itself has no authority to act: it may diagnose and escalate
+//! only, and its result schema has no action field, so there is nothing for
+//! a prompt injection to aim at.
 
 use super::digest::Digest;
 use super::findings::Finding;

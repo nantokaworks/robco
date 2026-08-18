@@ -4,10 +4,9 @@
 //! Only reasons in the known vocabulary are mapped; everything else returns
 //! `None` and the caller keeps the raw text verbatim, so a reason this table
 //! has never heard of renders exactly as it did before this module existed.
-//! Free-form judge prose is already a sentence and is deliberately not in
-//! the vocabulary — except when it arrives wrapped in a `judge_*:` code
-//! prefix, where the wrapper is stripped and the judge's own words become
-//! the sentence.
+//! Free-form prose wrapped in a known code prefix (see
+//! [`VERBATIM_PREFIXES`]) has the wrapper stripped and the prose itself
+//! becomes the sentence.
 
 /// Reasons matched whole, each mapped to one short sentence.
 const EXACT: &[(&str, &str)] = &[
@@ -73,14 +72,10 @@ const EXACT: &[(&str, &str)] = &[
         "autonomy_envelope",
         "The autonomy policy held this merge for an operator. Approve it from the TUI inbox or with `robco_approve` on Discord.",
     ),
-    // Spent budgets (`merge_recovery`, `merge_judge_fail_safe`).
+    // Spent budgets (`merge_recovery`).
     (
         "merge_recovery_cap_reached",
         "The automated handback gave up after repeated attempts.",
-    ),
-    (
-        "merge_judge_fail_safe_cap_reached",
-        "The merge judge kept failing, so the gate stopped asking it.",
     ),
     // Dispatch circuit (`dispatch::runtime`).
     (
@@ -184,27 +179,19 @@ const PREFIX: &[(&str, &str)] = &[
     ("session_auth_failed:", "The session could not sign in."),
 ];
 
-/// Wrappers around text that is already a sentence in its own right — a
-/// judge's own words (`daemon::merge_judge_gate`, `remedy::parse`), or the
+/// Wrappers around text that is already a sentence in its own right — the
 /// release pipeline's own outcome (`overseer::release_pipeline`). The inner
 /// text becomes the description verbatim and the wrapped raw code stays
 /// secondary.
-const VERBATIM_PREFIXES: &[&str] = &[
-    "judge_escalate:",
-    "judge_veto:",
-    "judge_fail_safe:",
-    "release_published:",
-    "release_failed:",
-];
+const VERBATIM_PREFIXES: &[&str] = &["release_published:", "release_failed:"];
 
 /// The vocabulary-table half of [`sentence`]: `EXACT` / `PREFIX` only, no
-/// judge-prefix stripping. Unlike `sentence`'s owned `String` — which mixes
-/// static vocabulary with a judge's own runtime words — this returns the
-/// table's own `&'static str`, so a caller can feed it straight into
-/// `locale::t` as a translation-table key. The Inbox reason display
-/// (`ui::overseer::inbox_rows`) uses this rather than `sentence` for exactly
-/// that reason: a judge's wrapped prose is not in the vocabulary and is
-/// never translated (see the module doc comment).
+/// verbatim-prefix stripping. Unlike `sentence`'s owned `String` — which
+/// mixes static vocabulary with runtime prose — this returns the table's own
+/// `&'static str`, so a caller can feed it straight into `locale::t` as a
+/// translation-table key. The Inbox reason display (`ui::overseer::inbox_rows`)
+/// uses this rather than `sentence` for exactly that reason: wrapped prose is
+/// not in the vocabulary and is never translated (see the module doc comment).
 pub(crate) fn static_sentence(reason: &str) -> Option<&'static str> {
     let trimmed = reason.trim();
     if let Some((_, sentence)) = EXACT.iter().find(|(code, _)| *code == trimmed) {

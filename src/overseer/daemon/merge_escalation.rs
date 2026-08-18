@@ -9,16 +9,16 @@
 //! - **Terminal** — nothing will reconsider this: the recheck budget
 //!   (`merge_hold_recheck::exhausted`) or the recovery budget
 //!   (`merge_recovery::CAP_REACHED`) is spent, the worker's session is gone
-//!   (`merge_recovery`'s `missing_session` skip), the judge fail-safe cap
-//!   tripped, or the pull request closed without merging — reopening one is
-//!   a human act. These notify immediately.
+//!   (`merge_recovery`'s `missing_session` skip), or the pull request closed
+//!   without merging — reopening one is a human act. These notify
+//!   immediately.
 //! - **Transient** — `merge_hold::cap_reached`: the hold budget alone is
 //!   spent, but `merge_hold_recheck::escalated` already granted the entry
 //!   free reconsideration passes. Something may still look again, so this
 //!   notifies only once it has sat unresolved past [`STUCK_AFTER`].
 //!
-//! Every other escalation reason (a judge veto, the autonomy envelope, a
-//! branch-update cap) is outside this vocabulary — none of them name a
+//! Every other escalation reason (the autonomy envelope, a branch-update cap)
+//! is outside this vocabulary — none of them name a
 //! condition this module's own recheck/recovery budgets track. Left
 //! completely unmanaged, an entry the merge-hold recheck loop keeps
 //! reconsidering for free (see `merge_hold_recheck`'s module doc) can hit one
@@ -43,7 +43,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 
-use super::{merge_hold_recheck, merge_judge_fail_safe, merge_recovery};
+use super::{merge_hold_recheck, merge_recovery};
 use crate::{
     Result,
     overseer::{
@@ -55,8 +55,8 @@ use crate::{
 /// The `DecisionEntry::escalation_notify` value an `Escalate` decision with
 /// `reason` and revision `head` should carry, for the entry the decision is
 /// about. The single call point every merge-subsystem decision builder
-/// (`merge_decision`, `merge_recovery`, `merge_judge_fail_safe`) uses, so the
-/// vocabulary is matched once rather than re-derived at each call site.
+/// (`merge_decision`, `merge_recovery`) uses, so the vocabulary is matched
+/// once rather than re-derived at each call site.
 ///
 /// Mutates `entry`'s `escalation_notified_reason` / `escalation_notified_head`
 /// for the third bucket below — a read-only signature could not implement the
@@ -98,7 +98,6 @@ pub(super) const STUCK_AFTER: Duration = Duration::hours(2);
 /// Reasons meaning nothing will reconsider this escalation. Exact matches.
 const TERMINAL_EXACT: &[&str] = &[
     merge_recovery::CAP_REACHED,
-    merge_judge_fail_safe::CAP_REACHED,
     super::merge_decision::CLOSED_UNMERGED,
 ];
 

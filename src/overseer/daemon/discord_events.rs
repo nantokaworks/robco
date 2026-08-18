@@ -80,9 +80,9 @@ fn transitions<'a>(
                 }
                 // A `PrOpened -> Escalated` transition is the merge gate's
                 // own doing (`daemon::merge`, `merge_recovery`,
-                // `merge_judge_fail_safe`, `merge_decision::concluded`, and
-                // nothing else moves an entry out of `PrOpened` into
-                // `Escalated`). Every one of those paths already logs its
+                // `merge_decision::concluded`, and nothing else moves an
+                // entry out of `PrOpened` into `Escalated`). Every one of
+                // those paths already logs its
                 // own, more specific `Escalate` decision — classified
                 // terminal or transient by `merge_escalation` — so this
                 // generic phase event would only ever be a second Discord

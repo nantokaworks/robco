@@ -131,7 +131,7 @@ pub(crate) fn apply(ledger: &mut Ledger, request: LedgerRequest) -> Result<(), S
 /// fact the old budget was never sized for, so it grants a fresh look the
 /// same way a killed session or a triage escalation does
 /// (`LedgerEntry::grant_merge_reconsideration`), rather than leaving the
-/// entry unable to ever reach `merge_judge_gate::take_merge_approval`.
+/// entry unable to ever reach `merge_allow::take_merge_approval`.
 fn record_approval(
     entry: &mut LedgerEntry,
     repo: String,

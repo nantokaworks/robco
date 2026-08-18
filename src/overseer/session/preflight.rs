@@ -1,12 +1,13 @@
 //! One spawned session at daemon start, so a broken credential is discovered
-//! before a merge judgment spends a pull request on finding out.
+//! before a worker, triage, or review session spends a task on finding out.
 //!
-//! The probe deliberately runs the same way a judgment does — the configured
-//! profile, spawned as a direct child of the daemon, writing `result.json` into
-//! a case directory — because the failure this exists to catch is a property of
-//! *that* execution context and of nothing else. A cheaper check that only
-//! inspected the credential channel would have passed on the day this broke:
-//! the credentials were valid, the launchd agent just could not reach them.
+//! The probe deliberately runs the same way a worker session does — the
+//! configured profile, spawned as a direct child of the daemon, writing
+//! `result.json` into a case directory — because the failure this exists to
+//! catch is a property of *that* execution context and of nothing else. A
+//! cheaper check that only inspected the credential channel would have passed
+//! on the day this broke: the credentials were valid, the launchd agent just
+//! could not reach them.
 
 use std::{fs, path::Path, time::Duration};
 
@@ -52,9 +53,9 @@ fn probe(config: &Config, case_dir: &Path) -> Result<SessionHealth> {
         return Ok(SessionHealth::new(SessionHealthState::Unknown, credential)
             .with_detail("preflight disabled by overseer.session_preflight"));
     }
-    let Some(profile) = session_profile(config, config.overseer.judge_profile.as_ref()) else {
+    let Some(profile) = session_profile(config, config.overseer.worker_profile.as_ref()) else {
         return Ok(SessionHealth::new(SessionHealthState::Unknown, credential)
-            .with_detail("judgment profile not found"));
+            .with_detail("worker profile not found"));
     };
     fs::create_dir_all(case_dir)?;
     let result = EphemeralSession {
@@ -166,16 +167,16 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_judgment_profile_is_reported_rather_than_probed() {
+    fn a_missing_worker_profile_is_reported_rather_than_probed() {
         let temp = tempfile::tempdir().unwrap();
         let case_dir = temp.path().join("preflight");
         let mut config = Config::default();
-        config.overseer.judge_profile = Some("absent-profile".into());
+        config.overseer.worker_profile = Some("absent-profile".into());
 
         let health = probe(&config, &case_dir).unwrap();
 
         assert_eq!(health.state, SessionHealthState::Unknown);
-        assert_eq!(health.detail.as_deref(), Some("judgment profile not found"));
+        assert_eq!(health.detail.as_deref(), Some("worker profile not found"));
         assert!(!case_dir.exists());
     }
 }

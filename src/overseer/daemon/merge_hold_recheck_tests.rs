@@ -13,11 +13,9 @@ fn entry() -> LedgerEntry {
         retries: 0,
         pr_url: Some("https://pr/1".into()),
         branch_updates: 0,
-        merge_judge_primes: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         manual_merge_skip: None,
-        merge_judge_fail_safes: 0,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -137,8 +135,8 @@ fn a_zero_budget_never_reconsiders() {
     assert!(!due(&entry, 0));
 }
 
-/// An escalation this module never marked — a judge veto, a closed pull
-/// request — is not this budget's to reconsider.
+/// An escalation this module never marked — a closed pull request — is not
+/// this budget's to reconsider.
 #[test]
 fn an_escalation_the_hold_cap_did_not_raise_is_left_alone() {
     let mut entry = entry();
@@ -157,22 +155,19 @@ fn a_non_escalated_entry_is_never_due() {
 
 /// The reason `due` and `charge` are two calls rather than one.
 ///
-/// A reconsidered entry that clears the deterministic gate and waits on a
-/// judgment is looked at every pass, but it is not being *re-checked* — the gate
-/// already answered, and what it now waits on arrives on the judge queue's own
-/// schedule. A judgment round trip runs one session at a time and on a busy
-/// queue outlasts the whole budget, so a `due` that charged by itself would
-/// spend the budget on waiting. The entry would then sit in `Escalated` with
-/// nothing left to bring it back — the exact failure this module exists to end,
-/// reproduced through the judge path instead of the gate path.
+/// A pass may look at a reconsidered entry without learning anything new —
+/// `due` says whether a look is granted, and only `charge` spends one, on the
+/// pass that actually re-read an unchanged condition. A `due` that charged by
+/// itself would spend the budget on passes that answered nothing new, leaving
+/// nothing to spend on the genuine changes this budget exists for.
 #[test]
 fn looking_without_charging_leaves_the_budget_whole() {
     let mut entry = entry();
     entry.phase = LedgerPhase::Escalated;
     escalated(&mut entry, REASON, HEAD_A);
 
-    // Ten passes of waiting on a judgment: each one looks, none of them spends
-    // (the caller simply never calls `charge` on a `Pending` outcome).
+    // Ten passes that only look: each one is due, none of them spends (the
+    // caller simply never calls `charge`).
     for _ in 0..10 {
         assert!(due(&entry, 3), "a pass that charges nothing stays due");
     }
@@ -189,9 +184,9 @@ fn looking_without_charging_leaves_the_budget_whole() {
     assert!(!due(&entry, 3));
 }
 
-/// Mid-budget, a verdict makes the judge the authority that reconsiders this
-/// entry (`has_terminal_merge`), so the leftover looks are retired rather than
-/// left to be misattributed to whatever the verdict decides next.
+/// Mid-budget, the deterministic gate clears the entry for good, so the
+/// leftover looks are retired rather than left to be misattributed to
+/// whatever this entry does next.
 #[test]
 fn a_verdict_settles_the_marker_before_the_budget_runs_out() {
     let mut entry = entry();
@@ -240,8 +235,8 @@ fn an_entry_a_prior_build_already_escalated_is_reconsidered_from_merge_hold_alon
     assert!(due(&entry, 3));
     charge(&mut entry, REASON, HEAD_A, 3);
     assert_eq!(entry.merge_hold_rechecks, 1);
-    // The first charge promotes the entry to the durable flag, since
-    // a Pending outcome on this very pass would let `merge_hold::cleared` wipe
+    // The first charge promotes the entry to the durable flag, since a merge
+    // on this very pass would let `merge_hold::cleared` wipe
     // `merge_hold.escalated` before the next pass gets to read it.
     assert!(entry.merge_hold_cap_escalated);
 
