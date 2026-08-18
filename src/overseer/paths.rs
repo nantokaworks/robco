@@ -102,6 +102,13 @@ pub fn review_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("review"))
 }
 
+/// One-sentence, model-written descriptions of Inbox rows the board review
+/// wrote — see [`super::row_summaries`]. Kept beside the reviewer's own
+/// `review/` state, since the reviewer is the file's only writer.
+pub fn row_summaries_path() -> Result<PathBuf> {
+    Ok(review_dir()?.join("row_summaries.json"))
+}
+
 pub fn discord_ops_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("discord-ops"))
 }

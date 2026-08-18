@@ -42,6 +42,7 @@ impl Severity {
 pub(super) struct Review {
     pub summary: String,
     pub findings: Vec<Finding>,
+    pub rows: Vec<RowAnswer>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,11 +51,23 @@ pub(super) struct Finding {
     pub summary: String,
 }
 
+/// One row's one-sentence description, keyed by the `id` the row was offered
+/// under (`rows::RowCase::id` — an Inbox item's `target_id`). Carries no
+/// severity and nothing else: this is the one place in the schema whose only
+/// purpose is prose about a case, never a verdict on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RowAnswer {
+    pub id: String,
+    pub sentence: String,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawReview {
     summary: String,
     findings: Vec<RawFinding>,
+    #[serde(default)]
+    rows: Vec<RawRowAnswer>,
 }
 
 #[derive(Deserialize)]
@@ -62,6 +75,13 @@ struct RawReview {
 struct RawFinding {
     severity: Severity,
     summary: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRowAnswer {
+    id: String,
+    sentence: String,
 }
 
 pub(super) fn is_complete(raw: &[u8]) -> bool {
@@ -83,14 +103,35 @@ pub(super) fn parse(raw: &[u8]) -> Result<Review, String> {
             summary: clamp(&finding.summary),
         });
     }
+    let mut rows = Vec::new();
+    for row in value.rows.into_iter().take(super::rows::MAX_ROWS) {
+        let id = row.id.trim();
+        let sentence = collapse(row.sentence.trim());
+        // A row answer is purely additive on top of `summary` and
+        // `findings`, so a malformed or overlong one is dropped rather than
+        // failing the whole review — the same "fall back, never blank" rule
+        // an unmatched `id` gets at record time (dropr:462).
+        if id.is_empty() || sentence.is_empty() || sentence.chars().count() > MAX_SUMMARY_CHARS {
+            continue;
+        }
+        rows.push(RowAnswer {
+            id: id.to_string(),
+            sentence,
+        });
+    }
     Ok(Review {
         summary: clamp(&value.summary),
         findings,
+        rows,
     })
 }
 
+fn collapse(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn clamp(text: &str) -> String {
-    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = collapse(text);
     if collapsed.chars().count() <= MAX_SUMMARY_CHARS {
         return collapsed;
     }

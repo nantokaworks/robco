@@ -141,6 +141,7 @@ fn inbox_prompt_caret_tracks_a_mid_string_cursor() {
                 at: chrono::Utc::now(),
                 pr_url: None,
                 pr_facts: None,
+                sentence: None,
             },
             input: edited("ship it", 4),
         },

@@ -24,6 +24,7 @@ fn item(kind: InboxKind, target_id: &str, second: u32) -> InboxItem {
         at: at(second),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }
 }
 

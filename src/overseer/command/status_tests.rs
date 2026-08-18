@@ -57,6 +57,7 @@ fn answerable_escalation() -> InboxItem {
         at: Utc::now(),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }
 }
 
@@ -70,6 +71,7 @@ fn watch_only_escalation() -> InboxItem {
         at: Utc::now(),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }
 }
 

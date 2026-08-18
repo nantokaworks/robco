@@ -13,12 +13,13 @@ use crate::{
     },
 };
 
-use super::{briefing, digest::Digest, findings::Finding, result};
+use super::{briefing, digest::Digest, findings::Finding, result, rows::RowCase};
 
 pub(super) fn spawn_session(
     config: &Config,
     digest: &Digest,
     findings: &[Finding],
+    rows: &[RowCase],
     root: &Path,
 ) -> SessionHandle {
     let profile = review_profile(config);
@@ -30,7 +31,7 @@ pub(super) fn spawn_session(
             return SessionHandle::spawn(move |_| SessionResult::LaunchFailed(error.to_string()));
         }
     };
-    let prompt = briefing::render(digest, findings, config.language.as_deref());
+    let prompt = briefing::render(digest, findings, rows, config.language.as_deref());
     let env = SessionEnv::resolve(config);
     SessionHandle::spawn(move |control| {
         run_session(profile, timeout, &case, &prompt, &case_dir, &control, &env)

@@ -10,6 +10,7 @@ use crate::{
         ledger::{Ledger, LedgerPhase, PrFacts},
         logging::{self, DecisionEntry, DecisionKind},
         remedy::{self, Remedy},
+        row_summaries::RowSummaries,
     },
     registry::Registry,
 };
@@ -61,6 +62,12 @@ pub(crate) struct InboxItem {
     /// matching ledger entry, or the daemon has not read one yet — the row
     /// still renders, just without this part of the preview.
     pub pr_facts: Option<PrFacts>,
+    /// A one-sentence, model-written description of this row's own case
+    /// (dropr:462), when the board review has written one and it still
+    /// matches [`case_signature`](Self::case_signature). `None` renders the
+    /// row exactly as it did before the reviewer model existed — a missing or
+    /// stale summary is never worse than no summary at all.
+    pub sentence: Option<String>,
 }
 
 /// Every ledger-sourced row's `detail` starts with this, so [`InboxItem::remedy`]
@@ -108,6 +115,16 @@ impl InboxItem {
     pub(crate) fn actionable(&self) -> bool {
         self.remedy().actionable()
     }
+
+    /// A fingerprint of this row's own case — its reason and, when known, its
+    /// pull request's facts. The board review stores this alongside the
+    /// sentence it writes about a row (`row_summaries::RowSummary::signature`);
+    /// a row whose `detail` or `pr_facts` has since changed no longer matches
+    /// it, so a stored sentence about a case that has moved on is never read
+    /// back as current.
+    pub(crate) fn case_signature(&self) -> String {
+        format!("{}|{:?}", self.detail, self.pr_facts)
+    }
 }
 
 /// One aggregation of the Inbox.
@@ -136,6 +153,7 @@ pub(crate) fn aggregate(
     reports: &[AgentSessionReport],
     dismissals: &Dismissals,
     registry: &Registry,
+    summaries: &RowSummaries,
 ) -> Inbox {
     let agents = reports
         .iter()
@@ -187,6 +205,7 @@ pub(crate) fn aggregate(
             at: decision.at,
             pr_url: ledger_entry.and_then(|entry| entry.pr_url.clone()),
             pr_facts: ledger_entry.and_then(|entry| entry.pr_facts.clone()),
+            sentence: None,
         });
     }
     for entry in ledger
@@ -223,6 +242,7 @@ pub(crate) fn aggregate(
             at: entry.dispatched_at,
             pr_url: entry.pr_url.clone(),
             pr_facts: entry.pr_facts.clone(),
+            sentence: None,
         });
     }
     items.sort_by_key(|item| std::cmp::Reverse(item.at));
@@ -232,6 +252,11 @@ pub(crate) fn aggregate(
     // The suppression filter is the last step, so `targets` still names every
     // identity the sources produced.
     items.retain(|item| !dismissals.suppresses(item.kind.code(), &item.target_id, item.at));
+    for item in &mut items {
+        item.sentence = summaries
+            .get(&item.target_id, &item.case_signature())
+            .map(str::to_owned);
+    }
     Inbox { items, targets }
 }
 
@@ -244,6 +269,10 @@ pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
         &agent_session_reports(registry),
         &Dismissals::load()?,
         registry,
+        // Loaded once per aggregation rather than per row: the table is
+        // small, and a per-item load would turn one refresh into one file
+        // read per row.
+        &RowSummaries::load().unwrap_or_default(),
     ))
 }
 
@@ -264,3 +293,7 @@ pub(crate) fn agent_session_reports(registry: &Registry) -> Vec<AgentSessionRepo
 #[cfg(test)]
 #[path = "inbox_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "inbox_summary_tests.rs"]
+mod summary_tests;

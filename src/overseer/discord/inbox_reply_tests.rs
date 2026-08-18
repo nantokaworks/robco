@@ -12,6 +12,7 @@ fn live_escalation(target_id: &str) -> InboxItem {
         at: Utc::now(),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }
 }
 

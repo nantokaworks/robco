@@ -57,6 +57,7 @@ pub(super) fn capture_overseer(
         &reports,
         &Dismissals::load().unwrap_or_default(),
         registry,
+        &crate::overseer::row_summaries::RowSummaries::load().unwrap_or_default(),
     );
     let heartbeat = crate::overseer::heartbeat_path().ok();
     let heartbeat_age = heartbeat
@@ -201,6 +202,7 @@ mod tests {
                     &[],
                     &Dismissals::default(),
                     &Registry::default(),
+                    &crate::overseer::row_summaries::RowSummaries::default(),
                 ),
                 snapshot: OverseerSnapshot::default(),
                 control_watch: ControlWatch::default(),

@@ -19,6 +19,7 @@ fn items(
         reports,
         &Dismissals::default(),
         &Registry::default(),
+        &RowSummaries::default(),
     )
     .items
 }
@@ -159,7 +160,14 @@ fn a_ledger_parked_escalation_names_the_repo_never_its_absolute_path() {
         repos: vec![repo],
     };
 
-    let inbox = aggregate(&ledger, &[], &[], &Dismissals::default(), &registry);
+    let inbox = aggregate(
+        &ledger,
+        &[],
+        &[],
+        &Dismissals::default(),
+        &registry,
+        &RowSummaries::default(),
+    );
 
     assert_eq!(inbox.items.len(), 1);
     assert!(inbox.items[0].label.contains("robco"));
@@ -221,6 +229,7 @@ fn a_dismissed_item_is_filtered_out_but_still_counts_as_a_live_target() {
         &[],
         &dismissals,
         &Registry::default(),
+        &RowSummaries::default(),
     );
 
     assert!(inbox.items.is_empty());
@@ -247,6 +256,7 @@ fn a_newer_escalation_for_a_dismissed_target_comes_back() {
         &[],
         &dismissals,
         &Registry::default(),
+        &RowSummaries::default(),
     );
 
     assert_eq!(inbox.items.len(), 1);

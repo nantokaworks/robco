@@ -44,6 +44,7 @@ fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
         at: chrono::Utc::now(),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }
 }
 

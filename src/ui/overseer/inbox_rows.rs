@@ -111,11 +111,22 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
         }
         lines.push(field(
             "size",
-            format!("{} files, {} lines", facts.files_changed, facts.lines_changed),
+            format!(
+                "{} files, {} lines",
+                facts.files_changed, facts.lines_changed
+            ),
         ));
         if !facts.failed_checks.is_empty() {
             lines.push(field("failed check", facts.failed_checks.join(", ")));
         }
+    }
+    // The board reviewer's own one-sentence description of this case
+    // (dropr:462) — model-written, already in the operator's configured
+    // language, and never itself localized. Absent whenever `review_profile`
+    // is unset, the session failed, or the case has since changed; the row
+    // renders the same without it.
+    if let Some(sentence) = &item.sentence {
+        lines.push(field("summary", sentence.clone()));
     }
     lines.extend([
         // With the year, unlike the Decisions detail's `%m-%d %H:%M`: a stale

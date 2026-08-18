@@ -223,6 +223,33 @@ fn the_interval_gates_the_pass_and_survives_a_restart() {
     assert!(logged(&log).len() > after_first);
 }
 
+/// dropr:462 — the row list a session is spawned with comes from `ledger`
+/// as `tick` received it this pass, not a fresh disk read, so a row's case
+/// can never be pinned to a revision older than the one this pass is
+/// actually reasoning about.
+#[test]
+fn a_spawned_session_pins_signatures_to_the_in_memory_ledger() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = config_with_review(Some("claude"));
+    config.overseer.daily_review_budget = 1;
+    let ledger = ledger_with(vec![live_entry(
+        "#159",
+        LedgerPhase::Escalated,
+        now() - chrono::Duration::minutes(5),
+    )]);
+    let mut review = pass(temp.path());
+
+    tick(&mut review, &config, &ledger, now()).unwrap();
+
+    assert!(
+        review.pending_rows.contains_key("#159"),
+        "{:?}",
+        review.pending_rows
+    );
+    assert!(review.active.is_some());
+    assert_eq!(review.calls_today(), 1);
+}
+
 #[test]
 fn an_exhausted_budget_still_reports_the_deterministic_findings() {
     let temp = tempfile::tempdir().unwrap();

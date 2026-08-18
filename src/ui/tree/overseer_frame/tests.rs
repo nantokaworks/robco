@@ -36,6 +36,7 @@ fn inbox_app() -> App {
         at: chrono::Utc::now(),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }];
     app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
     app.selected = app

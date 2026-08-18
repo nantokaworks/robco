@@ -23,6 +23,7 @@ fn item(kind: InboxKind, target_id: &str, session: Option<&str>) -> InboxItem {
         at: chrono::Utc::now(),
         pr_url: None,
         pr_facts: None,
+        sentence: None,
     }
 }
 
