@@ -35,13 +35,6 @@ fn only_watch_is_not_actionable() {
 }
 
 #[test]
-fn worker_question_is_an_answerable_remedy() {
-    assert_eq!(WORKER_QUESTION.step, Move::Answer);
-    assert!(!WORKER_QUESTION.means.is_empty());
-    assert!(!WORKER_QUESTION.next.is_empty());
-}
-
-#[test]
 fn ledger_parked_is_a_review_remedy() {
     assert_eq!(LEDGER_PARKED.step, Move::Review);
     assert!(LEDGER_PARKED.actionable());
@@ -74,4 +67,31 @@ fn a_prerequisite_wait_resolves_to_watch() {
     let remedy = resolve("prerequisite_unmerged:#7", true);
     assert_eq!(remedy.step, Move::Watch);
     assert!(!remedy.actionable());
+}
+
+/// dropr:460 — these four reasons were measured falling to the generic
+/// fallback wording (or, for `merge_hold_cap_reached`, silently inheriting
+/// whatever the wrapped condition said, which loses the fact that the
+/// automated path already gave up on it). A later refactor that drops one of
+/// these entries must not go unnoticed.
+#[test]
+fn each_high_volume_reason_resolves_to_its_own_entry_not_the_fallback() {
+    let cases = [
+        "merge_hold_cap_reached:merge_state:dirty",
+        "repeating_hold: 3× checks_not_green",
+        "stalled: #204 has been pr_opened for 180m in owner/repo",
+        "merge_recovery_undeliverable:merge_state:dirty",
+    ];
+    for reason in cases {
+        let remedy = resolve(reason, true);
+        assert_eq!(remedy.step, Move::Review, "{reason}");
+        assert_ne!(
+            remedy.means, RECOVERABLE_FALLBACK.means,
+            "{reason} still reads as the generic recoverable fallback"
+        );
+        assert_ne!(
+            remedy.means, OPERATOR_FALLBACK.means,
+            "{reason} still reads as the generic operator fallback"
+        );
+    }
 }

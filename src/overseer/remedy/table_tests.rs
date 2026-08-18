@@ -75,3 +75,15 @@ fn an_unmatched_reason_yields_neither_exact_nor_prefix_entry() {
     assert!(exact("something_github_added_later").is_none());
     assert!(prefix("something_github_added_later").is_none());
 }
+
+/// dropr:460 — the merge judge is gone (PR #368), so this entry must no
+/// longer name it, and must not tell the operator the hold is probably fine.
+#[test]
+fn autonomy_envelope_names_the_config_key_not_the_removed_judge() {
+    let remedy = exact("autonomy_envelope").expect("autonomy_envelope must have a table entry");
+    assert_eq!(remedy.step, Move::Merge);
+    assert!(remedy.means.contains("autonomy_level"));
+    assert!(!remedy.means.to_lowercase().contains("judge"));
+    assert!(!remedy.means.to_lowercase().contains("not a real veto"));
+    assert!(!remedy.means.to_lowercase().contains("probably fine"));
+}

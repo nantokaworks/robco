@@ -7,6 +7,14 @@
 //! stripped in turn, bounded to [`MAX_DEPTH`] layers so a malformed or
 //! adversarial chain cannot recurse forever, until what is left is either a
 //! table entry or plain enough for the prose test at the bottom to call.
+//!
+//! Some wrappers mean the automated path already gave up on whatever the
+//! inner reason said, so the wrapper's own wording must win outright rather
+//! than defer to the inner remedy — see [`ALWAYS_PROMOTE`] and
+//! `repeating_hold`'s handling below. `repeating_failure` and
+//! `merge_recovery_disabled` are different: the underlying fix is still
+//! whatever the inner reason already says, so those keep (or conditionally
+//! keep) the inner remedy instead.
 
 use super::{Move, Remedy, classify_fallback, table};
 
@@ -24,23 +32,65 @@ struct PromoteWrap {
     next: &'static str,
 }
 
-const PROMOTE_WRAPS: &[PromoteWrap] = &[
-    PromoteWrap {
+const PROMOTE_WRAPS: &[PromoteWrap] = &[PromoteWrap {
+    // `daemon::merge_recovery::disabled` — a recoverable failure the
+    // `merge_recovery_enabled` switch left unhanded.
+    prefix: "merge_recovery_disabled:",
+    means: "this looks worker-fixable, but automated handback is switched off",
+    next: "press Enter and relay the reason to the worker yourself, \
+           or turn on merge_recovery_enabled",
+}];
+
+/// A wrapper whose own meaning must win regardless of what the inner reason
+/// says — unlike [`PROMOTE_WRAPS`], which only overrides a `Watch` verdict,
+/// these mark a point where an automated path already retried the inner
+/// condition and gave up, so repeating the inner reason's own wording (a
+/// worker fix, a wait, whatever it originally suggested) would misdescribe a
+/// case that is now the operator's alone.
+struct AlwaysPromote {
+    prefix: &'static str,
+    remedy: Remedy,
+}
+
+const ALWAYS_PROMOTE: &[AlwaysPromote] = &[
+    AlwaysPromote {
         // `daemon::merge_hold::cap_reached` — the same hold reason repeated
-        // past the per-entry hold budget.
+        // past the per-entry hold budget (dropr:460).
         prefix: "merge_hold_cap_reached:",
-        means: "this pull request has been held on the same condition past the hold budget",
-        next: "look at the pull request by hand; the automated hold gave up after repeated passes",
+        remedy: Remedy {
+            step: Move::Review,
+            means: "the gate held this pull request on one condition for the full hold budget",
+            next: "read the reason to see which condition stopped it, then clear that \
+                   condition yourself",
+        },
     },
-    PromoteWrap {
-        // `daemon::merge_recovery::disabled` — a recoverable failure the
-        // `merge_recovery_enabled` switch left unhanded.
-        prefix: "merge_recovery_disabled:",
-        means: "this looks worker-fixable, but automated handback is switched off",
-        next: "press Enter and relay the reason to the worker yourself, \
-               or turn on merge_recovery_enabled",
+    AlwaysPromote {
+        // `daemon::merge_recovery::undeliverable` — the handback could not be
+        // confirmed delivered twice for one revision (dropr:460). Task #455
+        // proved this often false-negatives on a delivery that did land, and
+        // #457 (PR #365) reduced but did not remove that case, so the wording
+        // asks for a check rather than assuming the worker never saw it.
+        prefix: "merge_recovery_undeliverable:",
+        remedy: Remedy {
+            step: Move::Review,
+            means: "delivery to the worker could not be confirmed twice for this revision; \
+                    this is often a false negative, and the worker may already be fixing it",
+            next: "check the pull request and the worker's session before acting; \
+                   if it really is stuck, handle it by hand",
+        },
     },
 ];
+
+/// The board review saw the same reason repeat past its own threshold, three
+/// or more passes in a row with nothing clearing it. Static like every other
+/// entry here, so it names the pattern rather than the specific reason or
+/// count — dropr #461/#462 carry those as per-case facts.
+const REPEATING_HOLD: Remedy = Remedy {
+    step: Move::Review,
+    means: "the board review saw this same condition repeat three or more times in a row; \
+            nothing about the pull request is moving",
+    next: "open the pull request directly; automatic retries are not resolving this on their own",
+};
 
 const MAX_DEPTH: u8 = 4;
 
@@ -112,8 +162,13 @@ fn resolve_at(reason: &str, depth: u8) -> Remedy {
                 };
             }
         }
-        if let Some(inner) = strip_repeat_count(trimmed, "repeating_hold") {
-            return resolve_at(inner, depth - 1);
+        for always in ALWAYS_PROMOTE {
+            if trimmed.starts_with(always.prefix) {
+                return always.remedy;
+            }
+        }
+        if strip_repeat_count(trimmed, "repeating_hold").is_some() {
+            return REPEATING_HOLD;
         }
         if let Some(inner) = strip_repeat_count(trimmed, "repeating_failure") {
             return resolve_at(inner, depth - 1);

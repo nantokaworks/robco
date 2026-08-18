@@ -46,13 +46,13 @@ fn ledger_entry(phase: LedgerPhase) -> LedgerEntry {
     }
 }
 
-fn question_item() -> InboxItem {
+fn answerable_escalation() -> InboxItem {
     InboxItem {
-        kind: InboxKind::Question,
+        kind: InboxKind::Escalation,
         target_session: Some("session".into()),
         target_id: "agent-1".into(),
         label: "agent-1 — worker title".into(),
-        detail: "worker is waiting on a confirmation prompt".into(),
+        detail: "worker_blocked".into(),
         at: Utc::now(),
     }
 }
@@ -106,7 +106,7 @@ fn waiting_summary_counts_what_it_lists() {
 fn waiting_reasons_includes_only_actionable_inbox_items() {
     let ledger = Ledger::default();
     let registry = registry_with(vec![]);
-    let items = vec![question_item(), watch_only_escalation()];
+    let items = vec![answerable_escalation(), watch_only_escalation()];
     let reasons = waiting_reasons(&ledger, &items, &registry);
     assert_eq!(reasons.len(), 1);
     assert!(reasons[0].contains("agent-1"));

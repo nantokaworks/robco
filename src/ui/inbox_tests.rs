@@ -11,7 +11,7 @@ fn at(second: u32) -> DateTime<Utc> {
 fn items(
     ledger: &Ledger,
     decisions: &[DecisionEntry],
-    reports: &[AgentQuestionReport],
+    reports: &[AgentSessionReport],
 ) -> Vec<InboxItem> {
     aggregate(
         ledger,
@@ -23,21 +23,11 @@ fn items(
     .items
 }
 
-fn report(awaiting_confirmation: bool) -> AgentQuestionReport {
-    AgentQuestionReport {
+fn report_with_status(status: Status) -> AgentSessionReport {
+    AgentSessionReport {
         agent_id: "agent-1".into(),
-        title: "worker".into(),
         tmux_session: "robco-agent-1".into(),
-        status: Status::Waiting,
-        awaiting_confirmation,
-        at: at(3),
-    }
-}
-
-fn report_with_status(status: Status) -> AgentQuestionReport {
-    AgentQuestionReport {
         status,
-        ..report(false)
     }
 }
 
@@ -82,24 +72,17 @@ fn escalation(reason: &str, second: u32) -> DecisionEntry {
 }
 
 #[test]
-fn question_and_live_escalation_are_answerable() {
+fn a_live_escalation_resolves_the_workers_session() {
     let items = items(
         &escalated_ledger(),
         &[escalation("needs user", 2)],
-        &[report(true)],
+        &[report_with_status(Status::Running)],
     );
 
-    assert_eq!(items.len(), 2);
-    assert_eq!(items[0].kind, InboxKind::Question);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].kind, InboxKind::Escalation);
     assert_eq!(items[0].target_session.as_deref(), Some("robco-agent-1"));
-    assert_eq!(items[1].kind, InboxKind::Escalation);
-    assert_eq!(items[1].target_session.as_deref(), Some("robco-agent-1"));
-    assert!(items[1].label.contains("needs user"));
-}
-
-#[test]
-fn excludes_waiting_agents_without_confirmation_prompt() {
-    assert!(items(&Ledger::default(), &[], &[report(false)]).is_empty());
+    assert!(items[0].label.contains("needs user"));
 }
 
 #[test]

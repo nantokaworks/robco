@@ -50,7 +50,7 @@ pub(super) fn capture_overseer(
         .and_then(|dir| DiscordChannels::load(&dir.join("channels.json")).ok())
         .unwrap_or_default();
     let decisions = logging::tail(DECISION_SNAPSHOT_LIMIT).unwrap_or_default();
-    let reports = inbox::question_reports(registry);
+    let reports = inbox::agent_session_reports(registry);
     let inbox = inbox::aggregate(
         &ledger,
         &decisions,
