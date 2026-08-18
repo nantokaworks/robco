@@ -122,7 +122,7 @@ pub fn dispatch_pass(
     Ok(())
 }
 
-fn worker_modes() -> Result<HashMap<String, crate::model::ManagementMode>> {
+pub(super) fn worker_modes() -> Result<HashMap<String, crate::model::ManagementMode>> {
     Ok(Registry::load()?
         .repos
         .into_iter()

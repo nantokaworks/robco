@@ -46,7 +46,7 @@ pub(super) fn merge(
 
 /// Shows what an escalated pull request changes, so the operator can decide
 /// before confirming `!merge`. Read-only: no lock, no registry mutation.
-pub(super) fn diff(task: &str) -> crate::Result<String> {
+pub(crate) fn diff(task: &str) -> crate::Result<String> {
     let ledger = Ledger::load()?;
     let entry = find_ledger_entry(&ledger, task)?;
     let pr_url = entry.pr_url.as_deref().ok_or_else(|| {

@@ -7,12 +7,12 @@ use super::{ToolResult, exec_err, validate_non_blank};
 
 #[derive(Deserialize)]
 pub(super) struct SpawnArgs {
-    repo: String,
-    title: String,
-    prompt: Option<String>,
-    parent_agent_id: Option<String>,
+    pub(super) repo: String,
+    pub(super) title: String,
+    pub(super) prompt: Option<String>,
+    pub(super) parent_agent_id: Option<String>,
     #[serde(default)]
-    autonomous: bool,
+    pub(super) autonomous: bool,
 }
 
 pub(super) fn spawn(args: SpawnArgs) -> ToolResult<Value> {
