@@ -2,8 +2,8 @@ use ratatui::text::{Line, Span};
 
 use crate::model::{OverseerCategory, Selection};
 
-use super::THEME;
 use super::super::DroprTaskFocus;
+use super::THEME;
 
 type Hints = &'static [(&'static str, &'static str)];
 

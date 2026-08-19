@@ -36,7 +36,10 @@ pub(super) fn dropr_section(
     // next keypress is never a guess.
     if selected_task.is_some() {
         lines.push(Line::from(Span::styled(
-            t(locale, "task list focused — j/k move, enter opens, esc/h/left back"),
+            t(
+                locale,
+                "task list focused — j/k move, enter opens, esc/h/left back",
+            ),
             THEME.hint_style(),
         )));
     }

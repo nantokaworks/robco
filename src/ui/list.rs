@@ -92,7 +92,8 @@ impl App {
         // the repository row it was entered from; anything else (the repo
         // was removed, the cursor moved some other way) drops it rather than
         // leaving a focus level the tree can no longer explain.
-        if self.dropr_task_focus.is_some() && !matches!(self.selected_item(), Some(Selection::Repo(_)))
+        if self.dropr_task_focus.is_some()
+            && !matches!(self.selected_item(), Some(Selection::Repo(_)))
         {
             self.dropr_task_focus = None;
         }

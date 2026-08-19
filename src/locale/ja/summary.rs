@@ -28,9 +28,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "(no description)" => "（説明なし）",
         "(no subtasks)" => "（サブタスクなし）",
-        "subtasks were not fetched for this task" => {
-            "このタスクのサブタスクは取得されていません"
-        }
+        "subtasks were not fetched for this task" => "このタスクのサブタスクは取得されていません",
 
         // summary/history.rs
         "overseer has settled no tasks in this repo" => {

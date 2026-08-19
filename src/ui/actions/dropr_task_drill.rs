@@ -108,7 +108,10 @@ impl App {
             self.show_message(t(self.locale, "task is no longer listed"));
             return;
         };
-        let Some(workspace_id) = repo_node.dropr.as_ref().map(|workspace| workspace.id.clone())
+        let Some(workspace_id) = repo_node
+            .dropr
+            .as_ref()
+            .map(|workspace| workspace.id.clone())
         else {
             self.show_message(t(self.locale, "no dropr workspace linked to this repo"));
             return;
@@ -208,7 +211,10 @@ impl App {
                 let new_agent_id = new_agent.id.clone();
                 let mut registered = false;
                 let result = self.locked_registry_update(|registry| {
-                    if let Some(repo) = registry.repos.iter_mut().find(|repo| repo.path == repo_path)
+                    if let Some(repo) = registry
+                        .repos
+                        .iter_mut()
+                        .find(|repo| repo.path == repo_path)
                     {
                         repo.agents.push(new_agent);
                         registered = true;

@@ -40,5 +40,13 @@ pub(super) fn render(
         Some(DroprTaskFocus::List { task }) => Some(task),
         _ => None,
     };
-    repo_summary(repo, repos_root, ledger, other_prs, width, locale, selected_task)
+    repo_summary(
+        repo,
+        repos_root,
+        ledger,
+        other_prs,
+        width,
+        locale,
+        selected_task,
+    )
 }

@@ -21,7 +21,10 @@ fn task(display_id: &str) -> DroprTaskCandidate {
     }
 }
 
-fn repo_node(tasks: Vec<DroprTaskCandidate>, subtrees_known: std::collections::HashSet<String>) -> RepoNode {
+fn repo_node(
+    tasks: Vec<DroprTaskCandidate>,
+    subtrees_known: std::collections::HashSet<String>,
+) -> RepoNode {
     RepoNode {
         path: "/repo".into(),
         name: "repo".into(),

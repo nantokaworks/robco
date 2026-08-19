@@ -27,11 +27,17 @@ pub(in crate::ui) fn render(
 
     let mut lines = vec![
         Line::from(Span::styled(
-            t(locale, "task body — one key starts the work, esc/h/left steps back"),
+            t(
+                locale,
+                "task body — one key starts the work, esc/h/left steps back",
+            ),
             THEME.accent_style(),
         )),
         Line::from(""),
-        Line::from(Span::styled(candidate.title.clone(), THEME.accent_bold_style())),
+        Line::from(Span::styled(
+            candidate.title.clone(),
+            THEME.accent_bold_style(),
+        )),
         Line::from(""),
     ];
 
@@ -59,7 +65,9 @@ pub(in crate::ui) fn render(
         .map(str::trim)
         .filter(|description| !description.is_empty())
     {
-        Some(description) => lines.extend(description.lines().map(|line| Line::from(line.to_string()))),
+        Some(description) => {
+            lines.extend(description.lines().map(|line| Line::from(line.to_string())))
+        }
         None => lines.push(Line::from(Span::styled(
             t(locale, "(no description)"),
             THEME.muted_style(),
@@ -75,7 +83,11 @@ pub(in crate::ui) fn render(
             t(locale, "(no subtasks)"),
             THEME.muted_style(),
         )));
-    } else if !repo.dropr_tasks.subtrees_known.contains(candidate.id.as_str()) {
+    } else if !repo
+        .dropr_tasks
+        .subtrees_known
+        .contains(candidate.id.as_str())
+    {
         lines.push(Line::from(Span::styled(
             t(locale, "subtasks were not fetched for this task"),
             THEME.muted_style(),
@@ -90,7 +102,10 @@ pub(in crate::ui) fn render(
         ));
     }
 
-    Some((format!("{} / {}", repo.name, candidate.display_id), lines.into()))
+    Some((
+        format!("{} / {}", repo.name, candidate.display_id),
+        lines.into(),
+    ))
 }
 
 #[cfg(test)]

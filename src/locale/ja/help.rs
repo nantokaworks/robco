@@ -119,9 +119,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  enter          on a repo row (INFO showing): open its dropr task list" => {
             "  enter          リポジトリ行（INFO表示中）：droprタスク一覧を開く"
         }
-        "                 on a task row: open its body" => {
-            "                 タスク行：本文を開く"
-        }
+        "                 on a task row: open its body" => "                 タスク行：本文を開く",
         "  s              on a task body: start the work now (worktree, branch," => {
             "  s              タスク本文：即座に作業開始（worktree・branch・"
         }
