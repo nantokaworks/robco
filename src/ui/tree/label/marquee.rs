@@ -4,16 +4,14 @@
 
 use std::time::Duration;
 
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-
-use super::prefix_within;
+use crate::ui::text_width::{byte_at_or_after_width, display_width, prefix_within};
 
 const START_PAUSE: Duration = Duration::from_millis(1_000);
 const STEP: Duration = Duration::from_millis(300);
 const END_PAUSE: Duration = Duration::from_millis(1_000);
 
 pub(super) fn display(title: &str, available: usize, selected: bool, elapsed: Duration) -> String {
-    if UnicodeWidthStr::width(title) <= available {
+    if display_width(title) <= available {
         title.to_string()
     } else if selected {
         marquee(title, available, elapsed)
@@ -23,7 +21,7 @@ pub(super) fn display(title: &str, available: usize, selected: bool, elapsed: Du
 }
 
 fn truncate(title: &str, available: usize) -> String {
-    if UnicodeWidthStr::width(title) <= available {
+    if display_width(title) <= available {
         return title.to_string();
     }
     if available == 0 {
@@ -40,7 +38,7 @@ fn marquee(title: &str, available: usize, elapsed: Duration) -> String {
     if available == 0 {
         return String::new();
     }
-    let offset = marquee_offset(UnicodeWidthStr::width(title), available, elapsed);
+    let offset = marquee_offset(display_width(title), available, elapsed);
     let start = byte_at_or_after_width(title, offset);
     prefix_within(&title[start..], available).to_string()
 }
@@ -63,17 +61,6 @@ fn marquee_offset(title_width: usize, available: usize, elapsed: Duration) -> us
             .unwrap_or(max_offset)
             .min(max_offset)
     }
-}
-
-fn byte_at_or_after_width(value: &str, target: usize) -> usize {
-    let mut width = 0;
-    for (index, character) in value.char_indices() {
-        if width >= target {
-            return index;
-        }
-        width += UnicodeWidthChar::width(character).unwrap_or(0);
-    }
-    value.len()
 }
 
 #[cfg(test)]

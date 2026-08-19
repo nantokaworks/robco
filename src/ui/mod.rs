@@ -59,6 +59,7 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 mod text_input;
+mod text_width;
 mod theme;
 mod tree;
 mod ui_state;
