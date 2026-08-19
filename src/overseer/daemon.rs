@@ -104,9 +104,13 @@ pub async fn run_daemon() -> Result<()> {
         &config,
         &ledger_request_tx,
     );
+    // Registry adoption used to run once, right here, before the loop below
+    // ever started. It now runs inside `observations::gather` on every pass
+    // instead (dropr:489), so a worker started after this line still gets
+    // adopted without a restart. Nothing between here and the loop's first
+    // `gather` call reads `ledger.entries`, so there is nothing left for a
+    // separate startup call to do.
     let mut ledger = Ledger::load()?;
-    observations::adopt_registry_children(&mut ledger)?;
-    ledger.save()?;
     let mut inbox = InboxReader::new()?;
     let mut protections = protection::ProtectionCache::default();
     let mut exceptions = ExceptionQueue::load()?;
@@ -156,7 +160,7 @@ pub async fn run_daemon() -> Result<()> {
             )?,
         }
         let now = Utc::now();
-        let mut observed = observations::gather(&ledger, &mut inbox, now);
+        let mut observed = observations::gather(&mut ledger, &mut inbox, now);
         if let Err(error) = append_jsonl(
             &snapshots_path()?,
             &ObservationSnapshot {

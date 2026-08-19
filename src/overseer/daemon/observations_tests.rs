@@ -106,6 +106,81 @@ fn auto_agent_with_no_parent_is_adopted() {
     assert_eq!(ledger.entries[0].agent_id, "manual-worker");
 }
 
+/// Pins dropr:489: adoption used to run once at daemon startup, so a worker
+/// started while the daemon was already running was never picked up until a
+/// restart. It must run again on a later pass too, once the registry gains
+/// the worker.
+#[test]
+fn worker_started_after_the_daemon_booted_is_adopted_on_a_later_pass() {
+    let empty_registry = Registry {
+        version: 1,
+        repos: Vec::new(),
+    };
+    let mut ledger = Ledger::default();
+    // First pass: the worker has not started yet, so the registry has no repos.
+    adopt_registry_children_from(&mut ledger, &empty_registry);
+    assert!(ledger.entries.is_empty());
+
+    // The worker starts while the daemon keeps running. A later pass reads
+    // the registry again and must still find it, with no restart in between.
+    let registry_with_worker = registry_with(None, "auto");
+    adopt_registry_children_from(&mut ledger, &registry_with_worker);
+
+    assert_eq!(ledger.entries.len(), 1);
+    assert_eq!(ledger.entries[0].agent_id, "manual-worker");
+}
+
+#[test]
+fn an_agent_already_in_the_ledger_is_not_adopted_twice() {
+    let registry = registry_with(None, "auto");
+    let mut ledger = Ledger::default();
+
+    adopt_registry_children_from(&mut ledger, &registry);
+    // A repeat call, as every later pass makes, must not duplicate the entry.
+    adopt_registry_children_from(&mut ledger, &registry);
+
+    assert_eq!(ledger.entries.len(), 1);
+}
+
+/// Pins dropr:489's third acceptance point: retention drops a settled entry
+/// only once its worker has left the registry, and adoption only re-adds an
+/// entry for an agent the registry still lists. So once a settled entry is
+/// gone, calling adoption again on the same (now agent-less) registry must
+/// not bring it back.
+#[test]
+fn a_settled_entry_retention_pruned_does_not_come_back_next_pass() {
+    use crate::overseer::ledger::LedgerPhase;
+    use crate::overseer::monitor::{Observations, TASK_ABSENT, TaskObservation};
+
+    let empty_registry = registry_with(None, "auto");
+    let mut ledger = Ledger::default();
+    adopt_registry_children_from(&mut ledger, &empty_registry);
+    ledger.entries[0].phase = LedgerPhase::Escalated;
+    ledger.entries[0].task_id = "task-154".into();
+
+    // The worker's registry row is gone by the time this pass runs: nothing
+    // lists it as registered, and its dropr task is confirmed absent too.
+    let registry_without_worker = Registry {
+        version: 1,
+        repos: Vec::new(),
+    };
+    let observations = Observations {
+        tasks: vec![TaskObservation {
+            task_id: "task-154".into(),
+            state: TASK_ABSENT.into(),
+            updated_at: None,
+        }],
+        ..Observations::default()
+    };
+    super::super::retention::prune_pass(&mut ledger, &[], &observations, Utc::now(), 100).unwrap();
+    assert!(ledger.entries.is_empty());
+
+    // Next pass: adoption reads the same, now-agent-less registry. There is
+    // nothing left to resurrect.
+    adopt_registry_children_from(&mut ledger, &registry_without_worker);
+    assert!(ledger.entries.is_empty());
+}
+
 /// Regression for the bare `={session}` target: on tmux 3.7, `display-message`
 /// against it exits 0 and prints an empty string for `#{session_activity}`,
 /// so `tmux_activity` returned `None` for every live session that was ever

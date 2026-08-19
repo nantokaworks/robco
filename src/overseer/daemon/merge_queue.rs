@@ -57,7 +57,7 @@ pub(super) struct Heads {
     /// the same `task_id` (`dispatch::worker::record_attempt`), and its old
     /// entry stays in the ledger with its pull request still open — so a task id
     /// would let one attempt release the slot its other attempt is holding.
-    /// `observations::adopt_registry_children` dedupes entries on the agent id,
+    /// `observations::adopt_registry_children_from` dedupes entries on the agent id,
     /// and `discord_events` already treats it as the per-entry key.
     acting: HashMap<String, String>,
 }

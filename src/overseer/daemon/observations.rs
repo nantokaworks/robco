@@ -1,6 +1,5 @@
 use super::{COMMAND_TIMEOUT, terminal};
 use crate::{
-    Result,
     overseer::{
         exec::run_timeout,
         inbox::InboxReader,
@@ -22,7 +21,11 @@ pub(super) mod external_state;
 #[path = "liveness.rs"]
 mod liveness;
 
-pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader, now: DateTime<Utc>) -> Observations {
+pub(super) fn gather(
+    ledger: &mut Ledger,
+    inbox: &mut InboxReader,
+    now: DateTime<Utc>,
+) -> Observations {
     let mut observations = Observations::default();
     match inbox.read_new() {
         Ok(reports) => observations.inbox = reports.into_iter().map(Into::into).collect(),
@@ -39,6 +42,12 @@ pub(super) fn gather(ledger: &Ledger, inbox: &mut InboxReader, now: DateTime<Utc
             return observations;
         }
     };
+    // Every pass, not just the daemon's first: a worker started while the
+    // daemon is already running never shows up otherwise (dropr:489). This
+    // reuses the registry load just above instead of reading it twice, and
+    // runs before the loop below so this same pass's session/PR probes and
+    // `registered_agents` list already cover the newly adopted entry.
+    adopt_registry_children_from(ledger, &registry);
     observations.manual_agents = registry
         .repos
         .iter()
@@ -220,12 +229,6 @@ fn tmux_activity(session: &str) -> std::result::Result<DateTime<Utc>, String> {
         .map_err(|error| format!("tmux display-message returned {raw:?}: {error}"))?;
     DateTime::from_timestamp(epoch, 0)
         .ok_or_else(|| format!("session_activity epoch {epoch} out of range"))
-}
-
-pub(super) fn adopt_registry_children(ledger: &mut Ledger) -> Result<()> {
-    let registry = Registry::load()?;
-    adopt_registry_children_from(ledger, &registry);
-    Ok(())
 }
 
 fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
