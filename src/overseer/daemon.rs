@@ -130,12 +130,20 @@ pub async fn run_daemon() -> Result<()> {
             &config,
             &ledger_request_tx,
         );
-        let pending_runs = discord_sync::apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
+        let mut pending_runs =
+            discord_sync::apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
         match runtime_request::drain(&mut ledger, &mut config) {
-            Ok(config_changed) => {
+            Ok((config_changed, runtime_runs)) => {
                 if config_changed {
                     persist_drained_config(config.overseer.dispatch_enabled)?;
                 }
+                // Same dispatch loop as Discord's `!run`, just a different
+                // transport — see `RuntimeRequest::RunTask`'s doc comment.
+                pending_runs.extend(
+                    runtime_runs
+                        .into_iter()
+                        .map(discord_sync::PendingRun::from_runtime_request),
+                );
             }
             Err(error) => logging::log_message(
                 None,
@@ -242,8 +250,8 @@ pub async fn run_daemon() -> Result<()> {
                     format!("!run refused: {reason}"),
                 );
                 entry.task = Some(pending.task);
-                entry.user_id = Some(pending.user_id);
-                entry.source = Some("discord".into());
+                entry.user_id = pending.user_id;
+                entry.source = Some(pending.source);
                 logging::append(&entry)?;
             }
         }

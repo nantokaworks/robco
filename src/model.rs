@@ -714,6 +714,16 @@ pub enum Selection {
     /// session that exists only while a turn is running, torn down at the
     /// end of each turn.
     DiscordChannel(usize),
+    /// One selectable dropr task row nested under `repo`, indexing into the
+    /// same next/in-progress/blocked order (each capped) that
+    /// `ui::summary::dropr_tasks::selectable_tasks` builds and the
+    /// repository INFO pane renders. Enter launches it through the same
+    /// dispatch gate `!run <task>` uses (dropr:470) — this is a naming
+    /// action, not an override, so the gate can still refuse it.
+    DroprTask {
+        repo: usize,
+        task: usize,
+    },
     Repo(usize),
     Agent {
         repo: usize,

@@ -110,6 +110,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  c              check out main in primary checkout (clean tree only)" => {
             "  c              primary checkoutをmainへ（作業ツリーがclean時のみ）"
         }
+        "  enter          on a dropr task row: launch it (same gate as !run)" => {
+            "  enter          droprタスク行：起動（!runと同じゲートを通過）"
+        }
         "  left/right     move the cursor within the text being typed" => {
             "  left/right     入力中テキスト内でカーソルを移動"
         }

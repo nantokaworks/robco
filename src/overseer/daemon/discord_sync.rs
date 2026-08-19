@@ -55,9 +55,29 @@ pub(super) fn sync_discord(
 /// cannot dispatch it itself — that needs `Config`, `now`, and the
 /// post-reconcile ledger, none of which it has — so it hands these back for
 /// the caller to feed to `dispatch::run_named` alongside `dispatch_pass`.
+///
+/// Also the shape `RuntimeRequest::RunTask` (a named dispatch queued from
+/// outside the daemon process, e.g. the TUI — dropr:470) converts into via
+/// [`Self::from_runtime_request`], so the daemon's dispatch loop feeds both
+/// transports through the one loop.
 pub(super) struct PendingRun {
     pub(super) task: String,
-    pub(super) user_id: String,
+    /// Discord's own user id, when this run came from Discord. `None` for a
+    /// transport with no such identity (currently the TUI).
+    pub(super) user_id: Option<String>,
+    /// Attributed in the refusal decision entry's `source` field — `"discord"`
+    /// or the `RuntimeRequest::RunTask::source` a non-Discord caller queued.
+    pub(super) source: String,
+}
+
+impl PendingRun {
+    pub(super) fn from_runtime_request(run: crate::overseer::runtime_request::PendingRun) -> Self {
+        Self {
+            task: run.task,
+            user_id: None,
+            source: run.source,
+        }
+    }
 }
 
 pub(super) fn apply_ledger_requests(
@@ -67,7 +87,11 @@ pub(super) fn apply_ledger_requests(
     let mut pending_runs = Vec::new();
     while let Ok(request) = requests.try_recv() {
         if let LedgerRequest::Run { task, user_id } = request {
-            pending_runs.push(PendingRun { task, user_id });
+            pending_runs.push(PendingRun {
+                task,
+                user_id: Some(user_id),
+                source: "discord".into(),
+            });
             continue;
         }
         let (task, user_id) = request.attribution();

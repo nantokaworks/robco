@@ -218,6 +218,10 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
         // the live turn), so its one tab mirrors that same tmux session —
         // see `scrollback::live_session`'s `Selection::DiscordChannel` arm.
         Some(Selection::DiscordChannel(_)) => &[PreviewPane::Info],
+        // The row is acted on from the left frame (Enter launches it), and its
+        // preview is the repo's own INFO tab with this row highlighted — no
+        // second tab to cycle to. See `preview::draw`'s `DroprTask` arm.
+        Some(Selection::DroprTask { .. }) => &[PreviewPane::Info],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,

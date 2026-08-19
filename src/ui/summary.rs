@@ -15,11 +15,12 @@ use crate::{
 use super::{blockfont, repo_description, theme::DEFAULT as THEME};
 
 mod checkout_state;
-mod dropr_tasks;
+mod dropr_section;
+pub(super) mod dropr_tasks; // `ui::list` also reads `selectable_tasks` (dropr:470)
 mod history;
 mod other_prs;
 use checkout_state::checkout_branch_warning;
-use dropr_tasks::dropr_task_lines;
+use dropr_section::dropr_section;
 use history::history_section;
 use other_prs::other_prs_section;
 
@@ -30,6 +31,7 @@ pub(in crate::ui) fn repo_summary(
     other_prs: &OtherPrs,
     width: u16,
     locale: Locale,
+    selected_task: Option<usize>,
 ) -> (String, Text<'static>) {
     let rendered_name = blockfont::render_fitting(&repo.name, usize::from(width));
     let name_style = if rendered_name.is_some() {
@@ -73,7 +75,7 @@ pub(in crate::ui) fn repo_summary(
     lines.extend(checkout_branch_warning(repo, locale));
     lines.extend(main_drift_warning(repo, locale));
 
-    lines.extend(dropr_section(repo, width, locale));
+    lines.extend(dropr_section(repo, width, locale, selected_task));
     lines.extend(history_section(ledger, &repo.path, width, locale));
     lines.extend(other_prs_section(other_prs, &repo.path, width, locale));
 
@@ -96,57 +98,6 @@ fn main_drift_warning(repo: &RepoNode, locale: Locale) -> Vec<Line<'static>> {
         ),
         THEME.failure_style(),
     ))]
-}
-
-/// The DROPR block of a repository summary.
-///
-/// Always rendered. An unlinked repo used to drop the block entirely, which
-/// looks identical to a linked repo whose task list happens to be empty — so
-/// the operator could not tell "no tasks" from "robco never found a workspace
-/// for this repo".
-fn dropr_section(repo: &RepoNode, width: u16, locale: Locale) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        Line::from(""),
-        Line::from(Span::styled(
-            "─".repeat(usize::from(width)),
-            THEME.muted_style(),
-        )),
-        Line::from(Span::styled("DROPR", THEME.accent_style())),
-    ];
-    let Some(dropr) = &repo.dropr else {
-        lines.push(Line::from(Span::styled(
-            t(
-                locale,
-                "no workspace resolved for this repo, so no tasks can be listed",
-            ),
-            THEME.muted_style(),
-        )));
-        return lines;
-    };
-    let field = |name: &str, value: String| {
-        Line::from(vec![
-            Span::styled(format!("{name}: "), THEME.muted_style()),
-            Span::raw(value),
-        ])
-    };
-    lines.extend([
-        field("kind", dropr.kind.clone()),
-        field("id", dropr.id.clone()),
-        field("name", dropr.name.clone()),
-    ]);
-    if !dropr.is_materialised() {
-        // A virtual workspace has no task board behind it, so the dispatch
-        // loop skips this repo quietly; the pane is where that state lives.
-        lines.push(Line::from(Span::styled(
-            t(
-                locale,
-                "workspace is not materialised, so the overseer does not dispatch tasks for this repo",
-            ),
-            THEME.muted_style(),
-        )));
-    }
-    lines.extend(dropr_task_lines(&repo.dropr_tasks, locale));
-    lines
 }
 
 pub(in crate::ui) fn agent_summary(

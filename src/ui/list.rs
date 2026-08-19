@@ -7,6 +7,9 @@ use crate::{
 
 use super::{App, default_pane};
 
+mod dropr_task_rows;
+mod repo_rows;
+
 impl App {
     pub(crate) fn effective_roots(&self) -> impl Iterator<Item = &std::path::Path> {
         std::iter::once(self.config.repos_root.as_path()).chain(
@@ -42,6 +45,9 @@ impl App {
                         || "discord-channel:missing".to_string(),
                         |id| format!("discord-channel:{id}"),
                     )
+            }
+            Selection::DroprTask { repo, task } => {
+                dropr_task_rows::item_key(&self.registry.repos, repo, task)
             }
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
@@ -121,6 +127,7 @@ impl App {
             Some(Selection::Repo(repo)) => Some(repo),
             Some(Selection::Agent { repo, .. }) => Some(repo),
             Some(Selection::ChildWorktree { repo, .. }) => Some(repo),
+            Some(Selection::DroprTask { repo, .. }) => Some(repo),
             _ => None,
         }
     }
@@ -222,7 +229,7 @@ impl App {
             }
         }
         for repo_idx in self.local_repos() {
-            self.push_repo_rows(&mut visible, repo_idx, &self.registry.repos[repo_idx]);
+            repo_rows::push_repo_rows(self, &mut visible, repo_idx, &self.registry.repos[repo_idx]);
         }
 
         let others = self.other_location_repos();
@@ -230,7 +237,12 @@ impl App {
             visible.push(Selection::OtherHeader);
             if !self.other_collapsed {
                 for repo_idx in others {
-                    self.push_repo_rows(&mut visible, repo_idx, &self.registry.repos[repo_idx]);
+                    repo_rows::push_repo_rows(
+                        self,
+                        &mut visible,
+                        repo_idx,
+                        &self.registry.repos[repo_idx],
+                    );
                 }
             }
         }
@@ -244,34 +256,6 @@ impl App {
             }
         }
         visible
-    }
-
-    fn push_repo_rows(&self, visible: &mut Vec<Selection>, repo_idx: usize, repo: &RepoNode) {
-        visible.push(Selection::Repo(repo_idx));
-        if self.expanded.get(repo_idx).copied().unwrap_or(true) {
-            for (agent_idx, _) in crate::model::agent_order(&repo.agents) {
-                visible.push(Selection::Agent {
-                    repo: repo_idx,
-                    agent: agent_idx,
-                });
-                if !self.agent_children_expanded(repo_idx, agent_idx) {
-                    continue;
-                }
-                for child in 0..repo.agents[agent_idx].children.len() {
-                    if !super::actions::children::child_is_visible(
-                        &repo.agents[agent_idx],
-                        &repo.agents[agent_idx].children[child],
-                    ) {
-                        continue;
-                    }
-                    visible.push(Selection::ChildWorktree {
-                        repo: repo_idx,
-                        agent: agent_idx,
-                        child,
-                    });
-                }
-            }
-        }
     }
 
     pub(in crate::ui) fn set_overseer_visibility(&mut self, visible: bool) {

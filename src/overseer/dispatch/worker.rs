@@ -105,6 +105,7 @@ pub(super) fn spawn_candidate(
         &task.repo,
         &subtasks,
         config.language.as_deref(),
+        config.overseer.worker_prompt_template.as_deref(),
     );
     let outcome = match spawn::spawn_in_repo(
         &task.repo,

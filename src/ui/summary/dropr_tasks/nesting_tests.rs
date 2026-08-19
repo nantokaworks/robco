@@ -115,7 +115,7 @@ fn rendered(tasks: Vec<DroprTaskCandidate>) -> Vec<String> {
         answered: true,
         subtrees_known: HashSet::from(["id-1".to_owned()]),
     };
-    let text: Text<'static> = dropr_task_lines(&fetch, Locale::En).into();
+    let text: Text<'static> = dropr_task_lines(&fetch, Locale::En, None).into();
     text.lines
         .iter()
         .map(|line| line.spans.iter().map(|s| s.content.as_ref()).collect())

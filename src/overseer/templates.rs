@@ -1,30 +1,12 @@
 use crate::{config::language_directive, dropr::Subtask, overseer::OVERSEER_AGENT_ID};
 
-pub fn worker_prompt(
-    display_id: &str,
-    task_id: &str,
-    title: &str,
-    repo: &str,
-    subtasks: &[Subtask],
-    language: Option<&str>,
-) -> String {
-    let directive = language_directive(language);
-    let close_directive = close_directive_instruction(display_id, subtasks);
-    format!(
-        r#"You are the autonomous RUN worker for assigned Dropr task {display_id} ({task_id}):
+/// Default value of `overseer.worker_prompt_template` — the task-specific
+/// half of [`worker_prompt`], unset. An operator's override replaces this
+/// text wholesale; it never reaches the claim instruction, the "open a PR"
+/// ending, or the rails, which `worker_prompt` always appends after it.
+const DEFAULT_WORKER_PROMPT_TEMPLATE: &str = r#"You are the autonomous RUN worker for assigned Dropr task {display_id} ({task_id}):
 {title}
 Repository: {repo}
-
-Run `dropr bootstrap` first. The Overseer already claimed {display_id} for you, as dropr agent
-`{OVERSEER_AGENT_ID}` — the task is yours. Do NOT run `dropr task next` and do NOT claim it again;
-a second claim would only fight the one you already hold. Verify the task is claimed by
-`{OVERSEER_AGENT_ID}`, then run `robco report --kind claimed`. If it is claimed by anyone else, run
-`robco report --kind blocked` and stop without touching the repository.
-
-Follow RUN discipline: implement the task, self-review the diff, run relevant tests, commit with
-`(refs dropr:{task_id})` in the commit message, and push only your assigned branch. Open a pull
-request whose body contains {close_directive} Finally run `robco report --kind done`.
-The current report CLI carries lifecycle kind only; Overseer discovers the PR URL from your branch.
 
 If, while implementing, you discover this task cannot proceed until a *different* dropr task
 merges first, that is an ordering wait, not a blocker: do NOT mark this task `blocked`, and do NOT
@@ -37,7 +19,71 @@ no operator action, and nothing further for you to do here.
 
 If you already reported `blocked` and a human then answers you directly inside this session —
 not through dropr, not through the Inbox — run `robco report --kind unblocked` right away. That
-tells Overseer the block lifted immediately instead of waiting for its next observation pass.
+tells Overseer the block lifted immediately instead of waiting for its next observation pass."#;
+
+/// Fills `{display_id}`, `{task_id}`, `{title}`, `{repo}`, and `{subtasks}`
+/// placeholders into `template` — the operator's configured
+/// `worker_prompt_template`, or [`DEFAULT_WORKER_PROMPT_TEMPLATE`] when unset
+/// or blank. Plain substitution, not `format!`, because the template text
+/// itself is runtime data, not a compile-time literal.
+fn render_task_specific(
+    template: Option<&str>,
+    display_id: &str,
+    task_id: &str,
+    title: &str,
+    repo: &str,
+    subtasks: &[Subtask],
+) -> String {
+    let raw = template
+        .map(str::trim)
+        .filter(|template| !template.is_empty())
+        .unwrap_or(DEFAULT_WORKER_PROMPT_TEMPLATE);
+    let subtasks_rendered = if subtasks.is_empty() {
+        "none".to_string()
+    } else {
+        subtasks
+            .iter()
+            .map(|subtask| subtask.display_id.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    raw.replace("{display_id}", display_id)
+        .replace("{task_id}", task_id)
+        .replace("{title}", title)
+        .replace("{repo}", repo)
+        .replace("{subtasks}", &subtasks_rendered)
+}
+
+/// `template` is the operator-configurable half — `overseer.worker_prompt_template`,
+/// task-specific instructions on how to work, what to check, house style. Everything
+/// after it in the rendered prompt — the claim instruction, the "open a PR, do not
+/// merge it" ending, and the never-merge rails — is fixed text the code always
+/// appends; no `template` value can remove or reach it (dropr:470).
+pub fn worker_prompt(
+    display_id: &str,
+    task_id: &str,
+    title: &str,
+    repo: &str,
+    subtasks: &[Subtask],
+    language: Option<&str>,
+    template: Option<&str>,
+) -> String {
+    let directive = language_directive(language);
+    let close_directive = close_directive_instruction(display_id, subtasks);
+    let task_specific = render_task_specific(template, display_id, task_id, title, repo, subtasks);
+    format!(
+        r#"{task_specific}
+
+Run `dropr bootstrap` first. The Overseer already claimed {display_id} for you, as dropr agent
+`{OVERSEER_AGENT_ID}` — the task is yours. Do NOT run `dropr task next` and do NOT claim it again;
+a second claim would only fight the one you already hold. Verify the task is claimed by
+`{OVERSEER_AGENT_ID}`, then run `robco report --kind claimed`. If it is claimed by anyone else, run
+`robco report --kind blocked` and stop without touching the repository.
+
+Follow RUN discipline: implement the task, self-review the diff, run relevant tests, commit with
+`(refs dropr:{task_id})` in the commit message, and push only your assigned branch. Open a pull
+request whose body contains {close_directive} Finally run `robco report --kind done`.
+The current report CLI carries lifecycle kind only; Overseer discovers the PR URL from your branch.
 
 {directive}Never merge. Never force push. Never push to main. Never change the branch of the
 repository under `~/.robco/repos/` — not with `git checkout`, not with `gh pr checkout`. To
@@ -109,139 +155,5 @@ You fix the branch; Overseer merges it."#
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn worker(language: Option<&str>) -> String {
-        worker_prompt("#132", "abc", "Build overseer", "/repo", &[], language)
-    }
-
-    fn subtask(display_id: &str) -> Subtask {
-        Subtask {
-            display_id: display_id.into(),
-        }
-    }
-
-    fn recovery(language: Option<&str>) -> String {
-        merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty", language)
-    }
-
-    #[test]
-    fn prompt_contains_assignment_and_rails() {
-        let prompt = worker(None);
-        assert!(prompt.contains("Close Dropr: #132"));
-        assert!(prompt.contains("(refs dropr:abc)"));
-        assert!(prompt.contains("Never merge"));
-    }
-
-    #[test]
-    fn prompt_hands_the_claim_over_instead_of_asking_for_one() {
-        // The overseer claims at dispatch time; a worker that re-claimed would be
-        // racing its own dispatcher for the lock it already benefits from.
-        let prompt = worker(None);
-        assert!(prompt.contains("already claimed #132"));
-        assert!(prompt.contains("Do NOT run `dropr task next`"));
-    }
-
-    #[test]
-    fn prompt_tells_the_worker_to_report_an_in_session_unblock() {
-        let prompt = worker(None);
-        assert!(prompt.contains("robco report --kind unblocked"));
-    }
-
-    /// The rails are the last thing either prompt says, so the directive goes in
-    /// above them rather than after — see the placement assertions below.
-    #[test]
-    fn a_configured_language_reaches_both_prompts_above_the_rails() {
-        for prompt in [worker(Some("Japanese")), recovery(Some("Japanese"))] {
-            let directive = prompt
-                .find("LANGUAGE: ")
-                .expect("the directive is rendered");
-            let rails = prompt.find("Never merge").expect("the rails survive");
-            assert!(directive < rails, "{prompt}");
-            assert!(prompt.contains("in Japanese."), "{prompt}");
-        }
-    }
-
-    /// The guarantee a config without the key rests on.
-    #[test]
-    fn an_unset_language_leaves_both_prompts_byte_identical() {
-        assert_eq!(worker(Some("   ")), worker(None));
-        assert_eq!(recovery(Some("   ")), recovery(None));
-        assert!(!worker(None).contains("LANGUAGE: "));
-        assert!(!recovery(None).contains("LANGUAGE: "));
-    }
-
-    #[test]
-    fn recovery_prompt_carries_the_reason_verbatim_and_the_rails() {
-        let prompt =
-            merge_recovery_prompt("#132", "abc", "https://pr/1", "merge_state:dirty", None);
-        assert!(prompt.contains("merge_state:dirty"));
-        assert!(prompt.contains("https://pr/1"));
-        assert!(prompt.contains("(refs dropr:abc)"));
-        for rail in [
-            "Never merge",
-            "Never force push",
-            "Never push to main",
-            "Never change the branch of the",
-        ] {
-            assert!(prompt.contains(rail), "missing rail: {rail}");
-        }
-    }
-
-    /// dropr:JUo1qJqo6XHWKvrbREmlX: the rail bans switching the shared
-    /// checkout's branch, but a worker still needs to read another PR
-    /// sometimes — the prompt has to name the throwaway-worktree
-    /// alternative, not just the ban, in both prompts that carry the rails.
-    #[test]
-    fn both_prompts_name_the_throwaway_worktree_alternative() {
-        for prompt in [worker(None), recovery(None)] {
-            assert!(
-                prompt
-                    .contains("Never change the branch of the\nrepository under `~/.robco/repos/`")
-            );
-            assert!(prompt.contains("throwaway worktree outside that managed tree"));
-            assert!(prompt.contains("do not create any other extra worktree"));
-        }
-    }
-
-    /// dropr:yD5Gf6TX23VMvuSLFsmvO defect 1: a parent dispatch's PR body must
-    /// close every subtask the run covers, not just the parent — otherwise
-    /// every subtask stays open and unclaimed after the merge, and dropr
-    /// redispatches a fresh worker for work that already landed.
-    #[test]
-    fn a_parent_dispatch_closes_every_subtask_and_refs_the_parent() {
-        let prompt = worker_prompt(
-            "#431",
-            "abc",
-            "Make the merge loop always end in a merge or a notice",
-            "/repo",
-            &[subtask("#432"), subtask("#436")],
-            None,
-        );
-        assert!(prompt.contains("`Close Dropr: #432`"));
-        assert!(prompt.contains("`Close Dropr: #436`"));
-        assert!(prompt.contains("`Refs Dropr: #431`"));
-        // The parent itself must never appear as a Close directive — only
-        // subtasks close; the parent closes once every subtask has.
-        assert!(!prompt.contains("`Close Dropr: #431`"));
-    }
-
-    /// The other half of the same defect: a childless task's prompt must stay
-    /// exactly what it was before this change.
-    #[test]
-    fn a_childless_dispatch_keeps_the_single_close_line() {
-        let prompt = worker_prompt("#132", "abc", "Build overseer", "/repo", &[], None);
-        assert!(prompt.contains("`Close Dropr: #132`."));
-        assert!(!prompt.contains("Refs Dropr:"));
-    }
-
-    #[test]
-    fn recovery_prompt_never_asks_for_a_new_branch() {
-        // A worker that cut a second branch would strand the pull request
-        // Overseer is waiting on, so the instruction has to be explicit.
-        let prompt = recovery(None);
-        assert!(prompt.contains("do not create a new branch or worktree"));
-        assert!(prompt.contains("push the same branch"));
-    }
-}
+#[path = "templates_tests.rs"]
+mod tests;
