@@ -62,6 +62,14 @@ pub(crate) fn aggregate(
             .task
             .as_deref()
             .and_then(|target| tasks.get(target).copied());
+        // A decision recorded before its task's ledger entry reached
+        // `Merged` still needs the operator's eyes; once merged, the work
+        // landed and the row has nothing left to act on. `Failed` and
+        // `Escalated` stay visible: they are terminal too, but neither one
+        // means the work is done.
+        if matches!(ledger_entry, Some(entry) if entry.phase == LedgerPhase::Merged) {
+            continue;
+        }
         let target_id = ledger_entry
             .map(|entry| entry.display_id.as_str())
             .or(decision.task.as_deref())
