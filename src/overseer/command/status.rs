@@ -47,8 +47,6 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
         .and_then(|modified| SystemTime::now().duration_since(modified).ok());
     let daemon_version = heartbeat::recorded_version(&heartbeat);
     let healthy = daemon_healthy(config.overseer.poll_interval_secs);
-    let circuit_open =
-        ledger.counters.consecutive_failures >= config.overseer.failure_circuit_threshold;
     let session_health = SessionHealth::load()?;
 
     let inbox = inbox::current(&registry)?;
@@ -58,7 +56,6 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
     let stuck = stuck_reasons(
         &config.overseer,
         healthy,
-        circuit_open,
         daemon_version.as_deref(),
         session_health.as_ref(),
         logging::corrupt_line_count()?,
@@ -70,9 +67,7 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
         running_line(
             &ledger.active_workers(),
             &ledger.primary_holders(),
-            &registry,
-            ledger.counters.dispatched_today,
-            &crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
+            &registry
         )
     );
 
@@ -87,7 +82,6 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
             pid,
             heartbeat_age,
             daemon_version.as_deref(),
-            circuit_open,
             merge_pass.as_ref(),
         )?;
     }
@@ -167,16 +161,14 @@ fn waiting_summary(reasons: &[String]) -> String {
 
 /// "Is anything stuck?" — every condition that stops the daemon from doing its
 /// job on its own: offline, its build has drifted from what merged, dispatch
-/// is on with nobody to run it, the failure circuit tripped, a credential the
-/// daemon needs has failed, a loosened merge gate, or corrupted audit data.
-/// These are exactly the lines this command used to print as scattered
-/// `warning:` lines — gathered here so a quiet daemon reads as `stuck: none`
-/// instead of an operator having to confirm the absence of eight separate
-/// warnings by eye.
+/// is offline, a credential the daemon needs has failed, a loosened merge
+/// gate, or corrupted audit data. These are exactly the lines this command
+/// used to print as scattered `warning:` lines — gathered here so a quiet
+/// daemon reads as `stuck: none` instead of an operator having to confirm the
+/// absence of several separate warnings by eye.
 fn stuck_reasons(
     config: &OverseerConfig,
     healthy: bool,
-    circuit_open: bool,
     daemon_version: Option<&str>,
     session_health: Option<&SessionHealth>,
     corrupt_lines: usize,
@@ -184,12 +176,6 @@ fn stuck_reasons(
     let mut reasons = Vec::new();
     if !healthy {
         reasons.push("daemon is offline or its heartbeat has gone stale".to_string());
-    }
-    if config.dispatch_enabled && !healthy {
-        reasons.push(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT.to_string());
-    }
-    if circuit_open {
-        reasons.push(crate::overseer::CIRCUIT_OPEN_HINT.to_string());
     }
     // Gated on the daemon being up, like the version-drift check always was: a
     // dead daemon is already reported above, and naming the build it is not
@@ -225,16 +211,13 @@ fn stuck_summary(reasons: &[String]) -> String {
 }
 
 /// "What is running right now?" — active workers by repository (named, never
-/// by the absolute path the ledger records them under), which task holds
-/// each repository's primary slot, and today's dispatch throughput. A
-/// completed or terminal entry is not "running" in the sense an operator
-/// means it.
+/// by the absolute path the ledger records them under) and which task holds
+/// each repository's primary slot. A completed or terminal entry is not
+/// "running" in the sense an operator means it.
 fn running_line(
     active: &ActiveWorkers,
     primary_holders: &BTreeMap<String, String>,
     registry: &Registry,
-    dispatched_today: u32,
-    dispatch_limit_label: &str,
 ) -> String {
     let workers = if active.count == 0 {
         "no active workers".to_string()
@@ -253,7 +236,7 @@ fn running_line(
             .join(", ");
         format!("{} worker(s) ({by_repo})", active.count)
     };
-    format!("running now: {workers} · dispatched today {dispatched_today}/{dispatch_limit_label}")
+    format!("running now: {workers}")
 }
 
 /// A decision-log line that exists but does not parse is silently skipped by

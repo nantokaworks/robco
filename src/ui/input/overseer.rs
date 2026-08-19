@@ -1,10 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::{
-    Result,
-    locale::{fmt, t},
-    model::Selection,
-};
+use crate::{Result, locale::t, model::Selection};
 
 use super::super::{App, Mode, text_input::TextInput};
 
@@ -27,46 +23,36 @@ pub(super) fn prompt_action(input: &mut TextInput, key: KeyEvent) -> PromptActio
 }
 
 pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
-    // S is an overseer-wide toggle, so it is reachable from any row while the
-    // overseer panel is active — including worker rows (Selection::Agent), not
-    // just the OVERSEER header / category rows. Turning dispatch off kills
-    // workers, so that half still goes through ConfirmOverseerPanic; turning
-    // it back on does not, since it starts nothing running before the next
-    // dispatch tick and kills no workers. Both halves work from any preview
-    // tab.
+    // S kills every live overseer worker, so it is reachable from any row
+    // while the overseer panel is active — including worker rows
+    // (Selection::Agent), not just the OVERSEER header / category rows. The
+    // daemon itself keeps running: merge polling, Discord/MCP commands, and
+    // worker monitoring are unaffected, so there is nothing to "turn back on"
+    // afterwards (dropr:476).
     if code == KeyCode::Char('S') {
         if !app.overseer_visible {
             return false;
         }
-        if app.overseer_snapshot.overseer.dispatch_enabled {
-            app.mode = Mode::ConfirmOverseerPanic;
-        } else {
-            app.start_overseer();
-        }
+        app.mode = Mode::ConfirmOverseerPanic;
         return true;
     }
-    // R resets the dispatch circuit when it is open (unchanged). Otherwise,
-    // while the daemon is not running, R starts it instead — the daemon has
-    // no other TUI-reachable start, and reusing R keeps the operator on one
-    // key for "the thing overseer needs right now" rather than adding a
-    // separate always-visible start key.
+    // While the daemon is not running, R starts it — the daemon has no other
+    // TUI-reachable start, and reusing R keeps the operator on one key for
+    // "the thing overseer needs right now" rather than adding a separate
+    // always-visible start key.
     if code == KeyCode::Char('R') {
         if !app.overseer_visible {
             return false;
-        }
-        if app.overseer_snapshot.circuit_open() {
-            app.mode = Mode::ConfirmOverseerReset;
-            return true;
         }
         if !app.overseer_snapshot.daemon_alive {
             app.start_daemon();
             return true;
         }
-        app.show_message(t(app.locale, "circuit is closed; nothing to reset"));
+        app.show_message(t(app.locale, "overseer daemon is already running"));
         return true;
     }
     // K durably stops the daemon process itself — distinct from S, which only
-    // disables dispatch and kills workers while leaving the daemon running.
+    // kills workers while leaving the daemon running.
     if code == KeyCode::Char('K') {
         if !app.overseer_visible {
             return false;
@@ -149,14 +135,14 @@ impl App {
         }
     }
 
-    /// Panic-stop the overseer: disable dispatch and terminate every
-    /// overseer-managed worker. Runs synchronously since it is an explicit,
-    /// operator-initiated action. This never stops the daemon process itself
-    /// — see [`App::stop_daemon`] for that.
+    /// Panic-stop the overseer: terminate every overseer-managed worker. Runs
+    /// synchronously since it is an explicit, operator-initiated action. This
+    /// never stops the daemon process itself — see [`App::stop_daemon`] for
+    /// that.
     pub(in crate::ui) fn panic_overseer(&mut self) {
         let result = crate::overseer::command::panic_stop_attributed("ui", None);
         self.refresh_overseer_snapshot();
-        self.response_message(result, "dispatch off, workers killed; daemon still running");
+        self.response_message(result, "workers killed; daemon still running");
     }
 
     /// Durably stop the Overseer daemon process: bootout the launchd service
@@ -207,57 +193,6 @@ impl App {
             Ok(crate::overseer::command::StartAttempt::Started) => {
                 self.show_message(t(self.locale, "overseer started"));
             }
-            Err(error) => self.show_message(error.to_string()),
-        }
-    }
-
-    /// Turn dispatch back on from a stop, independent of circuit state.
-    /// Reuses the same write as the `R` circuit reset
-    /// (`set_runtime(Dispatch, true)`) since re-arming the failure counter is
-    /// harmless when it is already at zero. Unlike `panic_overseer`, this is
-    /// never gated behind a confirmation: it starts nothing running before
-    /// the next dispatch tick and kills no workers.
-    pub(in crate::ui) fn start_overseer(&mut self) {
-        let result =
-            crate::overseer::command::set_runtime(crate::cli::OverseerSetting::Dispatch, true);
-        self.refresh_overseer_snapshot();
-        match result {
-            Ok(()) if self.overseer_snapshot.daemon_alive => {
-                self.show_message(t(self.locale, "overseer dispatch enabled"));
-            }
-            Ok(()) => self.show_message(fmt(
-                self.locale,
-                "overseer dispatch enabled; warning: {}",
-                &[t(
-                    self.locale,
-                    crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT,
-                )],
-            )),
-            Err(error) => self.show_message(error.to_string()),
-        }
-    }
-
-    /// Request an overseer dispatch circuit reset: re-enable dispatch now and
-    /// clear the daemon-owned failure counter on its next tick.
-    pub(in crate::ui) fn reset_overseer(&mut self) {
-        let result =
-            crate::overseer::command::set_runtime(crate::cli::OverseerSetting::Dispatch, true);
-        self.refresh_overseer_snapshot();
-        match result {
-            Ok(()) if self.overseer_snapshot.daemon_alive => {
-                self.show_message(t(
-                    self.locale,
-                    "dispatch circuit reset requested: dispatch on, failures clearing on next tick",
-                ));
-            }
-            Ok(()) => self.show_message(fmt(
-                self.locale,
-                "dispatch circuit reset requested: dispatch on, failures pending; warning: {}",
-                &[t(
-                    self.locale,
-                    crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT,
-                )],
-            )),
             Err(error) => self.show_message(error.to_string()),
         }
     }

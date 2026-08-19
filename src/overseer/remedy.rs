@@ -72,8 +72,6 @@ pub(crate) enum Move {
     Answer,
     /// Merge the pull request by hand; the automated gate will not.
     Merge,
-    /// Reset a tripped circuit or a disabled switch.
-    Reset,
     /// Retry or re-dispatch the underlying work.
     Retry,
     /// Read the reason and decide by hand; no key on this row does it.
@@ -89,7 +87,6 @@ impl Move {
         match self {
             Self::Answer => "ANSWER",
             Self::Merge => "MERGE",
-            Self::Reset => "RESET",
             Self::Retry => "RETRY",
             Self::Review => "REVIEW",
             Self::Watch => "WATCH",

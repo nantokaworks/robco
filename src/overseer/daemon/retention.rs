@@ -17,8 +17,8 @@
 //!
 //! Two entries are never dropped:
 //!
-//! * A non-terminal entry — it is live work, it holds a worktree and a dispatch
-//!   slot, and this policy is about history.
+//! * A non-terminal entry — it is live work, it holds a worktree, and this
+//!   policy is about history.
 //! * A terminal entry whose worker is still in the registry. `merged` cleanup is
 //!   re-pushed on every pass for as long as the registry row survives, so
 //!   dropping the entry first would leak the session and the worktree it was
@@ -26,13 +26,13 @@
 //!   worktree is deliberately left standing for an operator — visible for as
 //!   long as the thing it describes exists.
 //!
-//! The retry cap is the one thing that reads dropped history: `max_retries_per_task`
-//! counts a task's recorded entries, so a task whose entries have all aged out
-//! is a task Overseer no longer remembers attempting, and a still-ready one may
-//! be dispatched again. That is the intended reading of a retention window — a
-//! task that has not been touched in the last `terminal_retention_per_repo`
-//! settlements of its repository is not being retried, it is being started
-//! again — and `skip_list` remains the durable way to say never.
+//! Dropped history simply stops being remembered: once a task's entries have
+//! all aged out, Overseer no longer remembers attempting it, and a later named
+//! launch against the same task starts fresh rather than reading as a retry —
+//! nothing gates on the recorded count any more (dropr:476). That is the
+//! intended reading of a retention window — a task that has not been touched
+//! in the last `terminal_retention_per_repo` settlements of its repository is
+//! not being retried, it is being started again.
 
 use std::collections::{HashMap, HashSet};
 

@@ -61,7 +61,6 @@ fn parse_action(mut value: Value) -> Result<Command, String> {
                 .unwrap_or(10)
                 .min(50) as usize,
         ),
-        "dispatch" | "robco_dispatch" => Command::Dispatch(bool_arg(object, "enabled")?),
         "automerge" | "robco_automerge" => {
             let enabled = bool_arg(object, "enabled")?;
             if enabled {

@@ -125,7 +125,7 @@ fn repeating_failure_unwraps_to_its_inner_reasons_own_remedy() {
 fn circuit_shapes_from_the_review_pass_resolve_distinctly() {
     assert_eq!(
         for_reason("circuit_open: 3/3 consecutive failures; latest spawn_failed:x").step,
-        Move::Reset
+        Move::Review
     );
     assert_eq!(
         for_reason("circuit_at_risk: 2/3 consecutive failures; latest spawn_failed:x").step,

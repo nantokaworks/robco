@@ -1,12 +1,10 @@
-//! Decision-log emission for the dispatch pass.
-//!
-//! Every skip, hold, and failure the pass records into `decisions.jsonl` is
-//! shaped here, so `runtime` holds the pass structure and this module holds
-//! what each outcome looks like on disk. The one policy decision that exists
-//! only to gate its own log line — [`skip_unmaterialised`] — lives here with
-//! the entry it writes.
+//! Decision-log emission for a named launch (`!run <task>`). Every skip and
+//! hold `resolve::resolve_task` and `worker::spawn_candidate` record into
+//! `decisions.jsonl` is shaped here. The one policy decision that exists only
+//! to gate its own log line — [`skip_unmaterialised`] — lives here with the
+//! entry it writes.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::Candidate;
 use crate::overseer::logging::{self, DecisionEntry, DecisionKind};
@@ -18,40 +16,6 @@ pub(super) fn log_candidate(kind: DecisionKind, task: &Candidate, reason: &str) 
     entry.repo = Some(task.repo.clone());
     entry.source = Some("dispatch".into());
     logging::append(&entry)
-}
-
-/// Records a per-candidate decision at most once per (task, reason) pair —
-/// the same shape [`skip_unmaterialised`] established for `ready_fetch_failed`
-/// (dropr:iCxjVrD3djgRBau23tncB), applied to every per-candidate dispatch
-/// decision `execute_plan` logs, so a candidate held on the same reason for
-/// an hour writes one line, not sixty.
-///
-/// `logged` is owned by the daemon loop (see `runtime::dispatch_pass`) and
-/// pruned once per pass for task ids that left the candidate list, so a task
-/// that later reappears — including a genuinely new dispatch of the same
-/// task id after a prior attempt terminated — logs fresh rather than
-/// inheriting a stale entry. `append` is injected the same way
-/// [`skip_unmaterialised`]'s is, so the dedup decision is testable without
-/// touching the real decision log.
-pub(super) fn log_candidate_once<F>(
-    kind: DecisionKind,
-    task: &Candidate,
-    reason: &str,
-    logged: &mut BTreeMap<String, String>,
-    append: F,
-) -> Result<()>
-where
-    F: FnOnce(&DecisionEntry) -> Result<()>,
-{
-    if logged.get(&task.task_id).map(String::as_str) == Some(reason) {
-        return Ok(());
-    }
-    logged.insert(task.task_id.clone(), reason.to_owned());
-    let mut entry = DecisionEntry::new(kind, reason);
-    entry.task = Some(task.task_id.clone());
-    entry.repo = Some(task.repo.clone());
-    entry.source = Some("dispatch".into());
-    append(&entry)
 }
 
 pub(super) fn log_repo_skip<F>(repo: &str, reason: &str, append: F) -> Result<()>
@@ -80,18 +44,11 @@ where
     append(&entry)
 }
 
-pub(super) fn log_global(kind: DecisionKind, reason: &str) -> Result<()> {
-    let mut entry = DecisionEntry::new(kind, reason);
-    entry.source = Some("dispatch".into());
-    logging::append(&entry)
-}
-
 /// Records a global (not candidate-scoped) decision at most once while the
-/// same reason holds — the `dispatch_disabled` / `dropr_overlay_unavailable`
-/// counterpart of [`log_candidate_once`]. `logged` is owned by the daemon
-/// loop and cleared the moment a pass gets past every global gate (see
-/// `runtime::dispatch_pass`), so a later recurrence — the same reason or a
-/// different one — logs fresh.
+/// same reason holds — currently just `dropr_overlay_unavailable` from
+/// `resolve::resolve_task`. `logged` is owned by the daemon loop and cleared
+/// once a resolution gets past the overlay read, so a later recurrence logs
+/// fresh.
 pub(super) fn log_global_once<F>(
     kind: DecisionKind,
     reason: &str,
@@ -147,112 +104,13 @@ where
 mod tests {
     use super::*;
 
-    fn candidate(task_id: &str) -> Candidate {
-        Candidate {
-            task_id: task_id.into(),
-            display_id: "#1".into(),
-            title: "task".into(),
-            repo: "/repo".into(),
-            author: "allowed".into(),
-            priority: "medium".into(),
-            workspace: "workspace-1".into(),
-            priority_score: None,
-            status: "open".into(),
-            parent_task_id: None,
+    fn workspace(kind: &str) -> dropr::DroprWorkspace {
+        dropr::DroprWorkspace {
+            kind: kind.into(),
+            id: "github:owner/repo".into(),
+            name: "repo".into(),
+            repo_url: "https://github.com/owner/repo".into(),
         }
-    }
-
-    /// The evidence this task exists for: `one_per_repo` alone wrote 15,056
-    /// lines because the same held reason was logged on every poll. A
-    /// candidate held on the same reason for an hour must write one line,
-    /// not sixty.
-    #[test]
-    fn a_repeated_reason_writes_once() {
-        let mut logged = BTreeMap::new();
-        let mut writes = 0;
-        for _ in 0..60 {
-            log_candidate_once(
-                DecisionKind::Skip,
-                &candidate("task-1"),
-                "one_per_repo",
-                &mut logged,
-                |_| {
-                    writes += 1;
-                    Ok(())
-                },
-            )
-            .unwrap();
-        }
-        assert_eq!(writes, 1);
-        assert_eq!(
-            logged.get("task-1").map(String::as_str),
-            Some("one_per_repo")
-        );
-    }
-
-    #[test]
-    fn a_changed_reason_writes_again() {
-        let mut logged = BTreeMap::new();
-        let mut reasons = Vec::new();
-
-        log_candidate_once(
-            DecisionKind::Skip,
-            &candidate("task-1"),
-            "one_per_repo",
-            &mut logged,
-            |e| {
-                reasons.push(e.reason.clone());
-                Ok(())
-            },
-        )
-        .unwrap();
-        log_candidate_once(
-            DecisionKind::Skip,
-            &candidate("task-1"),
-            "one_per_repo",
-            &mut logged,
-            |e| {
-                reasons.push(e.reason.clone());
-                Ok(())
-            },
-        )
-        .unwrap();
-        // A reason that changes is a genuinely new state, so it must still
-        // write a line.
-        log_candidate_once(
-            DecisionKind::Skip,
-            &candidate("task-1"),
-            "primary_slot_taken",
-            &mut logged,
-            |e| {
-                reasons.push(e.reason.clone());
-                Ok(())
-            },
-        )
-        .unwrap();
-
-        assert_eq!(reasons, ["one_per_repo", "primary_slot_taken"]);
-    }
-
-    #[test]
-    fn separate_tasks_are_tracked_independently() {
-        let mut logged = BTreeMap::new();
-        let mut writes = 0;
-        for task_id in ["task-1", "task-2"] {
-            log_candidate_once(
-                DecisionKind::Hold,
-                &candidate(task_id),
-                "active_worker",
-                &mut logged,
-                |_| {
-                    writes += 1;
-                    Ok(())
-                },
-            )
-            .unwrap();
-        }
-        assert_eq!(writes, 2);
-        assert_eq!(logged.len(), 2);
     }
 
     #[test]
@@ -268,5 +126,88 @@ mod tests {
         }
         assert_eq!(reasons, ["dispatch_disabled", "daily_limit"]);
         assert_eq!(logged.as_deref(), Some("daily_limit"));
+    }
+
+    #[test]
+    fn an_unmaterialised_workspace_is_skipped_and_logged_once_per_run() {
+        // The dropr:rC8ZxtZT913zsmYfnOFhs loop: a virtual workspace 404s on every
+        // ready fetch, so the repo must be skipped before fetching, with exactly
+        // one decision entry for the whole daemon run rather than one per tick.
+        let mut logged = BTreeSet::new();
+        let mut captured = None;
+        let skipped = skip_unmaterialised("/repo", &workspace("virtual"), &mut logged, |entry| {
+            captured = Some(entry.clone());
+            Ok(())
+        })
+        .unwrap();
+        assert!(skipped);
+        let entry = captured.unwrap();
+        assert_eq!(entry.kind, DecisionKind::Skip);
+        assert_eq!(entry.reason, "workspace_not_materialised");
+        assert_eq!(entry.repo.as_deref(), Some("/repo"));
+
+        // Every later tick: still skipped, but silently.
+        for _ in 0..3 {
+            let skipped = skip_unmaterialised("/repo", &workspace("virtual"), &mut logged, |_| {
+                panic!("a repeated tick must not log again")
+            })
+            .unwrap();
+            assert!(skipped);
+        }
+    }
+
+    #[test]
+    fn materialising_the_workspace_resumes_dispatch_and_rearms_the_log() {
+        // The overlay reloads every pass, so the flip to `materialised` must be
+        // enough on its own — no daemon restart — and a workspace that later
+        // reverts to virtual gets one fresh decision, not silence.
+        let mut logged = BTreeSet::from(["/repo".to_string()]);
+        let skipped = skip_unmaterialised("/repo", &workspace("materialised"), &mut logged, |_| {
+            panic!("a materialised workspace must not log a skip")
+        })
+        .unwrap();
+        assert!(!skipped);
+
+        let mut captured = None;
+        let skipped = skip_unmaterialised("/repo", &workspace("virtual"), &mut logged, |entry| {
+            captured = Some(entry.clone());
+            Ok(())
+        })
+        .unwrap();
+        assert!(skipped);
+        assert_eq!(captured.unwrap().reason, "workspace_not_materialised");
+    }
+
+    #[test]
+    fn repo_skip_emits_skip_decision() {
+        let mut captured = None;
+        log_repo_skip("/repo", "repo_path_missing", |entry| {
+            captured = Some(entry.clone());
+            Ok(())
+        })
+        .unwrap();
+        let entry = captured.unwrap();
+        assert_eq!(entry.kind, DecisionKind::Skip);
+        assert_eq!(entry.reason, "repo_path_missing");
+        assert_eq!(entry.repo.as_deref(), Some("/repo"));
+    }
+
+    #[test]
+    fn fetch_failure_emits_skip_decision() {
+        let mut captured = None;
+        log_ready_failure(
+            "/repo",
+            "workspace-1",
+            dropr::ReadyDispatchError::Parse,
+            |entry| {
+                captured = Some(entry.clone());
+                Ok(())
+            },
+        )
+        .unwrap();
+        let entry = captured.unwrap();
+        assert_eq!(entry.kind, DecisionKind::Skip);
+        assert_eq!(entry.reason, "ready_parse_failed:workspace-1");
+        assert_eq!(entry.repo.as_deref(), Some("/repo"));
     }
 }

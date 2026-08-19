@@ -6,62 +6,31 @@
 
 use std::path::Path;
 
-use super::{on_off, status::daemon_healthy};
+use super::on_off;
 use crate::{
     Result,
     cli::OverseerSetting,
     config::Config,
-    overseer::{
-        autonomy::AutonomyLevel,
-        config::ProtectionMode,
-        runtime_request::{self, RuntimeRequest},
-    },
+    overseer::{autonomy::AutonomyLevel, config::ProtectionMode},
 };
 
-pub(super) fn set(config: &Config, setting: OverseerSetting, enabled: bool) -> Result<()> {
+pub(super) fn set(setting: OverseerSetting, enabled: bool) -> Result<()> {
     set_runtime(setting, enabled)?;
     let label = match setting {
-        OverseerSetting::Dispatch => "dispatch",
         OverseerSetting::AutoMerge => "auto-merge",
     };
     println!("{label}: {}", on_off(enabled));
-    if matches!(setting, OverseerSetting::Dispatch)
-        && enabled
-        && !daemon_healthy(config.overseer.poll_interval_secs)
-    {
-        println!("warning: {}", crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT);
-    }
     Ok(())
 }
 
 pub(crate) fn set_runtime(setting: OverseerSetting, enabled: bool) -> Result<()> {
     let mut config = Config::load()?;
     match setting {
-        OverseerSetting::Dispatch => {
-            config.overseer.dispatch_enabled = enabled;
-        }
         OverseerSetting::AutoMerge => {
             config.overseer.auto_merge = enabled;
         }
     }
     config.save()?;
-    if matches!(setting, OverseerSetting::Dispatch) && enabled {
-        runtime_request::enqueue(RuntimeRequest::ResetCircuit {
-            source: "cli".into(),
-            at: chrono::Utc::now(),
-        })?;
-    }
-    Ok(())
-}
-
-pub(super) fn daily_limit(value: u32) -> Result<()> {
-    let mut config = Config::load()?;
-    config.overseer.daily_dispatch_limit = value;
-    config.save()?;
-    println!(
-        "daily dispatch limit: {}",
-        crate::overseer::dispatch::format_dispatch_limit(value)
-    );
     Ok(())
 }
 

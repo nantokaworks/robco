@@ -24,7 +24,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmDeleteBranch { .. }
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
-            | Mode::ConfirmOverseerReset
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmRemoveDiscordChannel { .. }
@@ -97,13 +96,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             app.mode = Mode::Normal;
             if confirmed {
                 app.panic_overseer();
-            }
-            Some(Ok(()))
-        }
-        Mode::ConfirmOverseerReset => {
-            app.mode = Mode::Normal;
-            if confirmed {
-                app.reset_overseer();
             }
             Some(Ok(()))
         }

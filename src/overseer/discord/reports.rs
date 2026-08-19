@@ -7,7 +7,6 @@ use super::respond::{bounded_rows, code_block};
 use crate::{
     overseer::{
         config::OverseerConfig,
-        dispatch::format_dispatch_limit,
         is_overseer_child,
         ledger::{Ledger, LedgerPhase},
         logging,
@@ -23,26 +22,17 @@ pub(crate) fn status() -> crate::Result<String> {
         .iter()
         .filter(|entry| !terminal(entry.phase))
         .count();
-    Ok(status_line(
-        &config.overseer,
-        active,
-        ledger.counters.dispatched_today,
-    ))
+    Ok(status_line(&config.overseer, active))
 }
 
 /// Render the `status` reply. Kept in step with `robco overseer status`: it
 /// reports only toggles the daemon honours, so the surfaces cannot disagree
 /// about whether the Overseer is running.
-fn status_line(config: &OverseerConfig, active: usize, dispatched_today: u32) -> String {
+fn status_line(config: &OverseerConfig, active: usize) -> String {
     [
-        format!("**dispatch** {}", on_off(config.dispatch_enabled)),
         format!("**automerge** {}", on_off(config.auto_merge)),
         format!("**autonomy** {}", config.autonomy_level.label()),
         format!("**workers** {active}"),
-        format!(
-            "**today** {dispatched_today}/{}",
-            format_dispatch_limit(config.daily_dispatch_limit)
-        ),
     ]
     .join("\n")
 }

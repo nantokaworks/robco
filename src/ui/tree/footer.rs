@@ -20,7 +20,6 @@ pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect, message: Option
         message,
         app.selected_item(),
         app.dropr_task_focus,
-        app.overseer_snapshot.circuit_open(),
     ))
     .alignment(Alignment::Center);
     frame.render_widget(hints, footer.zones.hints);

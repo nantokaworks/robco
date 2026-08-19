@@ -25,8 +25,6 @@ mod inbox_rows;
 mod render;
 mod render_format;
 
-#[cfg(test)]
-pub(in crate::ui) use categories::health_warnings_from;
 pub(in crate::ui) use categories::{
     category_detail, category_summary, health_warnings, inbox_actionable_count,
 };
@@ -82,20 +80,15 @@ pub(in crate::ui) struct OverseerSnapshot {
 }
 
 impl OverseerSnapshot {
-    /// Status glyph for the OVERSEER header row.
-    ///
-    /// A dead daemon is `Dead`. A live daemon only counts as `Running` — the
-    /// animated spinner — while dispatch is enabled. Once dispatch is turned
-    /// off (the `S` panic-stop kills workers and flips dispatch off but leaves
-    /// the daemon process alive) the row must stop animating, so a live daemon
-    /// with dispatch off renders as the static `Idle` glyph.
+    /// Status glyph for the OVERSEER header row: `Running` while the daemon
+    /// is alive, `Dead` otherwise. The daemon always has work to do now —
+    /// merge polling, Discord/MCP commands, worker monitoring — so there is
+    /// no separate "on but idle" state to distinguish (dropr:476).
     pub(in crate::ui) fn status(&self) -> Status {
-        if !self.daemon_alive {
-            Status::Dead
-        } else if self.overseer.dispatch_enabled {
+        if self.daemon_alive {
             Status::Running
         } else {
-            Status::Idle
+            Status::Dead
         }
     }
 
@@ -109,10 +102,6 @@ impl OverseerSnapshot {
         self.daemon_alive
             .then(|| crate::overseer::heartbeat::drift(self.daemon_version.as_deref()))
             .flatten()
-    }
-
-    pub(in crate::ui) fn circuit_open(&self) -> bool {
-        self.ledger.counters.consecutive_failures >= self.overseer.failure_circuit_threshold
     }
 
     /// The reason `agent_id`'s worker still needs a human decision, or `None`

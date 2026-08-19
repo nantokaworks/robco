@@ -1,40 +1,6 @@
 use super::*;
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 
-#[test]
-fn enqueue_then_drain_applies_and_acks() {
-    let temp = tempfile::tempdir().unwrap();
-    let dir = temp.path().join("requests");
-    let ledger_path = temp.path().join("ledger.json");
-    let mut ledger = Ledger::default();
-    ledger.counters.consecutive_failures = 99;
-    let mut config = Config::default();
-    config.overseer.dispatch_enabled = false;
-    enqueue_in(
-        &dir,
-        RuntimeRequest::ResetCircuit {
-            source: "test".into(),
-            at: Utc::now(),
-        },
-    )
-    .unwrap();
-
-    assert!(
-        drain_in(&dir, &ledger_path, &mut ledger, &mut config)
-            .unwrap()
-            .0
-    );
-    assert_eq!(ledger.counters.consecutive_failures, 0);
-    assert!(config.overseer.dispatch_enabled);
-    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
-    assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
-            .unwrap()
-            .0
-    );
-    assert_eq!(ledger.counters.consecutive_failures, 0);
-}
-
 /// dropr:473: `apply` only ever changes `ledger` in memory; `drain_in` used to
 /// delete the request file right after `apply` returned, well before the
 /// daemon's own end-of-pass save. A crash in that window lost both the
@@ -46,28 +12,29 @@ fn applied_request_is_checkpointed_to_disk_before_its_file_is_acked() {
     let temp = tempfile::tempdir().unwrap();
     let dir = temp.path().join("requests");
     let ledger_path = temp.path().join("ledger.json");
-    let mut ledger = Ledger::default();
-    ledger.counters.consecutive_failures = 3;
-    let mut config = Config::default();
-    config.overseer.dispatch_enabled = false;
+    let mut ledger = Ledger {
+        entries: vec![ledger_entry("worker-1", LedgerPhase::PrOpened)],
+        ..Ledger::default()
+    };
     enqueue_in(
         &dir,
-        RuntimeRequest::ResetCircuit {
+        RuntimeRequest::PanicEscalate {
             source: "test".into(),
+            agent_ids: vec!["worker-1".into()],
             at: Utc::now(),
         },
     )
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 
     let saved: Ledger = serde_json::from_str(&fs::read_to_string(&ledger_path).unwrap()).unwrap();
-    assert_eq!(saved.counters.consecutive_failures, 0);
+    assert_eq!(saved.entries[0].phase, LedgerPhase::Escalated);
 }
 
 /// When the checkpoint write itself cannot happen (here: `ledger_path`'s
@@ -81,26 +48,27 @@ fn checkpoint_failure_leaves_the_request_file_for_retry() {
     let blocked = temp.path().join("blocked");
     fs::write(&blocked, "not a directory").unwrap();
     let ledger_path = blocked.join("ledger.json");
-    let mut ledger = Ledger::default();
-    ledger.counters.consecutive_failures = 3;
-    let mut config = Config::default();
-    config.overseer.dispatch_enabled = false;
+    let mut ledger = Ledger {
+        entries: vec![ledger_entry("worker-1", LedgerPhase::PrOpened)],
+        ..Ledger::default()
+    };
     enqueue_in(
         &dir,
-        RuntimeRequest::ResetCircuit {
+        RuntimeRequest::PanicEscalate {
             source: "test".into(),
+            agent_ids: vec!["worker-1".into()],
             at: Utc::now(),
         },
     )
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     // Applied in memory (idempotent, so this is safe to have happened already)...
-    assert_eq!(ledger.counters.consecutive_failures, 0);
+    assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
     // ...but not acked: the checkpoint never made it to disk.
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
 }
@@ -114,7 +82,6 @@ fn panic_escalate_marks_workers_including_pr_opened() {
         entries: vec![ledger_entry("worker-1", LedgerPhase::PrOpened)],
         ..Ledger::default()
     };
-    let mut config = Config::default();
     enqueue_in(
         &dir,
         RuntimeRequest::PanicEscalate {
@@ -126,9 +93,9 @@ fn panic_escalate_marks_workers_including_pr_opened() {
     .unwrap();
 
     assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
 }
@@ -143,7 +110,6 @@ fn merge_completed_wakes_the_daemon_without_touching_state() {
         ..Ledger::default()
     };
     ledger.counters.consecutive_failures = 2;
-    let mut config = Config::default();
     enqueue_in(
         &dir,
         RuntimeRequest::MergeCompleted {
@@ -155,9 +121,9 @@ fn merge_completed_wakes_the_daemon_without_touching_state() {
     .unwrap();
 
     assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     // The merge moves the ledger only once the daemon has observed it, so the
     // request itself leaves the phase and the failure streak alone.
@@ -171,17 +137,11 @@ fn drain_missing_dir_is_noop() {
     let temp = tempfile::tempdir().unwrap();
     let ledger_path = temp.path().join("ledger.json");
     let mut ledger = Ledger::default();
-    let mut config = Config::default();
 
     assert!(
-        !drain_in(
-            &temp.path().join("missing"),
-            &ledger_path,
-            &mut ledger,
-            &mut config
-        )
-        .unwrap()
-        .0
+        drain_in(&temp.path().join("missing"), &ledger_path, &mut ledger)
+            .unwrap()
+            .is_empty()
     );
 }
 
@@ -193,12 +153,11 @@ fn corrupt_file_is_skipped() {
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("bad.json"), "not json").unwrap();
     let mut ledger = Ledger::default();
-    let mut config = Config::default();
 
     assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     assert!(!dir.join("bad.json").exists());
     assert!(dir.join("bad.json.corrupt").exists());
@@ -213,9 +172,6 @@ fn drain_applies_and_acks_all_pending_requests() {
         entries: vec![ledger_entry("worker-1", LedgerPhase::PrOpened)],
         ..Ledger::default()
     };
-    ledger.counters.consecutive_failures = 7;
-    let mut config = Config::default();
-    config.overseer.dispatch_enabled = false;
     enqueue_in(
         &dir,
         RuntimeRequest::PanicEscalate {
@@ -227,20 +183,19 @@ fn drain_applies_and_acks_all_pending_requests() {
     .unwrap();
     enqueue_in(
         &dir,
-        RuntimeRequest::ResetCircuit {
+        RuntimeRequest::MergeCompleted {
             source: "test".into(),
+            repo: "/repo".into(),
             at: Utc::now(),
         },
     )
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
-    assert_eq!(ledger.counters.consecutive_failures, 0);
-    assert!(config.overseer.dispatch_enabled);
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 }
@@ -254,7 +209,6 @@ fn operator_merge_override_is_a_noop_when_no_entry_matches_the_target() {
         entries: vec![ledger_entry("worker-1", LedgerPhase::Escalated)],
         ..Ledger::default()
     };
-    let mut config = Config::default();
     enqueue_in(
         &dir,
         RuntimeRequest::OperatorMergeOverride {
@@ -266,9 +220,9 @@ fn operator_merge_override_is_a_noop_when_no_entry_matches_the_target() {
     .unwrap();
 
     assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     assert!(ledger.entries[0].operator_override.is_none());
 }
@@ -284,7 +238,6 @@ fn operator_merge_override_is_a_noop_when_the_matched_entry_has_no_pull_request_
         entries: vec![entry],
         ..Ledger::default()
     };
-    let mut config = Config::default();
     enqueue_in(
         &dir,
         RuntimeRequest::OperatorMergeOverride {
@@ -296,9 +249,9 @@ fn operator_merge_override_is_a_noop_when_the_matched_entry_has_no_pull_request_
     .unwrap();
 
     assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     assert!(ledger.entries[0].operator_override.is_none());
 }
@@ -318,7 +271,6 @@ fn operator_merge_override_matches_by_display_id_but_leaves_no_override_when_the
         entries: vec![entry],
         ..Ledger::default()
     };
-    let mut config = Config::default();
     enqueue_in(
         &dir,
         RuntimeRequest::OperatorMergeOverride {
@@ -330,9 +282,9 @@ fn operator_merge_override_matches_by_display_id_but_leaves_no_override_when_the
     .unwrap();
 
     assert!(
-        !drain_in(&dir, &ledger_path, &mut ledger, &mut config)
+        drain_in(&dir, &ledger_path, &mut ledger)
             .unwrap()
-            .0
+            .is_empty()
     );
     assert!(ledger.entries[0].operator_override.is_none());
 }
@@ -348,7 +300,6 @@ fn run_task_is_handed_back_instead_of_applied_and_still_acked() {
     let dir = temp.path().join("requests");
     let ledger_path = temp.path().join("ledger.json");
     let mut ledger = Ledger::default();
-    let mut config = Config::default();
     enqueue_in(
         &dir,
         RuntimeRequest::RunTask {
@@ -359,9 +310,7 @@ fn run_task_is_handed_back_instead_of_applied_and_still_acked() {
     )
     .unwrap();
 
-    let (config_changed, pending_runs) =
-        drain_in(&dir, &ledger_path, &mut ledger, &mut config).unwrap();
-    assert!(!config_changed);
+    let pending_runs = drain_in(&dir, &ledger_path, &mut ledger).unwrap();
     assert_eq!(pending_runs.len(), 1);
     assert_eq!(pending_runs[0].task, "#470");
     assert_eq!(pending_runs[0].source, "tui");
@@ -421,7 +370,6 @@ fn merge_approval_replay_after_branch_moves_keeps_the_observed_head() {
         entries: vec![entry],
         ..Ledger::default()
     };
-    let mut config = Config::default();
     let request = RuntimeRequest::MergeApproval {
         source: "tui".into(),
         target: "worker-1".into(),
@@ -448,10 +396,10 @@ fn merge_approval_replay_after_branch_moves_keeps_the_observed_head() {
         approved_head
     );
 
-    assert!(!apply(&mut ledger, &mut config, request.clone()));
+    apply(&mut ledger, request.clone());
     let first = ledger.entries[0].merge_approval.clone().unwrap();
     assert_eq!(first.head, approved_head);
-    assert!(!apply(&mut ledger, &mut config, request));
+    apply(&mut ledger, request);
     assert_eq!(ledger.entries[0].merge_approval.as_ref(), Some(&first));
 }
 

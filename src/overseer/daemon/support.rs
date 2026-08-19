@@ -2,26 +2,10 @@
 //! focused on the poll loop itself. See `daemon::terminal`'s re-export for why
 //! this stays reachable at the parent's path.
 
-use crate::Result;
 use crate::overseer::{
-    config_write,
     ledger::{Ledger, LedgerPhase},
-    logging,
     monitor::{Action, FailureOrigin},
 };
-
-/// Write back what the drained requests changed. `runtime_request::apply` only
-/// ever flips `overseer.dispatch_enabled`, so the write narrows to that field
-/// rather than serialising this pass's snapshot over an operator's edits.
-pub(crate) fn persist_drained_config(dispatch_enabled: bool) -> Result<()> {
-    if config_write::persist_dispatch_enabled(dispatch_enabled)? {
-        logging::log_message(
-            None,
-            &format!("config rewritten: overseer.dispatch_enabled={dispatch_enabled}"),
-        )?;
-    }
-    Ok(())
-}
 
 pub(crate) fn account_failures(previous: &Ledger, next: &mut Ledger, actions: &[Action]) {
     // Only worker-origin failures count; merges reset the streak, while re-arm

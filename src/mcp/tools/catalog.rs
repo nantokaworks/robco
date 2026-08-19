@@ -33,15 +33,10 @@ pub fn list_tools() -> Value {
             json!({
                 "type": "object",
                 "properties": {
-                    "dispatch_enabled": { "type": "boolean" },
                     "auto_merge": { "type": "boolean" },
-                    "parallel_limit": { "type": "integer", "minimum": 0 },
-                    "daemon_alive": { "type": "boolean" },
-                    "dispatch_without_daemon": { "type": "boolean" },
-                    "circuit_open": { "type": "boolean" }
+                    "daemon_alive": { "type": "boolean" }
                 },
-                "required": ["dispatch_enabled", "auto_merge", "parallel_limit",
-                    "daemon_alive", "dispatch_without_daemon", "circuit_open"],
+                "required": ["auto_merge", "daemon_alive"],
                 "additionalProperties": false
             }),
         ),

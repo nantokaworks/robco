@@ -164,20 +164,14 @@ mod tests {
         let stale_started = Instant::now();
 
         app.refresh_overseer_snapshot();
-        let fresh_dispatch = app.overseer_snapshot.overseer.dispatch_enabled;
-        app.apply_status(status_result(!fresh_dispatch), stale_started);
-        assert_eq!(
-            app.overseer_snapshot.overseer.dispatch_enabled,
-            fresh_dispatch
-        );
+        let fresh_auto_merge = app.overseer_snapshot.overseer.auto_merge;
+        app.apply_status(status_result(!fresh_auto_merge), stale_started);
+        assert_eq!(app.overseer_snapshot.overseer.auto_merge, fresh_auto_merge);
 
         let newer_started =
             app.background_refresh.overseer_synced_at.unwrap() + Duration::from_nanos(1);
-        app.apply_status(status_result(!fresh_dispatch), newer_started);
-        assert_eq!(
-            app.overseer_snapshot.overseer.dispatch_enabled,
-            !fresh_dispatch
-        );
+        app.apply_status(status_result(!fresh_auto_merge), newer_started);
+        assert_eq!(app.overseer_snapshot.overseer.auto_merge, !fresh_auto_merge);
     }
 
     #[test]
@@ -233,9 +227,9 @@ mod tests {
         assert_eq!(app.item_key(app.selected_item().unwrap()), identity);
     }
 
-    fn status_result(dispatch_enabled: bool) -> StatusResult {
+    fn status_result(auto_merge: bool) -> StatusResult {
         let mut snapshot = OverseerSnapshot::default();
-        snapshot.overseer.dispatch_enabled = dispatch_enabled;
+        snapshot.overseer.auto_merge = auto_merge;
         StatusResult {
             repos: Vec::new(),
             overseer_visible: true,

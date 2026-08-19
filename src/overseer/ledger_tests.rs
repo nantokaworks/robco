@@ -45,7 +45,6 @@ fn save_load_round_trip() {
         )]
         .into_iter()
         .collect(),
-        dispatch_failure_streaks: [("task-3".to_string(), 2)].into_iter().collect(),
         branch_exists_holds: [("task-4".to_string(), 3)].into_iter().collect(),
     };
 

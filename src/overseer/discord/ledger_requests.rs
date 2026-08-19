@@ -28,15 +28,14 @@ pub(crate) enum LedgerRequest {
         task: String,
         user_id: String,
     },
-    /// A `!run <task>` naming a dropr task to dispatch. Unlike the other
-    /// three variants, `apply` never handles this one — dispatching needs
+    /// A `!run <task>` naming a dropr task to launch. Unlike the other
+    /// three variants, `apply` never handles this one — launching needs
     /// `Config`, `now`, and the post-reconcile ledger, none of which `apply`
     /// has, so the daemon loop pulls `Run` requests out of the queue
     /// separately (see `daemon::discord_sync::apply_ledger_requests`'s
-    /// `PendingRun` return value) and feeds them to
-    /// `dispatch::run_named` alongside its own `dispatch_pass` call. Still
-    /// travels over this same channel, so the Discord thread never touches
-    /// the ledger — only the queuing mechanism this variant needs.
+    /// `PendingRun` return value) and feeds them to `dispatch::run_named`.
+    /// Still travels over this same channel, so the Discord thread never
+    /// touches the ledger — only the queuing mechanism this variant needs.
     Run {
         task: String,
         user_id: String,

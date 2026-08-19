@@ -104,30 +104,30 @@ where
     }))
 }
 
-/// Closing check for the wizard: dispatch being on while the service is not
-/// loaded means the toggle is set but nothing consumes ready tasks. The wizard
+/// Closing check for the wizard: an unloaded service means nothing merges,
+/// launches a named task, or answers Discord/MCP commands. The wizard
 /// otherwise ends on an unconditional `setup complete`, which reads as "the
 /// daemon is up" even when the operator declined the load prompt.
 #[cfg(target_os = "macos")]
-pub(crate) fn warn_if_service_down<W: Write>(output: &mut W, config: &Config) -> Result<()> {
-    warn_if_service_down_with(output, config.overseer.dispatch_enabled, || {
-        probe::run().state
-    })
+pub(crate) fn warn_if_service_down<W: Write>(output: &mut W, _config: &Config) -> Result<()> {
+    warn_if_service_down_with(output, || probe::run().state)
 }
 
 #[cfg(target_os = "macos")]
-fn warn_if_service_down_with<W, P>(output: &mut W, dispatch_enabled: bool, probe: P) -> Result<()>
+fn warn_if_service_down_with<W, P>(output: &mut W, probe: P) -> Result<()>
 where
     W: Write,
     P: FnOnce() -> probe::ServiceState,
 {
-    if !dispatch_enabled || probe() == probe::ServiceState::Loaded {
+    if probe() == probe::ServiceState::Loaded {
         return Ok(());
     }
     writeln!(
         output,
-        "▌ robco ▸ WARNING ·········· {}",
-        crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT
+        "▌ robco ▸ WARNING ·········· the Overseer daemon is not running — nothing merges, \
+         launches a named task, or answers Discord/MCP commands until it is. Start it with \
+         `robco overseer run`, or install the always-on service with \
+         `robco overseer install-service`."
     )?;
     Ok(())
 }

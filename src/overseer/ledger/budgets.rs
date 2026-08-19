@@ -131,9 +131,10 @@ pub struct MergeApproval {
     pub granted_at: DateTime<Utc>,
 }
 
-/// The ledger's daily dispatch bookkeeping: today's count against
-/// `overseer.daily_dispatch_limit`, reset once `date` no longer matches, and
-/// the consecutive-failure count the dispatch/merge circuit breaker shares.
+/// The ledger's daily launch bookkeeping: today's count of named launches,
+/// reset once `date` no longer matches, and the consecutive-failure count
+/// the merge envelope's `RepeatedFailures` risk and the board reviewer's
+/// circuit findings both read.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct LedgerCounters {

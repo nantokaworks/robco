@@ -1,20 +1,9 @@
-//! Reasons the dispatch, triage, and review passes record — everything that
-//! is not the auto-merge gate itself.
+//! Reasons the named-launch, triage, and review passes record — everything
+//! that is not the auto-merge gate itself.
 
 use crate::overseer::remedy::{Move, Remedy};
 
 pub(super) const EXACT: &[(&str, Remedy)] = &[
-    (
-        // `dispatch::runtime::open_circuit` — dispatch stops itself after
-        // `failure_circuit_threshold` consecutive spawn failures.
-        "dispatch disabled pending operator reset",
-        Remedy {
-            step: Move::Reset,
-            means: "the dispatch circuit tripped after repeated consecutive failures, \
-                    so dispatch is off",
-            next: "fix the underlying failure, then press `R` to reset the circuit",
-        },
-    ),
     (
         // `daemon::discord_events::record` — a worker inbox report of kind
         // `blocked`, with no `reason` on the report itself.
@@ -58,23 +47,27 @@ pub(super) const EXACT: &[(&str, Remedy)] = &[
 pub(super) const PREFIX: &[(&str, Remedy)] = &[
     (
         // `dispatch::worker::spawn_candidate`, read through the failure
-        // budget in `dispatch::runtime`.
+        // budget a named launch charges against.
         "spawn_failed:",
         Remedy {
             step: Move::Retry,
             means: "the daemon failed to spawn a worker for this candidate",
             next: "check the spawn error and the repository's worktree state, \
-                   then let the next dispatch pass retry it",
+                   then launch the task again",
         },
     ),
     (
         // `review::findings::circuit` — the failure circuit is open; the
-        // review pass re-escalates this every pass while it stays open.
+        // review pass re-escalates this every pass while it stays open. No
+        // operator reset exists any more (dropr:476): the counter only
+        // clears on the next successful merge.
         "circuit_open:",
         Remedy {
-            step: Move::Reset,
-            means: "the failure circuit is open; dispatch has stopped",
-            next: "fix the underlying failure, then press `R` to reset the circuit",
+            step: Move::Review,
+            means: "repeated failures tripped the failure circuit, which now only \
+                    feeds the merge envelope's repeated-failures risk and board review",
+            next: "fix the underlying failure; the counter clears on the next \
+                   successful merge, not on its own",
         },
     ),
     (

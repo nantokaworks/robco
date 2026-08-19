@@ -34,9 +34,9 @@ pub(super) fn watch_pass(config: &Config, now: DateTime<Utc>) -> Result<()> {
     let registry = Registry::load()?;
     let (workspaces, overlay_ok) = dropr::DroprOverlay::load_with_status_timeout(COMMAND_TIMEOUT);
     if !overlay_ok {
-        // `dispatch::gather` already records `dropr_overlay_unavailable` for
-        // this same outage every tick; this pass just sits out until the
-        // overlay answers again rather than logging the same fact twice.
+        // The overlay is unreachable; sit out this tick rather than run
+        // against a workspace list that could not be read, and try again
+        // once it answers.
         return Ok(());
     }
     let mut state = RepoWatchState::load()?;

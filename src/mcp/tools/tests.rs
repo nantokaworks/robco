@@ -246,8 +246,8 @@ fn legacy_chief_policy_name_is_dispatched_as_an_alias() {
 }
 
 #[test]
-fn overseer_policy_includes_daily_dispatch_counters() {
+fn overseer_policy_includes_daemon_health() {
     let policy = call_tool("robco_overseer_policy", Some(json!({}))).unwrap();
-    assert!(policy.get("daily_dispatch_limit").is_some());
-    assert!(policy.get("dispatched_today").is_some());
+    assert!(policy.get("daemon_alive").is_some());
+    assert!(policy.get("auto_merge").is_some());
 }

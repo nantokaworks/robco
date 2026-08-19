@@ -9,7 +9,6 @@ use super::commands::Command;
 pub(super) fn describe_command(command: &Command) -> String {
     match command {
         Command::Status => "status".into(),
-        Command::Dispatch(value) => format!("dispatch {}", on_off(*value)),
         Command::AutoMerge(value) => format!("automerge {}", on_off(*value)),
         Command::Workers => "workers".into(),
         Command::Tasks => "tasks".into(),
@@ -53,13 +52,12 @@ pub(super) fn impactful(command: &Command) -> bool {
             | Command::Skip(_)
             | Command::Approve(_)
             | Command::Answer { .. }
-            | Command::Dispatch(true)
             | Command::TaskCreate { .. }
             | Command::Merge(_)
             | Command::Run(_)
     )
-    // Risk-reducing `dispatch off` and `automerge off` remain immediate so an
-    // incident responder is never delayed by the confirmation round trip.
+    // Risk-reducing `automerge off` remains immediate so an incident
+    // responder is never delayed by the confirmation round trip.
     //
     // The six commands shared with MCP (Whoami, Report, AgentCreate,
     // QuestionList, PrStatus, PrRequest) are not impactful here either: MCP

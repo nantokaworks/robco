@@ -52,13 +52,13 @@ pub(super) fn sync_discord(
 }
 
 /// A `!run <task>` request pulled off the queue. `apply_ledger_requests`
-/// cannot dispatch it itself — that needs `Config`, `now`, and the
+/// cannot launch it itself — that needs `Config`, `now`, and the
 /// post-reconcile ledger, none of which it has — so it hands these back for
-/// the caller to feed to `dispatch::run_named` alongside `dispatch_pass`.
+/// the caller to feed to `dispatch::run_named`.
 ///
-/// Also the shape `RuntimeRequest::RunTask` (a named dispatch queued from
+/// Also the shape `RuntimeRequest::RunTask` (a named launch queued from
 /// outside the daemon process, e.g. the TUI — dropr:470) converts into via
-/// [`Self::from_runtime_request`], so the daemon's dispatch loop feeds both
+/// [`Self::from_runtime_request`], so the daemon's tick loop feeds both
 /// transports through the one loop.
 pub(super) struct PendingRun {
     pub(super) task: String,

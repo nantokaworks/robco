@@ -35,12 +35,11 @@ impl Ledger {
     }
 
     /// The `display_id` of the task holding each repository's primary
-    /// dispatch slot — the live entry that has been running longest there,
-    /// by `dispatched_at`. Every other live entry in the repository holds a
-    /// secondary slot instead. This is derived after the fact from whichever
-    /// entry is oldest, since the ledger does not tag entries primary or
-    /// secondary at dispatch time; see `dispatch::gate::candidate_skip` for
-    /// how the two tiers are enforced going forward.
+    /// slot for display — the live entry that has been running longest
+    /// there, by `dispatched_at`. Every other live entry in the repository
+    /// is reported as secondary. This is derived after the fact from
+    /// whichever entry is oldest, since the ledger does not tag entries
+    /// primary or secondary at launch time.
     pub fn primary_holders(&self) -> BTreeMap<String, String> {
         let mut holders: BTreeMap<String, &LedgerEntry> = BTreeMap::new();
         for entry in self.entries.iter().filter(|entry| holds_capacity(entry)) {

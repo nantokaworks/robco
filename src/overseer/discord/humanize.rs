@@ -77,11 +77,6 @@ const EXACT: &[(&str, &str)] = &[
         "merge_recovery_cap_reached",
         "The automated handback gave up after repeated attempts.",
     ),
-    // Dispatch circuit (`dispatch::runtime`).
-    (
-        "candidate_circuit_open",
-        "Repeated spawn failures tripped the circuit for this task.",
-    ),
     // Release pipeline skip reasons (`overseer::release_pipeline::ready`).
     (
         "release_pipeline_skipped:working_tree_dirty",
@@ -143,7 +138,7 @@ const PREFIX: &[(&str, &str)] = &[
     ),
     (
         "circuit_open:",
-        "The failure circuit is open, so dispatch is stopped.",
+        "Repeated failures tripped the failure circuit; it clears on the next successful merge.",
     ),
     (
         "circuit_at_risk:",

@@ -32,12 +32,11 @@ mod repo_watch_task;
 mod retention;
 mod support;
 
+use support::account_failures;
 pub(crate) use support::terminal;
-use support::{account_failures, persist_drained_config};
 
 use super::{
     dispatch,
-    dispatch::dispatch_pass,
     exec::{PidGuard, append_jsonl, execute_actions},
     heartbeat, heartbeat_path,
     inbox::InboxReader,
@@ -106,17 +105,10 @@ pub async fn run_daemon() -> Result<()> {
     // worktree cleanup does not re-emit the same decision-log line every
     // pass. Deliberately in-memory, same rationale as `unmaterialised_logged`.
     let mut cleanup_notes_logged = BTreeMap::new();
-    // Task id -> last logged per-candidate dispatch decision reason this
-    // daemon run, so a candidate held on the same reason writes one line
-    // instead of one per poll. Deliberately in-memory, same rationale as
-    // `unmaterialised_logged`; `dispatch_pass` prunes a task id's entry once
-    // it leaves the candidate list.
-    let mut dispatch_hold_logged = BTreeMap::new();
-    // Last logged global (not candidate-scoped) dispatch decision reason —
-    // `dispatch_disabled`, `daily_limit`, `circuit_open`, or
-    // `dropr_overlay_unavailable` — this daemon run. `None` once a pass gets
-    // past every global gate.
-    let mut dispatch_global_hold_logged = None;
+    // Last logged `dropr_overlay_unavailable` hold for a named-task
+    // resolution this daemon run. `None` once a resolution gets past the
+    // overlay read. See `dispatch::resolve::resolve_task`.
+    let mut run_named_hold_logged = None;
     loop {
         let started = Instant::now();
         if let Ok(reloaded) = Config::load() {
@@ -132,11 +124,8 @@ pub async fn run_daemon() -> Result<()> {
         );
         let mut pending_runs =
             discord_sync::apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
-        match runtime_request::drain(&mut ledger, &mut config) {
-            Ok((config_changed, runtime_runs)) => {
-                if config_changed {
-                    persist_drained_config(config.overseer.dispatch_enabled)?;
-                }
+        match runtime_request::drain(&mut ledger) {
+            Ok(runtime_runs) => {
                 // Same dispatch loop as Discord's `!run`, just a different
                 // transport — see `RuntimeRequest::RunTask`'s doc comment.
                 pending_runs.extend(
@@ -213,17 +202,7 @@ pub async fn run_daemon() -> Result<()> {
         // (`merge_hold_recheck::due`) only reflects this tick's escalations
         // once that pass has run.
         merge_escalation::sweep_stuck(&mut next, now, config.overseer.max_merge_hold_rechecks)?;
-        dispatch_pass(
-            &mut config,
-            &mut next,
-            now,
-            &mut unmaterialised_logged,
-            &mut dispatch_hold_logged,
-            &mut dispatch_global_hold_logged,
-        )?;
-        // Named dispatch, not a normal pass: one candidate at a time, against
-        // the same ledger and gate `dispatch_pass` just used, so a slot it
-        // already spent this tick is respected here too. See `!run`
+        // The operator's own picks, one task at a time — see `!run`
         // (dropr:465) and `dispatch::run_named`'s own doc comment.
         for pending in pending_runs {
             let outcome = dispatch::run_named(
@@ -232,7 +211,7 @@ pub async fn run_daemon() -> Result<()> {
                 &pending.task,
                 now,
                 &mut unmaterialised_logged,
-                &mut dispatch_global_hold_logged,
+                &mut run_named_hold_logged,
             );
             // A dispatched run's own decision entry (`worker spawned:operator_run`,
             // from `dispatch::run_named` -> `spawn_candidate`) already carries the
