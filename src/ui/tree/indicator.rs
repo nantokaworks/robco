@@ -1,10 +1,10 @@
 use crate::model::{MergeLifecycle, Status};
 
 mod render;
-pub(in crate::ui::tree) use render::{primary_span, supplementary_spans};
+pub(in crate::ui) use render::{primary_span, supplementary_spans};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Indicator {
+pub(in crate::ui) enum Indicator {
     Status(Status),
     Merging,
     Running,
@@ -19,7 +19,7 @@ pub(super) enum Indicator {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct IndicatorState {
+pub(in crate::ui) struct IndicatorState {
     pub dead: bool,
     pub merging: bool,
     pub running: bool,
@@ -43,7 +43,7 @@ pub(super) struct IndicatorState {
 }
 
 impl IndicatorState {
-    pub(super) fn with_status(status: Option<Status>) -> Self {
+    pub(in crate::ui) fn with_status(status: Option<Status>) -> Self {
         Self {
             dead: status == Some(Status::Dead),
             merging: false,
@@ -72,7 +72,7 @@ impl IndicatorState {
 /// instead, so a session gone quiet is never indistinguishable from one
 /// that actually merged. Worktree-missing state is supplementary and is
 /// selected separately by [`select_supplementary`].
-pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
+pub(in crate::ui) fn select(state: IndicatorState) -> Option<Indicator> {
     if state.dead {
         Some(Indicator::Status(Status::Dead))
     } else if state.merging {
@@ -97,13 +97,13 @@ pub(super) fn select(state: IndicatorState) -> Option<Indicator> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct SupplementaryIndicators {
+pub(in crate::ui) struct SupplementaryIndicators {
     pub worktree_missing: bool,
     pub merge_failed: bool,
     pub needs_decision: bool,
 }
 
-pub(super) fn select_supplementary(state: IndicatorState) -> SupplementaryIndicators {
+pub(in crate::ui) fn select_supplementary(state: IndicatorState) -> SupplementaryIndicators {
     SupplementaryIndicators {
         worktree_missing: state.worktree_missing,
         merge_failed: state.merge_failed,

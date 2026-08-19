@@ -13,7 +13,7 @@ use indicator::{IndicatorState, select, select_supplementary};
 
 mod footer;
 mod hints;
-mod indicator;
+pub(in crate::ui) mod indicator;
 mod label;
 pub(in crate::ui) mod overseer_frame;
 mod repo_row;
