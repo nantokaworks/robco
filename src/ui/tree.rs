@@ -43,10 +43,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             Selection::OverseerAi
             | Selection::OverseerCategory(_)
             | Selection::OverseerInbox(_)
-            | Selection::DiscordChannel(_)
-            // Drawn in the repo's own INFO preview instead of a PROJECTS row —
-            // see `ui::preview::draw`'s `DroprTask` arm and dropr:470.
-            | Selection::DroprTask { .. } => continue,
+            | Selection::DiscordChannel(_) => continue,
             Selection::Repo(repo_idx) => {
                 lines.extend(repo_row::build(
                     app,

@@ -30,6 +30,19 @@ pub(super) fn dropr_section(
         )),
         Line::from(Span::styled("DROPR", THEME.accent_style())),
     ];
+    // The drill-down's Level 1 (dropr:475): the operator has moved focus off
+    // the repository tree and into this task list, so `j`/`k` walk tasks
+    // instead of repos until `esc` steps back out. Said explicitly so the
+    // next keypress is never a guess.
+    if selected_task.is_some() {
+        lines.push(Line::from(Span::styled(
+            t(
+                locale,
+                "task list focused — j/k move, enter opens, esc/h/left back",
+            ),
+            THEME.hint_style(),
+        )));
+    }
     let Some(dropr) = &repo.dropr else {
         lines.push(Line::from(Span::styled(
             t(

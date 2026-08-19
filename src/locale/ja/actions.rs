@@ -1,7 +1,7 @@
 //! Japanese translations for `src/ui/actions/attach.rs`,
 //! `src/ui/actions/lifecycle.rs`, `src/ui/actions/kill.rs`,
 //! `src/ui/actions/pr.rs`, `src/ui/actions/discord_channels.rs`,
-//! `src/ui/actions/checkout_main.rs`, `src/ui/actions/launch_dropr_task.rs`,
+//! `src/ui/actions/checkout_main.rs`, `src/ui/actions/dropr_task_drill.rs`,
 //! and `src/ui/input/overseer.rs` — the status messages `show_message`
 //! renders after an operator action.
 
@@ -23,10 +23,20 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "cannot restart an agent while it is merging" => "merge中のエージェントは再起動できません",
         "restarted {}" => "再起動しました: {}",
 
-        // actions/launch_dropr_task.rs
-        "repository changed, nothing to launch" => "リポジトリが変更されたため起動しませんでした",
+        // actions/dropr_task_drill.rs
         "task is no longer listed" => "タスクは一覧にありません",
-        "queued {} for dispatch" => "{}をdispatch用にキューへ追加しました",
+        "no dropr workspace linked to this repo" => {
+            "このリポジトリに紐づくdroprワークスペースがありません"
+        }
+        "task is missing its dropr id" => "タスクにdropr id(nanoid)がありません",
+        "{} already has a live worker: {}" => "{} には稼働中のworkerが既にあります: {}",
+        "{} already has a branch: {}" => "{} には既存のブランチがあります: {}",
+        "could not claim {}: {}" => "{} をclaimできませんでした: {}",
+        "could not reach dropr to claim {}" => "{} のclaimでdroprに到達できませんでした",
+        "launched {} for {}" => "{} を {} 向けに起動しました",
+        "launched {}, but its repository is no longer registered" => {
+            "{} を起動しましたが、そのリポジトリは登録が解除されています"
+        }
 
         // actions/lifecycle.rs
         "repository changed, not removed" => "リポジトリが変更されたため削除しませんでした",

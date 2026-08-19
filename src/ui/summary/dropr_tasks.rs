@@ -16,6 +16,7 @@ use crate::{
     ui::theme::DEFAULT as THEME,
 };
 
+pub(super) mod body;
 mod nesting;
 use nesting::{children_by_parent, is_root, nested_lines};
 
@@ -68,9 +69,10 @@ fn partition_tasks(
 /// Root tasks the operator can select and launch, in the exact order and cap
 /// [`dropr_task_lines`] renders them: next tasks, then in-progress, then
 /// blocked, each capped at [`TASK_DISPLAY_LIMIT`]. This is the single source
-/// of truth `Selection::DroprTask`'s `task` index counts against — both
-/// `ui::list::visible` (building the selectable rows) and the action that
-/// launches one read this same list.
+/// of truth the dropr task drill-down's `task` index counts against
+/// (`ui::DroprTaskFocus`, dropr:475) — both this pane's own highlighting and
+/// `ui::actions::dropr_task_drill` (walking the list, opening a body,
+/// launching it) read this same list.
 pub(in crate::ui) fn selectable_tasks(fetch: &DroprTaskFetch) -> Vec<&DroprTaskCandidate> {
     if !fetch.answered {
         return Vec::new();
@@ -231,8 +233,9 @@ fn problem_lines(heading: &str, problems: &[String]) -> Vec<Line<'static>> {
 
 /// `base_index` is this section's offset into the flat selectable-task order
 /// [`selectable_tasks`] builds, so `base_index + offset` (the row's position
-/// within this section, capped the same way) is the `Selection::DroprTask`
-/// index that row launches — see that function's doc comment.
+/// within this section, capped the same way) is the `task` index a
+/// `ui::DroprTaskFocus` on this row carries — see that function's doc
+/// comment.
 #[allow(clippy::too_many_arguments)]
 fn task_section(
     locale: Locale,

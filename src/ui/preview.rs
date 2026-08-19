@@ -10,13 +10,14 @@ use crate::{
     model::{Selection, Status},
     ui::{
         App, PreviewPane, layout, merge_dialog, scrollback,
-        summary::{agent_summary, child_summary, repo_summary},
+        summary::{agent_summary, child_summary},
         theme::DEFAULT as THEME,
     },
 };
 
 mod agent_details;
 mod branch_only;
+mod dropr_task_preview;
 mod labels;
 mod notice;
 mod overseer;
@@ -107,27 +108,21 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             });
             (title, text)
         }
-        // A dropr task row previews as its repo's own INFO tab with that row
-        // highlighted, not a tab of its own — it is acted on from the left
-        // frame (Enter launches it), the same way `Selection::Repo` itself is.
-        (_, Some(Selection::Repo(repo_idx)))
-        | (_, Some(Selection::DroprTask { repo: repo_idx, .. })) => {
-            let selected_task = match selection {
-                Some(Selection::DroprTask { task, .. }) => Some(task),
-                _ => None,
-            };
-            // The snapshot the OVERSEER frame already refreshes: one ledger
-            // (and one other-PR cache) for the whole TUI, no disk read here.
-            repo_summary(
-                &registry.repos[repo_idx],
-                &app.config.repos_root,
-                &app.overseer_snapshot.ledger,
-                &app.overseer_snapshot.other_prs,
-                panes.preview.width.saturating_sub(4),
-                app.locale,
-                selected_task,
-            )
-        }
+        // The repo's own INFO tab: normally its summary, or — while the
+        // dropr task drill-down is focused (dropr:475) — the task list
+        // highlighting its cursor (Level 1) or one task's full body in its
+        // place (Level 2/3). The snapshot the OVERSEER frame already
+        // refreshes: one ledger (and one other-PR cache) for the whole TUI,
+        // no disk read here.
+        (_, Some(Selection::Repo(repo_idx))) => dropr_task_preview::render(
+            &registry.repos[repo_idx],
+            &app.config.repos_root,
+            &app.overseer_snapshot.ledger,
+            &app.overseer_snapshot.other_prs,
+            panes.preview.width.saturating_sub(4),
+            app.locale,
+            app.dropr_task_focus,
+        ),
         // Rendered as a tab rather than an overlay so reading the failure never
         // costs the operator sight of the tab bar.
         (PreviewPane::Error, Some(Selection::Agent { repo, agent })) => {

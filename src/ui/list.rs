@@ -7,7 +7,6 @@ use crate::{
 
 use super::{App, default_pane};
 
-mod dropr_task_rows;
 mod repo_rows;
 
 impl App {
@@ -45,9 +44,6 @@ impl App {
                         || "discord-channel:missing".to_string(),
                         |id| format!("discord-channel:{id}"),
                     )
-            }
-            Selection::DroprTask { repo, task } => {
-                dropr_task_rows::item_key(&self.registry.repos, repo, task)
             }
             Selection::Repo(repo) => {
                 format!("repo:{}", self.registry.repos[repo].path.display())
@@ -92,6 +88,15 @@ impl App {
     }
 
     pub(in crate::ui) fn clamp_selection(&mut self) {
+        // The drill-down is only meaningful while the cursor still sits on
+        // the repository row it was entered from; anything else (the repo
+        // was removed, the cursor moved some other way) drops it rather than
+        // leaving a focus level the tree can no longer explain.
+        if self.dropr_task_focus.is_some()
+            && !matches!(self.selected_item(), Some(Selection::Repo(_)))
+        {
+            self.dropr_task_focus = None;
+        }
         let len = self.visible().len();
         let previous = self.selected;
         if len == 0 {
@@ -127,7 +132,6 @@ impl App {
             Some(Selection::Repo(repo)) => Some(repo),
             Some(Selection::Agent { repo, .. }) => Some(repo),
             Some(Selection::ChildWorktree { repo, .. }) => Some(repo),
-            Some(Selection::DroprTask { repo, .. }) => Some(repo),
             _ => None,
         }
     }
@@ -144,6 +148,10 @@ impl App {
         let Some(selection) = self.selected_item() else {
             return;
         };
+        // A drill-down is only ever shown on the INFO tab; leaving it for
+        // another tab exits the drill-down instead of leaving it focused
+        // behind a pane that cannot show it.
+        self.dropr_task_focus = None;
         let panes = self.preview_panes(Some(selection));
         if panes.is_empty() {
             return;

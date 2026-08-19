@@ -28,6 +28,12 @@ pub struct DroprTaskCandidate {
     #[serde(alias = "global_display_id")]
     pub display_id: String,
     pub title: String,
+    /// The task's full body, for the drill-down body view
+    /// (`ui::summary::dropr_tasks::body`). `task_list` returns it on every
+    /// row already; `dropr task ready --json` does not, so a candidate from
+    /// that feed carries `None` here.
+    #[serde(default)]
+    pub description: Option<String>,
     #[serde(default)]
     pub priority: String,
     #[serde(default)]

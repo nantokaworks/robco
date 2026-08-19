@@ -17,6 +17,19 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "… and at least {} more" => "…ほか少なくとも{}件",
         "… and {} more" => "…ほか{}件",
 
+        // summary/dropr_section.rs (dropr:475 drill-down, Level 1)
+        "task list focused — j/k move, enter opens, esc/h/left back" => {
+            "タスク一覧にフォーカス中 — j/kで移動、enterで開く、esc/h/leftで戻る"
+        }
+
+        // summary/dropr_tasks/body.rs (dropr:475 drill-down, Level 2/3)
+        "task body — one key starts the work, esc/h/left steps back" => {
+            "タスク本文 — 1キーで作業開始、esc/h/leftで戻る"
+        }
+        "(no description)" => "（説明なし）",
+        "(no subtasks)" => "（サブタスクなし）",
+        "subtasks were not fetched for this task" => "このタスクのサブタスクは取得されていません",
+
         // summary/history.rs
         "overseer has settled no tasks in this repo" => {
             "このリポジトリでoverseerが完了させたタスクはありません"

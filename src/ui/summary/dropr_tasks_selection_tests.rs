@@ -1,6 +1,7 @@
-//! Selection/highlight coverage for `Selection::DroprTask` (dropr:470), split
-//! out of `dropr_tasks_tests.rs` to keep that file under this project's
-//! source file size limit.
+//! Selection/highlight coverage for the dropr task drill-down's list focus
+//! (`ui::DroprTaskFocus::List`, dropr:475; originally `Selection::DroprTask`,
+//! dropr:470), split out of `dropr_tasks_tests.rs` to keep that file under
+//! this project's source file size limit.
 
 use super::*;
 
@@ -8,6 +9,7 @@ fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
     DroprTaskCandidate {
         display_id: display_id.to_string(),
         title: format!("Task {display_id}"),
+        description: None,
         priority: String::new(),
         status: status.to_string(),
         priority_score: None,

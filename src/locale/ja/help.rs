@@ -116,8 +116,18 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  c              check out main in primary checkout (clean tree only)" => {
             "  c              primary checkoutをmainへ（作業ツリーがclean時のみ）"
         }
-        "  enter          on a dropr task row: launch it (same gate as !run)" => {
-            "  enter          droprタスク行：起動（!runと同じゲートを通過）"
+        "  enter          on a repo row (INFO showing): open its dropr task list" => {
+            "  enter          リポジトリ行（INFO表示中）：droprタスク一覧を開く"
+        }
+        "                 on a task row: open its body" => "                 タスク行：本文を開く",
+        "  s              on a task body: start the work now (worktree, branch," => {
+            "  s              タスク本文：即座に作業開始（worktree・branch・"
+        }
+        "                 tmux session), claiming it in dropr first" => {
+            "                 tmuxセッション）。先にdroprでclaim"
+        }
+        "  esc/h/left     step back up one drill-down level" => {
+            "  esc/h/left     ドリルダウンを1段階戻る"
         }
         "  left/right     move the cursor within the text being typed" => {
             "  left/right     入力中テキスト内でカーソルを移動"

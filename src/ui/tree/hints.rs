@@ -2,6 +2,7 @@ use ratatui::text::{Line, Span};
 
 use crate::model::{OverseerCategory, Selection};
 
+use super::super::DroprTaskFocus;
 use super::THEME;
 
 type Hints = &'static [(&'static str, &'static str)];
@@ -89,8 +90,18 @@ const INBOX_ITEM_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
-const DROPR_TASK_HINTS: Hints = &[
-    ("↵", "launch"),
+const DROPR_TASK_LIST_HINTS: Hints = &[
+    ("j/k", "move"),
+    ("↵", "open"),
+    ("esc", "back"),
+    ("R", "reset"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
+const DROPR_TASK_BODY_HINTS: Hints = &[
+    ("s", "start"),
+    ("esc", "back"),
     ("R", "reset"),
     ("?", "help"),
     ("q", "quit"),
@@ -113,7 +124,17 @@ const ORPHAN_HINTS: Hints = &[
 
 const HEADER_HINTS: Hints = &[("R", "reset"), ("?", "help"), ("q", "quit")];
 
-fn hints_for(selection: Option<Selection>) -> Hints {
+fn hints_for(selection: Option<Selection>, dropr_task_focus: Option<DroprTaskFocus>) -> Hints {
+    // The drill-down (dropr:475) changes what `Selection::Repo`'s own keys
+    // mean without changing the selection itself, so its hints take priority
+    // over `REPO_HINTS` whenever a level is focused.
+    if matches!(selection, Some(Selection::Repo(_))) {
+        match dropr_task_focus {
+            Some(DroprTaskFocus::List { .. }) => return DROPR_TASK_LIST_HINTS,
+            Some(DroprTaskFocus::Body { .. }) => return DROPR_TASK_BODY_HINTS,
+            None => {}
+        }
+    }
     match selection {
         None => NONE_HINTS,
         Some(Selection::Agent { .. }) => AGENT_HINTS,
@@ -124,7 +145,6 @@ fn hints_for(selection: Option<Selection>) -> Hints {
         Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
         Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,
-        Some(Selection::DroprTask { .. }) => DROPR_TASK_HINTS,
         Some(Selection::ChildWorktree { .. }) => CHILD_WORKTREE_HINTS,
         Some(Selection::Orphan(_)) => ORPHAN_HINTS,
         Some(Selection::OtherHeader) | Some(Selection::OrphanHeader) => HEADER_HINTS,
@@ -134,13 +154,14 @@ fn hints_for(selection: Option<Selection>) -> Hints {
 pub(super) fn hints_line(
     message: Option<&str>,
     selection: Option<Selection>,
+    dropr_task_focus: Option<DroprTaskFocus>,
     circuit_open: bool,
 ) -> Line<'static> {
     if let Some(text) = message {
         return Line::from(Span::styled(text.to_string(), THEME.hint_style()));
     }
 
-    let key_hints = hints_for(selection);
+    let key_hints = hints_for(selection, dropr_task_focus);
     let mut spans = Vec::with_capacity(key_hints.len() * 5);
     for (key, label) in key_hints {
         if *key == "R" && !circuit_open {
@@ -162,124 +183,5 @@ pub(super) fn hints_line(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reset_hint_is_only_shown_when_circuit_is_open() {
-        assert!(
-            hints_line(None, None, true)
-                .to_string()
-                .contains("[R] RESET")
-        );
-        assert!(
-            !hints_line(None, None, false)
-                .to_string()
-                .contains("[R] RESET")
-        );
-    }
-
-    #[test]
-    fn footer_carries_only_the_essential_hints() {
-        let line = hints_line(None, None, false).to_string();
-        assert_eq!(line, "[↵] ATTACH [n] NEW [m] MERGE [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn agent_row_advertises_its_own_actions() {
-        let line =
-            hints_line(None, Some(Selection::Agent { repo: 0, agent: 0 }), false).to_string();
-        assert_eq!(
-            line,
-            "[↵] ATTACH [r] RESTART [m] MERGE [p] PR [g] MANAGE [x] REMOVE [?] HELP [q] QUIT"
-        );
-    }
-
-    #[test]
-    fn repo_row_advertises_its_own_actions() {
-        let line = hints_line(None, Some(Selection::Repo(0)), false).to_string();
-        assert_eq!(
-            line,
-            "[n] NEW [a] ADD [r] RELOAD [g] MANAGE [?] HELP [q] QUIT"
-        );
-    }
-
-    #[test]
-    fn overseer_ai_row_advertises_attach_and_instruct() {
-        let line = hints_line(None, Some(Selection::OverseerAi), false).to_string();
-        assert_eq!(line, "[↵] ATTACH [i] INSTRUCT [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn inbox_category_advertises_expand_and_clear() {
-        let line = hints_line(
-            None,
-            Some(Selection::OverseerCategory(OverseerCategory::Inbox)),
-            false,
-        )
-        .to_string();
-        assert_eq!(line, "[l] EXPAND [D] CLEAR [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn other_overseer_categories_carry_no_extra_action() {
-        let line = hints_line(
-            None,
-            Some(Selection::OverseerCategory(OverseerCategory::Health)),
-            false,
-        )
-        .to_string();
-        assert_eq!(line, "[?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn inbox_item_advertises_answer_approve_dismiss_clear() {
-        let line = hints_line(None, Some(Selection::OverseerInbox(0)), false).to_string();
-        assert_eq!(
-            line,
-            "[↵] ANSWER [y] APPROVE [d] DISMISS [D] CLEAR [?] HELP [q] QUIT"
-        );
-    }
-
-    #[test]
-    fn child_worktree_advertises_attach_only() {
-        let line = hints_line(
-            None,
-            Some(Selection::ChildWorktree {
-                repo: 0,
-                agent: 0,
-                child: 0,
-            }),
-            false,
-        )
-        .to_string();
-        assert_eq!(line, "[↵] ATTACH [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn dropr_task_advertises_launch_only() {
-        let line =
-            hints_line(None, Some(Selection::DroprTask { repo: 0, task: 0 }), false).to_string();
-        assert_eq!(line, "[↵] LAUNCH [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn discord_channel_advertises_retry_and_remove() {
-        let line = hints_line(None, Some(Selection::DiscordChannel(0)), false).to_string();
-        assert_eq!(line, "[↵] ATTACH [r] RETRY [x] REMOVE [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn orphan_advertises_attach_and_remove() {
-        let line = hints_line(None, Some(Selection::Orphan(0)), false).to_string();
-        assert_eq!(line, "[↵] ATTACH [x] REMOVE [?] HELP [q] QUIT");
-    }
-
-    #[test]
-    fn section_headers_carry_no_extra_action() {
-        let line = hints_line(None, Some(Selection::OtherHeader), false).to_string();
-        assert_eq!(line, "[?] HELP [q] QUIT");
-        let line = hints_line(None, Some(Selection::OrphanHeader), false).to_string();
-        assert_eq!(line, "[?] HELP [q] QUIT");
-    }
-}
+#[path = "hints_tests.rs"]
+mod tests;

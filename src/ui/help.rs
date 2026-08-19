@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 73;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 77;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -50,7 +50,11 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("                 failed check: refuse; merged PR: clean up"),
         l("  p              edit and request PR from selected running agent"),
         l("  c              check out main in primary checkout (clean tree only)"),
-        l("  enter          on a dropr task row: launch it (same gate as !run)"),
+        l("  enter          on a repo row (INFO showing): open its dropr task list"),
+        l("                 on a task row: open its body"),
+        l("  s              on a task body: start the work now (worktree, branch,"),
+        l("                 tmux session), claiming it in dropr first"),
+        l("  esc/h/left     step back up one drill-down level"),
         Line::from(""),
         l("Text prompts"),
         l("  left/right     move the cursor within the text being typed"),
