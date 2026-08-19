@@ -95,6 +95,15 @@ pub struct OverseerConfig {
     /// hold-cap escalation.
     pub max_merge_hold_rechecks: u32,
     pub worker_profile: Option<String>,
+    /// Task-specific text `templates::worker_prompt` inserts for every
+    /// dispatched worker — how to work, what to check, house style.
+    /// Supports the placeholders `{display_id}`, `{task_id}`, `{title}`,
+    /// `{repo}`, and `{subtasks}`. `None`, or a blank string, uses the
+    /// built-in text. The claim instruction, the "open a PR, do not merge
+    /// it" ending, and the never-merge rails are always appended by the
+    /// code after this text and are never reachable from this key — see
+    /// `templates::worker_prompt`.
+    pub worker_prompt_template: Option<String>,
     /// Secondary dispatch slots opened per repository, on top of the one
     /// always-present primary slot. `0` (the default) means every repository
     /// runs a single serialized worker; a positive value lets this many more
@@ -229,6 +238,7 @@ impl Default for OverseerConfig {
             max_merge_holds: 30,
             max_merge_hold_rechecks: 10,
             worker_profile: None,
+            worker_prompt_template: None,
             parallel_limit: 0,
             // Deep enough that a repository's recent history is still readable
             // — well past the live-entry cap every other surface applies — and

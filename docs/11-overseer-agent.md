@@ -306,6 +306,7 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
     "max_merge_recoveries": 2,
     "max_merge_holds": 30,
     "worker_profile": null,
+    "worker_prompt_template": null,
     "parallel_limit": 0,
     "terminal_retention_per_repo": 50,
     "poll_interval_secs": 60,
@@ -361,6 +362,7 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 | `max_merge_holds` | non-negative integer | `30` | Auto-merge passes one pull request may be held under the same reason at the same head before the entry escalates with `merge_hold_cap_reached:<reason>`. Without it every non-merge exit re-records its reason once per poll for as long as the condition lasts. At the default `poll_interval_secs` the default is thirty minutes — past the 5-15 minutes a healthy check run takes, and well inside an hour. Exits with their own budget (`behind_*`, the settle barrier) are not charged twice. `0` escalates on the first held pass. |
 | `max_merge_hold_rechecks` | non-negative integer | `10` | Further looks through the gate an entry escalated by `max_merge_holds` is given, so a condition an operator fixes afterwards is noticed instead of leaving the pull request parked for good. Only a pass that re-read the gate and found it still holding spends one. The pass that spends the last look records `merge_hold_recheck_exhausted:<reason>`. `0` leaves an escalated entry where it is, which is how Overseer behaved before this budget existed. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
+| `worker_prompt_template` | string or `null` | `null` | Task-specific text inserted into every dispatched worker's prompt. `null`, or blank, uses the built-in text. See [worker_prompt_template](09-config-reference.md#overseerworker_prompt_template) for the placeholder list and what the key cannot override. |
 | `parallel_limit` | non-negative integer | `0` | Secondary dispatch slots opened per repository, on top of the one always-present primary slot. `0` runs every repository serialized, one worker at a time. Manual entries count too — see below. There is no global cap; the number of registered repositories bounds the total, since each repository's slots are self-contained. |
 | `terminal_retention_per_repo` | non-negative integer | `50` | Settled (`merged`, `failed`, `escalated`) ledger entries kept per repository. The oldest beyond the window are dropped at the end of a pass — see below. `0` keeps every settled entry, which is how the ledger behaved before the window existed. |
 | `poll_interval_secs` | non-negative integer | `60` | Target period between daemon passes; also defines heartbeat freshness as `max(2 × value, 5)` seconds. |

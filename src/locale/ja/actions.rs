@@ -1,8 +1,9 @@
 //! Japanese translations for `src/ui/actions/attach.rs`,
 //! `src/ui/actions/lifecycle.rs`, `src/ui/actions/kill.rs`,
 //! `src/ui/actions/pr.rs`, `src/ui/actions/discord_channels.rs`,
-//! `src/ui/actions/checkout_main.rs`, and `src/ui/input/overseer.rs` — the
-//! status messages `show_message` renders after an operator action.
+//! `src/ui/actions/checkout_main.rs`, `src/ui/actions/launch_dropr_task.rs`,
+//! and `src/ui/input/overseer.rs` — the status messages `show_message`
+//! renders after an operator action.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -21,6 +22,11 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "restart is not available for child worktrees" => "子worktreeでは再起動できません",
         "cannot restart an agent while it is merging" => "merge中のエージェントは再起動できません",
         "restarted {}" => "再起動しました: {}",
+
+        // actions/launch_dropr_task.rs
+        "repository changed, nothing to launch" => "リポジトリが変更されたため起動しませんでした",
+        "task is no longer listed" => "タスクは一覧にありません",
+        "queued {} for dispatch" => "{}をdispatch用にキューへ追加しました",
 
         // actions/lifecycle.rs
         "repository changed, not removed" => "リポジトリが変更されたため削除しませんでした",

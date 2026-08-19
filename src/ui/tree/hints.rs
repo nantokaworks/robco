@@ -89,6 +89,13 @@ const INBOX_ITEM_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
+const DROPR_TASK_HINTS: Hints = &[
+    ("↵", "launch"),
+    ("R", "reset"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
 const CHILD_WORKTREE_HINTS: Hints = &[
     ("↵", "attach"),
     ("R", "reset"),
@@ -117,6 +124,7 @@ fn hints_for(selection: Option<Selection>) -> Hints {
         Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
         Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,
+        Some(Selection::DroprTask { .. }) => DROPR_TASK_HINTS,
         Some(Selection::ChildWorktree { .. }) => CHILD_WORKTREE_HINTS,
         Some(Selection::Orphan(_)) => ORPHAN_HINTS,
         Some(Selection::OtherHeader) | Some(Selection::OrphanHeader) => HEADER_HINTS,
@@ -246,6 +254,13 @@ mod tests {
         )
         .to_string();
         assert_eq!(line, "[↵] ATTACH [?] HELP [q] QUIT");
+    }
+
+    #[test]
+    fn dropr_task_advertises_launch_only() {
+        let line =
+            hints_line(None, Some(Selection::DroprTask { repo: 0, task: 0 }), false).to_string();
+        assert_eq!(line, "[↵] LAUNCH [?] HELP [q] QUIT");
     }
 
     #[test]

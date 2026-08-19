@@ -242,6 +242,9 @@ impl App {
                     Some(Selection::DiscordChannel(index)) => {
                         self.attach_discord_channel_selected(index);
                     }
+                    Some(Selection::DroprTask { repo, task }) => {
+                        self.launch_dropr_task_selected(repo, task);
+                    }
                     Some(Selection::Orphan(_)) => self.attach_orphan_selected(),
                     _ => match self.preview {
                         PreviewPane::Terminal => self.attach_shell_selected()?,

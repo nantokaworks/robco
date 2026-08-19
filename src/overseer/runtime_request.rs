@@ -53,6 +53,30 @@ pub(crate) enum RuntimeRequest {
         target: String,
         at: DateTime<Utc>,
     },
+    /// A named-task dispatch requested outside the daemon process — currently
+    /// the TUI, launching a dropr task row from the repository INFO pane
+    /// (dropr:470). The same shape as Discord's `!run <task>`, carried over
+    /// this file queue instead of Discord's in-process channel because the
+    /// TUI is a separate process from the daemon. `drain_in` pulls this
+    /// variant out before it ever reaches [`apply`] — dispatching needs
+    /// `Config`, `now`, and the post-reconcile `Ledger`, none of which `apply`
+    /// has — and hands it back as a [`PendingRun`] for the caller to feed to
+    /// `dispatch::run_named` alongside the pass's own polled dispatch, the
+    /// same way `daemon::discord_sync::PendingRun` already does.
+    RunTask {
+        source: String,
+        task: String,
+        at: DateTime<Utc>,
+    },
+}
+
+/// A [`RuntimeRequest::RunTask`] pulled off the queue, handed back to the
+/// daemon tick loop to feed into `dispatch::run_named` — see the variant's
+/// own doc comment for why `drain_in` cannot dispatch it directly.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingRun {
+    pub(crate) task: String,
+    pub(crate) source: String,
 }
 
 pub(crate) fn enqueue(request: RuntimeRequest) -> Result<()> {
@@ -77,14 +101,18 @@ pub(crate) fn enqueue_in(dir: &Path, request: RuntimeRequest) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn drain(ledger: &mut Ledger, config: &mut Config) -> Result<bool> {
+pub(crate) fn drain(ledger: &mut Ledger, config: &mut Config) -> Result<(bool, Vec<PendingRun>)> {
     drain_in(&runtime_requests_dir()?, ledger, config)
 }
 
-pub(crate) fn drain_in(dir: &Path, ledger: &mut Ledger, config: &mut Config) -> Result<bool> {
+pub(crate) fn drain_in(
+    dir: &Path,
+    ledger: &mut Ledger,
+    config: &mut Config,
+) -> Result<(bool, Vec<PendingRun>)> {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok((false, Vec::new())),
         Err(error) => return Err(error.into()),
     };
     let mut paths = entries
@@ -99,11 +127,14 @@ pub(crate) fn drain_in(dir: &Path, ledger: &mut Ledger, config: &mut Config) -> 
     // Requests apply in filename (nanoid) order, which is NOT chronological.
     // Every RuntimeRequest variant must therefore be commutative and idempotent
     // (ResetCircuit zeroes the streak + reaffirms dispatch; PanicEscalate escalates
-    // named workers; MergeCompleted applies nothing at all) so drain order never
-    // changes the outcome. Preserve that invariant when adding new variants.
+    // named workers; MergeCompleted applies nothing at all; RunTask is pulled out
+    // and dispatched once, the same as a `!run` request from Discord) so drain
+    // order never changes the outcome. Preserve that invariant when adding new
+    // variants.
     paths.sort();
 
     let mut config_changed = false;
+    let mut pending_runs = Vec::new();
     for path in paths {
         // A single unreadable/unremovable request must not abort the whole drain
         // (that would discard the accumulated config change and, worse, leave an
@@ -126,14 +157,19 @@ pub(crate) fn drain_in(dir: &Path, ledger: &mut Ledger, config: &mut Config) -> 
                 continue;
             }
         };
-        config_changed |= apply(ledger, config, request);
+        match request {
+            RuntimeRequest::RunTask { source, task, .. } => {
+                pending_runs.push(PendingRun { task, source });
+            }
+            request => config_changed |= apply(ledger, config, request),
+        }
         // Ack by removing the file. If removal fails, move it aside so an already
         // applied request cannot be replayed on the next tick.
         if let Err(error) = fs::remove_file(&path) {
             quarantine_applied(&path, &error);
         }
     }
-    Ok(config_changed)
+    Ok((config_changed, pending_runs))
 }
 
 /// `overseer.dispatch_enabled` is the only config field a request may change:
@@ -162,6 +198,11 @@ pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRe
             grant_operator_override(ledger, &target);
             false
         }
+        // `drain_in` pulls this variant out before calling `apply` — see the
+        // variant's own doc comment. Kept as an explicit no-op arm, not a
+        // wildcard, so a future caller that bypasses `drain_in` fails safe
+        // (nothing dispatches) instead of silently matching a wildcard.
+        RuntimeRequest::RunTask { .. } => false,
     }
 }
 

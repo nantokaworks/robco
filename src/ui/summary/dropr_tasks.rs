@@ -65,7 +65,28 @@ fn partition_tasks(
     (blocked, in_progress, next)
 }
 
-pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Line<'static>> {
+/// Root tasks the operator can select and launch, in the exact order and cap
+/// [`dropr_task_lines`] renders them: next tasks, then in-progress, then
+/// blocked, each capped at [`TASK_DISPLAY_LIMIT`]. This is the single source
+/// of truth `Selection::DroprTask`'s `task` index counts against — both
+/// `ui::list::visible` (building the selectable rows) and the action that
+/// launches one read this same list.
+pub(in crate::ui) fn selectable_tasks(fetch: &DroprTaskFetch) -> Vec<&DroprTaskCandidate> {
+    if !fetch.answered {
+        return Vec::new();
+    }
+    let (blocked, in_progress, next) = partition_tasks(&fetch.tasks);
+    [next, in_progress, blocked]
+        .into_iter()
+        .flat_map(|section| section.into_iter().take(TASK_DISPLAY_LIMIT))
+        .collect()
+}
+
+pub(super) fn dropr_task_lines(
+    fetch: &DroprTaskFetch,
+    locale: Locale,
+    selected_task: Option<usize>,
+) -> Vec<Line<'static>> {
     if !fetch.answered {
         // No query answered, so there are no rows to qualify — showing an empty
         // list here would read as "this workspace has no tasks".
@@ -74,13 +95,24 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Li
 
     let (blocked, in_progress, next) = partition_tasks(&fetch.tasks);
     let children = children_by_parent(&fetch.tasks);
+    let next_base = 0;
+    let in_progress_base = next_base + next.len().min(TASK_DISPLAY_LIMIT);
+    let blocked_base = in_progress_base + in_progress.len().min(TASK_DISPLAY_LIMIT);
     let mut lines = task_section(
         locale,
         Span::styled(t(locale, "next tasks"), THEME.accent_style()),
         &next,
         &children,
         &fetch.subtrees_known,
-        |task| vec![Line::from(format!("{}  {}", task.display_id, task.title))],
+        next_base,
+        selected_task,
+        |task, selected| {
+            vec![selectable_row(
+                task.display_id.clone(),
+                &task.title,
+                selected,
+            )]
+        },
     );
     lines.extend(task_section(
         locale,
@@ -88,7 +120,15 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Li
         &in_progress,
         &children,
         &fetch.subtrees_known,
-        |task| vec![Line::from(format!("▸ {}  {}", task.display_id, task.title))],
+        in_progress_base,
+        selected_task,
+        |task, selected| {
+            vec![selectable_row(
+                format!("▸ {}", task.display_id),
+                &task.title,
+                selected,
+            )]
+        },
     ));
     lines.extend(task_section(
         locale,
@@ -96,6 +136,8 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Li
         &blocked,
         &children,
         &fetch.subtrees_known,
+        blocked_base,
+        selected_task,
         blocked_row,
     ));
     if lines.is_empty() {
@@ -114,14 +156,33 @@ pub(super) fn dropr_task_lines(fetch: &DroprTaskFetch, locale: Locale) -> Vec<Li
     lines
 }
 
+/// A selectable task row's line: `{prefix}  {title}`, styled to read as the
+/// current cursor position when `selected`. `prefix` already carries any
+/// section glyph (`▸`, `✖`) ahead of the display id, so this only ever
+/// changes the row's style, never its text — a launched-but-unselected row
+/// looks exactly as it always has.
+fn selectable_row(prefix: impl Into<String>, title: &str, selected: bool) -> Line<'static> {
+    let style = if selected {
+        THEME.selection_style()
+    } else {
+        THEME.accent_style()
+    };
+    Line::from(Span::styled(format!("{}  {title}", prefix.into()), style))
+}
+
 /// One blocked task's row: the task itself, styled so it reads as needing a
 /// decision rather than as available work, plus — when the fetch found one —
 /// the reason from its `blocker` scribble. That second line is what makes the
 /// unblock condition reachable without leaving robco for dropr.
-fn blocked_row(task: &DroprTaskCandidate) -> Vec<Line<'static>> {
+fn blocked_row(task: &DroprTaskCandidate, selected: bool) -> Vec<Line<'static>> {
+    let style = if selected {
+        THEME.selection_style()
+    } else {
+        THEME.needs_decision_style(false)
+    };
     let mut lines = vec![Line::from(Span::styled(
         format!("✖ {}  {}", task.display_id, task.title),
-        THEME.needs_decision_style(false),
+        style,
     ))];
     if let Some(reason) = task
         .blocked_reason
@@ -168,20 +229,28 @@ fn problem_lines(heading: &str, problems: &[String]) -> Vec<Line<'static>> {
     lines
 }
 
+/// `base_index` is this section's offset into the flat selectable-task order
+/// [`selectable_tasks`] builds, so `base_index + offset` (the row's position
+/// within this section, capped the same way) is the `Selection::DroprTask`
+/// index that row launches — see that function's doc comment.
+#[allow(clippy::too_many_arguments)]
 fn task_section(
     locale: Locale,
     heading: Span<'static>,
     tasks: &[&DroprTaskCandidate],
     children: &HashMap<&str, Vec<&DroprTaskCandidate>>,
     subtrees_known: &HashSet<String>,
-    row: impl Fn(&DroprTaskCandidate) -> Vec<Line<'static>>,
+    base_index: usize,
+    selected_task: Option<usize>,
+    row: impl Fn(&DroprTaskCandidate, bool) -> Vec<Line<'static>>,
 ) -> Vec<Line<'static>> {
     if tasks.is_empty() {
         return Vec::new();
     }
     let mut lines = vec![Line::from(""), Line::from(heading)];
-    for task in tasks.iter().take(TASK_DISPLAY_LIMIT) {
-        lines.extend(row(task));
+    for (offset, task) in tasks.iter().take(TASK_DISPLAY_LIMIT).enumerate() {
+        let selected = selected_task == Some(base_index + offset);
+        lines.extend(row(task, selected));
         lines.extend(nested_lines(locale, task, children, subtrees_known));
     }
     if let Some(notice) = truncation_notice(locale, tasks.len()) {
@@ -211,6 +280,9 @@ pub(super) fn truncation_notice(locale: Locale, held: usize) -> Option<String> {
     })
 }
 
+#[cfg(test)]
+#[path = "dropr_tasks_selection_tests.rs"]
+mod selection_tests;
 #[cfg(test)]
 #[path = "dropr_tasks_tests.rs"]
 mod tests;

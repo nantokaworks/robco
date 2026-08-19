@@ -168,6 +168,53 @@ key and exact-matched by the merge-recovery classifier, so translating it would 
 classification and break deduplication the moment the language changed. Model output is
 free-form prose and carries no such contract, which is why the boundary sits there.
 
+## overseer.worker_prompt_template
+
+Task-specific text inserted into the prompt every dispatched worker receives — whether
+dispatched by the Overseer's automatic poll, by `!run <task>` from Discord or MCP, or by
+launching a dropr task row from the repository INFO pane in the TUI. All three paths share
+one dispatch gate and one prompt template; this key only ever changes the task-specific
+part of it.
+
+```json
+{
+  "overseer": {
+    "worker_prompt_template": "Task {display_id} ({task_id}): {title}\nRepository: {repo}\nSubtasks: {subtasks}\n\nFollow this project's CONTRIBUTING.md style guide."
+  }
+}
+```
+
+When the key is absent, `null`, or blank, RobCo uses its built-in task-specific text —
+byte-for-byte what shipped before this key existed.
+
+### Placeholders
+
+| Placeholder | Value |
+|-------------|-------|
+| `{display_id}` | The task's display id, e.g. `#470`. |
+| `{task_id}` | The task's dropr nanoid. |
+| `{title}` | The task's title. |
+| `{repo}` | The repository path the worker is dispatched into. |
+| `{subtasks}` | Comma-separated display ids of the task's subtasks, or `none`. |
+
+### What it covers
+
+Only the task-specific instructions: how to work, what to check, house style — the part of
+the prompt that names the task and tells the worker anything project-specific beyond the
+built-in discipline. This is the same text a childless task and a parent task with
+subtasks both start their prompt with.
+
+### What it does not cover
+
+The prompt's non-negotiable half is never reachable from this key, no matter what the
+configured text says: the claim instruction (verify the Overseer's own claim before
+touching the repository), the "open a pull request, do not merge it" ending, and the
+rails — *never merge, never force push, never push to main, never change the shared
+checkout's branch*. The code always appends these after the configured (or built-in)
+task-specific text, so an override cannot delete or contradict them. This is deliberate:
+the design this whole system rests on is that the machine never merges — only a person
+does — and a config key that could remove that guarantee would undo it.
+
 ## notify
 
 Desktop notifications are opt-out per status. `enabled` is the master switch — when it is

@@ -18,11 +18,11 @@ fn enqueue_then_drain_applies_and_acks() {
     )
     .unwrap();
 
-    assert!(drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert_eq!(ledger.counters.consecutive_failures, 0);
     assert!(config.overseer.dispatch_enabled);
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert_eq!(ledger.counters.consecutive_failures, 0);
 }
 
@@ -45,7 +45,7 @@ fn panic_escalate_marks_workers_including_pr_opened() {
     )
     .unwrap();
 
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
 }
 
@@ -69,7 +69,7 @@ fn merge_completed_wakes_the_daemon_without_touching_state() {
     )
     .unwrap();
 
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     // The merge moves the ledger only once the daemon has observed it, so the
     // request itself leaves the phase and the failure streak alone.
     assert_eq!(ledger.entries[0].phase, LedgerPhase::PrOpened);
@@ -83,7 +83,11 @@ fn drain_missing_dir_is_noop() {
     let mut ledger = Ledger::default();
     let mut config = Config::default();
 
-    assert!(!drain_in(&temp.path().join("missing"), &mut ledger, &mut config).unwrap());
+    assert!(
+        !drain_in(&temp.path().join("missing"), &mut ledger, &mut config)
+            .unwrap()
+            .0
+    );
 }
 
 #[test]
@@ -95,7 +99,7 @@ fn corrupt_file_is_skipped() {
     let mut ledger = Ledger::default();
     let mut config = Config::default();
 
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert!(!dir.join("bad.json").exists());
     assert!(dir.join("bad.json.corrupt").exists());
 }
@@ -129,7 +133,7 @@ fn drain_applies_and_acks_all_pending_requests() {
     )
     .unwrap();
 
-    assert!(drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert_eq!(ledger.counters.consecutive_failures, 0);
     assert!(config.overseer.dispatch_enabled);
     assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
@@ -155,7 +159,7 @@ fn operator_merge_override_is_a_noop_when_no_entry_matches_the_target() {
     )
     .unwrap();
 
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert!(ledger.entries[0].operator_override.is_none());
 }
 
@@ -180,7 +184,7 @@ fn operator_merge_override_is_a_noop_when_the_matched_entry_has_no_pull_request_
     )
     .unwrap();
 
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert!(ledger.entries[0].operator_override.is_none());
 }
 
@@ -209,8 +213,37 @@ fn operator_merge_override_matches_by_display_id_but_leaves_no_override_when_the
     )
     .unwrap();
 
-    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap());
+    assert!(!drain_in(&dir, &mut ledger, &mut config).unwrap().0);
     assert!(ledger.entries[0].operator_override.is_none());
+}
+
+/// dropr:470: a `RunTask` request (the TUI's cross-process equivalent of
+/// Discord's `!run <task>`) must not be applied in-place — `apply` has no
+/// `Config`/`now`/gathered candidates to dispatch with — it must come back
+/// as a `PendingRun` for the caller to feed to `dispatch::run_named`, and the
+/// file must still be acknowledged (removed) the same as any other request.
+#[test]
+fn run_task_is_handed_back_instead_of_applied_and_still_acked() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("requests");
+    let mut ledger = Ledger::default();
+    let mut config = Config::default();
+    enqueue_in(
+        &dir,
+        RuntimeRequest::RunTask {
+            source: "tui".into(),
+            task: "#470".into(),
+            at: Utc::now(),
+        },
+    )
+    .unwrap();
+
+    let (config_changed, pending_runs) = drain_in(&dir, &mut ledger, &mut config).unwrap();
+    assert!(!config_changed);
+    assert_eq!(pending_runs.len(), 1);
+    assert_eq!(pending_runs[0].task, "#470");
+    assert_eq!(pending_runs[0].source, "tui");
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 }
 
 fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {

@@ -107,17 +107,27 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             });
             (title, text)
         }
-        (_, Some(Selection::Repo(repo_idx))) => repo_summary(
-            &registry.repos[repo_idx],
-            &app.config.repos_root,
+        // A dropr task row previews as its repo's own INFO tab with that row
+        // highlighted, not a tab of its own — it is acted on from the left
+        // frame (Enter launches it), the same way `Selection::Repo` itself is.
+        (_, Some(Selection::Repo(repo_idx)))
+        | (_, Some(Selection::DroprTask { repo: repo_idx, .. })) => {
+            let selected_task = match selection {
+                Some(Selection::DroprTask { task, .. }) => Some(task),
+                _ => None,
+            };
             // The snapshot the OVERSEER frame already refreshes: one ledger
-            // (and one other-PR cache) for the whole TUI, and no disk read in
-            // the render path.
-            &app.overseer_snapshot.ledger,
-            &app.overseer_snapshot.other_prs,
-            panes.preview.width.saturating_sub(4),
-            app.locale,
-        ),
+            // (and one other-PR cache) for the whole TUI, no disk read here.
+            repo_summary(
+                &registry.repos[repo_idx],
+                &app.config.repos_root,
+                &app.overseer_snapshot.ledger,
+                &app.overseer_snapshot.other_prs,
+                panes.preview.width.saturating_sub(4),
+                app.locale,
+                selected_task,
+            )
+        }
         // Rendered as a tab rather than an overlay so reading the failure never
         // costs the operator sight of the tab bar.
         (PreviewPane::Error, Some(Selection::Agent { repo, agent })) => {
