@@ -55,6 +55,22 @@ fn marquee_is_elapsed_driven_bounded_and_loops() {
 }
 
 #[test]
+fn truncates_a_variation_selector_title_without_overflowing_its_budget() {
+    // A real board title (dropr:481): `♻️` is `U+267B` plus `U+FE0F`, drawn
+    // at 2 columns by a terminal though `U+267B` alone measures 1. Before
+    // the fix, `prefix_within`'s char-by-char scan priced the pair at 1
+    // column, so it kept one extra character and the truncated string
+    // (content + `…`) came out a column wider than `available` allowed —
+    // exactly the "row drawn one column narrower than the terminal
+    // renders it" bug this covers.
+    let title = "♻️ [api] Retire the polling dispatcher";
+    let available = 13;
+    let result = display(title, available, false, Duration::ZERO);
+    assert_eq!(result, "♻️ [api] Ret…");
+    assert_eq!(UnicodeWidthStr::width(result.as_str()), available);
+}
+
+#[test]
 fn marquee_never_splits_wide_characters() {
     let result = display("日本語です", 4, true, Duration::from_millis(1_600));
     assert!(UnicodeWidthStr::width(result.as_str()) <= 4);

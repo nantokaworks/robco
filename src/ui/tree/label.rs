@@ -4,11 +4,11 @@ use ratatui::{
     style::Style,
     text::{Line, Span},
 };
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::config::ProjectIcon;
 use crate::model::ManagementMode;
 use crate::overseer::is_overseer_child;
+use crate::ui::text_width::{display_width, prefix_within};
 
 use super::indicator::{self, Indicator};
 
@@ -196,7 +196,7 @@ fn available_width<'a>(
 fn spans_width<'a>(spans: impl IntoIterator<Item = &'a Span<'a>>) -> usize {
     spans
         .into_iter()
-        .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+        .map(|span| display_width(span.content.as_ref()))
         .sum()
 }
 
@@ -211,7 +211,7 @@ pub(super) fn trim_spans_to_width(spans: &mut Vec<Span<'static>>, max_width: usi
             return false;
         }
         let content = prefix_within(span.content.as_ref(), remaining).to_string();
-        let width = UnicodeWidthStr::width(content.as_str());
+        let width = display_width(content.as_str());
         let keep = !content.is_empty();
         span.content = content.into();
         remaining = remaining.saturating_sub(width);
@@ -221,7 +221,7 @@ pub(super) fn trim_spans_to_width(spans: &mut Vec<Span<'static>>, max_width: usi
 
 pub(super) fn pad_to_width(value: &str, width: usize) -> String {
     let value = prefix_within(value, width);
-    let padding = width.saturating_sub(UnicodeWidthStr::width(value));
+    let padding = width.saturating_sub(display_width(value));
     format!("{value}{}", " ".repeat(padding))
 }
 
@@ -246,27 +246,13 @@ pub(super) fn labeled_row(
     let width = available_width(row_width, prefix_width, indicator_width, &right);
     let title = display(title, width, selected, elapsed);
     let primary = indicator::primary_span(primary, selected, elapsed, indicator_width);
-    let used = prefix_width + indicator_width + UnicodeWidthStr::width(title.as_str());
+    let used = prefix_width + indicator_width + display_width(title.as_str());
     trim_spans_to_width(&mut right, usize::from(row_width).saturating_sub(used));
     let mut spans = prefix;
     spans.push(primary);
     spans.push(Span::styled(title, title_style));
     spans.extend(right);
     Line::from(spans)
-}
-
-fn prefix_within(value: &str, max_width: usize) -> &str {
-    let mut width = 0;
-    let mut end = 0;
-    for (index, character) in value.char_indices() {
-        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
-        if width + character_width > max_width {
-            break;
-        }
-        width += character_width;
-        end = index + character.len_utf8();
-    }
-    &value[..end]
 }
 
 #[cfg(test)]
