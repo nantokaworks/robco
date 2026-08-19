@@ -42,8 +42,10 @@ pub(crate) mod preflight;
 mod profile;
 #[path = "session/resolver.rs"]
 mod resolver;
+mod spawn_retry;
 pub(crate) use profile::session_profile;
 pub(crate) use resolver::resolve_program_impl;
+use spawn_retry::spawn_retrying_text_busy;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SessionResult {
@@ -178,7 +180,7 @@ impl EphemeralSession<'_> {
                 Err(_) => Stdio::null(),
             });
         self.env.apply(&mut command);
-        let mut child = match command.spawn() {
+        let mut child = match spawn_retrying_text_busy(&mut command) {
             Ok(child) => child,
             Err(error) => return SessionResult::LaunchFailed(error.to_string()),
         };
