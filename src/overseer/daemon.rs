@@ -50,17 +50,33 @@ use super::{
     wake::{self, Signals},
 };
 use crate::{Result, config::Config};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    path::Path,
     sync::mpsc,
     time::{Duration, Instant},
 };
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Stamp the heartbeat with this build's version before the daemon does any
+/// setup or runs its first pass, so a reader sees this build's version from
+/// the moment this process owns the daemon. Without this, the file still
+/// names the previous daemon's build until the first pass finishes — long
+/// enough for `overseer status` to report a stale-build warning about a
+/// daemon that already restarted.
+///
+/// Called right after `PidGuard::acquire` succeeds: a process that loses the
+/// pid race errors out of `acquire` before reaching this call, so it never
+/// stamps a heartbeat it does not own.
+fn stamp_startup_heartbeat(path: &Path, at: DateTime<Utc>) -> Result<()> {
+    heartbeat::write(path, at)
+}
+
 pub async fn run_daemon() -> Result<()> {
     let _pid_guard = PidGuard::acquire(pidfile_path()?)?;
+    stamp_startup_heartbeat(&heartbeat_path()?, Utc::now())?;
     let mut config = Config::load()?;
     // Logged once at startup rather than on every reload: the notice describes
     // the file, which does not change between passes, and the daemon merges

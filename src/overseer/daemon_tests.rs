@@ -93,3 +93,19 @@ fn newly_merged_task_resets_failure_counter() {
     account_failures(&previous, &mut next, &failures(FailureOrigin::Worker, 1));
     assert_eq!(next.counters.consecutive_failures, 0);
 }
+
+#[test]
+fn startup_heartbeat_names_this_build_before_any_pass_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("heartbeat");
+    // Simulate what a previous daemon build left behind before this process
+    // started.
+    std::fs::write(&path, "2020-01-01T00:00:00Z\nversion=0.0.1\n").unwrap();
+
+    stamp_startup_heartbeat(&path, Utc::now()).unwrap();
+
+    assert_eq!(
+        heartbeat::recorded_version(&path).as_deref(),
+        Some(heartbeat::VERSION)
+    );
+}
