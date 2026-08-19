@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use crate::{
-    dropr::{self, DroprTaskCandidate},
+    dropr::{self, DroprTaskCandidate, DroprTaskFetch},
     model::RepoNode,
 };
 
@@ -58,6 +58,24 @@ where
         return Err(());
     }
     Ok(fetched)
+}
+
+/// Marks one task's row as claimed and running, in the repository's cached
+/// `DroprTaskFetch`, right after a launch that just claimed it in dropr
+/// (dropr:482). The panel renders from this cache between background
+/// refreshes, so without this the row would keep showing the state the last
+/// fetch saw — inviting a second launch attempt the collision checks above
+/// would then have to refuse.
+///
+/// A `task_id` the cache does not carry is not an error here: the row may
+/// have scrolled past the display cap, or the fetch that populated the cache
+/// predates this task. Either way there is no row to update, so this is a
+/// silent no-op rather than a reason to fail the launch that already
+/// succeeded.
+pub(super) fn mark_task_in_progress(fetch: &mut DroprTaskFetch, task_id: &str) {
+    if let Some(task) = fetch.tasks.iter_mut().find(|task| task.id == task_id) {
+        task.status = "in_progress".to_string();
+    }
 }
 
 #[cfg(test)]

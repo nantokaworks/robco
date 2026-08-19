@@ -7,6 +7,14 @@
 //! Movement and `Enter`/`Esc` are claimed unconditionally while focused —
 //! the outer tree must not also react to them, or the operator would not be
 //! able to tell which list a keypress just moved.
+//!
+//! `list_key` also claims `n` (dropr:482): it launches the selected task the
+//! same way `s` does from the body, one key sooner. Since this module's
+//! `handle_normal` runs as a guard ahead of the outer `Mode::Normal` match in
+//! `input.rs` (`code if dropr_task_drill::handle_normal(self, code) => {}`
+//! before that match's own `n` arm), claiming `n` here only changes what it
+//! does while the list is focused — `n`'s "new agent" meaning elsewhere, and
+//! at the body focus below, is untouched.
 
 use crossterm::event::KeyCode;
 
@@ -36,6 +44,12 @@ fn list_key(app: &mut App, code: KeyCode) -> bool {
         }
         KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => {
             app.leave_dropr_task_list();
+            true
+        }
+        // The list-level launch shortcut (dropr:482): the same launch path
+        // `s` uses from the body, one key sooner.
+        KeyCode::Char('n') => {
+            app.launch_dropr_task_from_list();
             true
         }
         _ => false,

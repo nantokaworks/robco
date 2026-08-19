@@ -146,3 +146,25 @@ fn an_unfetched_subtree_that_comes_back_empty_refuses_rather_than_launching_chil
 
     assert_eq!(result, Err(()));
 }
+
+#[test]
+fn marking_a_launched_task_updates_only_that_row() {
+    let launched = task("#1");
+    let other = task("#2");
+    let mut fetch = repo_node(vec![launched.clone(), other.clone()]).dropr_tasks;
+
+    mark_task_in_progress(&mut fetch, &launched.id);
+
+    assert_eq!(fetch.tasks[0].status, "in_progress");
+    assert_eq!(fetch.tasks[1].status, "open");
+}
+
+#[test]
+fn marking_a_task_id_the_cache_does_not_carry_is_a_no_op() {
+    let cached = task("#1");
+    let mut fetch = repo_node(vec![cached.clone()]).dropr_tasks;
+
+    mark_task_in_progress(&mut fetch, "id-not-in-cache");
+
+    assert_eq!(fetch.tasks[0].status, cached.status);
+}

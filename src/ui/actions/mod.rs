@@ -10,6 +10,7 @@ mod discovery_capture;
 mod dropr_overlay;
 mod dropr_task_drill;
 mod dropr_task_launch;
+mod dropr_task_nav;
 pub(super) mod dropr_tasks;
 mod kill;
 mod land;

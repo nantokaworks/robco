@@ -77,14 +77,17 @@ fn child_worktree_advertises_attach_only() {
 }
 
 #[test]
-fn dropr_task_list_focus_advertises_move_open_and_back() {
+fn dropr_task_list_focus_advertises_move_open_start_and_back() {
     let line = hints_line(
         None,
         Some(Selection::Repo(0)),
         Some(DroprTaskFocus::List { task: 0 }),
     )
     .to_string();
-    assert_eq!(line, "[j/k] MOVE [↵] OPEN [esc] BACK [?] HELP [q] QUIT");
+    assert_eq!(
+        line,
+        "[j/k] MOVE [↵] OPEN [n] START [esc] BACK [?] HELP [q] QUIT"
+    );
 }
 
 #[test]
