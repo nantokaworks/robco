@@ -182,3 +182,26 @@ fn create_agent_with_overseer_as_supplied_parent_stays_auto() {
     );
     assert_eq!(management, crate::model::ManagementMode::Auto);
 }
+
+/// A worker enrolled with the Overseer can resolve a report target.
+///
+/// `create_agent_with_launch` feeds `enroll_with_overseer`'s output straight
+/// into `agent_env`, which is what ends up as `ROBCO_PARENT_AGENT_ID` in the
+/// worker's tmux session. `src/mcp/tools/report.rs` reads that same env var
+/// name back to find a report target. This test walks the same path
+/// (enrol -> build env) and checks the value it produces is one
+/// `is_overseer_child` accepts, so a mismatch between the two sides cannot
+/// regress silently.
+#[test]
+fn worker_enrolled_with_overseer_can_resolve_a_report_target() {
+    let (parent_agent_id, _) = enroll_with_overseer(None);
+    let env = agent_env("worker-id", parent_agent_id.as_deref());
+
+    let parent_value = env
+        .iter()
+        .find(|(key, _)| *key == crate::config::ENV_PARENT_AGENT_ID)
+        .map(|(_, value)| value.as_str());
+
+    assert_eq!(parent_value, Some(crate::overseer::OVERSEER_AGENT_ID));
+    assert!(crate::overseer::is_overseer_child(parent_value));
+}
