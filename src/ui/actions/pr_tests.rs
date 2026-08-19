@@ -66,7 +66,7 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
 }
 
 #[test]
-fn pr_request_guards_invalid_targets_and_state() {
+fn pr_request_guards_invalid_targets() {
     let repos = vec![repo("/repo", vec![agent("one")])];
 
     assert_eq!(
@@ -84,13 +84,6 @@ fn pr_request_guards_invalid_targets_and_state() {
         ),
         Err("PR request is not available for child worktrees")
     );
-    assert_eq!(
-        require_running_pr_session(false),
-        Err("agent session is not running")
-    );
-    assert_eq!(require_no_open_pr(true), Err("PR is already open"));
-    assert!(require_running_pr_session(true).is_ok());
-    assert!(require_no_open_pr(false).is_ok());
 }
 
 #[test]

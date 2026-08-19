@@ -6,7 +6,7 @@ use crate::{
     model::{RepoNode, Selection},
 };
 
-use super::{super::App, lifecycle::resolve_agent};
+use super::{super::App, lifecycle::resolve_agent, pr_precheck::PrPrecheckRequest};
 
 #[cfg(test)]
 use super::super::Mode;
@@ -42,16 +42,6 @@ fn pr_target_for_selection(
     }
 }
 
-#[cfg(test)]
-fn require_running_pr_session(running: bool) -> std::result::Result<(), &'static str> {
-    running.then_some(()).ok_or("agent session is not running")
-}
-
-#[cfg(test)]
-fn require_no_open_pr(exists: bool) -> std::result::Result<(), &'static str> {
-    (!exists).then_some(()).ok_or("PR is already open")
-}
-
 impl App {
     pub(in crate::ui) fn confirm_pr_selected(&mut self) {
         let target = match pr_target_for_selection(&self.registry.repos, self.selected_item()) {
@@ -72,15 +62,17 @@ impl App {
         };
         let repo_node = &self.registry.repos[repo];
         let selected = &repo_node.agents[agent_idx];
-        let repo_path = repo_node.path.clone();
-        let tmux_session = selected.tmux_session.clone();
-        self.open_pr_dialog_with_precheck(
-            repo_path,
-            target.agent_id,
-            target.branch,
-            tmux_session,
-            None,
-        );
+        let display_id = self.task_display_id(selected);
+        self.open_pr_dialog_with_precheck(PrPrecheckRequest {
+            repo_path: repo_node.path.clone(),
+            agent_id: target.agent_id,
+            branch: target.branch,
+            tmux_session: selected.tmux_session.clone(),
+            worktree_path: selected.worktree_path.clone(),
+            title: selected.title.clone(),
+            display_id,
+            approval_head: None,
+        });
     }
 
     pub(crate) fn request_pr(

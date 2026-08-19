@@ -6,7 +6,10 @@ use crate::{
     overseer::runtime_request::{self, RuntimeRequest},
 };
 
-use super::super::{App, LandPlan, Mode};
+use super::{
+    super::{App, LandPlan, Mode},
+    pr_precheck::PrPrecheckRequest,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LandDecision {
@@ -112,13 +115,17 @@ impl App {
                             return;
                         }
                     };
-                self.open_pr_dialog_with_precheck(
-                    repo_node.path.clone(),
-                    target,
-                    selected.branch.clone(),
-                    selected.tmux_session.clone(),
-                    Some(approval_head),
-                );
+                let display_id = self.task_display_id(selected);
+                self.open_pr_dialog_with_precheck(PrPrecheckRequest {
+                    repo_path: repo_node.path.clone(),
+                    agent_id: target,
+                    branch: selected.branch.clone(),
+                    tmux_session: selected.tmux_session.clone(),
+                    worktree_path: selected.worktree_path.clone(),
+                    title: selected.title.clone(),
+                    display_id,
+                    approval_head: Some(approval_head),
+                });
             }
         }
     }

@@ -3,6 +3,7 @@ mod local_ref;
 mod merge_failure;
 pub mod merge_flow;
 mod pr_checks;
+mod pr_create;
 // Crate-visible rather than private: the Overseer daemon's post-merge cleanup
 // takes the same lock from outside this module.
 pub(crate) mod merge_lock;
@@ -16,6 +17,7 @@ pub use branch::*;
 pub(crate) use local_ref::*;
 pub use merge_failure::*;
 pub(crate) use pr_checks::*;
+pub use pr_create::*;
 pub use remote::*;
 pub use worktree::*;
 

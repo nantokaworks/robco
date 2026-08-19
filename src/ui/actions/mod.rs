@@ -18,6 +18,7 @@ mod merge_worker;
 mod orphans;
 pub(super) mod overseer_refresh;
 mod pr;
+mod pr_fallback;
 pub(super) mod pr_precheck;
 pub(super) mod preview_capture;
 mod registry_sync;
