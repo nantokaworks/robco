@@ -31,6 +31,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "task is missing its dropr id" => "タスクにdropr id(nanoid)がありません",
         "{} already has a live worker: {}" => "{} には稼働中のworkerが既にあります: {}",
         "{} already has a branch: {}" => "{} には既存のブランチがあります: {}",
+        "could not confirm {}'s subtasks — refresh the task list and try again" => {
+            "{} のサブタスクを確認できませんでした。タスク一覧を再読込してから、もう一度お試しください"
+        }
         "could not claim {}: {}" => "{} をclaimできませんでした: {}",
         "could not reach dropr to claim {}" => "{} のclaimでdroprに到達できませんでした",
         "launched {} for {}" => "{} を {} 向けに起動しました",

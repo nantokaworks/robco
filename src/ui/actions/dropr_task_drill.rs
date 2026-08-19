@@ -19,6 +19,7 @@ use crate::{
 };
 
 use super::super::{App, DroprTaskFocus, summary::dropr_tasks};
+use super::dropr_task_launch::resolve_launch_subtasks;
 
 /// Identifies a task claim taken by this drill-down, distinct from the
 /// Overseer daemon's own `OVERSEER_AGENT_ID` — this launch is operator-issued
@@ -154,20 +155,29 @@ impl App {
         }
 
         // Reuses the subtree this repo's own INFO pane already fetched
-        // (dropr:475): the launch must not wait on the network beyond the
-        // claim below, and a root task's children are already flattened into
-        // this same `DroprTaskFetch` when its subtree query succeeded (see
-        // `dropr::repo_tasks`). Unknown when it did not — the close
-        // directive then covers only the parent, same as a childless task.
-        let subtasks: Vec<dropr::Subtask> = repo_node
-            .dropr_tasks
-            .tasks
-            .iter()
-            .filter(|other| other.parent_task_id.as_deref() == Some(candidate.id.as_str()))
-            .map(|other| dropr::Subtask {
-                display_id: other.display_id.clone(),
-            })
-            .collect();
+        // (dropr:475) whenever that fetch actually answered for this parent
+        // (`subtrees_known`), so the launch usually does not wait on the
+        // network beyond the claim below. When the fetch's own
+        // `SUBTREE_QUERY_LIMIT` (8 parents) skipped this task, `s` is still a
+        // deliberate operator action — a single scoped fetch for the one task
+        // being launched is an acceptable wait (dropr:479).
+        let subtasks = match resolve_launch_subtasks(
+            repo_node,
+            &candidate,
+            &workspace_id,
+            COMMAND_TIMEOUT,
+            dropr::fetch_subtasks,
+        ) {
+            Ok(subtasks) => subtasks,
+            Err(()) => {
+                self.show_message(fmt(
+                    self.locale,
+                    "could not confirm {}'s subtasks — refresh the task list and try again",
+                    &[&candidate.display_id],
+                ));
+                return;
+            }
+        };
         let repo_path = repo_node.path.clone();
         let task_id = candidate.id.clone();
 
