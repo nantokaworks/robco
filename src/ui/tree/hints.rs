@@ -79,6 +79,7 @@ const INBOX_ITEM_HINTS: Hints = &[
 const DROPR_TASK_LIST_HINTS: Hints = &[
     ("j/k", "move"),
     ("↵", "open"),
+    ("n", "start"),
     ("esc", "back"),
     ("?", "help"),
     ("q", "quit"),

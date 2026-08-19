@@ -112,6 +112,12 @@ fn focused_at_body(app: &mut App, repo: RepoNode, task: usize) {
     app.dropr_task_focus = Some(DroprTaskFocus::Body { task });
 }
 
+fn focused_at_list(app: &mut App, repo: RepoNode, task: usize) {
+    app.registry.repos = vec![repo];
+    select_repo_row(app);
+    app.dropr_task_focus = Some(DroprTaskFocus::List { task });
+}
+
 #[test]
 fn no_repo_selected_clears_focus_without_a_message() {
     // A stale focus outliving the repository row it was entered from (the
@@ -205,65 +211,44 @@ fn an_existing_branch_for_the_task_refuses_naming_it() {
 }
 
 #[test]
-fn entering_the_task_list_starts_on_the_first_row() {
+fn list_focus_no_repo_selected_clears_focus_without_a_message() {
+    // Mirrors `no_repo_selected_clears_focus_without_a_message` above, from
+    // the list entry point (dropr:482).
     let mut app = test_app();
-    app.enter_dropr_task_list();
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 0 }));
-}
+    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
 
-#[test]
-fn leaving_the_task_list_clears_focus() {
-    let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 2 });
-    app.leave_dropr_task_list();
+    app.launch_dropr_task_from_list();
+
+    assert_eq!(app.message, None);
     assert_eq!(app.dropr_task_focus, None);
 }
 
 #[test]
-fn moving_the_task_cursor_clamps_to_what_is_listed() {
+fn list_focus_a_task_index_no_longer_listed_only_shows_a_message() {
     let mut app = test_app();
-    app.registry.repos = vec![repo_node("/repo".into(), vec![task("#1"), task("#2")])];
-    select_repo_row(&mut app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    focused_at_list(&mut app, repo_node("/repo".into(), vec![task("#1")]), 5);
 
-    app.move_dropr_task_cursor(-1);
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 0 }));
+    app.launch_dropr_task_from_list();
 
-    app.move_dropr_task_cursor(1);
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
-
-    app.move_dropr_task_cursor(1);
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("task is no longer listed")
+    );
 }
 
 #[test]
-fn opening_a_stale_task_row_does_nothing() {
+fn list_focus_a_live_worker_for_the_task_refuses_naming_it() {
+    // Same refusal `a_live_worker_for_the_task_refuses_naming_it` proves from
+    // the body — `n` at the list level shares the same launch path
+    // (dropr:482), so it must refuse the same way.
     let mut app = test_app();
-    app.registry.repos = vec![repo_node("/repo".into(), vec![task("#1")])];
-    select_repo_row(&mut app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 5 });
+    let mut repo = repo_node("/repo".into(), vec![task("#1")]);
+    repo.agents
+        .push(agent_node("existing-worker", "existing worker", Some("1")));
+    focused_at_list(&mut app, repo, 0);
 
-    app.open_dropr_task_body();
+    app.launch_dropr_task_from_list();
 
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 5 }));
-}
-
-#[test]
-fn opening_a_listed_task_row_moves_to_its_body() {
-    let mut app = test_app();
-    app.registry.repos = vec![repo_node("/repo".into(), vec![task("#1")])];
-    select_repo_row(&mut app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
-
-    app.open_dropr_task_body();
-
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::Body { task: 0 }));
-}
-
-#[test]
-fn closing_the_body_returns_to_the_list_on_the_same_task() {
-    let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 3 });
-    app.close_dropr_task_body();
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 3 }));
+    let message = app.message.as_ref().map(|(message, _)| message.as_str());
+    assert!(message.is_some_and(|message| message.contains("existing worker")));
 }

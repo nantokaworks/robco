@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 77;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 78;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -52,6 +52,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  c              check out main in primary checkout (clean tree only)"),
         l("  enter          on a repo row (INFO showing): open its dropr task list"),
         l("                 on a task row: open its body"),
+        l("  n              on a task row: start it now, same as s (skip body)"),
         l("  s              on a task body: start the work now (worktree, branch,"),
         l("                 tmux session), claiming it in dropr first"),
         l("  esc/h/left     step back up one drill-down level"),

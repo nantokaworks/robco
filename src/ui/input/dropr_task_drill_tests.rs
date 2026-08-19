@@ -93,8 +93,20 @@ fn list_focus_claims_movement_open_and_back() {
 fn list_focus_ignores_unrelated_keys() {
     let mut app = app_with_tasks();
     app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
-    assert!(!handle_normal(&mut app, KeyCode::Char('n')));
     assert!(!handle_normal(&mut app, KeyCode::Char('?')));
+}
+
+#[test]
+fn list_focus_n_starts_the_launch_path() {
+    let mut app = app_with_tasks();
+    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+
+    assert!(handle_normal(&mut app, KeyCode::Char('n')));
+    // Same as `body_focus_s_starts_the_launch_path` below: the fixture's task
+    // has no dropr workspace linked, so the launch refuses immediately
+    // without reaching the network — this only asserts the key is claimed
+    // and routed to the same launch path `s` uses from the body (dropr:482).
+    assert!(app.message.is_some());
 }
 
 #[test]

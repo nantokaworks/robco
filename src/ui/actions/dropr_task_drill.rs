@@ -1,6 +1,9 @@
-//! The dropr task drill-down (dropr:475): `Enter` on a repository row with
-//! INFO showing moves focus into its task list; `Enter` on a task opens its
-//! body; one key from the body starts the work.
+//! The launch step of the dropr task drill-down (dropr:475): `s` from the
+//! task body, or `n` from the task list (dropr:482) — the same launch path
+//! one key sooner, for an operator who already knows which task they want.
+//! Walking the list and opening a body — the steps that get an operator to
+//! either entry point — live in `dropr_task_nav`, split out to keep this
+//! file under the line-count limit.
 //!
 //! The launch itself replaces PR #373's queued `RuntimeRequest::RunTask` (see
 //! `overseer::runtime_request`, still used by Discord's `!run` and kept for
@@ -19,7 +22,7 @@ use crate::{
 };
 
 use super::super::{App, DroprTaskFocus, summary::dropr_tasks};
-use super::dropr_task_launch::resolve_launch_subtasks;
+use super::dropr_task_launch::{mark_task_in_progress, resolve_launch_subtasks};
 
 /// Identifies a task claim taken by this drill-down, distinct from the
 /// Overseer daemon's own `OVERSEER_AGENT_ID` — this launch is operator-issued
@@ -27,73 +30,29 @@ use super::dropr_task_launch::resolve_launch_subtasks;
 const DIRECT_LAUNCH_AGENT_ID: &str = "robco-ui";
 
 impl App {
-    /// `Enter` on a repository row with the INFO pane showing: move focus
-    /// into its task list, starting on the first row.
-    pub(in crate::ui) fn enter_dropr_task_list(&mut self) {
-        self.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
-        self.preview_scroll = 0;
-    }
-
-    /// `Esc` / `h` / `Left` while the task list is focused: return to the
-    /// repository row.
-    pub(in crate::ui) fn leave_dropr_task_list(&mut self) {
-        self.dropr_task_focus = None;
-    }
-
-    /// `j`/`k` or the arrows while the task list is focused: walk it,
-    /// clamped to what is actually listed.
-    pub(in crate::ui) fn move_dropr_task_cursor(&mut self, delta: isize) {
-        let Some(DroprTaskFocus::List { task }) = self.dropr_task_focus else {
-            return;
-        };
-        let Some(count) = self.dropr_task_count() else {
-            return;
-        };
-        if count == 0 {
-            return;
-        }
-        let next = (task as isize + delta).clamp(0, count as isize - 1) as usize;
-        self.dropr_task_focus = Some(DroprTaskFocus::List { task: next });
-    }
-
-    /// `Enter` on a task row: open its body.
-    pub(in crate::ui) fn open_dropr_task_body(&mut self) {
-        let Some(DroprTaskFocus::List { task }) = self.dropr_task_focus else {
-            return;
-        };
-        let Some(count) = self.dropr_task_count() else {
-            return;
-        };
-        if task >= count {
-            return;
-        }
-        self.dropr_task_focus = Some(DroprTaskFocus::Body { task });
-        self.preview_scroll = 0;
-    }
-
-    /// `Esc` / `h` / `Left` while a task body is focused: back to the list,
-    /// on the same task.
-    pub(in crate::ui) fn close_dropr_task_body(&mut self) {
-        if let Some(DroprTaskFocus::Body { task }) = self.dropr_task_focus {
-            self.dropr_task_focus = Some(DroprTaskFocus::List { task });
-            self.preview_scroll = 0;
-        }
-    }
-
-    fn dropr_task_count(&self) -> Option<usize> {
-        let Some(Selection::Repo(repo)) = self.selected_item() else {
-            return None;
-        };
-        let repo_node = self.registry.repos.get(repo)?;
-        Some(dropr_tasks::selectable_tasks(&repo_node.dropr_tasks).len())
-    }
-
     /// The launch key from the task body: claim the task, then create the
-    /// worker in this process — immediately, the way `n` does.
+    /// worker in this process — immediately, the way `n` (new agent) does.
     pub(in crate::ui) fn launch_dropr_task_from_body(&mut self) {
         let Some(DroprTaskFocus::Body { task }) = self.dropr_task_focus else {
             return;
         };
+        self.launch_dropr_task(task);
+    }
+
+    /// `n` at the list focus level (dropr:482): the same launch path as
+    /// [`Self::launch_dropr_task_from_body`], one key sooner — for an
+    /// operator who already knows which task they want and does not need to
+    /// read its body first.
+    pub(in crate::ui) fn launch_dropr_task_from_list(&mut self) {
+        let Some(DroprTaskFocus::List { task }) = self.dropr_task_focus else {
+            return;
+        };
+        self.launch_dropr_task(task);
+    }
+
+    /// Shared by both entry points above: claim the task, then create the
+    /// worker in this process — immediately, the way `n` (new agent) does.
+    fn launch_dropr_task(&mut self, task: usize) {
         let Some(Selection::Repo(repo)) = self.selected_item() else {
             self.dropr_task_focus = None;
             return;
@@ -230,6 +189,20 @@ impl App {
                         registered = true;
                     }
                 });
+                // `dropr_tasks` is runtime-only (`#[serde(skip)]`);
+                // `locked_registry_update` above only ever carries the
+                // pre-launch value back over a disk reload (see
+                // `registry_write::carry_repo`), so the claim this launch
+                // just took has to land here — directly on the in-memory
+                // cache, the same way a background fetch updates it.
+                if let Some(repo) = self
+                    .registry
+                    .repos
+                    .iter_mut()
+                    .find(|repo| repo.path == repo_path)
+                {
+                    mark_task_in_progress(&mut repo.dropr_tasks, &task_id);
+                }
                 self.dropr_task_focus = None;
                 match result {
                     Ok(()) if registered => {
