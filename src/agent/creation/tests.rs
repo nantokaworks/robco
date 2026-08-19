@@ -150,3 +150,35 @@ fn adopt_keeps_full_label_for_foreign_branch() {
     );
     assert_eq!(adopted.tmux_session, "robco_dropr_feature-x");
 }
+
+/// A worker created with no parent is enrolled with the Overseer.
+#[test]
+fn create_agent_with_no_parent_is_enrolled_with_overseer() {
+    let (parent_agent_id, management) = enroll_with_overseer(None);
+    assert_eq!(
+        parent_agent_id.as_deref(),
+        Some(crate::overseer::OVERSEER_AGENT_ID)
+    );
+    assert_eq!(management, crate::model::ManagementMode::Auto);
+}
+
+/// A worker created with a supplied parent keeps exactly that parent.
+#[test]
+fn create_agent_with_supplied_parent_keeps_it() {
+    let (parent_agent_id, management) = enroll_with_overseer(Some("some-other-agent"));
+    assert_eq!(parent_agent_id.as_deref(), Some("some-other-agent"));
+    assert_eq!(management, crate::model::ManagementMode::Manual);
+}
+
+/// A subagent spawned by an Overseer-managed worker (its own id is the
+/// Overseer's) keeps that parent unmodified, and still reads as `Auto`.
+#[test]
+fn create_agent_with_overseer_as_supplied_parent_stays_auto() {
+    let (parent_agent_id, management) =
+        enroll_with_overseer(Some(crate::overseer::OVERSEER_AGENT_ID));
+    assert_eq!(
+        parent_agent_id.as_deref(),
+        Some(crate::overseer::OVERSEER_AGENT_ID)
+    );
+    assert_eq!(management, crate::model::ManagementMode::Auto);
+}
