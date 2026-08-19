@@ -14,7 +14,7 @@ use super::{
     daemon::pull_request,
     discord::ledger_requests::record_runtime_approval,
     ledger::{Ledger, OperatorOverride},
-    runtime_requests_dir,
+    ledger_path, runtime_requests_dir,
 };
 use crate::{Result, config::Config};
 
@@ -112,11 +112,12 @@ pub(crate) fn enqueue_in(dir: &Path, request: RuntimeRequest) -> Result<()> {
 }
 
 pub(crate) fn drain(ledger: &mut Ledger, config: &mut Config) -> Result<(bool, Vec<PendingRun>)> {
-    drain_in(&runtime_requests_dir()?, ledger, config)
+    drain_in(&runtime_requests_dir()?, &ledger_path()?, ledger, config)
 }
 
 pub(crate) fn drain_in(
     dir: &Path,
+    ledger_path: &Path,
     ledger: &mut Ledger,
     config: &mut Config,
 ) -> Result<(bool, Vec<PendingRun>)> {
@@ -170,7 +171,23 @@ pub(crate) fn drain_in(
             RuntimeRequest::RunTask { source, task, .. } => {
                 pending_runs.push(PendingRun { task, source });
             }
-            request => config_changed |= apply(ledger, config, request),
+            request => {
+                config_changed |= apply(ledger, config, request);
+                // `apply` only changed `ledger` in memory, and this file is
+                // about to be acked (deleted). Checkpoint the mutation now,
+                // before the ack, so a daemon death before the pass's own
+                // end-of-pass save cannot lose both the request's file and its
+                // effect. On failure, leave the file in place: the mutation
+                // already sitting in `ledger` is idempotent, so the next tick
+                // simply reapplies and retries the save.
+                if let Err(error) = ledger.save_to(ledger_path) {
+                    eprintln!(
+                        "warning: overseer runtime request {} applied but ledger checkpoint failed, left for retry: {error}",
+                        path.display()
+                    );
+                    continue;
+                }
+            }
         }
         // Ack by removing the file. If removal fails, move it aside so an already
         // applied request cannot be replayed on the next tick.
