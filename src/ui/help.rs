@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 71;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 73;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -45,8 +45,9 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  x              on a channel row: remove the retained record (confirms)"),
         l("Repo"),
         l("  a              clone <git-url> [branch], or add local repo path"),
-        l("  m              merge agent: merge PR + pull main (commit + PR needed)"),
-        l("                 already-merged PR: clean up without merging again"),
+        l("  m              land task: open a missing PR, then queue approval"),
+        l("                 checks running: queue approval; green: merge now"),
+        l("                 failed check: refuse; merged PR: clean up"),
         l("  p              edit and request PR from selected running agent"),
         l("  c              check out main in primary checkout (clean tree only)"),
         l("  enter          on a dropr task row: launch it (same gate as !run)"),
@@ -66,6 +67,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  ▖… animated TERM activity   ✻N active subagents"),
         l("  ⟳ manual dropr reload (r key)"),
         l("  ✓ done   · idle   ⎇ branch only (static fallback)"),
+        l("  ◆ merge approved and waiting on the deterministic gate"),
         l("  ● overseer Auto   ○ overseer Manual   blank unmanaged (rides indent)"),
         l("  nerdfont project_icon swaps in a bolt/hand pictograph pair instead"),
         l("  Repo row always shows its own marker; Auto agent rows always show"),

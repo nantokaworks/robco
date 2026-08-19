@@ -1,10 +1,9 @@
-use chrono::Utc;
-
 use crate::overseer::{
     daemon::pull_request,
     ledger::{Ledger, LedgerEntry, MergeApproval},
     logging::{self, DecisionEntry, DecisionKind},
 };
+use chrono::Utc;
 
 /// Reason seeded on an operator approval's reconsideration budget — see
 /// `LedgerEntry::grant_merge_reconsideration`. Never a gate reason itself, so
@@ -107,7 +106,7 @@ pub(crate) fn apply(ledger: &mut Ledger, request: LedgerRequest) -> Result<(), S
             let value =
                 pull_request::read(&repo, &url).map_err(|error| format!("{task}: {error}"))?;
             let head = pull_request::head_sha(&value).to_owned();
-            record_approval(entry, repo, url, user_id, head)
+            record_approval(entry, repo, Some(url), user_id, head, "discord")
                 .map_err(|error| format!("{task}: {error}"))
         }
         // Never reached through the normal drain path: `apply_ledger_requests`
@@ -132,13 +131,21 @@ pub(crate) fn apply(ledger: &mut Ledger, request: LedgerRequest) -> Result<(), S
 /// same way a killed session or a triage escalation does
 /// (`LedgerEntry::grant_merge_reconsideration`), rather than leaving the
 /// entry unable to ever reach `merge_allow::take_merge_approval`.
-fn record_approval(
+pub(crate) fn record_approval(
     entry: &mut LedgerEntry,
     repo: String,
-    url: String,
+    url: Option<String>,
     user_id: String,
     head: String,
+    source: &str,
 ) -> Result<(), String> {
+    if entry
+        .merge_approval
+        .as_ref()
+        .is_some_and(|approval| approval.head == head)
+    {
+        return Ok(());
+    }
     entry.merge_approval = Some(MergeApproval {
         head,
         granted_at: Utc::now(),
@@ -150,10 +157,36 @@ fn record_approval(
     );
     decision.task = Some(entry.display_id.clone());
     decision.repo = Some(repo);
-    decision.pr_url = Some(url);
+    decision.pr_url = url;
     decision.user_id = Some(user_id);
-    decision.source = Some("discord".into());
+    decision.source = Some(source.into());
     logging::append(&decision).map_err(|error| error.to_string())
+}
+
+pub(crate) fn record_runtime_approval(ledger: &mut Ledger, target: &str, head: &str, source: &str) {
+    let Some(entry) = ledger
+        .entries
+        .iter_mut()
+        .find(|entry| entry.agent_id == target || entry.display_id == target)
+    else {
+        eprintln!(
+            "warning: overseer runtime merge approval for {target} dropped: no matching ledger entry"
+        );
+        return;
+    };
+    if head.is_empty() {
+        eprintln!(
+            "warning: overseer runtime merge approval for {target} dropped: request head is empty"
+        );
+        return;
+    }
+    let repo = entry.repo.clone();
+    let url = entry.pr_url.clone();
+    if let Err(error) =
+        record_approval(entry, repo, url, source.to_owned(), head.to_owned(), source)
+    {
+        eprintln!("warning: overseer runtime merge approval for {target} dropped: {error}");
+    }
 }
 
 #[cfg(test)]

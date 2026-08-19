@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     command::escalate_workers,
     daemon::pull_request,
+    discord::ledger_requests::record_runtime_approval,
     ledger::{Ledger, OperatorOverride},
     runtime_requests_dir,
 };
@@ -51,6 +52,15 @@ pub(crate) enum RuntimeRequest {
     OperatorMergeOverride {
         source: String,
         target: String,
+        at: DateTime<Utc>,
+    },
+    /// An operator's one-time merge approval, queued by the TUI and scoped to
+    /// the pull-request head or local branch tip the operator saw. Replaying
+    /// the same serialized request records the same approval after a branch move.
+    MergeApproval {
+        source: String,
+        target: String,
+        head: String,
         at: DateTime<Utc>,
     },
     /// A named-task dispatch requested outside the daemon process — currently
@@ -125,12 +135,11 @@ pub(crate) fn drain_in(
         })
         .collect::<Vec<_>>();
     // Requests apply in filename (nanoid) order, which is NOT chronological.
-    // Every RuntimeRequest variant must therefore be commutative and idempotent
-    // (ResetCircuit zeroes the streak + reaffirms dispatch; PanicEscalate escalates
-    // named workers; MergeCompleted applies nothing at all; RunTask is pulled out
-    // and dispatched once, the same as a `!run` request from Discord) so drain
-    // order never changes the outcome. Preserve that invariant when adding new
-    // variants.
+    // Variants must tolerate replay: most are commutative and idempotent, while
+    // MergeApproval reaffirms the immutable head carried by that serialized
+    // request instead of resolving a possibly newer branch tip. RunTask is
+    // pulled out and dispatched once, the same as a `!run` request from Discord.
+    // Preserve those replay guarantees when adding new variants.
     paths.sort();
 
     let mut config_changed = false;
@@ -196,6 +205,15 @@ pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRe
         RuntimeRequest::MergeCompleted { .. } => false,
         RuntimeRequest::OperatorMergeOverride { target, .. } => {
             grant_operator_override(ledger, &target);
+            false
+        }
+        RuntimeRequest::MergeApproval {
+            source,
+            target,
+            head,
+            ..
+        } => {
+            record_runtime_approval(ledger, &target, &head, &source);
             false
         }
         // `drain_in` pulls this variant out before calling `apply` — see the

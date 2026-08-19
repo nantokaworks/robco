@@ -204,6 +204,7 @@ fn confirm_pr_y_and_n_edit_and_escape_cancels() {
         agent_id: "agent".to_string(),
         branch: "feature/agent".to_string(),
         input: "prompt".into(),
+        approval_head: None,
     };
 
     for code in [KeyCode::Char('y'), KeyCode::Char('n'), KeyCode::Backspace] {

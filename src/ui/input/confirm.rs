@@ -52,10 +52,15 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
                 Ok(())
             })
         }
-        Mode::ConfirmMerge { repo, agent } => {
-            let (repo, agent) = (*repo, *agent);
+        Mode::ConfirmMerge {
+            repo,
+            agent,
+            plan,
+            head,
+        } => {
+            let (repo, agent, plan, head) = (*repo, *agent, *plan, head.clone());
             if confirmed {
-                app.start_merge(repo, agent);
+                app.confirm_land(repo, agent, plan, head);
             } else {
                 app.mode = Mode::Normal;
             }

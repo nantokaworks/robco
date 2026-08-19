@@ -21,6 +21,7 @@ fn app_with_precheck(
         repo_path: "/repo".into(),
         agent_id: "one".into(),
         branch: "feature/one".into(),
+        approval_head: None,
     };
     app.pr_precheck_job = Some(PrPrecheckJob { receiver });
     (app, sender)
@@ -107,6 +108,7 @@ fn late_result_from_canceled_worker_ignored_after_reopen() {
         repo_path: "/repo".into(),
         agent_id: "a".into(),
         branch: "feature/a".into(),
+        approval_head: None,
     };
     app.pr_precheck_job = Some(PrPrecheckJob { receiver: rx_a });
 
@@ -118,6 +120,7 @@ fn late_result_from_canceled_worker_ignored_after_reopen() {
         repo_path: "/repo".into(),
         agent_id: "b".into(),
         branch: "feature/b".into(),
+        approval_head: None,
     };
     app.pr_precheck_job = Some(PrPrecheckJob { receiver: rx_b });
 

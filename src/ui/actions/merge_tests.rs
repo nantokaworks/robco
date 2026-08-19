@@ -128,20 +128,28 @@ fn a_clean_only_run_opens_on_the_first_post_merge_step() {
 #[test]
 fn only_a_merged_pull_request_takes_the_cleanup_path() {
     let cases = [
-        (crate::git::PrState::Open, "confirm merge"),
-        (crate::git::PrState::Merged, "confirm cleanup"),
+        (
+            crate::git::PrState::Open,
+            Some(crate::git::PrCheckView {
+                checks: crate::git::PrChecks::Green,
+                head: "deadbeef".into(),
+            }),
+            "confirm merge",
+        ),
+        (crate::git::PrState::Merged, None, "confirm cleanup"),
         (
             crate::git::PrState::ClosedUnmerged,
+            None,
             "closed without merging",
         ),
-        (crate::git::PrState::Absent, "create a PR first"),
+        (crate::git::PrState::Absent, None, "confirm merge"),
     ];
 
-    for (state, expected) in cases {
+    for (state, checks, expected) in cases {
         let mut app = test_app();
         app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
 
-        app.offer_merge_or_cleanup(state, 0, 0, "feature/wanted");
+        app.offer_land(state, checks, 0, 0, "feature/wanted");
 
         let message = app
             .message
@@ -149,7 +157,7 @@ fn only_a_merged_pull_request_takes_the_cleanup_path() {
             .map(|(message, _)| message.clone())
             .unwrap_or_default();
         match &app.mode {
-            Mode::ConfirmMerge { repo, agent } => {
+            Mode::ConfirmMerge { repo, agent, .. } => {
                 assert_eq!(expected, "confirm merge");
                 assert_eq!((*repo, *agent), (0, 0));
             }
@@ -163,6 +171,48 @@ fn only_a_merged_pull_request_takes_the_cleanup_path() {
             ),
             _ => panic!("{state:?} opened an unrelated dialog"),
         }
+    }
+}
+
+#[test]
+fn a_failed_check_refuses_to_open_a_dialog_and_names_the_check() {
+    let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+
+    app.offer_land(
+        crate::git::PrState::Open,
+        Some(crate::git::PrCheckView {
+            checks: crate::git::PrChecks::Failed(vec!["linux-clippy".into()]),
+            head: "deadbeef".into(),
+        }),
+        0,
+        0,
+        "feature/wanted",
+    );
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(app.message.as_ref().is_some_and(|(message, _)| {
+        message.contains("Nothing was merged") && message.contains("linux-clippy")
+    }));
+}
+
+#[test]
+fn queued_land_plans_refuse_agents_the_overseer_cannot_land() {
+    for (plan, head) in [
+        (crate::ui::LandPlan::QueueApproval, Some("deadbeef".into())),
+        (crate::ui::LandPlan::OpenPrThenQueue, None),
+    ] {
+        let mut app = test_app();
+        app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+
+        app.confirm_land(0, 0, plan, head);
+
+        assert!(matches!(app.mode, Mode::Normal));
+        assert!(app.pr_precheck_job.is_none());
+        assert!(app.message.as_ref().is_some_and(|(message, _)| {
+            message.contains("not one the Overseer daemon can land")
+                && message.contains("merge it directly")
+        }));
     }
 }
 

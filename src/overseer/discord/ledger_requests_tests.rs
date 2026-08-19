@@ -105,9 +105,10 @@ fn approve_resets_an_exhausted_recheck_budget() {
     record_approval(
         &mut ledger_entry,
         "/repo".into(),
-        "https://github.com/acme/widgets/pull/1".into(),
+        Some("https://github.com/acme/widgets/pull/1".into()),
         "user-1".into(),
         "deadbeef".into(),
+        "discord",
     )
     .unwrap();
     assert_eq!(

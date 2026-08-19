@@ -74,7 +74,13 @@ impl App {
         let selected = &repo_node.agents[agent_idx];
         let repo_path = repo_node.path.clone();
         let tmux_session = selected.tmux_session.clone();
-        self.open_pr_dialog_with_precheck(repo_path, target.agent_id, target.branch, tmux_session);
+        self.open_pr_dialog_with_precheck(
+            repo_path,
+            target.agent_id,
+            target.branch,
+            tmux_session,
+            None,
+        );
     }
 
     pub(crate) fn request_pr(
@@ -82,6 +88,7 @@ impl App {
         path: &Path,
         id: &str,
         prompt: &str,
+        approval_head: Option<String>,
         send: impl FnOnce(&str, &str) -> Result<()>,
     ) -> Result<()> {
         let Some((repo, agent_idx)) = resolve_agent(&self.registry.repos, path, id) else {
@@ -98,7 +105,11 @@ impl App {
             self.show_message(err.to_string());
             return Ok(());
         }
-        self.show_message(fmt(self.locale, "PR requested: {}", &[&branch]));
+        if let Some(head) = approval_head {
+            self.queue_merge_approval(id, head, true);
+        } else {
+            self.show_message(fmt(self.locale, "PR requested: {}", &[&branch]));
+        }
         Ok(())
     }
 }

@@ -116,19 +116,34 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             ),
             None,
         ),
-        Mode::ConfirmMerge { repo, agent } => (
-            t(locale, "merge?"),
-            vec![
-                Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
-                Line::from(fmt(
+        Mode::ConfirmMerge {
+            repo, agent, plan, ..
+        } => {
+            let mut lines = vec![Line::from(
+                app.registry.repos[*repo].agents[*agent].branch.clone(),
+            )];
+            if *plan == super::super::LandPlan::MergeNow {
+                lines.push(Line::from(fmt(
                     locale,
                     "strategy: {}",
                     &[app.config.merge_strategy.label()],
-                )),
-                hint_line(locale, "y merge   n/esc cancel"),
-            ],
-            None,
-        ),
+                )));
+            }
+            lines.extend([
+                Line::from(match plan {
+                    super::super::LandPlan::MergeNow => t(locale, "It will merge now"),
+                    super::super::LandPlan::QueueApproval => {
+                        t(locale, "Approval is queued; it will merge once the checks pass")
+                    }
+                    super::super::LandPlan::OpenPrThenQueue => t(
+                        locale,
+                        "It will open a pull request and queue approval; it will merge once the checks pass",
+                    ),
+                }),
+                hint_line(locale, "y land   n/esc cancel"),
+            ]);
+            (t(locale, "land task?"), lines, None)
+        }
         Mode::ConfirmCleanup { repo, agent } => (
             t(locale, "clean up merged PR?"),
             vec![

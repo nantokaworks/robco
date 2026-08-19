@@ -25,11 +25,13 @@ impl App {
         agent_id: String,
         branch: String,
         tmux_session: String,
+        approval_head: Option<String>,
     ) {
         self.mode = Mode::PrPrecheck {
             repo_path: repo_path.clone(),
             agent_id,
             branch: branch.clone(),
+            approval_head,
         };
         self.pr_precheck_job = Some(PrPrecheckJob {
             receiver: spawn(PrPrecheckTarget {
@@ -73,6 +75,7 @@ impl App {
             repo_path,
             agent_id,
             branch,
+            approval_head,
         } = std::mem::replace(&mut self.mode, Mode::Normal)
         else {
             unreachable!("checked above")
@@ -84,6 +87,7 @@ impl App {
                     agent_id,
                     branch,
                     input: self.config.pr_prompt.clone().into(),
+                    approval_head,
                 };
             }
             Err(message) => self.show_message(message),

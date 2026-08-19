@@ -183,13 +183,25 @@ fn a_repo_the_registry_has_not_stored_keeps_its_agents() {
 #[test]
 fn a_dialog_follows_its_agent_across_a_dropped_row() {
     let before = vec![repo("/a/one", vec![agent("cleaned-up"), agent("kept")])];
-    let mut mode = Mode::ConfirmMerge { repo: 0, agent: 1 };
+    let mut mode = Mode::ConfirmMerge {
+        repo: 0,
+        agent: 1,
+        plan: crate::ui::LandPlan::MergeNow,
+        head: None,
+    };
 
     let anchor = dialog_agent(&mode, &before);
     let after = vec![repo("/a/one", vec![agent("kept")])];
     restore_dialog_agent(&mut mode, &after, anchor);
 
-    assert!(matches!(mode, Mode::ConfirmMerge { repo: 0, agent: 0 }));
+    assert!(matches!(
+        mode,
+        Mode::ConfirmMerge {
+            repo: 0,
+            agent: 0,
+            ..
+        }
+    ));
 }
 
 #[test]
