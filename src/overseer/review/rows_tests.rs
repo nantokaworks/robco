@@ -9,6 +9,7 @@ use crate::{
 fn item(target_id: &str, detail: &str, facts: Option<PrFacts>) -> InboxItem {
     InboxItem {
         kind: InboxKind::Escalation,
+        repo: None,
         target_session: None,
         target_id: target_id.into(),
         label: target_id.into(),

@@ -16,6 +16,7 @@ const LONG_REASON: &str = "merge blocked: the base branch has no required status
 fn item(kind: InboxKind, target_id: &str, session: Option<&str>) -> InboxItem {
     InboxItem {
         kind,
+        repo: None,
         target_session: session.map(ToString::to_string),
         target_id: target_id.into(),
         label: format!("{target_id} — {LONG_REASON}"),
@@ -38,6 +39,31 @@ fn inbox_app(items: Vec<InboxItem>) -> App {
 
 fn rendered(lines: &[Line<'static>]) -> Vec<String> {
     lines.iter().map(ToString::to_string).collect()
+}
+
+/// Renders `lines` into a buffer exactly `width` columns wide, the way the
+/// OVERSEER frame's `Paragraph` does — so a row that overflows is clipped by
+/// the widget itself, the same clip an operator's real terminal applies.
+fn rendered_at_width(lines: &[Line<'static>], width: u16) -> Vec<String> {
+    let height = u16::try_from(lines.len()).unwrap();
+    let mut terminal =
+        ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| {
+            frame.render_widget(
+                ratatui::widgets::Paragraph::new(lines.to_vec()),
+                frame.area(),
+            );
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    (0..height)
+        .map(|y| {
+            (0..width)
+                .map(|x| buffer.cell((x, y)).unwrap().symbol())
+                .collect()
+        })
+        .collect()
 }
 
 #[test]
@@ -80,6 +106,74 @@ fn the_category_numerator_equals_the_non_watch_rendered_rows() {
         .filter(|line| !line.contains("WATCH"))
         .count();
     assert_eq!(non_watch_rows, 2);
+}
+
+#[test]
+fn a_row_names_its_repository() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.repo = Some("robco".into());
+    let app = inbox_app(vec![row]);
+    let lines = rendered(&detail_lines(&app));
+
+    assert!(lines[0].contains("[ESC] REVIEW robco #159"), "{lines:?}");
+}
+
+#[test]
+fn a_row_with_no_matching_ledger_entry_still_renders() {
+    // `repo` stays `None` for a decision-sourced row whose ledger lookup
+    // came up empty — the row renders exactly as it did before repositories
+    // were tracked, rather than a blank gap where the name would go.
+    let row = item(InboxKind::Escalation, "#159", None);
+    let app = inbox_app(vec![row]);
+    let lines = rendered(&detail_lines(&app));
+
+    assert!(lines[0].contains("[ESC] REVIEW #159"), "{lines:?}");
+}
+
+/// dropr:478 — with four repositories registered, `#296` alone identifies
+/// nothing; the row's own tag and repository are what tell an operator
+/// whether it is theirs. At the sidebar's narrowest width (24 columns) the
+/// target id is what gives way first.
+#[test]
+fn at_the_narrowest_sidebar_width_the_target_id_gives_way_first() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.repo = Some("robco".into());
+    let app = inbox_app(vec![row]);
+    let lines = detail_lines(&app);
+
+    // At the sidebar's narrowest width the move tag and the repository
+    // still read in full — they are what tell an operator whether the row
+    // is theirs.
+    let narrowest = rendered_at_width(&lines, 24);
+    assert!(narrowest[0].contains("[ESC] REVIEW robco"), "{narrowest:?}");
+
+    // A width too tight even for that drops the target id first, never the
+    // tag or the repository.
+    let narrower = rendered_at_width(&lines, 20);
+    assert!(narrower[0].contains("REVIEW robco"), "{narrower:?}");
+    assert!(!narrower[0].contains("#159"), "{narrower:?}");
+}
+
+#[test]
+fn the_preview_shows_the_repository_spelled_out() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.repo = Some("robco".into());
+    let app = inbox_app(vec![row]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(body.contains("repo: robco"), "{body}");
+}
+
+#[test]
+fn the_preview_omits_repo_when_the_row_has_none() {
+    let app = inbox_app(vec![item(InboxKind::Escalation, "#159", None)]);
+
+    let (_, text) = item_preview(&app, 0);
+    let body = rendered(&text.lines).join("\n");
+
+    assert!(!body.contains("repo:"), "{body}");
 }
 
 #[test]

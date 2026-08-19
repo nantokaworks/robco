@@ -17,6 +17,7 @@ fn at(second: u32) -> DateTime<Utc> {
 fn item(kind: InboxKind, target_id: &str, second: u32) -> InboxItem {
     InboxItem {
         kind,
+        repo: None,
         target_session: None,
         target_id: target_id.into(),
         label: format!("{target_id} — escalated"),

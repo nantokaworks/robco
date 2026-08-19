@@ -135,6 +135,7 @@ fn inbox_prompt_caret_tracks_a_mid_string_cursor() {
         Mode::PromptInbox {
             item: crate::ui::inbox::InboxItem {
                 kind: crate::ui::inbox::InboxKind::Escalation,
+                repo: None,
                 target_session: Some("robco-agent".to_string()),
                 target_id: "agent".to_string(),
                 label: "agent — worker".to_string(),
