@@ -99,12 +99,13 @@ pub(crate) fn start_service() -> Result<()> {
     )
 }
 
-/// Bootout then bootstrap the loaded service. Callers only reach this once
+/// Bootout then bootstrap the loaded service, refusing to bootstrap onto a
+/// daemon that has not actually exited and confirming a new one took its
+/// place afterward (dropr:483). Callers only reach this once
 /// [`service_state`] has already reported [`ServiceState::Loaded`].
 #[cfg(target_os = "macos")]
 pub(crate) fn restart_service() -> Result<()> {
-    control::bootout()?;
-    control::bootstrap()
+    control::restart()
 }
 
 #[cfg(not(target_os = "macos"))]
