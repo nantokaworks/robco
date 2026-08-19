@@ -250,6 +250,32 @@ fn a_dismissed_item_is_filtered_out_but_still_counts_as_a_live_target() {
     );
 }
 
+/// dropr:486 — once the task behind a decision-log escalation has merged,
+/// the row has nothing left for the operator to do, so it must not come back.
+#[test]
+fn an_escalation_for_a_merged_task_is_dropped() {
+    let mut ledger = escalated_ledger();
+    ledger.entries[0].phase = LedgerPhase::Merged;
+
+    let items = items(&ledger, &[escalation("needs user", 2)], &[]);
+
+    assert!(items.is_empty());
+}
+
+/// dropr:486 — `Failed` and `Escalated` are terminal too, but neither one
+/// means the work landed, so the row must keep showing.
+#[test]
+fn an_escalation_for_a_failed_or_escalated_task_still_shows() {
+    for phase in [LedgerPhase::Failed, LedgerPhase::Escalated] {
+        let mut ledger = escalated_ledger();
+        ledger.entries[0].phase = phase;
+
+        let items = items(&ledger, &[escalation("needs user", 2)], &[]);
+
+        assert_eq!(items.len(), 1);
+    }
+}
+
 #[test]
 fn a_newer_escalation_for_a_dismissed_target_comes_back() {
     let mut dismissals = Dismissals::default();
