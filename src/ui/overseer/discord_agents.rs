@@ -14,10 +14,19 @@ use crate::{
 
 use super::super::App;
 use crate::ui::theme::DEFAULT as THEME;
+use crate::ui::tree::indicator::{self, IndicatorState, select, select_supplementary};
 
 /// The separator between a channel's label and its status column, matching
 /// the gap `overseer_frame`'s category and control-AI rows use.
 const GAP: &str = "  ";
+
+/// The primary indicator's own column width for a channel row — one cell,
+/// the same width `control_ai_line` and `category_indicator` reserve for
+/// their own single-glyph indicators in this same narrow OVERSEER sidebar.
+/// A PROJECTS agent row reserves up to two cells (`label::labeled_row`)
+/// because it shares that budget with a wider pane; the glyph and its style
+/// are what the shared vocabulary owns and keeps identical, not the padding.
+const INDICATOR_WIDTH: usize = 1;
 
 /// Channel ids in the order their rows render, newest activity first — the
 /// same order [`Selection::DiscordChannel`] indexes into. A pure function of
@@ -56,6 +65,7 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
             agent,
             selected == Some(index),
             app.locale,
+            app.started.elapsed(),
         ));
         if let Some(error) = &agent.last_error {
             lines.push(Line::styled(
@@ -67,11 +77,21 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
+/// Built the way `overseer_frame::control_ai_line` builds the control AI
+/// row: an `IndicatorState` mapped from the channel's own status, handed to
+/// the shared `indicator::primary_span` / `supplementary_spans` so a
+/// channel row carries the same glyph vocabulary, precedence, running
+/// animation, and selection inversion as every PROJECTS row. Turn count and
+/// last-activity age stay — they are this row's own content, not part of
+/// the shared vocabulary — but they render after the indicator's own spans
+/// rather than before, the position `repo_row`/`tree`'s agent row place
+/// their own supplementary content.
 fn channel_line(
     label: &str,
     agent: &ChannelAgent,
     selected: bool,
     locale: Locale,
+    elapsed: std::time::Duration,
 ) -> Line<'static> {
     let marker = if selected { ">" } else { " " };
     let row_style = if selected {
@@ -84,23 +104,34 @@ fn channel_line(
         ChannelAgentStatus::Idle => Status::Idle,
         ChannelAgentStatus::Failed => Status::Dead,
     };
-    let status_style = if selected {
+    let indicator_state = IndicatorState::with_status(Some(status));
+    let primary = select(indicator_state);
+    let mut spans = vec![
+        Span::styled(format!("{marker}   {label}{GAP}"), row_style),
+        indicator::primary_span(primary, selected, elapsed, INDICATOR_WIDTH),
+    ];
+    let mut right = indicator::supplementary_spans(
+        primary,
+        select_supplementary(indicator_state),
+        selected,
+        GAP,
+    );
+    let value_style = if selected {
         THEME.selection_style()
     } else {
         THEME.status_style(status)
     };
-    Line::from(vec![
-        Span::styled(format!("{marker}   {label}{GAP}"), row_style),
-        Span::styled(
-            format!(
-                "{} · {}t · {}",
-                status.badge(),
-                agent.turn_count,
-                relative_age(locale, agent.last_active_at)
-            ),
-            status_style,
+    let prefix = if right.is_empty() { GAP } else { " " };
+    right.push(Span::styled(
+        format!(
+            "{prefix}{}t · {}",
+            agent.turn_count,
+            relative_age(locale, agent.last_active_at)
         ),
-    ])
+        value_style,
+    ));
+    spans.extend(right);
+    Line::from(spans)
 }
 
 /// The Discord channel row's own preview: its retained conversation turns,

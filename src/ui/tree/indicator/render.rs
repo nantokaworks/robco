@@ -5,7 +5,7 @@ use crate::{model::Status, ui::theme::DEFAULT as THEME};
 use super::{Indicator, SupplementaryIndicators};
 use crate::ui::tree::label;
 
-pub(in crate::ui::tree) fn primary_span(
+pub(in crate::ui) fn primary_span(
     indicator: Option<Indicator>,
     selected: bool,
     elapsed: std::time::Duration,
@@ -47,7 +47,7 @@ pub(in crate::ui::tree) fn primary_span(
     Span::styled(label::pad_to_width(&glyph, width), style)
 }
 
-pub(in crate::ui::tree) fn supplementary_spans(
+pub(in crate::ui) fn supplementary_spans(
     indicator: Option<Indicator>,
     supplementary: SupplementaryIndicators,
     selected: bool,

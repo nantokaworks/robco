@@ -94,8 +94,76 @@ fn a_failed_channel_renders_its_error_on_the_next_line() {
     let app = app_with_channels(channels);
     let lines = detail_lines(&app);
     assert_eq!(lines.len(), 2);
-    assert!(text_of(&lines[0]).contains("dead"));
+    assert!(text_of(&lines[0]).contains(Status::Dead.glyph()));
     assert!(text_of(&lines[1]).contains("session timed out"));
+}
+
+#[test]
+fn a_running_channel_shows_the_same_animated_glyph_an_agent_row_shows() {
+    // The animated spinner frames `crate::ui::spinner::frame` cycles through
+    // for `Indicator::Running` — the same set an agent row's running glyph
+    // draws from. Listed here rather than read via elapsed-time equality so
+    // the test is not racing the clock against `detail_lines`' own call to
+    // `app.started.elapsed()`.
+    const SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+    let mut channels = DiscordChannels::default();
+    channels
+        .channels
+        .insert("c1".into(), agent(ChannelAgentStatus::Running, 4, 0));
+
+    let app = app_with_channels(channels);
+    let lines = detail_lines(&app);
+    let glyph = lines[0].spans[1].content.trim().to_string();
+    assert!(
+        SPINNER_FRAMES.contains(&glyph.as_str()),
+        "expected an animated spinner frame, got {glyph:?}"
+    );
+    // The animated frame, never the static glyph a non-animated fallback
+    // would show for the same status.
+    assert_ne!(glyph, Status::Running.glyph());
+}
+
+#[test]
+fn turn_count_and_last_activity_age_are_still_visible() {
+    let mut channels = DiscordChannels::default();
+    channels
+        .channels
+        .insert("c1".into(), agent(ChannelAgentStatus::Idle, 7, 5));
+
+    let app = app_with_channels(channels);
+    let lines = detail_lines(&app);
+    let text = text_of(&lines[0]);
+    assert!(text.contains("7t"));
+    assert!(text.contains("5m ago"));
+}
+
+#[test]
+fn a_discord_row_and_an_agent_row_in_the_same_state_produce_the_same_primary_span() {
+    // What an unadorned PROJECTS agent row computes for a plain-status row
+    // (`tree.rs`'s `Selection::Agent` arm, before its own optional flags —
+    // merging, worktree_missing, and the like — are layered on top): build
+    // an `IndicatorState` from the status alone, then hand it to
+    // `select`/`primary_span`. A channel row must resolve to the identical
+    // glyph and style for the identical status.
+    let elapsed = std::time::Duration::ZERO;
+    let expected = indicator::primary_span(
+        select(IndicatorState::with_status(Some(Status::Idle))),
+        false,
+        elapsed,
+        INDICATOR_WIDTH,
+    );
+
+    let mut channels = DiscordChannels::default();
+    channels
+        .channels
+        .insert("c1".into(), agent(ChannelAgentStatus::Idle, 1, 1));
+    let app = app_with_channels(channels);
+    let lines = detail_lines(&app);
+    let actual = &lines[0].spans[1];
+
+    assert_eq!(actual.content.trim(), expected.content.trim());
+    assert_eq!(actual.style, expected.style);
 }
 
 fn text_of(line: &Line<'static>) -> String {
