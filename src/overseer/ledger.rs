@@ -250,7 +250,11 @@ impl Ledger {
         }
     }
 
-    fn save_to(&self, path: &Path) -> Result<()> {
+    /// Exposed beyond `save`/`load`'s fixed `ledger_path()` so a caller that
+    /// already holds an explicit path — currently `runtime_request::drain_in`,
+    /// checkpointing an applied request before its file is acked — can persist
+    /// through the same atomic write without a second writer touching the file.
+    pub(crate) fn save_to(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
