@@ -13,7 +13,7 @@ mod writes;
 
 pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
 pub use dependency::blocking_prerequisite_timeout;
-pub use lineage::{Subtask, fetch_parents, fetch_subtasks};
+pub use lineage::{Subtask, fetch_subtasks};
 pub use repo_tasks::{DroprTaskFetch, FETCH_BUDGET, TASK_FETCH_LIMIT};
 pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
 pub use writes::{WriteError, WriteResult};

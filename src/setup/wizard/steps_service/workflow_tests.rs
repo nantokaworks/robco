@@ -114,27 +114,21 @@ fn declining_the_load_prompt_writes_the_plist_without_bootstrapping() {
 }
 
 #[test]
-fn dispatch_without_a_loaded_service_warns_with_the_recovery_commands() {
+fn an_unloaded_service_warns_with_the_recovery_commands() {
     let mut output = Vec::new();
-    warn_if_service_down_with(&mut output, true, || ServiceState::Unloaded).unwrap();
+    warn_if_service_down_with(&mut output, || ServiceState::Unloaded).unwrap();
     let warning = String::from_utf8(output).unwrap();
 
     assert!(warning.contains("WARNING"));
-    assert!(warning.contains(crate::overseer::DISPATCH_WITHOUT_DAEMON_HINT));
+    assert!(warning.contains("robco overseer run"));
 }
 
 #[test]
-fn loaded_service_or_disabled_dispatch_stays_quiet() {
-    for (dispatch_enabled, state) in [
-        (true, ServiceState::Loaded),
-        (false, ServiceState::Unloaded),
-        (false, ServiceState::NotInstalled),
-    ] {
-        let mut output = Vec::new();
-        warn_if_service_down_with(&mut output, dispatch_enabled, || state).unwrap();
+fn a_loaded_service_stays_quiet() {
+    let mut output = Vec::new();
+    warn_if_service_down_with(&mut output, || ServiceState::Loaded).unwrap();
 
-        assert!(output.is_empty(), "{dispatch_enabled} / {state:?} warned");
-    }
+    assert!(output.is_empty());
 }
 
 #[test]

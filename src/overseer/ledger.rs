@@ -149,28 +149,13 @@ pub struct Ledger {
     /// Repositories waiting on a post-merge fast-forward, keyed by repository
     /// path. Defaulted so ledgers written before the field existed still load.
     pub merge_settling: BTreeMap<String, MergeSettling>,
-    /// Consecutive spawn failures per dispatch candidate, keyed by
-    /// `Candidate::task_id`. Its own budget, separate from
-    /// `counters.consecutive_failures`: that counter is shared with the
-    /// worker-monitor and merge subsystems and resets on any unrelated merge
-    /// landing anywhere in the registry, which is exactly why a single
-    /// repeatedly-failing dispatch candidate never tripped it while other
-    /// repositories kept dispatching successfully (dropr:_ord_VtFSIiLgWpgmDAGm).
-    /// Bounded by `overseer.failure_circuit_threshold`, the same threshold the
-    /// global circuit uses, but reaching it moves only the offending candidate
-    /// onto `skip_list` — dispatch stays enabled for every other repository and
-    /// `dispatch_enabled` is never touched. Cleared on a successful spawn and
-    /// once a candidate trips its budget (a candidate later removed from
-    /// `skip_list` by an operator starts its budget over).
-    pub dispatch_failure_streaks: BTreeMap<String, u32>,
-    /// Consecutive dispatch passes one candidate has been held on
-    /// `branch_exists`, keyed by `Candidate::task_id`. A left-over branch is
-    /// not a transient state — only an operator removing it, or the worker
-    /// that owns it finishing, clears it — so this bounds the hold the same
-    /// way `dispatch_failure_streaks` bounds a repeatedly failing spawn:
+    /// Consecutive named launches one task has been held on `branch_exists`,
+    /// keyed by `Candidate::task_id`. A left-over branch is not a transient
+    /// state — only an operator removing it, or the worker that owns it
+    /// finishing, clears it — so this bounds the hold:
     /// `dispatch::worker::MAX_BRANCH_EXISTS_HOLDS` escalates the candidate
     /// once spent rather than holding it forever. Cleared the moment the
-    /// branch conflict clears, so a branch the operator deletes dispatches
+    /// branch conflict clears, so a branch the operator deletes launches
     /// again with a fresh count.
     pub branch_exists_holds: BTreeMap<String, u32>,
 }

@@ -153,18 +153,14 @@ enum Mode {
     ConfirmKillOrphan {
         session: String,
     },
-    // Panic-stop the overseer: disable dispatch and kill every overseer-managed
-    // worker. Reachable only while an OVERSEER row is selected.
+    // Panic-stop the overseer: kill every overseer-managed worker. Reachable
+    // only while an OVERSEER row is selected.
     ConfirmOverseerPanic,
-    /// Reset the overseer dispatch circuit: re-enable dispatch and clear the
-    /// failure counter. Reachable only while the overseer panel is visible and
-    /// the circuit is open.
-    ConfirmOverseerReset,
     /// Durably stop the Overseer daemon process itself (launchd bootout, or a
     /// manual SIGTERM for a daemon started with `robco overseer run`) — unlike
-    /// `ConfirmOverseerPanic`, this ends the daemon process, not just dispatch
-    /// and its workers. Reachable only while the overseer panel is visible and
-    /// the daemon is alive.
+    /// `ConfirmOverseerPanic`, this ends the daemon process, not just its
+    /// workers. Reachable only while the overseer panel is visible and the
+    /// daemon is alive.
     ConfirmDaemonStop,
     /// Clear every listed Inbox row. Holds the count the dialog was opened with
     /// so the prompt states what it is about to do; the rows themselves are read

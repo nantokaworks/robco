@@ -79,18 +79,6 @@ fn parses_overseer_clear_inbox() {
 }
 
 #[test]
-fn parses_overseer_daily_limit() {
-    let args = Args::try_parse_from(["robco", "overseer", "daily-limit", "42"]).unwrap();
-    let Some(Command::Overseer(args)) = args.command else {
-        panic!("expected overseer")
-    };
-    let OverseerCommand::DailyLimit(args) = args.command else {
-        panic!("expected daily-limit")
-    };
-    assert_eq!(args.value, 42);
-}
-
-#[test]
 fn parses_overseer_protection_modes() {
     for (argument, expected) in [
         ("required", ProtectionMode::Required),

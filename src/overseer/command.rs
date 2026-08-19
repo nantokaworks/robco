@@ -28,7 +28,7 @@ use inbox::clear_inbox;
 pub(crate) use service::write_service_plist;
 use service::{ServiceState, StopOutcome, install_service, service_state};
 pub(crate) use settings::set_runtime;
-use settings::{autonomy_level, daily_limit, notify_channel, protection_mode, set};
+use settings::{autonomy_level, notify_channel, protection_mode, set};
 use status::status;
 
 #[cfg(target_os = "macos")]
@@ -44,8 +44,7 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
         OverseerCommand::Stop => stop(),
         OverseerCommand::Start => start(),
         OverseerCommand::Restart => restart(),
-        OverseerCommand::Set(args) => set(config, args.setting, args.value.enabled()),
-        OverseerCommand::DailyLimit(args) => daily_limit(args.value),
+        OverseerCommand::Set(args) => set(args.setting, args.value.enabled()),
         OverseerCommand::NotifyChannel(args) => {
             notify_channel(if args.clear { None } else { args.channel_id })
         }
@@ -227,9 +226,6 @@ fn panic_stop() -> Result<()> {
 }
 
 pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Result<()> {
-    let mut config = Config::load()?;
-    config.overseer.dispatch_enabled = false;
-    config.save()?;
     let registry = Registry::load()?;
     let mut killed_ids = HashSet::new();
     for agent in registry
@@ -249,10 +245,7 @@ pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Resu
         agent_ids: killed_ids.into_iter().collect(),
         at: chrono::Utc::now(),
     })?;
-    let mut entry = DecisionEntry::new(
-        DecisionKind::Escalate,
-        "panic stop: dispatch disabled and workers terminated",
-    );
+    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "panic stop: workers terminated");
     entry.source = Some(source.into());
     entry.user_id = user_id.map(str::to_owned);
     logging::append(&entry)?;

@@ -2,7 +2,6 @@ use super::*;
 
 #[derive(Default)]
 struct FakeExecutor {
-    dispatch: bool,
     worker_stop_requested: bool,
     calls: Vec<(Command, String)>,
     audits: Vec<(String, String)>,
@@ -13,12 +12,10 @@ impl CommandExecutor for FakeExecutor {
         self.calls.push((command.clone(), user_id.into()));
         self.audits.push(("discord".into(), user_id.into()));
         match command {
-            Command::Dispatch(enabled) => self.dispatch = *enabled,
             Command::AutoMerge(true) => {
                 return Err("refused: automerge can only be enabled via the local CLI".into());
             }
             Command::Panic => {
-                self.dispatch = false;
                 self.worker_stop_requested = true;
             }
             _ => {}
@@ -90,7 +87,7 @@ fn action_rate_limit_blocks_after_threshold() {
     let mut handler = handler(2, 60);
     let mut executor = FakeExecutor::default();
     assert_eq!(
-        handler.handle("10", "20", "!dispatch off", 1, &mut executor),
+        handler.handle("10", "20", "!automerge off", 1, &mut executor),
         Some("ok".into())
     );
     assert_eq!(
@@ -98,25 +95,21 @@ fn action_rate_limit_blocks_after_threshold() {
         Some("ok".into())
     );
     assert_eq!(
-        handler.handle("10", "20", "!dispatch off", 3, &mut executor),
+        handler.handle("10", "20", "!automerge off", 3, &mut executor),
         Some("rate limit exceeded; try again later".into())
     );
     assert_eq!(executor.calls.len(), 2);
 }
 
 #[test]
-fn panic_disables_dispatch_requests_stop_and_audits_identity() {
+fn panic_requests_worker_stop_and_audits_identity() {
     let mut handler = handler(10, 60);
-    let mut executor = FakeExecutor {
-        dispatch: true,
-        ..FakeExecutor::default()
-    };
+    let mut executor = FakeExecutor::default();
     let prompt = handler
         .handle("10", "20", "!panic", 1, &mut executor)
         .unwrap();
     let code = confirmation_code(&prompt);
     handler.handle("10", "20", &format!("CONFIRM {code}"), 2, &mut executor);
-    assert!(!executor.dispatch);
     assert!(executor.worker_stop_requested);
     assert_eq!(executor.audits, [("discord".into(), "20".into())]);
 }
@@ -130,32 +123,6 @@ fn confirmation_code(prompt: &str) -> &str {
 }
 
 #[test]
-fn dispatch_off_is_visible_to_subsequent_config_read() {
-    let mut handler = handler(10, 60);
-    let mut executor = FakeExecutor {
-        dispatch: true,
-        ..FakeExecutor::default()
-    };
-    handler.handle("10", "20", "!dispatch off", 1, &mut executor);
-    assert!(!executor.dispatch);
-}
-
-#[test]
-fn dispatch_on_requires_confirmation_but_off_is_immediate() {
-    let mut handler = handler(10, 60);
-    let mut executor = FakeExecutor::default();
-    let prompt = handler
-        .handle("10", "20", "!dispatch on", 1, &mut executor)
-        .unwrap();
-    assert!(prompt.starts_with("Confirm: dispatch on — reply `CONFIRM "));
-    assert!(executor.calls.is_empty());
-    assert_eq!(
-        handler.handle("10", "20", "!dispatch off", 2, &mut executor),
-        Some("ok".into())
-    );
-}
-
-#[test]
 fn every_risk_increasing_mutation_requires_confirmation() {
     for message in [
         "!kill worker",
@@ -164,7 +131,6 @@ fn every_risk_increasing_mutation_requires_confirmation() {
         "!skip task",
         "!approve worker",
         "!answer worker proceed",
-        "!dispatch on",
         "!merge task",
     ] {
         let mut handler = handler(10, 60);

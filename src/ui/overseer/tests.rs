@@ -170,26 +170,17 @@ fn flags_line_joins_and_reds_warnings() {
 }
 
 #[test]
-fn status_stops_animating_when_dispatch_off_but_daemon_alive() {
-    // Regression for #172: after the `S` panic-stop the daemon stays alive
-    // while dispatch flips off. The OVERSEER row must render a static glyph
-    // instead of the `Running` spinner that keeps animating forever.
-    // Daemon dead -> Dead regardless of dispatch.
+fn status_tracks_daemon_liveness_only() {
+    // The daemon always has work to do now — merge polling, Discord/MCP
+    // commands, worker monitoring — so status is a plain alive/dead read.
     let mut snapshot = OverseerSnapshot {
         daemon_alive: false,
         ..Default::default()
     };
-    snapshot.overseer.dispatch_enabled = true;
     assert_eq!(snapshot.status(), Status::Dead);
 
-    // Daemon alive + dispatch on -> Running (animated spinner).
     snapshot.daemon_alive = true;
-    snapshot.overseer.dispatch_enabled = true;
     assert_eq!(snapshot.status(), Status::Running);
-
-    // Daemon alive + dispatch off -> Idle (static, non-animated).
-    snapshot.overseer.dispatch_enabled = false;
-    assert_eq!(snapshot.status(), Status::Idle);
 }
 
 #[test]
@@ -216,68 +207,6 @@ fn stale_heartbeat_is_not_fresh() {
 }
 
 #[test]
-fn open_circuit_shows_recovery_hint() {
-    let config = OverseerConfig {
-        failure_circuit_threshold: 3,
-        ..OverseerConfig::default()
-    };
-
-    // Exactly at the threshold the circuit is open — pin the equality boundary
-    // so a `>=` -> `>` regression is caught here too.
-    let mut open = Ledger::default();
-    open.counters.consecutive_failures = 3;
-    let mut lines = Vec::new();
-    super::render::append_health(
-        &mut lines,
-        &config,
-        &open,
-        false,
-        None,
-        None,
-        None,
-        Locale::En,
-    );
-    let rendered = lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-    assert!(rendered.contains("circuit: OPEN"));
-    assert!(rendered.contains("[R]"));
-    assert!(rendered.contains("robco overseer set dispatch on"));
-    assert_eq!(
-        lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .find(|span| span.content == "OPEN")
-            .unwrap()
-            .style
-            .fg,
-        Some(Color::Red)
-    );
-
-    let mut closed = Ledger::default();
-    closed.counters.consecutive_failures = 2;
-    let mut lines = Vec::new();
-    super::render::append_health(
-        &mut lines,
-        &config,
-        &closed,
-        false,
-        None,
-        None,
-        None,
-        Locale::En,
-    );
-    let rendered = lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-    assert!(!rendered.contains("robco overseer set dispatch on"));
-}
-
-#[test]
 fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelope() {
     let render = |autonomy_level, auto_merge| {
         let config = OverseerConfig {
@@ -286,16 +215,7 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
             ..OverseerConfig::default()
         };
         let mut lines = Vec::new();
-        super::render::append_health(
-            &mut lines,
-            &config,
-            &Ledger::default(),
-            true,
-            None,
-            None,
-            None,
-            Locale::En,
-        );
+        super::render::append_health(&mut lines, &config, true, None, None, None, Locale::En);
         lines
             .iter()
             .flat_map(|line| line.spans.iter())
@@ -333,16 +253,7 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
         auto_merge: true,
         ..OverseerConfig::default()
     };
-    super::render::append_health(
-        &mut lines,
-        &config,
-        &Ledger::default(),
-        true,
-        None,
-        None,
-        None,
-        Locale::En,
-    );
+    super::render::append_health(&mut lines, &config, true, None, None, None, Locale::En);
     assert_eq!(
         lines
             .iter()
@@ -356,36 +267,18 @@ fn health_flags_show_the_autonomy_level_and_warn_only_when_it_widens_the_envelop
 }
 
 #[test]
-fn health_summary_keeps_all_critical_badges() {
-    let config = OverseerConfig {
-        dispatch_enabled: true,
-        failure_circuit_threshold: 2,
-        ..OverseerConfig::default()
-    };
-    let mut ledger = Ledger::default();
-    ledger.counters.consecutive_failures = 2;
-    let (summary, warn) = super::categories::health_summary_from(&config, &ledger, false, false);
+fn health_summary_keeps_the_offline_badge() {
+    let (summary, warn) = super::categories::health_summary_from(false, false);
 
     assert!(warn);
     assert!(summary.contains("STALE/OFFLINE"));
-    assert!(summary.contains("circuit OPEN"));
-    assert!(summary.contains("dispatch/no daemon"));
 }
 
 #[test]
 fn health_frame_shows_merge_recovery_and_flags_it_when_it_cannot_fire() {
     let rendered = |config: &OverseerConfig| {
         let mut lines = Vec::new();
-        super::render::append_health(
-            &mut lines,
-            config,
-            &Ledger::default(),
-            true,
-            None,
-            None,
-            None,
-            Locale::En,
-        );
+        super::render::append_health(&mut lines, config, true, None, None, None, Locale::En);
         lines
     };
     let text = |lines: &[ratatui::text::Line<'static>]| {
@@ -431,7 +324,6 @@ fn health_frame_reports_the_build_the_daemon_started_from() {
     super::render::append_health(
         &mut lines,
         &OverseerConfig::default(),
-        &Ledger::default(),
         true,
         None,
         Some("0.1.66"),
@@ -464,7 +356,6 @@ fn health_frame_flags_a_daemon_running_another_build() {
     super::render::append_health(
         &mut lines,
         &OverseerConfig::default(),
-        &Ledger::default(),
         true,
         None,
         Some("0.1.66"),
@@ -501,7 +392,6 @@ fn a_heartbeat_without_a_build_still_renders_the_health_frame() {
     super::render::append_health(
         &mut lines,
         &OverseerConfig::default(),
-        &Ledger::default(),
         true,
         None,
         None,
@@ -519,12 +409,7 @@ fn a_heartbeat_without_a_build_still_renders_the_health_frame() {
 
 #[test]
 fn a_stale_build_is_badged_in_the_health_summary() {
-    let (summary, warn) = super::categories::health_summary_from(
-        &OverseerConfig::default(),
-        &Ledger::default(),
-        true,
-        true,
-    );
+    let (summary, warn) = super::categories::health_summary_from(true, true);
 
     assert!(warn);
     assert!(
@@ -556,19 +441,19 @@ fn category_text(app: &App, category: OverseerCategory) -> String {
 }
 
 #[test]
-fn info_pane_reads_dispatch_from_snapshot_not_stale_config() {
+fn info_pane_reads_auto_merge_from_snapshot_not_stale_config() {
     // Regression for #171: the Info pane must render overseer flags from the
     // disk-backed snapshot, not the in-memory `app.config` that only the `,`
-    // settings editor refreshes. Simulate an `S` panic-stop landing on disk
-    // (snapshot reloaded → dispatch off) while `app.config` is still stale "on".
+    // settings editor refreshes. Simulate an external edit landing on disk
+    // (snapshot reloaded → auto-merge on) while `app.config` is still stale "off".
     let mut app = test_app();
-    app.config.overseer.dispatch_enabled = true;
-    app.overseer_snapshot.overseer.dispatch_enabled = false;
+    app.config.overseer.auto_merge = false;
+    app.overseer_snapshot.overseer.auto_merge = true;
 
     let rendered = category_text(&app, OverseerCategory::Health);
 
-    assert!(rendered.contains("dispatch: off"));
-    assert!(!rendered.contains("dispatch: on"));
+    assert!(rendered.contains("auto-merge: on"));
+    assert!(!rendered.contains("auto-merge: off"));
 }
 
 #[test]
@@ -655,34 +540,10 @@ fn every_category_has_summary_detail_and_preview() {
 }
 
 #[test]
-fn stale_dispatch_counter_renders_zero() {
-    let today = Utc::now().date_naive();
-    let mut ledger = Ledger::default();
-    ledger.counters.date = today.pred_opt();
-    ledger.counters.dispatched_today = 7;
-    let mut lines = Vec::new();
-    append_ledger(
-        &mut lines,
-        &OverseerConfig::default(),
-        &ledger,
-        &[],
-        &[],
-        &Registry::default(),
-    );
-    let rendered = lines[0]
-        .spans
-        .iter()
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-    assert!(rendered.starts_with("dispatches: 0 / "));
-}
-
-#[test]
 fn empty_ledger_hides_empty_detail_lines() {
     let mut lines = Vec::new();
     append_ledger(
         &mut lines,
-        &OverseerConfig::default(),
         &Ledger::default(),
         &[],
         &[],
@@ -762,14 +623,7 @@ fn active_phases_excludes_terminal_entries() {
         ..Ledger::default()
     };
     let mut lines = Vec::new();
-    append_ledger(
-        &mut lines,
-        &OverseerConfig::default(),
-        &ledger,
-        &[],
-        &[],
-        &Registry::default(),
-    );
+    append_ledger(&mut lines, &ledger, &[], &[], &Registry::default());
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -821,14 +675,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
         repos: vec![repo],
     };
     let mut lines = Vec::new();
-    append_ledger(
-        &mut lines,
-        &OverseerConfig::default(),
-        &ledger,
-        &[],
-        &[],
-        &registry,
-    );
+    append_ledger(&mut lines, &ledger, &[], &[], &registry);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -880,14 +727,7 @@ fn primary_holder_names_the_repo_and_the_task() {
         repos: vec![repo],
     };
     let mut lines = Vec::new();
-    append_ledger(
-        &mut lines,
-        &OverseerConfig::default(),
-        &ledger,
-        &[],
-        &[],
-        &registry,
-    );
+    append_ledger(&mut lines, &ledger, &[], &[], &registry);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())

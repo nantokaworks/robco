@@ -5,7 +5,6 @@ use crate::{Result, config::Config, tmux};
 pub mod autonomy;
 pub mod command;
 pub mod config;
-pub(crate) mod config_write;
 pub mod daemon;
 pub(crate) mod daily;
 pub mod discord;
@@ -66,21 +65,6 @@ pub fn ensure_control_session(config: &Config, cwd: &Path) -> Result<String> {
     }
     Ok(session)
 }
-
-/// Shown when dispatch is enabled but the Overseer daemon is not running: the
-/// toggle is on yet no poll loop consumes ready tasks, so name the two
-/// supported ways to start the daemon.
-pub const DISPATCH_WITHOUT_DAEMON_HINT: &str = "dispatch is on but the Overseer daemon is not running — no tasks will be dispatched. Start it with `robco overseer run`, or install the always-on service with `robco overseer install-service`.";
-
-/// Shown after an operator stops dispatch while leaving the daemon alive.
-pub const DISPATCH_STOPPED_HINT: &str =
-    "dispatch is off — overseer is stopped; press S here to turn dispatch back on";
-
-/// Shown when the failure circuit has latched dispatch off after repeated worker
-/// failures. The circuit disables dispatch and persists it, so the state
-/// survives restarts; name the one recovery command, which also clears the
-/// consecutive-failure counter.
-pub const CIRCUIT_OPEN_HINT: &str = "dispatch circuit is open after repeated worker failures — dispatch stays disabled until you reset it: press [R] here, or run `robco overseer set dispatch on` (re-enables dispatch and clears the failure counter).";
 
 /// Shown while the merge envelope runs under `full_auto`. It names the risks the
 /// widened level stops escalating, so the reader can tell a deliberately widened

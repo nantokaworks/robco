@@ -1,9 +1,11 @@
 # 11 — Overseer Agent
 
-Overseer is RobCo's local autonomous control system for dispatching ready dropr tasks,
-supervising their workers, triaging exceptions, and optionally merging protected pull
-requests. It is deliberately split so that polling and policy stay deterministic while
-LLMs are used only for bounded judgment calls.
+Overseer is RobCo's local autonomous control system for launching an operator-named dropr
+task, supervising its workers, triaging exceptions, and optionally merging protected pull
+requests. Overseer does not choose its own work: the operator picks a task — from Discord's
+`!run`, MCP, or the TUI's `Enter` on a dropr task row — and the daemon executes and
+serializes it. It is deliberately split so that policy stays deterministic while LLMs are
+used only for bounded judgment calls.
 
 ## Architecture
 
@@ -23,59 +25,45 @@ poll then performs the same ordered pass:
    question put to an operator, and the answer is often the merge itself. The
    observation is appended to `~/.robco/overseer/observations.jsonl`. Separately, each
    watched repository's open pull requests are listed and diffed against the ledger, so
-   ones Overseer never dispatched (a Dependabot bump, a human's own branch) still surface
+   ones Overseer never launched (a Dependabot bump, a human's own branch) still surface
    in the TUI's repository INFO pane instead of staying invisible. This listing backs off
    per repository — five minutes between re-lists — rather than running every poll, and
    is cached in `~/.robco/overseer/other_prs.json`, kept apart from the ledger since it
-   records nothing Overseer dispatched.
+   records nothing Overseer launched.
 3. Reconcile those facts with `~/.robco/overseer/ledger.json`. The monitor drops entries
    for workers that are no longer Overseer children, advances phases, detects dead or
    stuck workers, escalates released task locks, and cleans up merged workers.
 4. Queue and poll exception triage, execute deterministic monitor actions, run the
-   auto-merge gate, and dispatch eligible ready tasks.
+   auto-merge gate, and launch any operator-named tasks queued since the last pass.
 5. Drop the settled ledger entries that fall outside the retention window, then
    atomically save the ledger, acknowledge completed triage and inbox work, write the
    heartbeat, and wait for the remainder of `poll_interval_secs`.
 
 That wait also ends early when another process enqueues a runtime request: enqueuing
-signals the pid in the daemon pidfile, so an operator toggle such as
-`robco overseer set dispatch on`, a panic stop, or a merge performed in the TUI starts a
-pass within a couple of seconds rather than at the next tick. Passes are still kept at
-least two seconds apart, so a burst of requests coalesces into one pass — every request
-in the queue is drained by it — and the hold is recorded in `decisions.jsonl`. A woken
-pass does exactly what a timed pass does; the request only decides *when*, never *what*.
-Merges performed outside RobCo (GitHub's web UI, `gh` on another machine) have nothing
-local to announce them and are still found by polling — including a merge an operator
-performs to resolve an escalation, which is why an escalated entry with a pull request
-is still read. That read only ever moves such an entry on a merge: a pull request that is
-still open, or closed without merging, leaves it escalated and says nothing.
+signals the pid in the daemon pidfile, so a `!run` from Discord or MCP, a merge performed
+in the TUI, or an operator command starts a pass within a couple of seconds rather than at
+the next tick. Passes are still kept at least two seconds apart, so a burst of requests
+coalesces into one pass — every request in the queue is drained by it — and the hold is
+recorded in `decisions.jsonl`. A woken pass does exactly what a timed pass does; the
+request only decides *when*, never *what*. Merges performed outside RobCo (GitHub's web
+UI, `gh` on another machine) have nothing local to announce them and are still found by
+polling — including a merge an operator performs to resolve an escalation, which is why
+an escalated entry with a pull request is still read. That read only ever moves such an
+entry on a merge: a pull request that is still open, or closed without merging, leaves it
+escalated and says nothing.
 
-The dispatch engine considers ready tasks from dropr workspaces associated with RobCo's
-registered repository remotes. It applies the dispatch toggle, daily limit, failure
-circuit, skip list, retry limit, task-author filter, an ancestor-preference rule, each
-repository's primary/secondary dispatch slots, and a one-new-worker-per-repository-per-pass
-rule. A task whose ledger entry is still in a non-terminal phase is held with reason
-`active_worker` whatever management mode owns that worker, because the live worker still
-holds the task's branch and worktree. A subtask whose own parent is also a ready candidate
-this pass is held with reason `ancestor_candidate` rather than dispatched ahead of it, even
-when the subtask carries a higher priority — a RUN dispatch against the parent already
-covers the subtask's own implementation. Every decision is appended to
+A named launch (`!run <task>` from Discord or MCP, `Enter` on a dropr task row in the
+TUI) resolves the task ref against dropr workspaces associated with RobCo's registered
+repository remotes, then hands the resolved task straight to the same spawn path a
+launch always used: no daily limit, no author allowlist, no retry cap, and no
+per-repository slot accounting stand between an operator's own pick and a worker — those
+existed only to ration what the machine chose for itself. What still refuses a launch is
+identity, not policy: a task another agent already claimed, a task with a live worker
+already carrying it, or an existing branch for that task. Every decision is appended to
 `~/.robco/overseer/decisions.jsonl`.
 
-Every repository runs exactly one *primary* worker at a time; `parallel_limit` opens that
-many *secondary* slots alongside it, default `0`. A candidate for a repository whose
-primary slot is already taken holds with reason `primary_slot_taken` when `parallel_limit`
-is `0`, or `parallel_slot_taken` once every secondary slot is also taken. There is no
-global worker cap any more — the number of registered repositories bounds the total, since
-each repository's slots are self-contained.
-
-Candidates are ordered before those gates run, by dropr task priority (`high`, `medium`,
-`low`, then anything else) and then by ascending display id, which dropr assigns in
-creation order — so the oldest task of the highest priority wins the last free worker
-slot rather than whichever repository the registry happened to list first.
-
-Those gates only see workers this Overseer started, and the ready list they run against
-is minutes old by the time a worker actually spawns. So immediately before a worker is
+Those checks only see workers this Overseer started, and dropr's own state may have moved
+in the time between the operator's pick and the spawn. So immediately before a worker is
 spawned, Overseer re-reads the task in dropr and takes its claim itself:
 
 - A task another agent holds is not dispatched; the pass records a hold with reason
@@ -139,11 +127,10 @@ rotates consumed data after the file reaches 1 MiB.
 
 ### Ordering and file-overlap races
 
-Overseer's dispatch candidates come straight from dropr's `task ready` feed, and that
-feed already excludes a task behind an unresolved `blocks` dependency edge (dropr:375).
-No dispatch-time gate re-implements this in `dispatch/gate.rs`; the exclusion is dropr's,
-not Overseer's, and doing it twice would only drift. Two existing paths already rely on
-this:
+A named launch resolves against dropr's `task ready` feed, and that feed already excludes
+a task behind an unresolved `blocks` dependency edge (dropr:375). Overseer does not
+re-implement that exclusion itself; it is dropr's, not Overseer's, and doing it twice would
+only drift. Two existing paths already rely on this:
 
 - A worker that discovers, mid-implementation, that its own task cannot proceed until a
   different task merges first creates the `blocks` edge, reports `waiting-prerequisite`,
@@ -154,13 +141,12 @@ this:
 
 A third case has no code counterpart: an agent that files a follow-up task for someone
 else while its own current task still has an open, unmerged pull request touching the
-same file. Left as a plain open task, the follow-up is immediately dispatchable — dropr's
-60-second-default poll can hand it to another worker before the original pull request
-merges, and a split on the pre-edit file layout collides with the still-open edit (dropr
-#423 / #426, PR #345 / #346). The fix is a workflow instruction, not a gate: the filing
-agent must add a `blocks` edge from the follow-up onto its own in-flight task whenever
-their file footprints overlap, the same edge the two cases above already use. See dropr
-#427 for the decision record.
+same file. Left as a plain open task, the follow-up is immediately launchable by another
+operator before the original pull request merges, and a split on the pre-edit file layout
+collides with the still-open edit (dropr #423 / #426, PR #345 / #346). The fix is a
+workflow instruction, not a gate: the filing agent must add a `blocks` edge from the
+follow-up onto its own in-flight task whenever their file footprints overlap, the same
+edge the two cases above already use. See dropr #427 for the decision record.
 
 ### Post-merge cleanup
 
@@ -190,7 +176,7 @@ auto-delete-branch setting usually gets there first, and its absence is not a fa
 ### Repository health watch
 
 A daemon tick also runs `daemon/repo_watch.rs` for every Auto-managed, materialised
-repository — the same `RepoNode::management` gate `gather_candidates` and
+repository — the same `RepoNode::management` gate `dispatch::resolve` and
 `merge_repo_pass` already honor (see [Repo-level Overseer
 opt-out](#repo-level-overseer-opt-out)), rather than a second per-repo toggle. Detection
 only: filing the coordination task is as far as this goes, and a human or a dispatched
@@ -245,7 +231,8 @@ that never ran on the default configuration — which is exactly what happened, 
 two rules below with no recorded finding across the daemon's whole history. Each run
 builds a size-bounded digest —
 at most 200 recent decisions with each reason truncated, at most 50 live ledger entries
-with their age, and the dispatch counters — and applies deterministic rules to it: a
+with their age, and the active-worker and consecutive-failure counters — and applies
+deterministic rules to it: a
 reason repeating three times or more is reported as `repeating_failure` (a structural
 fault) or `repeating_hold` (nothing is moving), a live entry older than twice
 `stuck_after_mins` as `stalled`, and the failure counter as `circuit_at_risk` or
@@ -296,7 +283,6 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 ```json
 {
   "overseer": {
-    "dispatch_enabled": true,
     "auto_merge": false,
     "protection_mode": "required",
     "allow_unverifiable_protection": false,
@@ -307,12 +293,9 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
     "max_merge_holds": 30,
     "worker_profile": null,
     "worker_prompt_template": null,
-    "parallel_limit": 0,
     "terminal_retention_per_repo": 50,
     "poll_interval_secs": 60,
     "stuck_after_mins": 30,
-    "max_retries_per_task": 1,
-    "daily_dispatch_limit": 20,
     "failure_circuit_threshold": 3,
     "triage_enabled": true,
     "triage_profile": null,
@@ -324,7 +307,6 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
     "session_env": {},
     "session_env_file": null,
     "session_preflight": true,
-    "dispatch_task_authors": [],
     "release_pipeline_enabled": false,
     "repo_watch_enabled": true,
     "repo_watch_interval_hours": 24,
@@ -350,7 +332,6 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 | Key | Type | Default | Implemented behavior |
 |-----|------|---------|----------------------|
 | `enabled` | boolean | `false` | Reported by status surfaces. It does not currently gate `robco overseer run` or the poll loop. |
-| `dispatch_enabled` | boolean | `true` | Allows new dispatches. The circuit breaker and panic command persist this as `false`. |
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
 | `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
 | `allow_unverifiable_protection` | boolean | `false` | Lets auto-merge proceed on a repository whose GitHub plan cannot answer the protection probe at all (`unprotected:plan_unsupported`), instead of holding it forever. Security-relevant: a plan-limited `403` is indistinguishable from a repository whose owner never configured protection, so enabling this accepts merges onto a base branch Overseer could never confirm is protected. It has no effect on a repository whose plan can actually answer the probe — those are still held on their real facts. |
@@ -363,13 +344,10 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 | `max_merge_hold_rechecks` | non-negative integer | `10` | Further looks through the gate an entry escalated by `max_merge_holds` is given, so a condition an operator fixes afterwards is noticed instead of leaving the pull request parked for good. Only a pass that re-read the gate and found it still holding spends one. The pass that spends the last look records `merge_hold_recheck_exhausted:<reason>`. `0` leaves an escalated entry where it is, which is how Overseer behaved before this budget existed. |
 | `worker_profile` | string or `null` | `null` | Profile name used for workers; `null` uses `default_program`. A missing profile supplies no autonomous arguments. |
 | `worker_prompt_template` | string or `null` | `null` | Task-specific text inserted into every dispatched worker's prompt. `null`, or blank, uses the built-in text. See [worker_prompt_template](09-config-reference.md#overseerworker_prompt_template) for the placeholder list and what the key cannot override. |
-| `parallel_limit` | non-negative integer | `0` | Secondary dispatch slots opened per repository, on top of the one always-present primary slot. `0` runs every repository serialized, one worker at a time. Manual entries count too — see below. There is no global cap; the number of registered repositories bounds the total, since each repository's slots are self-contained. |
 | `terminal_retention_per_repo` | non-negative integer | `50` | Settled (`merged`, `failed`, `escalated`) ledger entries kept per repository. The oldest beyond the window are dropped at the end of a pass — see below. `0` keeps every settled entry, which is how the ledger behaved before the window existed. |
 | `poll_interval_secs` | non-negative integer | `60` | Target period between daemon passes; also defines heartbeat freshness as `max(2 × value, 5)` seconds. |
 | `stuck_after_mins` | non-negative integer | `30` | A dispatched, claimed, or working worker with older tmux activity is failed. |
-| `max_retries_per_task` | non-negative integer | `1` | Dispatch is skipped when the highest recorded retry count reaches this value. Every dispatch attempt for a task is recorded before its worker is spawned, so an attempt whose spawn fails counts too. The default permits one first attempt and one retry. |
-| `daily_dispatch_limit` | non-negative integer | `20` | Maximum new workers recorded for the current UTC date. |
-| `failure_circuit_threshold` | non-negative integer | `3` | Accumulated monitor or spawn failures that open the circuit and disable dispatch. The counter resets when a worker's PR merges or when an operator re-enables dispatch; a successful spawn alone does not reset it. |
+| `failure_circuit_threshold` | non-negative integer | `3` | Accumulated monitor or spawn failures. No longer gates whether a task can launch — see dropr:476 — but still trips the merge envelope's `RepeatedFailures` risk (escalating auto-merge to an operator, see [`autonomy::risks`](../src/overseer/autonomy.rs)) and the board reviewer's `circuit_open` / `circuit_at_risk` findings. The counter resets when a worker's PR merges; a successful spawn alone does not reset it. |
 | `triage_enabled` | boolean | `true` | Enables exception queueing and ephemeral triage sessions. |
 | `triage_profile` | string or `null` | `null` | Profile used by triage and Discord ops; `null` uses `default_program`. |
 | `review_profile` | string or `null` | `null` | Profile used by the periodic board review's model stage. `null` runs the pass without a model: the digest is still built and the deterministic findings still escalate, but no session is spawned and no review budget is charged. A named profile that does not exist fails the session rather than falling back. |
@@ -380,7 +358,6 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 | `session_env` | object of string → string | `{}` | Environment applied to every session the daemon spawns and to every agent robco launches (dispatched workers and TUI-created agents alike). Highest layer of the credential channel; also written into the launchd plist by the installer. See [Session credentials](#session-credentials). |
 | `session_env_file` | string (path) or `null` | `null` | `KEY=VALUE` file read below `session_env`. `null` reads `~/.robco/env`. A leading `~` is expanded. Read at spawn time, so a rotated token needs no reinstall. |
 | `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco overseer status`. |
-| `dispatch_task_authors` | array of strings | `[]` | Exact allowlist for ready-task authors. Empty permits every author. |
 | `release_pipeline_enabled` | boolean | `false` | Runs `scripts/release.sh` unattended, from this project's own checkout, after a merge closes a `[release]`-scoped task in this project's own repository. A distinct privilege class from every other flag above: on success it publishes a public GitHub release with whatever credentials the daemon holds, and `scripts/release.sh` is itself part of this repository, so a future change to it runs with this same privilege on the next qualifying merge. Default-off; an operator opts in deliberately. See [`overseer::release_pipeline`](../src/overseer/release_pipeline.rs). |
 | `repo_watch_enabled` | boolean | `true` | Whether the periodic advisory/Dependabot repository health watch runs at all. See [Repository health watch](#repository-health-watch). |
 | `repo_watch_interval_hours` | non-negative integer | `24` | Hours between one repository's advisory/Dependabot watch passes. |
@@ -411,15 +388,14 @@ below the level:
 | Level | Fires |
 |-------|-------|
 | `"off"` | Nothing. |
-| `"errors"` | `task_failed`, `task_escalated`, `worker_blocked`, a circuit-open, and a generic escalation. |
+| `"errors"` | `task_failed`, `task_escalated`, `worker_blocked`, and a generic escalation. |
 | `"summary"` (default) | Milestones + problems: everything in `errors`, plus a successful task finish (`merged`). |
-| `"all"` | Everything in `summary`, plus the step-by-step events: `task_started`, `pr_opened`, and `queue_drained` (see [Queue-drained notification](#queue-drained-notification) below). |
+| `"all"` | Everything in `summary`, plus the step-by-step events: `task_started` and `pr_opened`. |
 
 **`"summary"` means milestones only.** A milestone is something the operator acts on or wants
 to know happened — work landing (`merged`) or breaking (everything in `errors`). Step-by-step
-narration (a worker starting, a PR opening, the queue going idle) is `"all"`-tier: with several
-repositories dispatching many tasks a day, those events alone turn `"summary"` into a steady
-stream.
+narration (a worker starting, a PR opening) is `"all"`-tier: with several repositories running
+many named launches a day, those events alone turn `"summary"` into a steady stream.
 
 **Merge rollup.** At any level that admits `merged`, several merges landing within a short
 window (5 minutes, fixed) post as one rolled-up message — `3 pull requests were merged.` with a
@@ -442,26 +418,6 @@ loads — the key is silently ignored — but the daemon logs a one-time notice 
 which keys were found, so an operator who relied on one of them (`notify_pr_opened = true` in
 particular, since `pr_opened` is `all`-tier and `summary` is the default) learns that raising
 `notify_level` is now the way to get that event back.
-
-#### Queue-drained notification
-
-Fires once when the Overseer's ready-candidate gather succeeds and finds nothing left to do: no
-ready candidates from any repository, and no ledger entry still in a non-terminal phase. It is
-edge-triggered — logged on the pass that first observes the drained state, not on every poll
-after — and the edge is persisted (`~/.robco/overseer/queue_drained.json`) so a daemon restart
-neither re-announces a drain that already fired nor announces one that never happened (a daemon
-started against an already-empty board stays silent).
-
-The condition deliberately excludes a failed gather. `dropr_overlay_unavailable` (the workspace
-overlay being unreachable) also produces zero candidates, but that is an outage, not an empty
-board — treating it as a drain would misreport a transient failure as "all done", so a failed
-gather is skipped entirely rather than evaluated.
-
-Re-arming is state-transition based, not time-based: the next `queue_drained` only fires after a
-later pass observes the board **not** drained (new work appeared) and then drained again. There is
-no separate debounce timer — a board oscillating between one ready task and zero would need an
-actual dispatch-and-settle cycle to flip the persisted state, and a settle cycle already spans many
-poll intervals on its own.
 
 ### Category-scoped chat
 
@@ -627,11 +583,12 @@ A triage or review session refused on credentials is recorded with the reason
 ### Task trust boundary
 
 Overseer workers execute task instructions and repository code on the local machine with
-the selected profile's autonomous flags. Therefore, anyone who can author a task that
-Overseer may dispatch can execute code with the worker process's operating-system access.
-Use `dispatch_task_authors` as an exact task-author allowlist; leaving it empty accepts
-all authors. The environment blocklist reduces accidental credential exposure but is
-not a sandbox or a substitute for controlling task authors.
+the selected profile's autonomous flags. Therefore, whoever names a task to launch — via
+`!run`, MCP, or the TUI — can execute code with the worker process's operating-system
+access. The operator's own pick is the trust boundary now: there is no machine-side task-
+author allowlist, because there is no longer a machine-side selection to gate (dropr:476).
+The environment blocklist reduces accidental credential exposure but is not a sandbox or a
+substitute for controlling who can reach `!run` / MCP / the TUI in the first place.
 
 ### Auto-merge prerequisite
 
@@ -875,9 +832,9 @@ thread) and messages from users outside `allowed_user_ids` are ignored.
 
 Impactful commands are not executed immediately. Overseer replies with a deterministic
 description such as `Confirm: kill worker-x` and a random eight-character nonce. The
-same user must reply `CONFIRM <nonce>` in the same channel before it expires. Dispatch
-off and auto-merge off remain immediate; auto-merge on is never permitted through
-Discord, including through the LLM ops agent. Mutating actions are rate-limited.
+same user must reply `CONFIRM <nonce>` in the same channel before it expires. Auto-merge
+off remains immediate; auto-merge on is never permitted through Discord, including
+through the LLM ops agent. Mutating actions are rate-limited.
 
 At gateway startup Overseer audits the application's requested install permissions and
 warns if they exceed view/send/history/embed plus public-thread creation and management.
@@ -927,10 +884,10 @@ repositories Overseer should manage to RobCo's registry, and ensure their remote
 accessible dropr workspaces. Configure at least one profile with suitable
 `autonomous_args`.
 
-Start locally with dispatch disabled while validating the installation:
+Start locally while validating the installation — the daemon never picks its own work, so
+there is nothing to disable first:
 
 ```sh
-robco overseer set dispatch off
 robco overseer run
 ```
 
@@ -938,7 +895,6 @@ In another terminal:
 
 ```sh
 robco overseer status
-robco overseer set dispatch on
 ```
 
 `robco overseer set auto-merge on|off` changes the merge toggle, and
@@ -1032,8 +988,9 @@ re-running each session unless the env file also carries the token as a fallback
 *and* loading the service, so an operator recovering a dead daemon reaches a running
 service by accepting every prompt. The load is verified — a `launchctl bootstrap` that
 exits 0 without producing a loaded service fails the run instead of reporting success —
-and a wizard that ends with dispatch enabled while the service is still down closes with
-an explicit warning naming the recovery commands. `install-service` stays non-executing
+and a wizard that ends with the service still down closes with an explicit warning naming
+the recovery commands, since nothing merges, launches a named task, or answers
+Discord/MCP commands until it is loaded. `install-service` stays non-executing
 because it is the scripted, copy-the-command path: it is invoked from runbooks and
 non-interactive setups where loading the service is a separate, deliberate step.
 
@@ -1079,22 +1036,24 @@ counted separately, so a busy one cannot push another's history off the ledger, 
 window is a count rather than an age because an entry records when it was dispatched, not
 when it settled.
 
-The window is applied last, after reconcile, notifications, triage, merge, and dispatch
-have read the board, so it only decides how much settled history the *next* pass
-inherits. It never drops a non-terminal entry — live work holds a worktree and a dispatch
-slot, so `active_workers()` and the primary/secondary slot gate read exactly the counts
-they read before — and it never drops a terminal entry whose worker is still registered:
-merged cleanup is re-pushed for as long as the registry row survives, and dropping the
-entry first would leak the session and worktree that cleanup was about to remove. A
-`failed` or `escalated` worktree left standing for an operator therefore stays visible for
-as long as it exists, though it still occupies a place in its repository's window.
+The window is applied last, after reconcile, notifications, triage, merge, and any named
+launch have read the board, so it only decides how much settled history the *next* pass
+inherits. It never drops a non-terminal entry — live work holds a worktree, so
+`active_workers()` reads exactly the count it read before — and it never drops a terminal
+entry whose worker is still registered: merged cleanup is re-pushed for as long as the
+registry row survives, and dropping the entry first would leak the session and worktree
+that cleanup was about to remove. A `failed` or `escalated` worktree left standing for an
+operator therefore stays visible for as long as it exists, though it still occupies a
+place in its repository's window.
 
-Retention is the one thing that erases dispatch history: `max_retries_per_task` counts a
-task's recorded entries, so a task whose entries have all aged out is one Overseer no
-longer remembers attempting, and a still-ready one may be dispatched afresh. That is the
-intended reading of a retention window — a task untouched across the last N settlements
-of its repository is being started again, not retried — and `skip_list` remains the
-durable way to say never.
+Retention is the one thing that erases attempt history: once a task's ledger entries have
+all aged out of the window, Overseer no longer remembers attempting it, and a named launch
+against the same task starts fresh rather than reading as a retry — nothing gates on the
+recorded count any more (dropr:476). The one thing a named launch still refuses on is a
+*live* worker or an existing branch, neither of which retention ever drops. `!skip <task>`
+(Discord) and `skip_list` are still recorded and displayed, but nothing reads `skip_list`
+to refuse a launch any more; treat it as an operator/triage annotation, not an enforced
+exclusion.
 
 The JSONL decision log is the durable audit trail used by `robco overseer status`, the TUI
 Overseer info pane, and Discord notifications. The daemon writes observation snapshots
@@ -1105,12 +1064,12 @@ state.
 
 The `Inbox` category under `OVERSEER` aggregates what is waiting on the operator: every
 escalation the daemon recorded, plus every worker sitting on a confirmation prompt. Each
-item's reason is resolved by `overseer::remedy` into a `Move` — `ANSWER`, `MERGE`, `RESET`,
+item's reason is resolved by `overseer::remedy` into a `Move` — `ANSWER`, `MERGE`,
 `RETRY`, `REVIEW`, or `WATCH` — and the category row summarises it as `N/M actionable`: how
 many of the listed items resolve to something other than `WATCH`. This is independent of
-whether the item has a live tmux session — merging a pull request by hand, resetting a
-tripped circuit, or reviewing a parked ledger entry needs no session at all, so those rows
-count even when their worker is gone. Only `WATCH` — nothing has failed and nothing is
+whether the item has a live tmux session — merging a pull request by hand, or reviewing a
+parked ledger entry needs no session at all, so those rows count even when their worker is
+gone. Only `WATCH` — nothing has failed and nothing is
 waiting on a human, e.g. checks still running — is excluded. The row also carries the same
 `?` waiting glyph an agent row shows, lit whenever `N` is above zero, so the row's own
 attention state reads at a glance without parsing the `N/M` count.
@@ -1204,10 +1163,8 @@ rather than from the tree.
 
 Adoption derives the mode from the parent it recovers, not from a fixed default. A worker
 whose live session still carries `ROBCO_PARENT_AGENT_ID=overseer` is re-adopted as an
-Overseer child *and* as `Auto`, so a worker that lost its registry row comes back under
-automatic dispatch instead of returning as one the dispatch gate skips as manual. A
-hand-made worktree has no such session to recover a parent from and is stored `Manual`
-until `g` enrolls it.
+Overseer child *and* as `Auto`. A hand-made worktree has no such session to recover a
+parent from and is stored `Manual` until `g` enrolls it.
 
 A worktree that already belongs to *another agent* is off the cycle and `g` declines it.
 `parent_agent_id` records both Overseer ownership and the identity-tree parent, and
@@ -1215,11 +1172,11 @@ nothing persists what the parent was before enrollment, so an Overseer-managed w
 defined as never also being another agent's child rather than having its parent silently
 overwritten.
 
-Manual workers remain owned by Overseer but are skipped for automatic dispatch. Manual
-suppresses intervention, not occupancy: a live Manual worker still holds a worktree, a
-branch, and a tmux session, so it occupies its repository's primary or secondary slot
-exactly like an Auto worker, and `robco overseer status` reports the same count the
-dispatch gate enforces. Cycling a worker to Manual therefore never frees a dispatch slot.
+Manual workers remain owned by Overseer, but the mode no longer changes whether a named
+launch can be aimed at the same task: a live worker refuses a re-launch — `active_worker`
+— whatever mode it is in, since that check reads the ledger, not `ManagementMode` (dropr:476).
+Manual still means something to the auto-merge gate, below. `robco overseer status` counts
+a live Manual worker exactly like an Auto one, since occupancy was never mode-dependent.
 
 Manual stops the auto-merge gate too, and the gate says so. A Manual worker's pull request
 is never merged by Overseer — that part does not change — but an entry sitting at
@@ -1268,10 +1225,9 @@ repo at all. `G` on a repo row is the separate, coarser toggle: it flips `RepoNo
 as every worker's own field rather than inventing a third enum, so a repo and a worker
 inside it can be compared directly.
 
-A repo switched to Manual is dropped from `gather_candidates` before its dropr workspace
-is even looked up, recording an `overseer_unmanaged` skip per pass — its own reason,
-distinct from `workspace_unmatched`, so an idle Overseer stays diagnosable from
-`decisions.jsonl` alone. [Repository health watch](#repository-health-watch) honours the
+A repo switched to Manual is skipped by `dispatch::resolve` before its dropr workspace is
+even looked up, so a named launch can never resolve a task into that repository.
+[Repository health watch](#repository-health-watch) honours the
 same flag: a Manual repo is skipped before `repo_watch.rs` runs `bun audit` /
 `govulncheck` / `gh pr list` against it at all. Auto-merge honours the same decision: `worker_is_auto` now
 requires the entry's repo to be Auto *and* its worker to be Auto, so a Manual repo's pull
@@ -1283,8 +1239,8 @@ that gap rather than adding a second way for them to.
 Switching a repo to Manual does not touch workers already running under it — no worktree
 is removed, no tmux session is killed, and existing ledger entries are left to reach their
 own terminal phase (or sit on the same Manual skip a per-worker toggle would produce, if
-one is still open). Only future dispatch and auto-merge passes read the new state. Use the
-existing kill or detach actions to affect a worker directly.
+one is still open). Only a later named-launch resolution or auto-merge pass reads the new
+state. Use the existing kill or detach actions to affect a worker directly.
 
 The repo row carries its own marker unconditionally — unlike a worker row's, it never
 blanks out, since it is the state every worker row underneath is compared against. A
@@ -1308,9 +1264,10 @@ Use the local or Discord `!panic` kill switch during an incident:
 robco overseer panic
 ```
 
-It persists `dispatch_enabled: false`, kills every registered agent whose parent is
-`overseer`, and audits the action. It does not stop the daemon or delete worktrees. The
-failure circuit also persists dispatch off when accumulated failures reach
-`failure_circuit_threshold`; the counter resets only when a worker's PR merges,
-not on a merely successful spawn. An operator resets the circuit by running
-`robco overseer set dispatch on`, which also resets the failure counter.
+It kills every registered agent whose parent is `overseer` and audits the action. It does
+not stop the daemon, delete worktrees, or touch any config — the daemon keeps merging,
+watching workers, and answering Discord/MCP commands throughout. There is no dispatch
+toggle to disable and no circuit to reset any more (dropr:476): `failure_circuit_threshold`
+still accumulates spawn and monitor failures, but the only things that read it now are the
+merge envelope's `RepeatedFailures` risk check and the board reviewer's
+`circuit_open` / `circuit_at_risk` findings.

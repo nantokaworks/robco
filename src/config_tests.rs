@@ -41,7 +41,7 @@ fn legacy_config_defaults_new_fields() {
 fn legacy_chief_config_deserializes_and_serializes_as_overseer() {
     let expected = OverseerConfig {
         auto_merge: true,
-        parallel_limit: 9,
+        stuck_after_mins: 9,
         ..OverseerConfig::default()
     };
     let mut value = serde_json::to_value(Config::default()).unwrap();

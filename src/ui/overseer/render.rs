@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use chrono::{NaiveDate, Utc};
 use ratatui::text::Line;
 
 use crate::locale::{Locale, fmt, t};
 use crate::model::ManagementMode;
 use crate::overseer::{
-    CIRCUIT_OPEN_HINT, DISPATCH_STOPPED_HINT, DISPATCH_WITHOUT_DAEMON_HINT,
     config::{OverseerConfig, ProtectionMode},
     ledger::Ledger,
     logging::DecisionEntry,
@@ -20,13 +18,9 @@ pub(super) use super::render_format::{
     warning,
 };
 
-// `locale` pushed this past clippy's 7-argument default; each argument is
-// already an independent piece of `category_detail`'s `&App` snapshot.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn append_health(
     lines: &mut Vec<Line<'static>>,
     config: &OverseerConfig,
-    ledger: &Ledger,
     alive: bool,
     heartbeat_age: Option<Duration>,
     daemon_version: Option<&str>,
@@ -56,14 +50,7 @@ pub(super) fn append_health(
             version_drift.is_some(),
         ),
     ]));
-    let dispatch_without_daemon = config.dispatch_enabled && !alive;
-    let circuit_open = ledger.counters.consecutive_failures >= config.failure_circuit_threshold;
     lines.push(flags_line(&[
-        (
-            "dispatch",
-            on_off(config.dispatch_enabled).into(),
-            dispatch_without_daemon,
-        ),
         ("auto-merge", on_off(config.auto_merge).into(), false),
         (
             "protection",
@@ -82,26 +69,12 @@ pub(super) fn append_health(
             // to hand back, so the setting reads as armed while doing nothing.
             config.merge_recovery_enabled && !config.auto_merge,
         ),
-        (
-            "circuit",
-            if circuit_open { "OPEN" } else { "closed" }.into(),
-            circuit_open,
-        ),
     ]));
     // Ahead of the other warnings for the same reason the CLI puts it first:
     // every flag above can read healthy while the daemon carries none of what
     // has been merged since it started.
     if let Some(drift) = version_drift {
         lines.push(warning(drift));
-    }
-    if dispatch_without_daemon {
-        lines.push(warning(t(locale, DISPATCH_WITHOUT_DAEMON_HINT)));
-    }
-    if !config.dispatch_enabled && alive && !circuit_open {
-        lines.push(warning(t(locale, DISPATCH_STOPPED_HINT)));
-    }
-    if circuit_open {
-        lines.push(warning(t(locale, CIRCUIT_OPEN_HINT)));
     }
     // Gated on auto-merge, like the red `autonomy` flag above: the envelope only
     // decides anything while the merge pass runs, so warning about it otherwise
@@ -116,7 +89,6 @@ pub(super) fn append_health(
 
 pub(super) fn append_ledger(
     lines: &mut Vec<Line<'static>>,
-    config: &OverseerConfig,
     ledger: &Ledger,
     decisions: &[DecisionEntry],
     management: &[WorkerManagement],
@@ -137,26 +109,11 @@ pub(super) fn append_ledger(
     for entry in &active {
         *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
     }
-    lines.push(flags_line(&[
-        (
-            "dispatches",
-            format!(
-                "{} / {}",
-                dispatches_on(ledger, Utc::now().date_naive()),
-                crate::overseer::dispatch::format_dispatch_limit(config.daily_dispatch_limit)
-            ),
-            false,
-        ),
-        (
-            "workers",
-            format!(
-                "{} active, parallel_limit {}",
-                active.len(),
-                config.parallel_limit
-            ),
-            false,
-        ),
-    ]));
+    lines.push(flags_line(&[(
+        "workers",
+        format!("{} active", active.len()),
+        false,
+    )]));
     if !repos.is_empty() {
         lines.push(pair("workers by repo", &map_text(&repos), false));
     }
@@ -220,13 +177,5 @@ pub(super) fn append_worker_management(
             management_name(*mode),
             false,
         ));
-    }
-}
-
-fn dispatches_on(ledger: &Ledger, today: NaiveDate) -> u32 {
-    if ledger.counters.date == Some(today) {
-        ledger.counters.dispatched_today
-    } else {
-        0
     }
 }

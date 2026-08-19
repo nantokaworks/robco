@@ -16,7 +16,7 @@
 //! CONFIRM-nonce round trip, which lives in `handler::Handler`'s message
 //! flow rather than in `actions::execute`'s business logic — giving them an
 //! MCP tool without an equivalent gate would be a permission-boundary
-//! regression the task explicitly rules out. Status, Dispatch, AutoMerge,
+//! regression the task explicitly rules out. Status, AutoMerge,
 //! and Workers are also `None`: the parent task's own gap count never
 //! listed them, and `robco_overseer_policy` / `robco_agent_list` already
 //! serve the same operator need in a different shape.
@@ -54,7 +54,6 @@ pub(crate) fn text_result(command: &Command) -> ToolResult<serde_json::Value> {
 pub(crate) fn mcp_tool_name(command: &Command) -> Option<&'static str> {
     match command {
         Command::Status => None,
-        Command::Dispatch(_) => None,
         Command::AutoMerge(_) => None,
         Command::Workers => None,
         Command::Tasks => Some("robco_tasks"),

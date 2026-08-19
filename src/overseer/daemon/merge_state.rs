@@ -124,8 +124,7 @@ pub(super) enum BehindPlan {
 /// Charges one branch update to `entry` and reports how to spend it.
 ///
 /// The attempt is charged before it runs, so an update that fails still consumes budget
-/// and a branch that can never be updated escalates instead of retrying forever. This
-/// mirrors how `max_retries_per_task` counts dispatch attempts.
+/// and a branch that can never be updated escalates instead of retrying forever.
 pub(super) fn plan_update(entry: &mut LedgerEntry, config: &Config) -> BehindPlan {
     if entry.branch_updates >= config.overseer.max_branch_updates {
         return BehindPlan::Escalate;

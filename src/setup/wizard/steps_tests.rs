@@ -76,8 +76,8 @@ fn repaired_profiles_offer_codex_in_profile_steps() {
     let mut config = Config::default();
     config.profiles.clear();
     steps::ensure_agent_profiles_with(&mut config, |program| program == "codex");
-    // dispatch=n, auto-merge=n, worker=2 (codex), triage=default, then numbers.
-    let mut input = Cursor::new(b"n\nn\n2\n\n\n\n");
+    // auto-merge=n, worker=2 (codex), triage=default.
+    let mut input = Cursor::new(b"n\n2\n\n");
     let mut output = Vec::new();
     steps::overseer(&mut input, &mut output, &mut config).unwrap();
     assert_eq!(config.overseer.worker_profile.as_deref(), Some("codex"));
@@ -87,15 +87,12 @@ fn repaired_profiles_offer_codex_in_profile_steps() {
 #[test]
 fn overseer_answers_are_applied() {
     let mut config = Config::default();
-    let mut input = Cursor::new(b"n\ny\n2\n3\n5\n42\n");
+    let mut input = Cursor::new(b"y\n2\n3\n");
     let mut output = Vec::new();
     steps::overseer(&mut input, &mut output, &mut config).unwrap();
-    assert!(!config.overseer.dispatch_enabled);
     assert!(config.overseer.auto_merge);
     assert_eq!(config.overseer.worker_profile.as_deref(), Some("claude"));
     assert_eq!(config.overseer.triage_profile.as_deref(), Some("codex"));
-    assert_eq!(config.overseer.parallel_limit, 5);
-    assert_eq!(config.overseer.daily_dispatch_limit, 42);
     assert!(
         String::from_utf8(output)
             .unwrap()

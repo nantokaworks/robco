@@ -58,10 +58,6 @@ pub(crate) fn execute(
 ) -> crate::Result<String> {
     match command {
         Command::Status => reports::status(),
-        Command::Dispatch(enabled) => {
-            command::set_runtime(OverseerSetting::Dispatch, *enabled)?;
-            Ok(format!("dispatch: {}", on_off(*enabled)))
-        }
         Command::AutoMerge(false) => {
             command::set_runtime(OverseerSetting::AutoMerge, false)?;
             Ok("automerge: off".into())
@@ -230,10 +226,6 @@ fn audit_entry(command: &Command, user_id: &str, source: &str, outcome: &str) ->
         _ => None,
     };
     entry
-}
-
-fn on_off(value: bool) -> &'static str {
-    if value { "on" } else { "off" }
 }
 
 #[cfg(test)]

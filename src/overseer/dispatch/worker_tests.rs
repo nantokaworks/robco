@@ -1,7 +1,4 @@
 use super::*;
-use crate::overseer::config::OverseerConfig;
-use crate::overseer::dispatch::plan_dispatch;
-use std::collections::HashMap;
 
 fn entry(task_id: &str, retries: u32) -> LedgerEntry {
     LedgerEntry {
@@ -35,7 +32,7 @@ fn entry(task_id: &str, retries: u32) -> LedgerEntry {
 }
 
 #[test]
-fn a_failed_spawn_still_counts_against_max_retries() {
+fn a_failed_spawn_still_counts_the_attempt() {
     // The attempt is recorded before the spawn runs, so an attempt that never
     // reaches a ledger entry of its own still bounds the next pass.
     let mut ledger = Ledger::default();
@@ -43,27 +40,6 @@ fn a_failed_spawn_still_counts_against_max_retries() {
 
     assert_eq!(record_attempt(&mut ledger, "task-1", "#1"), 1);
     assert_eq!(ledger.entries[0].retries, 1);
-
-    let plan = plan_dispatch(
-        &OverseerConfig::default(),
-        &ledger,
-        &[Candidate {
-            task_id: "task-1".into(),
-            display_id: "#1".into(),
-            title: "task".into(),
-            repo: "/repo".into(),
-            author: "allowed".into(),
-            priority: "medium".into(),
-            workspace: "workspace-1".into(),
-            priority_score: None,
-            status: "open".into(),
-            parent_task_id: None,
-        }],
-        Utc::now(),
-        &HashMap::new(),
-    );
-    assert_eq!(plan.decisions[0].reason, "max_retries");
-    assert!(!plan.decisions[0].dispatch);
 }
 
 fn candidate(display_id: &str, title: &str) -> Candidate {
@@ -77,7 +53,6 @@ fn candidate(display_id: &str, title: &str) -> Candidate {
         workspace: "workspace-1".into(),
         priority_score: None,
         status: "open".into(),
-        parent_task_id: None,
     }
 }
 

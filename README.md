@@ -104,24 +104,23 @@ RobCo's persisted state file but does not kill tmux sessions or delete worktrees
 
 ## Overseer
 
-Overseer is RobCo's local autonomous control system: it dispatches ready dropr tasks into
-isolated RobCo worktree/tmux workers, reconciles their progress, triages failures, and
-can merge protected pull requests after checks pass. Read the full architecture,
-configuration, security, and operations guide in
+Overseer is RobCo's local autonomous control system: it launches an operator-named dropr
+task (via Discord's `!run`, MCP, or the TUI) into an isolated RobCo worktree/tmux worker,
+reconciles its progress, triages failures, and can merge protected pull requests after
+checks pass. Overseer never picks its own work — the operator always names the task. Read
+the full architecture, configuration, security, and operations guide in
 [docs/11-overseer-agent.md](docs/11-overseer-agent.md).
 
 The recommended first-time setup is `robco install`, whose wizard preserves existing
 values when Enter accepts each default and saves the Overseer configuration once at the
 end. Tokens are referenced by environment-variable name and are never stored.
 
-Start with dispatch disabled, inspect the daemon, then enable dispatch when ready:
+Start the daemon and inspect it — there is nothing to enable first:
 
 ```bash
-robco overseer set dispatch off
 robco overseer run
 # In another terminal:
 robco overseer status
-robco overseer set dispatch on
 ```
 
 On macOS, `robco overseer install-service` writes a launchd plist; run the

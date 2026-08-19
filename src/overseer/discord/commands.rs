@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Status,
-    Dispatch(bool),
     AutoMerge(bool),
     Workers,
     Tasks,
@@ -67,7 +66,6 @@ pub fn parse(message: &str) -> Option<Input> {
         "tasks" if parts.next().is_none() => Command::Tasks,
         "panic" if parts.next().is_none() => Command::Panic,
         "inbox" if parts.next().is_none() => Command::Inbox,
-        "dispatch" => Command::Dispatch(on_off(parts.next()?, parts.next())?),
         "automerge" => Command::AutoMerge(on_off(parts.next()?, parts.next())?),
         "skip" => Command::Skip(single(&mut parts)?),
         "retry" => Command::Retry(single(&mut parts)?),
@@ -125,10 +123,6 @@ mod tests {
 
     #[test]
     fn parses_commands_without_gateway_types() {
-        assert_eq!(
-            parse("!dispatch off"),
-            Some(Input::Command(Command::Dispatch(false)))
-        );
         assert_eq!(
             parse("!answer worker-1 yes, proceed"),
             Some(Input::Command(Command::Answer {

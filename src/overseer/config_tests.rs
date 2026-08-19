@@ -2,28 +2,42 @@ use super::*;
 
 #[test]
 fn loads_a_config_that_still_carries_the_removed_enabled_key() {
-    let raw = r#"{"enabled": false, "dispatch_enabled": true, "max_workers": 5}"#;
+    let raw = r#"{"enabled": false, "max_workers": 5}"#;
     let config: OverseerConfig = serde_json::from_str(raw).unwrap();
-    assert!(config.dispatch_enabled);
+    assert!(!config.auto_merge);
 }
 
-/// dropr:452 — `max_workers` / `per_repo_limit` retired in favor of
-/// `parallel_limit`. A config file written before the slot model existed
-/// still loads without error, and the next save drops both retired keys
-/// rather than round-tripping them forever.
+/// dropr:476 — the polling dispatcher's own scheduling keys are retired: the
+/// operator now picks work by name, so there is nothing left to schedule
+/// (a daily cap, an author allowlist, a per-task retry cap, or per-repository
+/// parallel slots) or a toggle to disable that scheduling with. A config file
+/// written before this retirement still loads without error, and the next
+/// save drops every retired key rather than round-tripping them forever.
 #[test]
-fn a_config_still_carrying_the_retired_worker_caps_loads_and_drops_them() {
-    let raw = r#"{"dispatch_enabled": true, "max_workers": 5, "per_repo_limit": 2}"#;
+fn a_config_still_carrying_the_retired_dispatch_scheduling_keys_loads_and_drops_them() {
+    let raw = r#"{
+        "dispatch_enabled": true,
+        "daily_dispatch_limit": 20,
+        "dispatch_task_authors": ["someone"],
+        "max_retries_per_task": 3,
+        "parallel_limit": 2
+    }"#;
     let config: OverseerConfig = serde_json::from_str(raw).unwrap();
-    assert_eq!(config.parallel_limit, 0);
     let serialized = serde_json::to_value(&config).unwrap();
-    assert!(serialized.get("max_workers").is_none());
-    assert!(serialized.get("per_repo_limit").is_none());
+    for key in [
+        "dispatch_enabled",
+        "daily_dispatch_limit",
+        "dispatch_task_authors",
+        "max_retries_per_task",
+        "parallel_limit",
+    ] {
+        assert!(serialized.get(key).is_none(), "{key} must not round-trip");
+    }
 }
 
 #[test]
 fn a_config_written_before_retention_existed_loads_with_a_bounded_window() {
-    let raw = r#"{"dispatch_enabled": true, "max_workers": 5}"#;
+    let raw = r#"{"max_workers": 5}"#;
     let config: OverseerConfig = serde_json::from_str(raw).unwrap();
     assert_eq!(
         config.terminal_retention_per_repo,
@@ -127,5 +141,5 @@ fn discord_config_round_trips_channel_repo_bindings() {
 fn serialized_config_carries_no_enabled_key() {
     let value = serde_json::to_value(OverseerConfig::default()).unwrap();
     assert!(value.get("enabled").is_none());
-    assert!(value.get("dispatch_enabled").is_some());
+    assert!(value.get("auto_merge").is_some());
 }

@@ -5,7 +5,6 @@ fn every_tag_is_short_and_unique() {
     let moves = [
         Move::Answer,
         Move::Merge,
-        Move::Reset,
         Move::Retry,
         Move::Review,
         Move::Watch,
@@ -22,13 +21,7 @@ fn every_tag_is_short_and_unique() {
 
 #[test]
 fn only_watch_is_not_actionable() {
-    for step in [
-        Move::Answer,
-        Move::Merge,
-        Move::Reset,
-        Move::Retry,
-        Move::Review,
-    ] {
+    for step in [Move::Answer, Move::Merge, Move::Retry, Move::Review] {
         assert!(step.actionable(), "{step:?} should be actionable");
     }
     assert!(!Move::Watch.actionable());

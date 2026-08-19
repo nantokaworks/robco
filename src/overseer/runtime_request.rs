@@ -16,15 +16,11 @@ use super::{
     ledger::{Ledger, OperatorOverride},
     ledger_path, runtime_requests_dir,
 };
-use crate::{Result, config::Config};
+use crate::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum RuntimeRequest {
-    ResetCircuit {
-        source: String,
-        at: DateTime<Utc>,
-    },
     PanicEscalate {
         source: String,
         agent_ids: Vec<String>,
@@ -111,19 +107,18 @@ pub(crate) fn enqueue_in(dir: &Path, request: RuntimeRequest) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn drain(ledger: &mut Ledger, config: &mut Config) -> Result<(bool, Vec<PendingRun>)> {
-    drain_in(&runtime_requests_dir()?, &ledger_path()?, ledger, config)
+pub(crate) fn drain(ledger: &mut Ledger) -> Result<Vec<PendingRun>> {
+    drain_in(&runtime_requests_dir()?, &ledger_path()?, ledger)
 }
 
 pub(crate) fn drain_in(
     dir: &Path,
     ledger_path: &Path,
     ledger: &mut Ledger,
-    config: &mut Config,
-) -> Result<(bool, Vec<PendingRun>)> {
+) -> Result<Vec<PendingRun>> {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == ErrorKind::NotFound => return Ok((false, Vec::new())),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(error.into()),
     };
     let mut paths = entries
@@ -143,13 +138,11 @@ pub(crate) fn drain_in(
     // Preserve those replay guarantees when adding new variants.
     paths.sort();
 
-    let mut config_changed = false;
     let mut pending_runs = Vec::new();
     for path in paths {
         // A single unreadable/unremovable request must not abort the whole drain
-        // (that would discard the accumulated config change and, worse, leave an
-        // applied ResetCircuit file to replay every tick — silently re-zeroing the
-        // failure streak and defeating the circuit). Handle each file resiliently.
+        // — that would leave an applied request file to replay every tick.
+        // Handle each file resiliently.
         let raw = match fs::read_to_string(&path) {
             Ok(raw) => raw,
             Err(error) => {
@@ -172,7 +165,7 @@ pub(crate) fn drain_in(
                 pending_runs.push(PendingRun { task, source });
             }
             request => {
-                config_changed |= apply(ledger, config, request);
+                apply(ledger, request);
                 // `apply` only changed `ledger` in memory, and this file is
                 // about to be acked (deleted). Checkpoint the mutation now,
                 // before the ack, so a daemon death before the pass's own
@@ -195,34 +188,19 @@ pub(crate) fn drain_in(
             quarantine_applied(&path, &error);
         }
     }
-    Ok((config_changed, pending_runs))
+    Ok(pending_runs)
 }
 
-/// `overseer.dispatch_enabled` is the only config field a request may change:
-/// the daemon's write-back reloads the file and copies just that field back, so
-/// a variant mutating anything else would apply in memory and never persist.
-/// Extend `config_write` alongside any variant that needs to.
-pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRequest) -> bool {
+pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest) {
     match request {
-        RuntimeRequest::ResetCircuit { .. } => {
-            ledger.counters.consecutive_failures = 0;
-            if config.overseer.dispatch_enabled {
-                false
-            } else {
-                config.overseer.dispatch_enabled = true;
-                true
-            }
-        }
         RuntimeRequest::PanicEscalate { agent_ids, .. } => {
             escalate_workers(ledger, &agent_ids.into_iter().collect::<HashSet<_>>());
-            false
         }
         // Nothing to apply: the pass that drains this request goes on to
         // observe the merge for itself, which is the whole point of waking it.
-        RuntimeRequest::MergeCompleted { .. } => false,
+        RuntimeRequest::MergeCompleted { .. } => {}
         RuntimeRequest::OperatorMergeOverride { target, .. } => {
             grant_operator_override(ledger, &target);
-            false
         }
         RuntimeRequest::MergeApproval {
             source,
@@ -231,13 +209,12 @@ pub(crate) fn apply(ledger: &mut Ledger, config: &mut Config, request: RuntimeRe
             ..
         } => {
             record_runtime_approval(ledger, &target, &head, &source);
-            false
         }
         // `drain_in` pulls this variant out before calling `apply` — see the
         // variant's own doc comment. Kept as an explicit no-op arm, not a
         // wildcard, so a future caller that bypasses `drain_in` fails safe
         // (nothing dispatches) instead of silently matching a wildcard.
-        RuntimeRequest::RunTask { .. } => false,
+        RuntimeRequest::RunTask { .. } => {}
     }
 }
 

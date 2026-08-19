@@ -62,12 +62,8 @@ fn render_decisions(digest: &Digest) -> String {
 fn render_state(digest: &Digest) -> String {
     let counters = &digest.counters;
     let mut lines = vec![format!(
-        "dispatch_enabled={} active_workers={} dispatched_today={} consecutive_failures={}/{}",
-        counters.dispatch_enabled,
-        counters.active_workers,
-        counters.dispatched_today,
-        counters.consecutive_failures,
-        counters.failure_circuit_threshold
+        "active_workers={} consecutive_failures={}/{}",
+        counters.active_workers, counters.consecutive_failures, counters.failure_circuit_threshold
     )];
     lines.extend(digest.entries.iter().map(|entry| {
         format!(

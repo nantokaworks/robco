@@ -35,7 +35,6 @@ pub(super) fn print_debug_section(
     pid: Option<u32>,
     heartbeat_age: Option<Duration>,
     daemon_version: Option<&str>,
-    circuit_open: bool,
     merge_pass: Option<&MergePassTelemetry>,
 ) -> Result<()> {
     println!();
@@ -46,19 +45,9 @@ pub(super) fn print_debug_section(
     );
     println!(
         "{}",
-        toggle_line(
-            &config.overseer,
-            circuit_open,
-            ledger.merge_recovery_drops()
-        )
+        toggle_line(&config.overseer, ledger.merge_recovery_drops())
     );
-    println!(
-        "today: {}/{}  workers: {}  parallel_limit: {}",
-        ledger.counters.dispatched_today,
-        crate::overseer::dispatch::format_dispatch_limit(config.overseer.daily_dispatch_limit),
-        ledger.active_workers().count,
-        config.overseer.parallel_limit
-    );
+    println!("workers: {}", ledger.active_workers().count);
     println!("{}", llm_line(config)?);
     println!("{}", merge_pass_line(merge_pass));
     println!("{}", discord_line(&config.overseer.discord));
@@ -230,15 +219,13 @@ fn repos_line(registry: &Registry) -> String {
 /// Every toggle reported here must be one the daemon actually honours; a switch
 /// that is only displayed invites the reader to blame it for an outage it has no
 /// part in.
-fn toggle_line(config: &OverseerConfig, circuit_open: bool, recovery_drops: u32) -> String {
+fn toggle_line(config: &OverseerConfig, recovery_drops: u32) -> String {
     format!(
-        "dispatch: {}  auto-merge: {} (protection: {})  autonomy: {}  merge-recovery: {}  circuit: {}",
-        on_off(config.dispatch_enabled),
+        "auto-merge: {} (protection: {})  autonomy: {}  merge-recovery: {}",
         on_off(config.auto_merge),
         config.protection_mode.label(),
         config.autonomy_level.label(),
         merge_recovery_state(config, recovery_drops),
-        if circuit_open { "open" } else { "closed" }
     )
 }
 

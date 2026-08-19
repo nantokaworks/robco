@@ -24,7 +24,6 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
         OverseerCategory::Health => append_health(
             &mut lines,
             config,
-            &snapshot.ledger,
             snapshot.daemon_alive,
             snapshot.heartbeat_age,
             snapshot.daemon_version.as_deref(),
@@ -35,7 +34,6 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             let management = active_worker_management(app);
             append_ledger(
                 &mut lines,
-                config,
                 &snapshot.ledger,
                 &snapshot.decisions,
                 &management,
@@ -73,12 +71,9 @@ pub(in crate::ui) fn inbox_actionable_count(app: &App) -> usize {
 pub(in crate::ui) fn category_summary(app: &App, category: OverseerCategory) -> (String, bool) {
     let snapshot = &app.overseer_snapshot;
     match category {
-        OverseerCategory::Health => health_summary_from(
-            &snapshot.overseer,
-            &snapshot.ledger,
-            snapshot.daemon_alive,
-            snapshot.version_drift().is_some(),
-        ),
+        OverseerCategory::Health => {
+            health_summary_from(snapshot.daemon_alive, snapshot.version_drift().is_some())
+        }
         OverseerCategory::Ledger => ledger_summary_from(&snapshot.ledger),
         OverseerCategory::Inbox => (
             fmt(
@@ -143,15 +138,10 @@ pub(super) fn ledger_summary_from(ledger: &Ledger) -> (String, bool) {
     (format!("{active} active"), false)
 }
 
-pub(super) fn health_summary_from(
-    config: &crate::overseer::config::OverseerConfig,
-    ledger: &Ledger,
-    alive: bool,
-    version_drift: bool,
-) -> (String, bool) {
-    let warnings = health_warnings_from(config, ledger, alive, version_drift);
+pub(super) fn health_summary_from(alive: bool, version_drift: bool) -> (String, bool) {
+    let warnings = health_warnings_from(alive, version_drift);
     if warnings.is_empty() {
-        ("daemon online · circuit closed".into(), false)
+        ("daemon online".into(), false)
     } else {
         (
             warnings
@@ -166,29 +156,13 @@ pub(super) fn health_summary_from(
 
 pub(in crate::ui) fn health_warnings(app: &App) -> Vec<&'static str> {
     let snapshot = &app.overseer_snapshot;
-    health_warnings_from(
-        &snapshot.overseer,
-        &snapshot.ledger,
-        snapshot.daemon_alive,
-        snapshot.version_drift().is_some(),
-    )
+    health_warnings_from(snapshot.daemon_alive, snapshot.version_drift().is_some())
 }
 
-pub(in crate::ui) fn health_warnings_from(
-    config: &crate::overseer::config::OverseerConfig,
-    ledger: &Ledger,
-    alive: bool,
-    version_drift: bool,
-) -> Vec<&'static str> {
+pub(in crate::ui) fn health_warnings_from(alive: bool, version_drift: bool) -> Vec<&'static str> {
     let mut warnings = Vec::new();
     if !alive {
         warnings.push("STALE/OFFLINE");
-    }
-    if ledger.counters.consecutive_failures >= config.failure_circuit_threshold {
-        warnings.push("circuit OPEN");
-    }
-    if config.dispatch_enabled && !alive {
-        warnings.push("dispatch/no daemon");
     }
     // The terse label only; the sentence naming both builds belongs to the
     // Health detail, which has the width to carry it.

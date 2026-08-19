@@ -17,15 +17,11 @@ pub(super) fn describe(command: &Command) -> Entry {
     match command {
         Command::Status => Entry {
             usage: "!status",
-            description: "Show dispatch, automerge, worker count, and today's dispatch count.",
+            description: "Show automerge and worker count.",
         },
         Command::Help => Entry {
             usage: "!help",
             description: "List every Discord command.",
-        },
-        Command::Dispatch(_) => Entry {
-            usage: "!dispatch <on|off>",
-            description: "Turn automatic dispatch on or off.",
         },
         Command::AutoMerge(_) => Entry {
             usage: "!automerge off",
@@ -41,11 +37,11 @@ pub(super) fn describe(command: &Command) -> Entry {
         },
         Command::Skip(_) => Entry {
             usage: "!skip <task>",
-            description: "Skip a task so Overseer stops dispatching it.",
+            description: "Mark a task to skip on its next named launch.",
         },
         Command::Retry(_) => Entry {
             usage: "!retry <task>",
-            description: "Reset a task's retry count so Overseer tries it again.",
+            description: "Reset a task's retry count.",
         },
         Command::TaskCreate { .. } => Entry {
             usage: "create task <repo> <title> [description]",
@@ -69,7 +65,7 @@ pub(super) fn describe(command: &Command) -> Entry {
         },
         Command::Panic => Entry {
             usage: "!panic",
-            description: "Stop dispatch and request every worker to stop.",
+            description: "Terminate every Overseer worker.",
         },
         Command::Merge(_) => Entry {
             usage: "!merge <task>",
@@ -106,7 +102,8 @@ pub(super) fn describe(command: &Command) -> Entry {
         },
         Command::Run(_) => Entry {
             usage: "!run <task>",
-            description: "Dispatch one named task through the normal gate. Requires confirmation.",
+            description: "Launch one named task. Refuses a task that already has a live worker \
+                or branch. Requires confirmation.",
         },
         Command::Inbox => Entry {
             usage: "!inbox",
@@ -120,7 +117,6 @@ pub(super) fn describe(command: &Command) -> Entry {
 pub(super) fn samples() -> Vec<Command> {
     vec![
         Command::Status,
-        Command::Dispatch(false),
         Command::AutoMerge(false),
         Command::Workers,
         Command::Tasks,

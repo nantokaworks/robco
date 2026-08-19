@@ -191,13 +191,13 @@ fn branch_exists_outcome(ledger: &mut Ledger, task_id: &str, branch: &str) -> Sp
     SpawnOutcome::Held(format!("branch_exists:{branch}"))
 }
 
-/// Counts this dispatch attempt against every ledger entry already tracking the
+/// Counts this launch attempt against every ledger entry already tracking the
 /// task and returns the number of attempts that preceded it.
 ///
 /// The count is recorded before the spawn is tried: a spawn that fails writes no
 /// entry of its own, so leaving `retries` frozen at its spawn-time value would
-/// keep the attempt invisible to `max_retries_per_task` and let the task be
-/// re-dispatched every pass until the failure circuit latched dispatch off.
+/// keep the attempt invisible to anyone reading the ledger's history for this
+/// task.
 fn record_attempt(ledger: &mut Ledger, task_id: &str, display_id: &str) -> u32 {
     let attempts = super::task_entries(ledger, task_id, display_id).count() as u32;
     for entry in ledger

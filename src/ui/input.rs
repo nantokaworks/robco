@@ -280,7 +280,6 @@ impl App {
             | Mode::ConfirmDeleteBranch { .. }
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
-            | Mode::ConfirmOverseerReset
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmRemoveDiscordChannel { .. }

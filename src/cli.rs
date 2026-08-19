@@ -94,8 +94,6 @@ pub enum OverseerCommand {
     Restart,
     /// Persist a runtime toggle in RobCo's JSON config.
     Set(OverseerSetArgs),
-    /// Set the daily dispatch limit (0 = unlimited).
-    DailyLimit(OverseerDailyLimitArgs),
     /// Choose the channel that receives reports (decision notifications and
     /// digests). Cleared, reports fall back to the chat channel.
     NotifyChannel(OverseerNotifyChannelArgs),
@@ -103,7 +101,7 @@ pub enum OverseerCommand {
     Protection(OverseerProtectionArgs),
     /// Set how much of the merge envelope the daemon may clear on its own.
     Autonomy(OverseerAutonomyArgs),
-    /// Disable dispatch and terminate all Overseer workers.
+    /// Terminate all Overseer workers.
     Panic,
     /// Hide every currently listed Inbox item. Suppression only: the decision
     /// log and the ledger are left alone, and a newer escalation for the same
@@ -133,12 +131,6 @@ pub struct OverseerStatusArgs {
     /// changes what the command prints by default.
     #[arg(long)]
     pub debug: bool,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerDailyLimitArgs {
-    /// Maximum worker dispatches per day; 0 means unlimited.
-    pub value: u32,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -176,7 +168,6 @@ pub struct OverseerCompactDecisionsArgs {
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum OverseerSetting {
-    Dispatch,
     AutoMerge,
 }
 

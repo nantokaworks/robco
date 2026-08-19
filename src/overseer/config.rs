@@ -33,7 +33,6 @@ fn default_max_concurrent_merge_repos() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct OverseerConfig {
-    pub dispatch_enabled: bool,
     pub auto_merge: bool,
     pub protection_mode: ProtectionMode,
     /// Lets the auto-merge gate proceed on a repository whose GitHub plan does not
@@ -104,16 +103,6 @@ pub struct OverseerConfig {
     /// code after this text and are never reachable from this key — see
     /// `templates::worker_prompt`.
     pub worker_prompt_template: Option<String>,
-    /// Secondary dispatch slots opened per repository, on top of the one
-    /// always-present primary slot. `0` (the default) means every repository
-    /// runs a single serialized worker; a positive value lets this many more
-    /// candidates dispatch alongside the primary once it is running. Replaces
-    /// the retired `max_workers` / `per_repo_limit` pair — see
-    /// `dispatch::gate::candidate_skip` for how the two slot tiers are
-    /// enforced, and dropr:452 for why no global cap replaces `max_workers`:
-    /// with one primary per repository, the number of registered repositories
-    /// already bounds the total.
-    pub parallel_limit: usize,
     /// Settled ledger entries kept per repository. Nothing else ever removes a
     /// terminal entry, so without a bound the ledger grows for the life of the
     /// installation and every save rewrites all of it. `0` keeps every entry,
@@ -123,8 +112,11 @@ pub struct OverseerConfig {
     pub terminal_retention_per_repo: usize,
     pub poll_interval_secs: u64,
     pub stuck_after_mins: u64,
-    pub max_retries_per_task: u32,
-    pub daily_dispatch_limit: u32,
+    /// Consecutive worker-spawn failures before the merge envelope's
+    /// `RepeatedFailures` risk trips (see `autonomy::risks`) and the board
+    /// reviewer flags `circuit_open` / `circuit_at_risk` (see
+    /// `review::findings::circuit`). No longer gates anything about starting
+    /// work — see dropr:476.
     pub failure_circuit_threshold: u32,
     pub triage_enabled: bool,
     pub triage_profile: Option<String>,
@@ -171,7 +163,6 @@ pub struct OverseerConfig {
     /// catches is otherwise only visible as worker, triage, or review
     /// sessions failing to authenticate once they run.
     pub session_preflight: bool,
-    pub dispatch_task_authors: Vec<String>,
     /// Hours a ledger entry may sit waiting on a dropr `blocks` dependency
     /// edge — a worker's `waiting-prerequisite` report, or the auto-merge
     /// gate's own hold on a pull request whose task carries one — before it
@@ -204,7 +195,7 @@ pub struct OverseerConfig {
     /// repository's branches or pull requests, it only reads `bun audit` /
     /// `govulncheck` / `gh pr list` output and files a dropr task an
     /// operator still has to act on. Per-repository opt-out reuses
-    /// `RepoNode::management` — the same flag `dispatch::gather` and
+    /// `RepoNode::management` — the same flag `dispatch::resolve` and
     /// `merge_repo_pass` already honor for "does Overseer treat this repo as
     /// its own" — rather than a second per-repo toggle.
     pub repo_watch_enabled: bool,
@@ -224,7 +215,6 @@ pub struct OverseerConfig {
 impl Default for OverseerConfig {
     fn default() -> Self {
         Self {
-            dispatch_enabled: true,
             auto_merge: false,
             protection_mode: ProtectionMode::Required,
             allow_unverifiable_protection: false,
@@ -239,7 +229,6 @@ impl Default for OverseerConfig {
             max_merge_hold_rechecks: 10,
             worker_profile: None,
             worker_prompt_template: None,
-            parallel_limit: 0,
             // Deep enough that a repository's recent history is still readable
             // — well past the live-entry cap every other surface applies — and
             // shallow enough that the file the daemon rewrites every pass stays
@@ -247,8 +236,6 @@ impl Default for OverseerConfig {
             terminal_retention_per_repo: 50,
             poll_interval_secs: 60,
             stuck_after_mins: 30,
-            max_retries_per_task: 1,
-            daily_dispatch_limit: 20,
             failure_circuit_threshold: 3,
             triage_enabled: true,
             triage_profile: None,
@@ -263,7 +250,6 @@ impl Default for OverseerConfig {
             session_env: BTreeMap::new(),
             session_env_file: None,
             session_preflight: true,
-            dispatch_task_authors: Vec::new(),
             // 72 hours: several working days, comfortably longer than any
             // CI-scale budget in this file, and still a bound rather than
             // "forever" — see the field's own doc for why.

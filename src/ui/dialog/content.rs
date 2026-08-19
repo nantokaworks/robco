@@ -205,23 +205,9 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
         Mode::ConfirmOverseerPanic => (
             t(locale, "stop overseer?"),
             vec![
-                Line::from(t(locale, "disable dispatch + kill all overseer workers")),
-                Line::from(t(
-                    locale,
-                    "daemon stays alive; press S again to turn dispatch back on",
-                )),
+                Line::from(t(locale, "kill all overseer workers")),
+                Line::from(t(locale, "daemon stays alive")),
                 hint_line(locale, "y stop   n/esc cancel"),
-            ],
-            None,
-        ),
-        Mode::ConfirmOverseerReset => (
-            t(locale, "reset dispatch circuit?"),
-            vec![
-                Line::from(t(
-                    locale,
-                    "re-enable dispatch and clear the failure counter",
-                )),
-                hint_line(locale, "y reset   n/esc cancel"),
             ],
             None,
         ),

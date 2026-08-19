@@ -59,8 +59,6 @@ pub(super) struct Entry {
 pub(super) struct Counters {
     pub consecutive_failures: u32,
     pub failure_circuit_threshold: u32,
-    pub dispatched_today: u32,
-    pub dispatch_enabled: bool,
     pub active_workers: usize,
 }
 
@@ -94,8 +92,6 @@ pub(super) fn build(
         counters: Counters {
             consecutive_failures: ledger.counters.consecutive_failures,
             failure_circuit_threshold: config.failure_circuit_threshold,
-            dispatched_today: ledger.counters.dispatched_today,
-            dispatch_enabled: config.dispatch_enabled,
             active_workers: ledger.active_workers().count,
         },
     }

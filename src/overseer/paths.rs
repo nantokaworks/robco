@@ -73,14 +73,6 @@ pub fn repo_watch_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("repo_watch.json"))
 }
 
-/// Whether the dispatch pass's ready-candidate gather found the board
-/// already drained as of its last recorded pass. Persisted so a daemon
-/// restart neither re-announces a drain that already fired nor announces
-/// one that never happened — see `crate::overseer::dispatch::drain`.
-pub fn queue_drained_state_path() -> Result<PathBuf> {
-    Ok(overseer_home()?.join("queue_drained.json"))
-}
-
 pub fn triage_dir() -> Result<PathBuf> {
     Ok(overseer_home()?.join("triage"))
 }

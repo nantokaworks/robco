@@ -161,7 +161,7 @@ fn stuck_summary_reads_as_none_when_nothing_is_broken() {
 #[test]
 fn stuck_reasons_names_an_offline_daemon() {
     let config = OverseerConfig::default();
-    let reasons = stuck_reasons(&config, false, false, None, None, 0);
+    let reasons = stuck_reasons(&config, false, None, None, 0);
     assert!(
         reasons
             .iter()
@@ -175,28 +175,15 @@ fn stuck_reasons_is_empty_for_a_healthy_daemon_with_nothing_open() {
         auto_merge: false,
         ..OverseerConfig::default()
     };
-    assert!(
-        stuck_reasons(
-            &config,
-            true,
-            false,
-            Some(env!("CARGO_PKG_VERSION")),
-            None,
-            0
-        )
-        .is_empty()
-    );
+    assert!(stuck_reasons(&config, true, Some(env!("CARGO_PKG_VERSION")), None, 0).is_empty());
 }
 
 #[test]
 fn running_line_reports_no_active_workers_plainly() {
     let active = ActiveWorkers::default();
     let registry = registry_with(vec![]);
-    let line = running_line(&active, &BTreeMap::new(), &registry, 3, "10");
-    assert_eq!(
-        line,
-        "running now: no active workers · dispatched today 3/10"
-    );
+    let line = running_line(&active, &BTreeMap::new(), &registry);
+    assert_eq!(line, "running now: no active workers");
 }
 
 #[test]
@@ -207,11 +194,8 @@ fn running_line_names_repos() {
     };
     active.repos.insert("/tmp/robco".into(), 1);
     let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
-    let line = running_line(&active, &BTreeMap::new(), &registry, 5, "∞");
-    assert_eq!(
-        line,
-        "running now: 1 worker(s) (robco=1) · dispatched today 5/∞"
-    );
+    let line = running_line(&active, &BTreeMap::new(), &registry);
+    assert_eq!(line, "running now: 1 worker(s) (robco=1)");
     assert!(!line.contains("/tmp"));
 }
 
@@ -224,11 +208,8 @@ fn running_line_names_the_primary_holder_per_repository() {
     active.repos.insert("/tmp/robco".into(), 2);
     let primary_holders = BTreeMap::from([("/tmp/robco".to_string(), "#452".to_string())]);
     let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
-    let line = running_line(&active, &primary_holders, &registry, 0, "20");
-    assert_eq!(
-        line,
-        "running now: 2 worker(s) (robco=2 (primary #452)) · dispatched today 0/20"
-    );
+    let line = running_line(&active, &primary_holders, &registry);
+    assert_eq!(line, "running now: 2 worker(s) (robco=2 (primary #452))");
 }
 
 #[test]

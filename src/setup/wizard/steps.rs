@@ -62,18 +62,6 @@ pub(crate) fn overseer<R: BufRead, W: Write>(
     let default_program = config.default_program.clone();
     let profiles = config.profiles.clone();
     let overseer = &mut config.overseer;
-    overseer.dispatch_enabled = prompt::confirm(
-        input,
-        output,
-        "Enable Overseer dispatch?",
-        overseer.dispatch_enabled,
-    )?;
-    if overseer.dispatch_enabled {
-        writeln!(
-            output,
-            "▌ robco ▸ NOTE ············· dispatch needs the daemon running: `robco overseer run` or `robco overseer install-service`"
-        )?;
-    }
     let auto_merge = prompt::confirm(input, output, "Enable auto-merge?", overseer.auto_merge)?;
     if auto_merge && !overseer.auto_merge {
         writeln!(
@@ -98,22 +86,6 @@ pub(crate) fn overseer<R: BufRead, W: Write>(
         "Triage profile",
         &overseer.triage_profile,
     )?;
-    overseer.parallel_limit = prompt::number(
-        input,
-        output,
-        "Parallel workers per repository (0 = one at a time)",
-        overseer.parallel_limit,
-        0,
-        999,
-    )?;
-    overseer.daily_dispatch_limit = prompt::number(
-        input,
-        output,
-        "Daily dispatch limit (0 = unlimited)",
-        overseer.daily_dispatch_limit as usize,
-        0,
-        u32::MAX as usize,
-    )? as u32;
     Ok(())
 }
 
