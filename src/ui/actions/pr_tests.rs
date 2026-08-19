@@ -103,6 +103,7 @@ fn confirm_pr_enter_forwards_edited_prompt_to_request() {
         agent_id: "one".into(),
         branch: "feature/one".into(),
         input: "edited prompt".into(),
+        approval_head: None,
     };
     let mut sent = None;
 

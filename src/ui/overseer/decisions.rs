@@ -113,7 +113,13 @@ pub(super) fn merge_lifecycle(ledger: &Ledger, agent_id: &str) -> Option<MergeLi
     let entry = ledger
         .entries
         .iter()
-        .find(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::PrOpened)?;
+        .find(|entry| entry.agent_id == agent_id)?;
+    if entry.merge_approval.is_some() && !crate::overseer::ledger::terminal(entry.phase) {
+        return Some(MergeLifecycle::ApprovedWaiting);
+    }
+    if entry.phase != LedgerPhase::PrOpened {
+        return None;
+    }
     Some(match entry.merge_hold.reason.as_deref() {
         Some("checks_waiting") => MergeLifecycle::ChecksRunning,
         Some("checks_not_green") => MergeLifecycle::ChecksFailing,
@@ -135,7 +141,13 @@ pub(super) fn merge_hold_detail(locale: Locale, ledger: &Ledger, agent_id: &str)
     let entry = ledger
         .entries
         .iter()
-        .find(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::PrOpened)?;
+        .find(|entry| entry.agent_id == agent_id)?;
+    if entry.merge_approval.is_some() && !crate::overseer::ledger::terminal(entry.phase) {
+        return Some(t(locale, "approval queued; waiting for the merge gate").to_string());
+    }
+    if entry.phase != LedgerPhase::PrOpened {
+        return None;
+    }
     Some(
         entry
             .merge_hold

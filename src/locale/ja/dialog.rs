@@ -14,7 +14,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "delete worktree?" => "worktreeを削除しますか？",
         "manage whole repo?" => "リポジトリ全体を管理しますか？",
         "remove repo?" => "リポジトリを削除しますか？",
-        "merge?" => "mergeしますか？",
+        "land task?" => "タスクをlandしますか？",
         "clean up merged PR?" => "merge済みPRをクリーンアップしますか？",
         "request PR from agent?" => "エージェントにPRを依頼しますか？",
         "delete branch?" => "ブランチを削除しますか？",
@@ -38,7 +38,14 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "{} worker(s) {}" => "{} 個のworkerが{}",
         "y apply   n/esc cancel" => "yで適用   n/escでキャンセル",
         "y remove   n/esc cancel" => "yで削除   n/escでキャンセル",
-        "y merge   n/esc cancel" => "yでmerge   n/escでキャンセル",
+        "It will merge now" => "今すぐmergeします",
+        "Approval is queued; it will merge once the checks pass" => {
+            "承認はキューに追加済みです。チェック通過後にmergeします"
+        }
+        "It will open a pull request and queue approval; it will merge once the checks pass" => {
+            "PRを作成して承認をキューに追加します。チェック通過後にmergeします"
+        }
+        "y land   n/esc cancel" => "yでland   n/escでキャンセル",
         "already merged: pull main, remove worktree, delete branch" => {
             "merge済み：main pull、worktree削除、ブランチ削除を実行"
         }

@@ -98,11 +98,17 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  a              clone <git-url> [branch], or add local repo path" => {
             "  a              <git-url> [branch] をclone、またはローカルパスを追加"
         }
-        "  m              merge agent: merge PR + pull main (commit + PR needed)" => {
-            "  m              エージェントをmerge：PR mergeとmain pull（commit+PR必須）"
+        "  m              land task: open a missing PR, then queue approval" => {
+            "  m              タスクをland：PRがなければ作成後、承認をキューへ追加"
         }
-        "                 already-merged PR: clean up without merging again" => {
-            "                 merge済みPR：再mergeせずクリーンアップのみ"
+        "                 checks running: queue approval; green: merge now" => {
+            "                 チェック実行中：承認をキューへ追加；green：即merge"
+        }
+        "                 failed check: refuse; merged PR: clean up" => {
+            "                 チェック失敗：拒否；merge済みPR：クリーンアップ"
+        }
+        "  ◆ merge approved and waiting on the deterministic gate" => {
+            "  ◆ merge承認済み、決定論的ゲートを待機中"
         }
         "  p              edit and request PR from selected running agent" => {
             "  p              選択中の稼働エージェントからPRを編集・依頼"

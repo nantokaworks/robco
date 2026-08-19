@@ -65,6 +65,7 @@ fn pr_precheck_modal_is_centered() {
         repo_path: "/repo".into(),
         agent_id: "agent".into(),
         branch: "feature/agent".into(),
+        approval_head: None,
     });
 }
 

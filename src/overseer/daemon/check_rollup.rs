@@ -32,7 +32,7 @@ const PASSED_CONCLUSIONS: [&str; 3] = ["SUCCESS", "SKIPPED", "NEUTRAL"];
 
 /// What the check rollup says about merging right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Checks {
+pub(crate) enum Checks {
     /// The pull request is open and every check it reports is satisfied.
     Green,
     /// A check finished and did not pass: the worker's own head is red, which is
@@ -101,7 +101,7 @@ fn latest_runs(rollup: &[Value]) -> HashMap<Check, (String, Run)> {
 ///
 /// A name whose newest run is a genuine failure still fails, because that run is the
 /// one the branch protection reads too.
-pub(super) fn classify(rollup: &[Value]) -> Checks {
+pub(crate) fn classify(rollup: &[Value]) -> Checks {
     let latest = latest_runs(rollup);
     // A head whose checks have not been created yet is not green.
     if latest.is_empty() {
@@ -119,7 +119,7 @@ pub(super) fn classify(rollup: &[Value]) -> Checks {
 /// Names of the checks whose most recent run failed, sorted for a stable
 /// display order — an Inbox row shows these verbatim (dropr:461), so an
 /// operator sees the same check name branch protection would have blocked on.
-pub(super) fn failed_names(rollup: &[Value]) -> Vec<String> {
+pub(crate) fn failed_names(rollup: &[Value]) -> Vec<String> {
     let mut names: Vec<String> = latest_runs(rollup)
         .into_iter()
         .filter(|(_, (_, run))| *run == Run::Failed)

@@ -232,6 +232,7 @@ impl App {
             | Mode::ConfirmMerge {
                 repo: dialog_repo,
                 agent,
+                ..
             }
             | Mode::ConfirmCleanup {
                 repo: dialog_repo,

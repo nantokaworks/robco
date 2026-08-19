@@ -123,6 +123,7 @@ fn confirm_pr_caret_tracks_a_mid_string_cursor() {
             agent_id: "agent".to_string(),
             branch: "feature/agent".to_string(),
             input: edited("open a pull request", 8),
+            approval_head: None,
         },
         " ",
     );

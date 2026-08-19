@@ -135,6 +135,19 @@ fn checks_waiting_reads_as_checks_running() {
 }
 
 #[test]
+fn queued_approval_wins_over_the_hold_reason() {
+    let mut ledger = pr_opened_ledger("worker-1", "#359", Some("checks_not_green"));
+    ledger.entries[0].merge_approval = Some(crate::overseer::ledger::MergeApproval {
+        head: "deadbeef".into(),
+        granted_at: Utc::now(),
+    });
+    assert_eq!(
+        merge_lifecycle(&ledger, "worker-1"),
+        Some(MergeLifecycle::ApprovedWaiting)
+    );
+}
+
+#[test]
 fn checks_not_green_reads_as_checks_failing() {
     let ledger = pr_opened_ledger("worker-1", "#359", Some("checks_not_green"));
     assert_eq!(
@@ -181,6 +194,19 @@ fn a_merged_pull_request_has_no_lifecycle_of_its_own() {
     let mut ledger = escalated_ledger("worker-1", "#359");
     ledger.entries[0].phase = LedgerPhase::Merged;
     assert_eq!(merge_lifecycle(&ledger, "worker-1"), None);
+}
+
+#[test]
+fn a_merged_pull_request_ignores_a_stale_approval() {
+    let mut ledger = escalated_ledger("worker-1", "#359");
+    ledger.entries[0].phase = LedgerPhase::Merged;
+    ledger.entries[0].merge_approval = Some(crate::overseer::ledger::MergeApproval {
+        head: "deadbeef".into(),
+        granted_at: Utc::now(),
+    });
+
+    assert_eq!(merge_lifecycle(&ledger, "worker-1"), None);
+    assert_eq!(merge_hold_detail(Locale::En, &ledger, "worker-1"), None);
 }
 
 #[test]

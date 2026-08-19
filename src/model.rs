@@ -344,6 +344,9 @@ impl Status {
 /// glyph rather than a lifecycle glyph of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MergeLifecycle {
+    /// An operator approval is scoped to the current head and waiting for the
+    /// deterministic merge gate.
+    ApprovedWaiting,
     /// The auto-merge gate is waiting on CI checks to finish.
     ChecksRunning,
     /// CI checks came back red.
@@ -357,6 +360,7 @@ pub enum MergeLifecycle {
 impl MergeLifecycle {
     pub fn glyph(self) -> &'static str {
         match self {
+            MergeLifecycle::ApprovedWaiting => "◆",
             MergeLifecycle::ChecksRunning => "↻",
             MergeLifecycle::ChecksFailing => "‼",
             MergeLifecycle::OnHold => "⏸",
@@ -420,6 +424,7 @@ mod tests {
             Status::BranchOnly.glyph(),
         ];
         let lifecycle_glyphs = [
+            MergeLifecycle::ApprovedWaiting.glyph(),
             MergeLifecycle::ChecksRunning.glyph(),
             MergeLifecycle::ChecksFailing.glyph(),
             MergeLifecycle::OnHold.glyph(),

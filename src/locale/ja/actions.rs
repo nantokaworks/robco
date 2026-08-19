@@ -115,6 +115,20 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "agentが既に存在しません。PRリクエストを中止しました"
         }
         "PR requested: {}" => "PRをリクエストしました: {}",
+        "Nothing was merged because these checks failed: {}" => {
+            "次のチェックが失敗したためmergeしませんでした: {}"
+        }
+        "an unnamed check" => "名前のないチェック",
+        "Approval queued; it will merge once the checks pass" => {
+            "承認をキューに追加しました。チェック通過後にmergeします"
+        }
+        "PR requested and approval queued; it will merge once the checks pass" => {
+            "PRをリクエストし、承認をキューに追加しました。チェック通過後にmergeします"
+        }
+        "approval queued; waiting for the merge gate" => "承認済みです。mergeゲートを待っています",
+        "This agent is not one the Overseer daemon can land; merge it directly instead" => {
+            "このエージェントはOverseerデーモンではlandできません。代わりに直接mergeしてください"
+        }
 
         // actions/merge.rs
         "closed dialog because its agent was merged" => {

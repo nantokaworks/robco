@@ -137,6 +137,7 @@ impl App {
                 repo_path,
                 agent_id,
                 input,
+                approval_head,
                 ..
             } => {
                 let action = confirm_pr_action(&mut self.config, input, key, Config::save);
@@ -146,8 +147,9 @@ impl App {
                     ConfirmPrAction::Submit(prompt) => {
                         let repo_path = repo_path.clone();
                         let agent_id = agent_id.clone();
+                        let approval_head = approval_head.clone();
                         self.mode = Mode::Normal;
-                        self.request_pr(&repo_path, &agent_id, &prompt, send)?;
+                        self.request_pr(&repo_path, &agent_id, &prompt, approval_head, send)?;
                     }
                     ConfirmPrAction::Saved(result) => match result {
                         Ok(()) => self.show_message(t(self.locale, "saved PR prompt to config")),

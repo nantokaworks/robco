@@ -246,6 +246,93 @@ fn run_task_is_handed_back_instead_of_applied_and_still_acked() {
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 }
 
+#[test]
+fn merge_approval_round_trips_through_json() {
+    let request = RuntimeRequest::MergeApproval {
+        source: "tui".into(),
+        target: "worker-1".into(),
+        head: "deadbeef".into(),
+        at: Utc::now(),
+    };
+    let json = serde_json::to_string(&request).unwrap();
+    assert_eq!(
+        serde_json::from_str::<RuntimeRequest>(&json).unwrap(),
+        request
+    );
+}
+
+#[test]
+fn merge_approval_replay_after_branch_moves_keeps_the_observed_head() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    std::process::Command::new("git")
+        .args(["init", "-q", "-b", "task-202"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    fs::write(repo.join("tracked"), "one").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "tracked"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.test",
+            "commit",
+            "-q",
+            "-m",
+            "tip",
+        ])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    let approved_head = crate::git::local_branch_commit(&repo, "task-202").unwrap();
+    let mut entry = ledger_entry("worker-1", LedgerPhase::Escalated);
+    entry.repo = repo.display().to_string();
+    entry.pr_url = None;
+    let mut ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+    let mut config = Config::default();
+    let request = RuntimeRequest::MergeApproval {
+        source: "tui".into(),
+        target: "worker-1".into(),
+        head: approved_head.clone(),
+        at: Utc::now(),
+    };
+
+    fs::write(repo.join("tracked"), "two").unwrap();
+    std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.test",
+            "commit",
+            "-qam",
+            "moved",
+        ])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    assert_ne!(
+        crate::git::local_branch_commit(&repo, "task-202").unwrap(),
+        approved_head
+    );
+
+    assert!(!apply(&mut ledger, &mut config, request.clone()));
+    let first = ledger.entries[0].merge_approval.clone().unwrap();
+    assert_eq!(first.head, approved_head);
+    assert!(!apply(&mut ledger, &mut config, request));
+    assert_eq!(ledger.entries[0].merge_approval.as_ref(), Some(&first));
+}
+
 fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
     LedgerEntry {
         task_id: format!("task-{agent_id}"),

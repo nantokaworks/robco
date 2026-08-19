@@ -16,6 +16,7 @@ fn prompt_renders_wrapped_with_editing_end_visible() {
         agent_id: "agent".to_string(),
         branch: "feature/agent".to_string(),
         input: prompt.clone().into(),
+        approval_head: None,
     };
     let mut terminal = Terminal::new(TestBackend::new(50, 20)).unwrap();
 
@@ -48,6 +49,7 @@ fn cursor_stays_visible_in_a_short_terminal() {
         agent_id: "agent".to_string(),
         branch: "feature/agent".to_string(),
         input: "editing end".into(),
+        approval_head: None,
     };
     let mut terminal = Terminal::new(TestBackend::new(50, 5)).unwrap();
 

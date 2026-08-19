@@ -165,6 +165,7 @@ impl Theme {
     pub fn merge_lifecycle_style(self, lifecycle: MergeLifecycle) -> Style {
         let color = match lifecycle {
             MergeLifecycle::ChecksFailing => self.dead,
+            MergeLifecycle::ApprovedWaiting => self.accent,
             MergeLifecycle::ChecksRunning | MergeLifecycle::OnHold => self.waiting,
         };
         Style::default().fg(color)

@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use super::COMMAND_TIMEOUT;
 use super::check_rollup;
-pub(super) use super::check_rollup::Checks;
+pub(crate) use super::check_rollup::{Checks, classify as classify_checks, failed_names};
 use crate::overseer::exec::run_timeout;
 
 /// Base branch used when the pull request does not report one.

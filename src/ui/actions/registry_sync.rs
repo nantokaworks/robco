@@ -83,7 +83,7 @@ pub(super) fn restore_dialog_agent(
 fn dialog_indices(mode: &Mode) -> Option<(usize, usize)> {
     match mode {
         Mode::ConfirmKill { repo, agent }
-        | Mode::ConfirmMerge { repo, agent }
+        | Mode::ConfirmMerge { repo, agent, .. }
         | Mode::ConfirmCleanup { repo, agent }
         | Mode::ConfirmDeleteBranch { repo, agent } => Some((*repo, *agent)),
         _ => None,
@@ -98,6 +98,7 @@ fn set_dialog_indices(mode: &mut Mode, repo: usize, agent: usize) {
     | Mode::ConfirmMerge {
         repo: dialog_repo,
         agent: dialog_agent,
+        ..
     }
     | Mode::ConfirmCleanup {
         repo: dialog_repo,

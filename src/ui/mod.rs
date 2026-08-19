@@ -112,6 +112,8 @@ enum Mode {
     ConfirmMerge {
         repo: usize,
         agent: usize,
+        plan: LandPlan,
+        head: Option<String>,
     },
     /// The agent's pull request already merged, so `m` offers the cleanup that
     /// normally follows a merge instead of a merge that has nothing left to do.
@@ -126,12 +128,14 @@ enum Mode {
         repo_path: PathBuf,
         agent_id: String,
         branch: String,
+        approval_head: Option<String>,
     },
     ConfirmPr {
         repo_path: PathBuf,
         agent_id: String,
         branch: String,
         input: TextInput,
+        approval_head: Option<String>,
     },
     ConfirmDeleteBranch {
         repo: usize,
@@ -178,6 +182,13 @@ enum Mode {
         channel_id: String,
         label: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LandPlan {
+    MergeNow,
+    QueueApproval,
+    OpenPrThenQueue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
