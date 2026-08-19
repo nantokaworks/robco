@@ -26,15 +26,24 @@ pub fn pidfile_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("overseer.pid"))
 }
 
-/// True when the Overseer daemon pidfile names a live process. Combined with a
-/// fresh heartbeat this is the canonical "daemon is running" signal shared by
-/// every status surface (CLI, MCP policy, TUI).
-pub fn daemon_pid_alive() -> bool {
+/// The pid the Overseer daemon pidfile currently names, whether or not that
+/// process is still alive. Used to tell a freshly-started daemon's own pid
+/// apart from the one it is replacing — see `overseer::command::service`'s
+/// `restart` (dropr:483), which cannot trust `probe_state() == Loaded` alone
+/// since a launchd job under that label stays `Loaded` even when the process
+/// answering it never changed.
+pub fn daemon_pid() -> Option<u32> {
     pidfile_path()
         .ok()
         .and_then(|path| std::fs::read_to_string(path).ok())
         .and_then(|raw| raw.trim().parse::<u32>().ok())
-        .is_some_and(exec::process_alive)
+}
+
+/// True when the Overseer daemon pidfile names a live process. Combined with a
+/// fresh heartbeat this is the canonical "daemon is running" signal shared by
+/// every status surface (CLI, MCP policy, TUI).
+pub fn daemon_pid_alive() -> bool {
+    daemon_pid().is_some_and(exec::process_alive)
 }
 
 pub fn decision_log_path() -> Result<PathBuf> {
