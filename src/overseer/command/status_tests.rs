@@ -50,6 +50,7 @@ fn ledger_entry(phase: LedgerPhase) -> LedgerEntry {
 fn answerable_escalation() -> InboxItem {
     InboxItem {
         kind: InboxKind::Escalation,
+        repo: None,
         target_session: Some("session".into()),
         target_id: "agent-1".into(),
         label: "agent-1 — worker title".into(),
@@ -64,6 +65,7 @@ fn answerable_escalation() -> InboxItem {
 fn watch_only_escalation() -> InboxItem {
     InboxItem {
         kind: InboxKind::Escalation,
+        repo: None,
         target_session: Some("session".into()),
         target_id: "#99".into(),
         label: "#99 — checks_waiting".into(),

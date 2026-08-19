@@ -32,6 +32,7 @@ fn inbox_app(target_session: Option<&str>) -> App {
     app.overseer_visible = true;
     app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
         kind: crate::ui::inbox::InboxKind::Escalation,
+        repo: None,
         target_session: target_session.map(ToString::to_string),
         target_id: "agent-1".into(),
         label: "agent-1 — worker".into(),

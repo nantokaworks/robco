@@ -5,6 +5,7 @@ use chrono::Utc;
 fn live_escalation(target_id: &str) -> InboxItem {
     InboxItem {
         kind: InboxKind::Escalation,
+        repo: None,
         target_session: Some("session".into()),
         target_id: target_id.into(),
         label: "label".into(),
@@ -26,6 +27,20 @@ fn a_row_carries_its_move_tag_target_and_guidance() {
     let rendered = format_inbox(&[live_escalation("a1")], Locale::En);
     assert!(rendered.contains("ANSWER"));
     assert!(rendered.contains("a1"));
+}
+
+#[test]
+fn a_row_names_its_repository() {
+    let mut row = live_escalation("a1");
+    row.repo = Some("robco".into());
+    let rendered = format_inbox(&[row], Locale::En);
+    assert!(rendered.contains("ANSWER robco a1"), "{rendered}");
+}
+
+#[test]
+fn a_row_with_no_matching_ledger_entry_still_renders() {
+    let rendered = format_inbox(&[live_escalation("a1")], Locale::En);
+    assert!(rendered.contains("ANSWER a1"), "{rendered}");
 }
 
 #[test]

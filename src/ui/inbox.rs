@@ -1,19 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 
 use crate::{
-    Result,
     model::Status,
     overseer::{
-        dismissals::Dismissals,
-        ledger::{Ledger, LedgerPhase, PrFacts},
-        logging::{self, DecisionEntry, DecisionKind},
+        ledger::PrFacts,
         remedy::{self, Remedy},
-        row_summaries::RowSummaries,
     },
-    registry::Registry,
 };
+
+#[path = "inbox_aggregate.rs"]
+mod inbox_aggregate;
+pub(crate) use inbox_aggregate::{agent_session_reports, aggregate, current};
 
 /// The one kind of row the Inbox raises: something waiting for an operator's
 /// decision. `Question` — a worker sitting on a confirmation prompt — never
@@ -45,6 +44,11 @@ impl InboxKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InboxItem {
     pub kind: InboxKind,
+    /// The repository's short registry name (never its path), taken from the
+    /// ledger entry the row is built from. `None` for a decision-sourced row
+    /// whose `task` names no ledger entry the aggregation can find — the row
+    /// renders the same, just without this part.
+    pub repo: Option<String>,
     pub target_session: Option<String>,
     pub target_id: String,
     pub label: String,
@@ -145,149 +149,6 @@ pub(crate) struct AgentSessionReport {
     pub agent_id: String,
     pub tmux_session: String,
     pub status: Status,
-}
-
-pub(crate) fn aggregate(
-    ledger: &Ledger,
-    decisions: &[DecisionEntry],
-    reports: &[AgentSessionReport],
-    dismissals: &Dismissals,
-    registry: &Registry,
-    summaries: &RowSummaries,
-) -> Inbox {
-    let agents = reports
-        .iter()
-        .map(|report| (report.agent_id.as_str(), report))
-        .collect::<HashMap<_, _>>();
-    let tasks = ledger
-        .entries
-        .iter()
-        .map(|entry| (entry.task_id.as_str(), entry))
-        .chain(
-            ledger
-                .entries
-                .iter()
-                .map(|entry| (entry.display_id.as_str(), entry)),
-        )
-        .collect::<HashMap<_, _>>();
-    let mut items = Vec::new();
-
-    // A release-pipeline skip (`DecisionKind::Skip`, `overseer::
-    // release_pipeline::skip`) rides in here alongside a plain `Escalate`:
-    // it already reaches Discord (`discord::notifications::from_decision`),
-    // and an unready checkout blocks every release after it, so the operator
-    // needs the same TUI Inbox visibility a task escalation gets.
-    for decision in decisions.iter().filter(|entry| {
-        entry.kind == DecisionKind::Escalate
-            || (entry.kind == DecisionKind::Skip
-                && entry
-                    .reason
-                    .starts_with(crate::overseer::release_pipeline::SKIPPED_PREFIX))
-    }) {
-        let ledger_entry = decision
-            .task
-            .as_deref()
-            .and_then(|target| tasks.get(target).copied());
-        let target_id = ledger_entry
-            .map(|entry| entry.display_id.as_str())
-            .or(decision.task.as_deref())
-            .unwrap_or("overseer");
-        let session = ledger_entry
-            .and_then(|entry| agents.get(entry.agent_id.as_str()))
-            .filter(|report| !matches!(report.status, Status::Dead | Status::BranchOnly))
-            .map(|report| report.tmux_session.clone());
-        items.push(InboxItem {
-            kind: InboxKind::Escalation,
-            target_session: session,
-            target_id: target_id.to_string(),
-            label: format!("{target_id} — {}", decision.reason),
-            detail: decision.reason.clone(),
-            at: decision.at,
-            pr_url: ledger_entry.and_then(|entry| entry.pr_url.clone()),
-            pr_facts: ledger_entry.and_then(|entry| entry.pr_facts.clone()),
-            sentence: None,
-        });
-    }
-    for entry in ledger
-        .entries
-        .iter()
-        .filter(|entry| entry.phase == LedgerPhase::Escalated)
-    {
-        let session = agents
-            .get(entry.agent_id.as_str())
-            .filter(|report| !matches!(report.status, Status::Dead | Status::BranchOnly))
-            .map(|report| report.tmux_session.clone());
-        let repo = registry.repo_label(&entry.repo);
-        // The ledger records no reason, so name what the row actually is: an
-        // entry parked at `escalated`. One still has a pull request the
-        // merge pass will reconsider on its own
-        // (`LedgerEntry::grant_merge_reconsideration`); the other has
-        // nothing left for the daemon to act on. The leading marker is what
-        // `InboxItem::remedy` reads to route the row without trying to
-        // resolve the descriptive text that follows as a reason.
-        let marker = if entry.pr_url.is_some() {
-            LEDGER_PARKED_RESUMABLE_MARKER
-        } else {
-            LEDGER_PARKED_MARKER
-        };
-        items.push(InboxItem {
-            kind: InboxKind::Escalation,
-            target_session: session,
-            target_id: entry.display_id.clone(),
-            label: format!("{} — {repo} / {}", entry.display_id, entry.agent_id),
-            detail: format!(
-                "{marker} — repo {repo}, agent {}, branch {}",
-                entry.agent_id, entry.branch
-            ),
-            at: entry.dispatched_at,
-            pr_url: entry.pr_url.clone(),
-            pr_facts: entry.pr_facts.clone(),
-            sentence: None,
-        });
-    }
-    items.sort_by_key(|item| std::cmp::Reverse(item.at));
-    let mut seen = HashSet::new();
-    items.retain(|item| seen.insert((item.kind, item.target_id.clone())));
-    let targets = items.iter().map(InboxItem::identity).collect();
-    // The suppression filter is the last step, so `targets` still names every
-    // identity the sources produced.
-    items.retain(|item| !dismissals.suppresses(item.kind.code(), &item.target_id, item.at));
-    for item in &mut items {
-        item.sentence = summaries
-            .get(&item.target_id, &item.case_signature())
-            .map(str::to_owned);
-    }
-    Inbox { items, targets }
-}
-
-/// Aggregate the Inbox straight off disk, the way the TUI's background refresh
-/// does. Used by `robco overseer clear-inbox`, which has no App to read from.
-pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
-    Ok(aggregate(
-        &Ledger::load()?,
-        &logging::tail(super::overseer::DECISION_SNAPSHOT_LIMIT)?,
-        &agent_session_reports(registry),
-        &Dismissals::load()?,
-        registry,
-        // Loaded once per aggregation rather than per row: the table is
-        // small, and a per-item load would turn one refresh into one file
-        // read per row.
-        &RowSummaries::load().unwrap_or_default(),
-    ))
-}
-
-pub(crate) fn agent_session_reports(registry: &Registry) -> Vec<AgentSessionReport> {
-    registry
-        .repos
-        .iter()
-        .flat_map(|repo| {
-            repo.agents.iter().map(|agent| AgentSessionReport {
-                agent_id: agent.id.clone(),
-                tmux_session: agent.tmux_session.clone(),
-                status: agent.status,
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]

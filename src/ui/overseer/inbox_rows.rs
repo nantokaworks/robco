@@ -35,12 +35,17 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
 /// Why an item cannot be answered, said where its target session would go.
 const DISPLAY_ONLY: &str = "display-only";
 
-/// A row is `[ESC] REVIEW #296`: the kind code stays (it is the dismissal
-/// identity), and the remedy's tag replaces the raw reason and the
+/// A row is `[ESC] REVIEW robco #296`: the kind code stays (it is the
+/// dismissal identity), and the remedy's tag replaces the raw reason and the
 /// `=> {session} | display-only` suffix — at the 24-column sidebar minimum
 /// the row was clipped well ahead of that suffix, and `display-only` is now
 /// said positively by the tag itself (a `Watch` row needs no live session any
-/// more than a `Merge` one does). Two spans so a `WATCH` tag renders muted
+/// more than a `Merge` one does). The repository sits between the tag and the
+/// target id — with four repositories registered here, the tag and the
+/// repository are what tell an operator whether a row is theirs, so the
+/// target id is the reasonable thing to trim first when the row runs out of
+/// width; a decision-sourced row with no matching ledger entry omits it
+/// rather than rendering a blank gap. Two spans so a `WATCH` tag renders muted
 /// while the rest of the row keeps its normal selection/accent style.
 fn item_line(item: &InboxItem, selected: bool) -> Line<'static> {
     let marker = if selected { ">" } else { " " };
@@ -55,9 +60,17 @@ fn item_line(item: &InboxItem, selected: bool) -> Line<'static> {
     } else {
         base_style
     };
+    let repo = item
+        .repo
+        .as_deref()
+        .map(|repo| format!("{repo} "))
+        .unwrap_or_default();
     Line::from(vec![
         Span::styled(format!("{marker} [{}] ", item.kind.code()), base_style),
-        Span::styled(format!("{} {}", remedy.tag(), item.target_id), tag_style),
+        Span::styled(
+            format!("{} {repo}{}", remedy.tag(), item.target_id),
+            tag_style,
+        ),
     ])
 }
 
@@ -84,6 +97,11 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
     let mut lines = vec![
         field("kind", item.kind.label().to_string()),
         field("remedy", remedy.tag().to_string()),
+    ];
+    if let Some(repo) = &item.repo {
+        lines.push(field("repo", repo.clone()));
+    }
+    lines.extend([
         field("target", item.target_id.clone()),
         match &item.target_session {
             Some(session) => field("session", session.clone()),
@@ -98,7 +116,7 @@ pub(in crate::ui) fn item_preview(app: &App, index: usize) -> (String, Text<'sta
                 ),
             ),
         },
-    ];
+    ]);
     // Per-case facts (dropr:461) — absent when the row has no matching pull
     // request, or the daemon has not read one yet. The row renders the same
     // without them; this only ever adds to it.

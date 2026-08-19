@@ -39,8 +39,16 @@ fn format_inbox(items: &[inbox::InboxItem], locale: Locale) -> String {
                 .as_deref()
                 .map(|sentence| format!(" — {sentence}"))
                 .unwrap_or_default();
+            // The repository, same as the TUI row: there is no sidebar to
+            // fall back on in Discord, so a row with no matching ledger
+            // entry says so by simply omitting it, same as the TUI.
+            let repo = item
+                .repo
+                .as_deref()
+                .map(|repo| format!("{repo} "))
+                .unwrap_or_default();
             format!(
-                "{} {} — {} {}{sentence}",
+                "{} {repo}{} — {} {}{sentence}",
                 remedy.tag(),
                 item.target_id,
                 locale::t(locale, remedy.means),
