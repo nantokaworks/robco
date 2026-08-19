@@ -1,11 +1,19 @@
+use chrono::Utc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
-use crate::{config::Config, registry::Registry};
+use crate::{
+    config::Config,
+    overseer::ledger::{LedgerEntry, LedgerPhase},
+    registry::Registry,
+};
 
 fn app_with_precheck(
-    result: Option<std::result::Result<(), String>>,
-) -> (App, Option<mpsc::Sender<std::result::Result<(), String>>>) {
+    result: Option<std::result::Result<PrPrecheckOutcome, String>>,
+) -> (
+    App,
+    Option<mpsc::Sender<std::result::Result<PrPrecheckOutcome, String>>>,
+) {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     let (sender, receiver) = mpsc::channel();
@@ -29,7 +37,7 @@ fn app_with_precheck(
 
 #[test]
 fn precheck_ok_opens_confirm_dialog() {
-    let (mut app, _) = app_with_precheck(Some(Ok(())));
+    let (mut app, _) = app_with_precheck(Some(Ok(PrPrecheckOutcome::OpenDialog)));
 
     app.drain_pr_precheck_events();
 
@@ -39,6 +47,77 @@ fn precheck_ok_opens_confirm_dialog() {
         Mode::ConfirmPr { ref branch, .. } if branch == "feature/one"
     ));
     assert!(app.message.is_none());
+}
+
+#[test]
+fn precheck_created_without_approval_head_shows_the_pr_url() {
+    let (mut app, _) = app_with_precheck(Some(Ok(PrPrecheckOutcome::Created(
+        "https://example.invalid/pull/1".into(),
+    ))));
+
+    app.drain_pr_precheck_events();
+
+    assert!(app.pr_precheck_job.is_none());
+    assert!(matches!(app.mode, Mode::Normal));
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("PR opened: https://example.invalid/pull/1")
+    );
+}
+
+#[test]
+fn precheck_created_with_approval_head_queues_the_merge_approval() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_snapshot.ledger.entries.push(LedgerEntry {
+        task_id: "task-1".into(),
+        display_id: "#1".into(),
+        repo: "/repo".into(),
+        agent_id: "one".into(),
+        branch: "feature/one".into(),
+        phase: LedgerPhase::Working,
+        dispatched_at: Utc::now(),
+        settled_at: None,
+        retries: 0,
+        pr_url: None,
+        branch_updates: 0,
+        merge_recovery: Default::default(),
+        merge_hold: Default::default(),
+        manual_merge_skip: None,
+        merge_hold_cap_escalated: false,
+        merge_hold_rechecks: 0,
+        merge_hold_recheck_reason: None,
+        merge_hold_recheck_head: None,
+        prerequisite_wait: None,
+        merge_hold_stuck_notified: false,
+        escalation_notified_reason: None,
+        escalation_notified_head: None,
+        worker_escalated: false,
+        operator_override: None,
+        merge_approval: None,
+        pr_facts: None,
+    });
+    let (sender, receiver) = mpsc::channel();
+    sender
+        .send(Ok(PrPrecheckOutcome::Created(
+            "https://example.invalid/pull/1".into(),
+        )))
+        .unwrap();
+    app.mode = Mode::PrPrecheck {
+        repo_path: "/repo".into(),
+        agent_id: "one".into(),
+        branch: "feature/one".into(),
+        approval_head: Some("headsha".into()),
+    };
+    app.pr_precheck_job = Some(PrPrecheckJob { receiver });
+
+    app.drain_pr_precheck_events();
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("PR requested and approval queued; it will merge once the checks pass")
+    );
 }
 
 #[test]

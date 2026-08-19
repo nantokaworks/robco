@@ -1,10 +1,14 @@
 //! The pre-flight checks a PR request runs, shared by the TUI's confirm dialog
 //! and the `robco_pr_request` MCP tool.
 //!
-//! PR authoring belongs to the worker agent: robco never runs `gh pr create`
-//! itself, it only sends the configured prompt into the worker's session. These
-//! two checks are what stop it sending that prompt into a session that is gone,
-//! or asking for a second pull request on a branch that already has one open.
+//! Both callers still prefer the worker agent to author the pull request: it
+//! knows what it changed and writes a better body than a template can. These
+//! two checks are what stop the TUI or the MCP tool sending a prompt into a
+//! session that is gone, or asking for a second pull request on a branch that
+//! already has one open. The MCP tool has no other option when this refuses.
+//! The TUI does: when the session is gone, `ui::actions::pr_precheck` runs its
+//! own check instead of this one and falls back to `ui::actions::pr_fallback`,
+//! which opens the pull request itself with a templated body.
 //!
 //! Both checks shell out, so both callers run them away from their event loop —
 //! the TUI on a worker thread, the MCP server on the request's own thread.

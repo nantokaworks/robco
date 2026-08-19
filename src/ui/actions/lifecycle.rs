@@ -1,7 +1,7 @@
 use crate::{
     Result, git,
     locale::{fmt, t},
-    model::{RepoNode, Selection, Status},
+    model::{AgentNode, RepoNode, Selection, Status},
 };
 use std::path::Path;
 
@@ -123,6 +123,27 @@ impl App {
         }
     }
 
+    /// The dropr task (`#N`) a pull request robco opens on `agent`'s behalf
+    /// must close. The Overseer ledger is authoritative when it has an entry
+    /// for this agent; a manually-created or adopted agent has none, so this
+    /// falls back to the number already captured on the agent at spawn time
+    /// (see `AgentNode::task_number`) — the same number a branch name leads
+    /// with, just read off the node instead of re-parsed from it.
+    pub(in crate::ui) fn task_display_id(&self, agent: &AgentNode) -> Option<String> {
+        self.overseer_snapshot
+            .ledger
+            .entries
+            .iter()
+            .find(|entry| entry.agent_id == agent.id)
+            .map(|entry| entry.display_id.clone())
+            .or_else(|| {
+                agent
+                    .task_number
+                    .as_deref()
+                    .map(|number| format!("#{number}"))
+            })
+    }
+
     pub(in crate::ui) fn record_merge_error(
         &mut self,
         repo: usize,
@@ -163,7 +184,15 @@ impl App {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{Local, Utc};
+
     use super::*;
+    use crate::{
+        config::Config,
+        overseer::ledger::{LedgerEntry, LedgerPhase},
+        registry::Registry,
+    };
+
     #[test]
     fn merge_error_is_recorded_and_cleared_for_the_next_attempt() {
         let mut error = None;
@@ -173,5 +202,82 @@ mod tests {
 
         error = None;
         assert_eq!(error, None);
+    }
+
+    fn agent(id: &str) -> AgentNode {
+        let now = Local::now();
+        AgentNode {
+            management: crate::model::ManagementMode::Auto,
+            id: id.to_string(),
+            parent_agent_id: None,
+            title: format!("{id} title"),
+            task_number: None,
+            worktree_path: format!("/worktrees/{id}").into(),
+            branch: format!("feature/{id}"),
+            base_commit: String::new(),
+            program: "codex".to_string(),
+            claude_session_id: None,
+            profile: None,
+            tmux_session: format!("robco_{id}"),
+            created_at: now,
+            updated_at: now,
+            status: Status::Running,
+            worktree_missing: false,
+            merge_error: None,
+            last_capture: None,
+            last_spinner: None,
+            last_change_at: None,
+            last_auto_accept_at: None,
+            shell_working: false,
+            mcp_active: false,
+            pane_pid: None,
+            tracked_command: None,
+            subagents: Vec::new(),
+            children: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn task_display_id_prefers_the_ledger_and_falls_back_to_the_agent() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+
+        let ledgered = agent("ledgered");
+        let mut adopted = agent("adopted");
+        adopted.task_number = Some("333".into());
+        let unknown = agent("unknown");
+
+        app.overseer_snapshot.ledger.entries.push(LedgerEntry {
+            task_id: "task-1".into(),
+            display_id: "#477".into(),
+            repo: "/repo".into(),
+            agent_id: "ledgered".into(),
+            branch: "feature/ledgered".into(),
+            phase: LedgerPhase::Working,
+            dispatched_at: Utc::now(),
+            settled_at: None,
+            retries: 0,
+            pr_url: None,
+            branch_updates: 0,
+            merge_recovery: Default::default(),
+            merge_hold: Default::default(),
+            manual_merge_skip: None,
+            merge_hold_cap_escalated: false,
+            merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
+            prerequisite_wait: None,
+            merge_hold_stuck_notified: false,
+            escalation_notified_reason: None,
+            escalation_notified_head: None,
+            worker_escalated: false,
+            operator_override: None,
+            merge_approval: None,
+            pr_facts: None,
+        });
+
+        assert_eq!(app.task_display_id(&ledgered), Some("#477".into()));
+        assert_eq!(app.task_display_id(&adopted), Some("#333".into()));
+        assert_eq!(app.task_display_id(&unknown), None);
     }
 }
