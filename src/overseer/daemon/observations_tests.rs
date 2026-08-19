@@ -92,6 +92,20 @@ fn manual_overseer_children_are_not_adopted() {
     assert!(ledger.entries.is_empty());
 }
 
+/// Nothing sets `parent_agent_id` any more -- the dispatcher that used to is
+/// gone -- so a worker the TUI or `robco_agent_create` started, with no
+/// parent at all, must still be adopted as long as it is `Auto`-managed.
+#[test]
+fn auto_agent_with_no_parent_is_adopted() {
+    let registry = registry_with(None, "auto");
+    let mut ledger = Ledger::default();
+
+    adopt_registry_children_from(&mut ledger, &registry);
+
+    assert_eq!(ledger.entries.len(), 1);
+    assert_eq!(ledger.entries[0].agent_id, "manual-worker");
+}
+
 /// Regression for the bare `={session}` target: on tmux 3.7, `display-message`
 /// against it exits 0 and prints an empty string for `#{session_activity}`,
 /// so `tmux_activity` returned `None` for every live session that was ever

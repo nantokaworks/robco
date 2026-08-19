@@ -230,10 +230,11 @@ pub(super) fn adopt_registry_children(ledger: &mut Ledger) -> Result<()> {
 
 fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
     for repo in &registry.repos {
-        for agent in repo.agents.iter().filter(|agent| {
-            is_overseer_child(agent.parent_agent_id.as_deref())
-                && agent.management == crate::model::ManagementMode::Auto
-        }) {
+        for agent in repo
+            .agents
+            .iter()
+            .filter(|agent| agent.management == crate::model::ManagementMode::Auto)
+        {
             if ledger
                 .entries
                 .iter()
