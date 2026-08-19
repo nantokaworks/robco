@@ -15,6 +15,7 @@ use super::{
 };
 
 mod confirm;
+mod dropr_task_drill;
 mod inbox_dismiss;
 mod inbox_respond;
 // `dialog` phrases the bulk-toggle confirmation from the same helper the
@@ -184,6 +185,7 @@ impl App {
             }
             Mode::Normal => match key.code {
                 code if overseer::handle_normal(self, code) => {}
+                code if dropr_task_drill::handle_normal(self, code) => {}
                 KeyCode::Char('q') | KeyCode::Esc => {
                     let merging = self.merging_branches();
                     if !merging.is_empty() {
@@ -244,8 +246,12 @@ impl App {
                     Some(Selection::DiscordChannel(index)) => {
                         self.attach_discord_channel_selected(index);
                     }
-                    Some(Selection::DroprTask { repo, task }) => {
-                        self.launch_dropr_task_selected(repo, task);
+                    // The drill-down's entry point (dropr:475): INFO is the
+                    // only tab that can show the task list, so this leaves
+                    // every other tab's `enter` (Claude/Terminal attach)
+                    // untouched.
+                    Some(Selection::Repo(_)) if self.preview == PreviewPane::Info => {
+                        self.enter_dropr_task_list();
                     }
                     Some(Selection::Orphan(_)) => self.attach_orphan_selected(),
                     _ => match self.preview {

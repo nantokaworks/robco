@@ -197,6 +197,22 @@ struct ForceKillTarget {
     agent_id: String,
 }
 
+/// Focus inside a repository's dropr task drill-down, entered from
+/// `Selection::Repo` with the INFO pane showing (dropr:475). Task rows are no
+/// longer members of the outer cursor list — `App::selected` stays on the
+/// repository row the whole time this is `Some`, and movement keys are
+/// intercepted (`ui::input::dropr_task_drill::handle_normal`) to walk this
+/// instead. `task` indexes into the same
+/// `ui::summary::dropr_tasks::selectable_tasks` order `Selection::DroprTask`
+/// used to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DroprTaskFocus {
+    /// Walking the repo's task list; `Enter` opens the task at `task`.
+    List { task: usize },
+    /// Reading one task's full body; the launch key starts the work.
+    Body { task: usize },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewPane {
     Info,
@@ -229,10 +245,6 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
         // the live turn), so its one tab mirrors that same tmux session —
         // see `scrollback::live_session`'s `Selection::DiscordChannel` arm.
         Some(Selection::DiscordChannel(_)) => &[PreviewPane::Info],
-        // The row is acted on from the left frame (Enter launches it), and its
-        // preview is the repo's own INFO tab with this row highlighted — no
-        // second tab to cycle to. See `preview::draw`'s `DroprTask` arm.
-        Some(Selection::DroprTask { .. }) => &[PreviewPane::Info],
         Some(Selection::Repo(_)) => &[
             PreviewPane::Info,
             PreviewPane::Claude,
@@ -286,6 +298,9 @@ pub struct App {
     /// (repos) or agent id (agents) via [`App::item_key`].
     preview_tabs: HashMap<String, PreviewPane>,
     pub(crate) preview_scroll: u16,
+    /// Level of the dropr task drill-down currently focused, when any. See
+    /// [`DroprTaskFocus`].
+    pub(crate) dropr_task_focus: Option<DroprTaskFocus>,
     pub(crate) started: Instant,
     force_redraw: bool,
     mode: Mode,
@@ -380,6 +395,7 @@ impl App {
             preview: PreviewPane::Info,
             preview_tabs: HashMap::new(),
             preview_scroll: 0,
+            dropr_task_focus: None,
             started: Instant::now(),
             force_redraw: false,
             mode: Mode::Normal,

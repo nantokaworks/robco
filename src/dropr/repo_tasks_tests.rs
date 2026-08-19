@@ -31,6 +31,7 @@ fn row(display_id: &str, status: &str, priority: &str, children: usize) -> Dropr
     DroprTaskCandidate {
         display_id: display_id.to_owned(),
         title: format!("Task {display_id}"),
+        description: None,
         priority: priority.to_owned(),
         status: status.to_owned(),
         priority_score: None,

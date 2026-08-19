@@ -5,6 +5,7 @@ fn task(display_id: &str, status: &str) -> DroprTaskCandidate {
     DroprTaskCandidate {
         display_id: display_id.to_string(),
         title: format!("Task {display_id}"),
+        description: None,
         priority: String::new(),
         status: status.to_string(),
         priority_score: None,

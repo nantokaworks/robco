@@ -24,6 +24,16 @@ use dropr_section::dropr_section;
 use history::history_section;
 use other_prs::other_prs_section;
 
+/// One task's full body — see `dropr_tasks::body`, the drill-down's Level 2
+/// (dropr:475).
+pub(in crate::ui) fn dropr_task_body(
+    repo: &RepoNode,
+    task_index: usize,
+    locale: Locale,
+) -> Option<(String, Text<'static>)> {
+    dropr_tasks::body::render(repo, task_index, locale)
+}
+
 pub(in crate::ui) fn repo_summary(
     repo: &RepoNode,
     repos_root: &std::path::Path,

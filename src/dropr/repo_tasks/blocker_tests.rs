@@ -5,6 +5,7 @@ fn blocked_task(display_id: &str) -> DroprTaskCandidate {
     DroprTaskCandidate {
         display_id: display_id.to_owned(),
         title: format!("Task {display_id}"),
+        description: None,
         priority: "high".to_owned(),
         status: "blocked".to_owned(),
         priority_score: None,

@@ -87,6 +87,7 @@ fn a_linked_repo_names_its_workspace_and_lists_its_tasks() {
     let tasks = answered(vec![DroprTaskCandidate {
         display_id: "#250".into(),
         title: "Accept a merge verdict".into(),
+        description: None,
         priority: "high".into(),
         status: "open".into(),
         priority_score: None,
