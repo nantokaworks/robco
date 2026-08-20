@@ -127,6 +127,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  o              on a task row or its body: open the task in a browser" => {
             "  o              タスク行/本文：ブラウザでタスクを開く"
         }
+        "                 over SSH: copies its URL to your clipboard instead" => {
+            "                 SSH経由：代わりにURLをクリップボードへコピー"
+        }
         "  s              on a task body: start the work now (worktree, branch," => {
             "  s              タスク本文：即座に作業開始（worktree・branch・"
         }

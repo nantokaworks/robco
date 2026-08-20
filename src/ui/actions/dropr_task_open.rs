@@ -12,6 +12,11 @@
 //! itself already has (see [`dropr::canonical_repo`]), so a repo this
 //! cannot build a URL for never reaches this action with a linked workspace
 //! in the first place.
+//!
+//! [`browser::open`] decides at run time whether the URL can go to a local
+//! browser at all (dropr:511). Over SSH it cannot, so it goes to the
+//! operator's clipboard instead, and this file says so rather than claiming a
+//! browser opened.
 
 use crate::{
     browser, dropr,
@@ -49,7 +54,7 @@ impl App {
     /// `dropr_task_launch::resolve_launch_subtasks`'s injected-fetch shape.
     fn open_dropr_task_with<F>(&mut self, task: usize, launch: F)
     where
-        F: FnOnce(&str) -> Result<(), String>,
+        F: FnOnce(&str) -> Result<browser::Opened, String>,
     {
         let Some(Selection::Repo(repo)) = self.selected_item() else {
             self.dropr_task_focus = None;
@@ -84,14 +89,30 @@ impl App {
             return;
         };
         match launch(&url) {
-            Ok(()) => self.show_message(fmt(
+            Ok(browser::Opened::Launcher) => self.show_message(fmt(
                 self.locale,
                 "opened {} in the browser",
                 &[&candidate.display_id],
             )),
+            // Over SSH a browser would open on the server, so the URL went to
+            // the operator's clipboard instead (dropr:511). The message also
+            // carries the URL as plain text, for a terminal that ignored the
+            // clipboard escape. That escape went straight to the terminal,
+            // past ratatui's buffer, so repaint the frame in case a terminal
+            // that does not know OSC 52 printed it instead of eating it —
+            // `event_loop::drain_stdout_notifications` does the same after
+            // OSC 777.
+            Ok(browser::Opened::Clipboard) => {
+                self.force_redraw = true;
+                self.show_message(fmt(
+                    self.locale,
+                    "copied the URL for {}: {}",
+                    &[&candidate.display_id, &url],
+                ));
+            }
             Err(err) => self.show_message(fmt(
                 self.locale,
-                "could not open the browser for {}: {}",
+                "could not open {}: {}",
                 &[&candidate.display_id, &err],
             )),
         }
