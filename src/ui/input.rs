@@ -109,6 +109,20 @@ impl App {
                     input.handle_key(key);
                 }
             },
+            Mode::PromptRenameRepo { path, input } => match key.code {
+                KeyCode::Esc => self.mode = Mode::Normal,
+                KeyCode::Enter => {
+                    let new_name = input.text().trim().to_string();
+                    let path = path.clone();
+                    self.mode = Mode::Normal;
+                    if !new_name.is_empty() {
+                        self.rename_repo(&path, &new_name);
+                    }
+                }
+                _ => {
+                    input.handle_key(key);
+                }
+            },
             Mode::PromptOverseer { input } => match overseer::prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
@@ -267,6 +281,7 @@ impl App {
                 KeyCode::Char('c') => self.checkout_main_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
+                KeyCode::Char('g') => self.open_rename_prompt(),
                 KeyCode::Char(',') => self.open_settings_editor(),
                 KeyCode::Char(ch) if !ch.is_ascii() => {
                     self.show_message(t(self.locale, "IME is on; switch to ASCII input"));

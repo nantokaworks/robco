@@ -25,6 +25,7 @@ mod pr_fallback;
 pub(super) mod pr_precheck;
 pub(super) mod preview_capture;
 mod registry_sync;
+mod rename;
 mod settings;
 pub(super) mod slots;
 mod subagents;

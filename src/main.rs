@@ -17,6 +17,7 @@ mod openclaw;
 mod overseer;
 mod pr;
 mod registry;
+mod rename;
 mod setup;
 mod spawn;
 mod status;
@@ -188,6 +189,7 @@ fn run_command(
         }
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::New(args) => new_agent::run(args, config)?,
+        Command::Rename(args) => run_rename(&args)?,
         Command::Report(_) => unreachable!("report is handled before config loading"),
         Command::Spawn(args) => {
             let parent = args.parent.or_else(|| {
@@ -232,6 +234,48 @@ fn run_command(
         }
         Command::Uninstall(args) => setup::uninstall(&args)?,
         Command::Version => unreachable!("version is handled before config loading"),
+    }
+    Ok(())
+}
+
+fn run_rename(args: &cli::RenameArgs) -> Result<()> {
+    let registry = Registry::locked_load()?;
+    let repo = spawn::resolve_repo(&registry, &args.repo)?;
+    if !repo.agents.is_empty() {
+        return Err(Error::Command {
+            context: "repo rename",
+            stderr: format!(
+                "{} has {} agent(s) attached; remove them first",
+                repo.name,
+                repo.agents.len()
+            ),
+        });
+    }
+    let old_path = repo.path.clone();
+
+    let outcome = rename::rename_repo_dir(&old_path, &args.name)?;
+    let mut applied = false;
+    Registry::locked_update(|registry| {
+        applied = rename::apply_rename(registry, &old_path, &outcome.new_path, &args.name);
+    })?;
+
+    println!("renamed to {}", outcome.new_path.display());
+    if !applied {
+        println!(
+            "warning: {} moved on disk, but was no longer in robco's registry to update; \
+             run robco again to re-discover it",
+            outcome.new_path.display()
+        );
+    }
+    if !outcome.unrepaired_worktrees.is_empty() {
+        println!("warning: some worktrees still need manual repair:");
+        for (worktree, error) in &outcome.unrepaired_worktrees {
+            println!("  {}: {error}", worktree.display());
+        }
+        println!(
+            "run: git -C {} worktree repair <worktree-path>",
+            outcome.new_path.display()
+        );
     }
     Ok(())
 }

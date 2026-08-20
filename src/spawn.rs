@@ -146,7 +146,7 @@ fn branch_conflict_for(
     }
 }
 
-fn resolve_repo<'a>(registry: &'a Registry, selector: &str) -> Result<&'a RepoNode> {
+pub(crate) fn resolve_repo<'a>(registry: &'a Registry, selector: &str) -> Result<&'a RepoNode> {
     let requested = Path::new(selector);
     if requested.is_absolute() {
         let canonical = requested.canonicalize()?;
