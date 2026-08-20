@@ -16,7 +16,6 @@ fn entry() -> LedgerEntry {
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -254,7 +253,6 @@ fn registry_with_session(session: &str) -> Registry {
     let agent = crate::model::AgentNode {
         id: "agent".into(),
         parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
-        management: crate::model::ManagementMode::Auto,
         title: "worker".into(),
         task_number: None,
         worktree_path: "/tmp/agent".into(),
@@ -287,7 +285,6 @@ fn registry_with_session(session: &str) -> Registry {
             name: "repo".into(),
             remote_url: None,
             pinned: false,
-            management: crate::model::ManagementMode::Auto,
             agents: vec![agent],
             dropr: None,
             dropr_tasks: crate::dropr::DroprTaskFetch::default(),

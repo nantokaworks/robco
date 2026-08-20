@@ -83,7 +83,6 @@ fn precheck_created_with_approval_head_queues_the_merge_approval() {
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,

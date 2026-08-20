@@ -243,12 +243,6 @@ Marker shown at the start of each PROJECTS row, reflecting collapsed/expanded st
 | `"nerdfont"` | closed-folder glyph | open-folder glyph | Nerd Font folder icons (`nf-fa-folder` / `nf-fa-folder_open`); requires a patched Nerd Font. |
 | `"emoji"` | 📁 | 📂 | Emoji folders. |
 
-The same field also gates the Overseer management marker (see
-[06-ui.md#overseer-management-marker](06-ui.md#overseer-management-marker)): `"nerdfont"`
-swaps the marker's round `●`/`○` pair for a Nerd Font bolt/hand pictograph pair, while
-`"none"` and `"emoji"` both keep the round pair. One field controls every Nerd Font glyph in
-the tree rather than a second, independent toggle.
-
 ## Command-line overrides
 
 A few config values can be overridden per invocation. CLI flags win over the file for that

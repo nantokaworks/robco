@@ -16,14 +16,6 @@ pub struct RepoNode {
     /// Persisted manual registration; keeps an agent-less repo listed.
     #[serde(default)]
     pub pinned: bool,
-    /// Whether the Overseer treats this repo as its own to dispatch into and
-    /// auto-merge for at all — the same vocabulary as `AgentNode::management`,
-    /// reused at repo scope so the tree can show an agent row's marker only
-    /// when it diverges from its repo's. Serde-defaulted to `Auto` so an
-    /// existing `~/.robco/state.json` keeps today's behaviour until an
-    /// operator opts a repo out.
-    #[serde(default = "default_management_mode")]
-    pub management: ManagementMode,
     #[serde(default)]
     pub agents: Vec<AgentNode>,
     #[serde(skip)]
@@ -103,8 +95,6 @@ pub struct AgentNode {
     pub id: String,
     #[serde(default)]
     pub parent_agent_id: Option<String>,
-    #[serde(default = "default_management_mode")]
-    pub management: ManagementMode,
     pub title: String,
     /// The bare dropr task number (e.g. `"333"`) an Overseer-dispatched worker
     /// was created for, captured once at spawn time from the naming slug so
@@ -158,17 +148,6 @@ pub struct AgentNode {
     pub subagents: Vec<TaskSubagent>,
     #[serde(skip)]
     pub children: Vec<ChildWorktree>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ManagementMode {
-    Auto,
-    Manual,
-}
-
-fn default_management_mode() -> ManagementMode {
-    ManagementMode::Auto
 }
 
 /// One agent's position in the identity tree's display order: its flat
@@ -464,7 +443,6 @@ mod tests {
             AgentNode {
                 id: id.into(),
                 parent_agent_id: parent.map(str::to_string),
-                management: ManagementMode::Manual,
                 title: id.into(),
                 task_number: None,
                 worktree_path: PathBuf::from(id),
@@ -512,7 +490,6 @@ mod tests {
             AgentNode {
                 id: id.into(),
                 parent_agent_id: parent.map(str::to_string),
-                management: ManagementMode::Manual,
                 title: id.into(),
                 task_number: None,
                 worktree_path: PathBuf::from(id),
@@ -601,7 +578,6 @@ mod tests {
         let agent = AgentNode {
             id: "agent".into(),
             parent_agent_id: None,
-            management: ManagementMode::Manual,
             title: "task".into(),
             task_number: None,
             worktree_path: "/tmp/task".into(),

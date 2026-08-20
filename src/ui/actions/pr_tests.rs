@@ -11,7 +11,6 @@ use crate::{
 fn agent(id: &str) -> AgentNode {
     let now = Local::now();
     AgentNode {
-        management: crate::model::ManagementMode::Manual,
         id: id.to_string(),
         parent_agent_id: None,
         title: id.to_string(),
@@ -47,7 +46,6 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         name: path.to_string(),
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

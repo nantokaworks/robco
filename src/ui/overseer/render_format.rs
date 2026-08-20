@@ -2,10 +2,10 @@
 //!
 //! Split out of `render.rs` once that file hit the 300-line source limit —
 //! see the task acceptance criteria. The row labels and enum-style values
-//! these functions produce (`on`/`off`, `Auto`/`Manual`, `none`, …) are
-//! structural machine-readable vocabulary, the same column-header
-//! convention `src/ui/summary.rs`'s `path:` / `branch:` rows use, so none of
-//! it goes through `locale::t` / `locale::fmt`.
+//! these functions produce (`on`/`off`, `none`, …) are structural
+//! machine-readable vocabulary, the same column-header convention
+//! `src/ui/summary.rs`'s `path:` / `branch:` rows use, so none of it goes
+//! through `locale::t` / `locale::fmt`.
 
 use std::collections::BTreeMap;
 
@@ -14,7 +14,6 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use crate::model::ManagementMode;
 use crate::overseer::{config::OverseerConfig, ledger::LedgerPhase};
 use crate::ui::theme::DEFAULT as THEME;
 
@@ -84,13 +83,6 @@ pub(super) fn merge_recovery_state(config: &OverseerConfig) -> String {
         format!("on (max {})", config.max_merge_recoveries)
     } else {
         "off".into()
-    }
-}
-
-pub(super) fn management_name(mode: ManagementMode) -> &'static str {
-    match mode {
-        ManagementMode::Auto => "Auto",
-        ManagementMode::Manual => "Manual",
     }
 }
 

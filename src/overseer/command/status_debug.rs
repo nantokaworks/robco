@@ -12,7 +12,6 @@ use std::time::Duration;
 use crate::{
     Result,
     config::Config,
-    model::ManagementMode,
     overseer::{
         command::on_off,
         config::OverseerConfig,
@@ -22,14 +21,12 @@ use crate::{
         review::ReviewPass,
         session::health::SessionHealth,
     },
-    registry::Registry,
 };
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn print_debug_section(
     config: &Config,
     ledger: &Ledger,
-    registry: &Registry,
     session_health: Option<&SessionHealth>,
     healthy: bool,
     pid: Option<u32>,
@@ -54,7 +51,6 @@ pub(super) fn print_debug_section(
     println!("{}", session_auth_line(session_health));
     println!("workers by repo: {:?}", ledger.active_workers().repos);
     println!("primary holder by repo: {:?}", ledger.primary_holders());
-    println!("{}", repos_line(registry));
     let mut phases = BTreeMap::new();
     for entry in &ledger.entries {
         *phases.entry(entry.phase.label()).or_insert(0usize) += 1;
@@ -72,10 +68,6 @@ pub(super) fn print_debug_section(
         .count();
     if prerequisite_waits != 0 {
         println!("waiting on prerequisite: {prerequisite_waits}");
-    }
-    let manual_merges = ledger.manual_merge_skips();
-    if manual_merges != 0 {
-        println!("merge-eligible, manual: {manual_merges}");
     }
     let queued_approvals = ledger.queued_merge_approvals();
     if queued_approvals != 0 {
@@ -189,28 +181,6 @@ fn daemon_line(
         pid.map_or_else(|| "-".into(), |pid| pid.to_string()),
         heartbeat_age.map_or_else(|| "missing".into(), |age| format!("{}s", age.as_secs())),
         daemon_version.unwrap_or("unknown")
-    )
-}
-
-/// Which registered repos the Overseer actually looks at (`#306`). Dispatch and
-/// auto-merge already gate on `RepoNode::management` in the passes themselves;
-/// this line is the one place that state is visible without opening the TUI or
-/// digging through `decisions.jsonl` for a `overseer_unmanaged` skip.
-fn repos_line(registry: &Registry) -> String {
-    let opted_out: Vec<&str> = registry
-        .repos
-        .iter()
-        .filter(|repo| repo.management == ManagementMode::Manual)
-        .map(|repo| repo.name.as_str())
-        .collect();
-    if opted_out.is_empty() {
-        return format!("repos: {} watched, 0 opted out", registry.repos.len());
-    }
-    format!(
-        "repos: {} watched, {} opted out: {}",
-        registry.repos.len() - opted_out.len(),
-        opted_out.len(),
-        opted_out.join(", ")
     )
 }
 

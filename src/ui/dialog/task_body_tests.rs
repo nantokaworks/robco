@@ -3,7 +3,6 @@ use ratatui::{Terminal, backend::TestBackend, style::Modifier};
 use crate::{
     config::Config,
     dropr::{DroprTaskCandidate, DroprTaskFetch},
-    model::ManagementMode,
     registry::Registry,
 };
 
@@ -33,7 +32,6 @@ fn app_with_task(description: Option<&str>) -> App {
         name: "repo".into(),
         remote_url: None,
         pinned: true,
-        management: ManagementMode::Auto,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: DroprTaskFetch {

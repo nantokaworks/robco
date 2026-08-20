@@ -21,7 +21,7 @@ use crate::{
     registry::Registry,
 };
 
-/// Runs the watch for every due, Overseer-managed repository.
+/// Runs the watch for every due, registered repository.
 ///
 /// Best-effort and self-contained, the same tolerance `external_prs`'s pass
 /// gives every other GitHub-touching daemon pass: one repository's `bun` /
@@ -42,9 +42,6 @@ pub(super) fn watch_pass(config: &Config, now: DateTime<Utc>) -> Result<()> {
     let mut state = RepoWatchState::load()?;
     let interval = chrono::Duration::hours(config.overseer.repo_watch_interval_hours as i64);
     for repo in &registry.repos {
-        if repo.management == crate::model::ManagementMode::Manual {
-            continue;
-        }
         let Some(remote) = &repo.remote_url else {
             continue;
         };

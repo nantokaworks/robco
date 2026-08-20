@@ -16,7 +16,6 @@ pub(super) fn ledger() -> Ledger {
             branch_updates: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
-            manual_merge_skip: None,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
@@ -90,52 +89,13 @@ fn stuck_detection_uses_injected_now() {
     );
 }
 
-#[test]
-fn manual_worker_session_death_does_not_fail_the_entry() {
-    let observations: Observations = serde_json::from_str(
-        r#"{"manual_agents":["worker-1"],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (unchanged, actions) = reconcile(&ledger(), &observations, now, 30, 72);
-    assert_eq!(unchanged.entries[0].phase, LedgerPhase::Dispatched);
-    assert!(actions.is_empty());
-}
-#[test]
-fn manual_worker_with_merged_pr_is_advanced_and_cleaned_up() {
-    let observations: Observations = serde_json::from_str(
-        r#"{"manual_agents":["worker-1"],"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"MERGED","statusCheckRollup":[]}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (merged, actions) = reconcile(&ledger(), &observations, now, 30, 72);
-    assert_eq!(merged.entries[0].phase, LedgerPhase::Merged);
-    assert_eq!(
-        merged.entries[0].pr_url.as_deref(),
-        Some("https://github.test/pull/1")
-    );
-    assert!(actions.contains(&Action::KillSession {
-        agent_id: "worker-1".into()
-    }));
-    assert!(actions.contains(&Action::RemoveWorktree {
-        agent_id: "worker-1".into(),
-    }));
-    // Cleanup is re-emitted only while the registry row survives, so a merged
-    // Manual entry does not re-kill an already-cleaned agent every poll.
-    let (_, actions) = reconcile(&merged, &observations, now, 30, 72);
-    assert!(actions.is_empty());
-    let registered: Observations =
-        serde_json::from_str(r#"{"manual_agents":["worker-1"],"registered_agents":["worker-1"]}"#)
-            .unwrap();
-    assert_eq!(reconcile(&merged, &registered, now, 30, 72).1.len(), 2);
-}
-/// Detaching a Manual worker ends Overseer ownership, so its entry leaves the
+/// Detaching a worker ends Overseer ownership, so its entry leaves the
 /// ledger instead of freezing there — the slot it held is released and the
 /// running worker is left alone.
 #[test]
 fn detached_worker_entry_is_dropped_without_touching_the_worker() {
     let observations: Observations = serde_json::from_str(
-        r#"{"manual_agents":["worker-1"],"detached_agents":["worker-1"],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
+        r#"{"detached_agents":["worker-1"],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}]}"#,
     )
     .unwrap();
     let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
@@ -171,17 +131,6 @@ fn detached_merged_entry_is_dropped_without_cleanup() {
     assert!(!actions.contains(&Action::RemoveWorktree {
         agent_id: "worker-1".into(),
     }));
-}
-#[test]
-fn manual_worker_with_open_pr_keeps_session_and_worktree() {
-    let observations: Observations = serde_json::from_str(
-        r#"{"manual_agents":["worker-1"],"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"OPEN","statusCheckRollup":[]}],"sessions":[{"agent_id":"worker-1","status":"dead","last_activity_at":null}],"tasks":[{"task_id":"task-131","state":"open"}],"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"blocked"}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (open, actions) = reconcile(&ledger(), &observations, now, 30, 72);
-    assert_eq!(open.entries[0].phase, LedgerPhase::PrOpened);
-    assert!(actions.is_empty());
 }
 /// The history view orders entries by when they settled, so the instant a
 /// worker phase becomes terminal has to be recorded — and recorded from the
@@ -226,22 +175,6 @@ fn a_worker_phase_carries_no_settled_timestamp() {
     let (claimed, _) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(claimed.entries[0].phase, LedgerPhase::Claimed);
     assert!(claimed.entries[0].settled_at.is_none());
-}
-
-/// A Manual worker's entry advances through the same phases, so it settles the
-/// same way — the human's merged pull request is history too.
-#[test]
-fn a_manual_entry_is_stamped_when_its_pull_request_merges() {
-    let observations: Observations = serde_json::from_str(
-        r#"{"manual_agents":["worker-1"],"prs":[{"taskId":"task-131","url":"https://github.test/pull/1","state":"MERGED","statusCheckRollup":[]}]}"#,
-    )
-    .unwrap();
-    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 0, 0).unwrap();
-    let (merged, _) = reconcile(&ledger(), &observations, now, 30, 72);
-    assert_eq!(merged.entries[0].settled_at, Some(now));
-    let later = Utc.with_ymd_and_hms(2026, 7, 16, 2, 0, 0).unwrap();
-    let (again, _) = reconcile(&merged, &observations, later, 30, 72);
-    assert_eq!(again.entries[0].settled_at, Some(now));
 }
 
 #[test]

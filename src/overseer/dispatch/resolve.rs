@@ -46,9 +46,6 @@ pub(super) fn resolve_task(
         return Ok(Resolved::OverlayUnavailable);
     }
     for repo in &registry.repos {
-        if repo.management == crate::model::ManagementMode::Manual {
-            continue;
-        }
         let Some(remote) = &repo.remote_url else {
             continue;
         };

@@ -175,12 +175,9 @@ auto-delete-branch setting usually gets there first, and its absence is not a fa
 
 ### Repository health watch
 
-A daemon tick also runs `daemon/repo_watch.rs` for every Auto-managed, materialised
-repository — the same `RepoNode::management` gate `dispatch::resolve` and
-`merge_repo_pass` already honor (see [Repo-level Overseer
-opt-out](#repo-level-overseer-opt-out)), rather than a second per-repo toggle. Detection
-only: filing the coordination task is as far as this goes, and a human or a dispatched
-worker still does the actual fix.
+A daemon tick also runs `daemon/repo_watch.rs` for every registered, materialised
+repository. Detection only: filing the coordination task is as far as this goes, and a
+human or a dispatched worker still does the actual fix.
 
 - **Advisory drift** (`repo_watch_advisory.rs`) runs `bun audit` when the checkout has a
   `bun.lock`, and `govulncheck ./...` when it has a `go.mod`. A failing run that names at
@@ -811,8 +808,7 @@ stays the operator's call; this is the evidence for making it.
 
 A handback returns the entry to `pr_opened` so the next pass re-evaluates it normally; an
 earlier escalation had parked it there, and that escalation is superseded rather than left
-to strand the pull request. Manual-managed workers are never handed back to, since `worker_is_auto`
-already gates the whole merge pass. A worker that is no longer registered, or whose tmux
+to strand the pull request. A worker that is no longer registered, or whose tmux
 session is gone, escalates under
 `merge_recovery_skipped:missing_session:<agent>` rather than being silently dropped.
 
@@ -1140,117 +1136,23 @@ escalation shifts the rows below it. The cursor is re-anchored by the item's own
 rather than by its position, so an arrival cannot slide the selection onto a different
 worker between the operator reading a row and pressing `y` on it.
 
-### Worktree management in the TUI
+### Worktree ownership
 
-`g` is the only key for this axis. On a worktree row it cycles
-unmanaged → Overseer Auto → Overseer Manual → unmanaged, so one key both enrolls a
-worktree and detaches it again. The cycle position is read from ownership and mode
-together: a worktree created by hand under `worktree_root` is adopted as unowned but
-persisted as `Manual`, and the first `g` overwrites that stale mode when it enrolls.
-There is no confirmation prompt — every step is non-destructive and two more presses
-undo it.
+There is no Auto/Manual dial any more (dropr:504). Every worker and repo the Overseer
+manages is treated the same way; there is no per-worker or per-repo opt-out, and no `g` /
+`G` key to cycle one.
 
-The tree reports this axis with an accent-coloured, single-column marker in the cell
-**immediately left of the row's title**, right of that row's indentation, so the marker is
-indented with the tree hierarchy and belongs to the agent rather than to a fixed row-head
-column. By default the marker is round (`●` Auto, `○` Manual); `project_icon = "nerdfont"`
-swaps in a bolt/hand pictograph pair instead (see
-[06-ui.md#overseer-management-marker](06-ui.md#overseer-management-marker)). Auto is always
-drawn, even on an agent whose repo is also Auto. Manual only renders blank when its repo is
-also Manual — the repo row already says as much — and an unmanaged worktree is always blank;
-in that one remaining ambiguous case the difference is read from the OVERSEER info pane
-rather than from the tree.
+`parent_agent_id` still records Overseer ownership — a worker created or adopted with no
+recovered parent starts (or stays) unowned, and `is_overseer_child` is what the daemon
+reads to decide whether a registry agent belongs to it, including whether to adopt it into
+the ledger at all. A worktree that already belongs to *another agent* keeps that parent
+rather than being overwritten. An owned worker whose registry row later loses that
+ownership still has its ledger entry dropped on the next daemon pass, exactly as before —
+logged to the decision log, worktree and session left alone.
 
-Adoption derives the mode from the parent it recovers, not from a fixed default. A worker
-whose live session still carries `ROBCO_PARENT_AGENT_ID=overseer` is re-adopted as an
-Overseer child *and* as `Auto`. A hand-made worktree has no such session to recover a
-parent from and is stored `Manual` until `g` enrolls it.
-
-A worktree that already belongs to *another agent* is off the cycle and `g` declines it.
-`parent_agent_id` records both Overseer ownership and the identity-tree parent, and
-nothing persists what the parent was before enrollment, so an Overseer-managed worker is
-defined as never also being another agent's child rather than having its parent silently
-overwritten.
-
-Manual workers remain owned by Overseer, but the mode no longer changes whether a named
-launch can be aimed at the same task: a live worker refuses a re-launch — `active_worker`
-— whatever mode it is in, since that check reads the ledger, not `ManagementMode` (dropr:476).
-Manual still means something to the auto-merge gate, below. `robco overseer status` counts
-a live Manual worker exactly like an Auto one, since occupancy was never mode-dependent.
-
-Manual stops the auto-merge gate too, and the gate says so. A Manual worker's pull request
-is never merged by Overseer — that part does not change — but an entry sitting at
-`pr_opened` with a pull request open is a merge candidate Overseer *declined*, not one it
-never reached, and the two used to look identical from `decisions.jsonl`. The pass records
-a `manual` skip under source `auto_merge` carrying the pull request URL. It is recorded
-once per pull request rather than once per poll pass: management is a standing state, so a
-per-pass entry would bury the log the way the silent skip hid in it. While the state
-stands, `robco overseer status --debug` and the OVERSEER ledger detail both report
-`merge-eligible, manual: N`; the plain `robco overseer status` lists the same pull request
-by name under `waiting on you:`, since it needs the same decision an escalation does — a
-human choosing to merge it by hand. Cycling the worker back to Auto clears the marker, so a
-later switch to Manual is recorded again. The skip happens before the gate reads the pull
-request, so a Manual worker's pull request is never handed back by merge recovery either.
-
-Detaching does free one, because it ends Overseer ownership entirely. The next daemon
-pass sees a worker that is no longer its child and **drops that worker's ledger entry**,
-logging the drop to the decision log. The entry is removed rather than marked terminal:
-`failed` would report a failure to dropr that never happened, and `merged` would run the
-post-merge cleanup that kills the session and removes the worktree — the opposite of a
-detach, which leaves the worker and its tmux session running. Use the separate kill
-action when the worker should also stop. From there the worktree is exactly a hand-made
-one: Overseer neither tracks nor counts it. Re-enrolling it with `g` restores ownership,
-and the entry comes back through the same startup adoption pass that picks up every other
-Auto child — that pass runs when the daemon starts, so a re-enrolled worker is re-entered
-on the ledger at the next daemon start.
-
-The drop is keyed on ownership, not on mode — a detached worker keeps its `Manual` mode,
-and an entry whose agent has left the registry altogether is dead, not detached, so it
-still travels the session-death path.
-
-On a repo row `g` acts on every worktree under the repo behind a confirmation, keeping
-the stand-down bias: any Auto worker present sets every Overseer-managed worker to
-Manual and leaves unmanaged worktrees alone, and otherwise every worktree the Overseer
-may touch becomes Auto, enrolling the unmanaged ones. The repo-level action never
-un-enrolls; detaching stays a per-worktree decision.
-
-Only worktrees under `config.worktree_root` reach the tree at all — one created
-elsewhere is never adopted, so no key can bring it under Overseer management.
-
-### Repo-level Overseer opt-out
-
-`g` cycles individual worktrees; it says nothing about whether the Overseer looks at a
-repo at all. `G` on a repo row is the separate, coarser toggle: it flips `RepoNode`'s own
-`management` field between Auto and Manual, reusing the same `ManagementMode` vocabulary
-as every worker's own field rather than inventing a third enum, so a repo and a worker
-inside it can be compared directly.
-
-A repo switched to Manual is skipped by `dispatch::resolve` before its dropr workspace is
-even looked up, so a named launch can never resolve a task into that repository.
-[Repository health watch](#repository-health-watch) honours the
-same flag: a Manual repo is skipped before `repo_watch.rs` runs `bun audit` /
-`govulncheck` / `gh pr list` against it at all. Auto-merge honours the same decision: `worker_is_auto` now
-requires the entry's repo to be Auto *and* its worker to be Auto, so a Manual repo's pull
-requests take the existing per-worker `manual` skip path in `auto_merge_pass` — recorded
-once per pull request, exactly like a Manual worker's. The two gates were already at risk
-of disagreeing about a worker inside a repo the operator opted out of by hand; this closes
-that gap rather than adding a second way for them to.
-
-Switching a repo to Manual does not touch workers already running under it — no worktree
-is removed, no tmux session is killed, and existing ledger entries are left to reach their
-own terminal phase (or sit on the same Manual skip a per-worker toggle would produce, if
-one is still open). Only a later named-launch resolution or auto-merge pass reads the new
-state. Use the existing kill or detach actions to affect a worker directly.
-
-The repo row carries its own marker unconditionally — unlike a worker row's, it never
-blanks out, since it is the state every worker row underneath is compared against. A
-worker row's own marker is shown only when it *diverges* from its repo's: a worker left at
-Auto under an Auto repo repeats what the repo row already said and renders blank, while a
-worker explicitly set to Manual under an Auto repo (or vice versa after `G`) keeps its own
-glyph. A Manual repo's name and every worker row under it render dimmed, so the opted-out
-state reads at a glance without hunting for the marker cell. `robco overseer status
---debug` reports a `repos: N watched, M opted out: <names>` line so the same state is
-visible without opening the TUI.
+Merge behaviour is unchanged from dropr:500: Overseer only ever touches a pull request the
+operator explicitly asked about (TUI `m`, Discord `!merge`, or `robco_approve`), and that
+request is never declined for any reason other than the merge gate's own checks.
 
 The triage queue is atomically persisted. At startup pending cases are loaded; an
 unreadable queue is moved aside as `queue.json.corrupt`, logged, and restarted empty.

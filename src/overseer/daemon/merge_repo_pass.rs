@@ -16,7 +16,7 @@
 //! already synchronised (`ProtectionCache` is internally locked).
 
 use super::{
-    merge_decision::{Halt, Outcome, log, log_halt, manual_skip},
+    merge_decision::{Halt, Outcome, log, log_halt},
     merge_evaluate::evaluate,
     merge_hold::{self, HoldPlan},
     merge_hold_recheck, merge_queue, merge_recovery,
@@ -30,7 +30,7 @@ use crate::{
     config::Config,
     overseer::{
         ledger::{LedgerEntry, LedgerPhase, MergeSettling},
-        logging::{self, DecisionKind},
+        logging::DecisionKind,
     },
     registry::Registry,
 };
@@ -99,25 +99,13 @@ pub(super) fn run(
         // a live `merge_approval` (TUI `m`, Discord `!merge`) or
         // `operator_override` (`robco_approve`'s no-live-session fallback) —
         // is ever looked at. Nothing here yet for a `PrOpened` entry with
-        // neither: no gate, no management check, no decision-log entry.
-        // `reconsidering` above already proves a request existed for an
-        // escalated entry reaching this point.
+        // neither: no gate, no decision-log entry. `reconsidering` above
+        // already proves a request existed for an escalated entry reaching
+        // this point.
         if entry.phase == LedgerPhase::PrOpened
             && entry.merge_approval.is_none()
             && entry.operator_override.is_none()
         {
-            continue;
-        }
-        // The management check is not the phase check. An entry the phase check
-        // drops is not a merge candidate and there is nothing to say about it;
-        // an entry whose worker is manual *is* a candidate Overseer is declining
-        // to act on, and taking that silently left the operator unable to tell
-        // "Overseer decided not to merge this" from "the merge pass never ran".
-        let auto = worker_is_auto(entry, registry);
-        if let Some(skip) = manual_skip(entry, auto) {
-            logging::append(&skip)?;
-        }
-        if !auto {
             continue;
         }
         // The barrier guards the merge — a base the primary worktree has not
@@ -256,24 +244,6 @@ fn hold(
         }
         HoldPlan::Spent => Ok(()),
     }
-}
-
-/// A repo the Overseer does not manage should not have its pull requests merged
-/// automatically either — the same silent-divergence risk `manual_skip` already
-/// guards against per-worker, now checked per-repo before the per-worker read.
-fn worker_is_auto(entry: &LedgerEntry, registry: &Registry) -> bool {
-    let repo_auto = registry
-        .repos
-        .iter()
-        .find(|repo| repo.path.to_string_lossy() == entry.repo)
-        .is_none_or(|repo| repo.management == crate::model::ManagementMode::Auto);
-    repo_auto
-        && registry
-            .repos
-            .iter()
-            .flat_map(|repo| &repo.agents)
-            .find(|agent| agent.id == entry.agent_id)
-            .is_none_or(|agent| agent.management == crate::model::ManagementMode::Auto)
 }
 
 #[cfg(test)]

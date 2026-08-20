@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::*;
-use crate::model::{ManagementMode, Status};
+use crate::model::Status;
 
 fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
     RepoNode {
@@ -9,7 +9,6 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         name: path.rsplit('/').next().unwrap_or("repo").to_string(),
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),
@@ -32,7 +31,6 @@ fn agent(id: &str) -> AgentNode {
     AgentNode {
         id: id.to_string(),
         parent_agent_id: None,
-        management: ManagementMode::Manual,
         title: id.to_string(),
         task_number: None,
         worktree_path: PathBuf::from(format!("/tmp/{id}")),

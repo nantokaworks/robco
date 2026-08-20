@@ -1,7 +1,7 @@
 use std::{path::Path, process::Command};
 
 use super::*;
-use crate::model::{AgentNode, ManagementMode};
+use crate::model::AgentNode;
 
 struct Fixture {
     _temp: tempfile::TempDir,
@@ -213,7 +213,6 @@ fn merged_producer_slot_reports_zero_commits_ahead() {
 #[test]
 fn recovered_identity_of_a_tracked_agent_does_not_add_a_second_row() {
     let mut fixture = Fixture::new();
-    fixture.repo.agents[0].management = ManagementMode::Auto;
     let tracked_id = fixture.repo.agents[0].id.clone();
     let tracked_path = fixture.repo.agents[0].worktree_path.clone();
     // The worktree git reports is the tracked agent under a spelling `path_key`
@@ -242,9 +241,6 @@ fn recovered_identity_of_a_tracked_agent_does_not_add_a_second_row() {
     assert_eq!(fixture.repo.agents.len(), 1);
     assert_eq!(fixture.repo.agents[0].id, tracked_id);
     assert_eq!(fixture.repo.agents[0].worktree_path, tracked_path);
-    // The row a management toggle reaches is still the only row for this id, so
-    // no second row is left rendering a mode nothing updates.
-    assert_eq!(fixture.repo.agents[0].management, ManagementMode::Auto);
 }
 
 #[test]
@@ -278,7 +274,6 @@ fn repo_node(path: std::path::PathBuf) -> RepoNode {
         name: "repo".into(),
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

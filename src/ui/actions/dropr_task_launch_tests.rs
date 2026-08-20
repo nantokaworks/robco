@@ -3,7 +3,7 @@ use std::time::Duration;
 use super::*;
 use crate::{
     dropr::{DroprTaskCandidate, DroprTaskFetch, DroprWorkspace},
-    model::{ManagementMode, RepoNode},
+    model::RepoNode,
 };
 
 const TIMEOUT: Duration = Duration::from_secs(15);
@@ -37,7 +37,6 @@ fn repo_node(tasks: Vec<DroprTaskCandidate>) -> RepoNode {
         name: "repo".into(),
         remote_url: None,
         pinned: true,
-        management: ManagementMode::Auto,
         agents: Vec::new(),
         dropr: Some(DroprWorkspace {
             kind: "materialised".into(),

@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     config::Config,
     dropr::{DroprTaskCandidate, DroprTaskFetch},
-    model::{ManagementMode, RepoNode},
+    model::RepoNode,
     registry::Registry,
 };
 
@@ -28,7 +28,6 @@ fn repo_node(tasks: Vec<DroprTaskCandidate>) -> RepoNode {
         name: "repo".into(),
         remote_url: None,
         pinned: true,
-        management: ManagementMode::Auto,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: DroprTaskFetch {

@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     config::Config,
     git::test_repo::TestRepo,
-    model::{ManagementMode, RepoNode, Selection},
+    model::{RepoNode, Selection},
     registry::Registry,
 };
 
@@ -14,7 +14,6 @@ fn repo_node(repo: &TestRepo) -> RepoNode {
         // Pinned so `visible()` lists it even though the temp path is not
         // under `App::new`'s `config.repos_root` — see `list::other_location_repos`.
         pinned: true,
-        management: ManagementMode::Auto,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

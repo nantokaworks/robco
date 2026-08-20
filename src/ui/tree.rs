@@ -5,7 +5,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{ManagementMode, Selection, Status};
+use crate::model::{Selection, Status};
 use crate::subagents::SubagentStatus;
 
 use super::{App, layout, theme::DEFAULT as THEME};
@@ -61,13 +61,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 let repo = &app.registry.repos[repo_idx];
                 let row = crate::model::agent_row(&repo.agents, agent_idx);
                 let agent = &repo.agents[agent_idx];
-                let repo_unmanaged = repo.management == ManagementMode::Manual;
                 let agent_style = if selected {
                     style
                 } else if agent.status == Status::BranchOnly {
                     THEME.status_style(Status::BranchOnly)
-                } else if repo_unmanaged {
-                    THEME.muted_style()
                 } else {
                     style
                 };
@@ -116,23 +113,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 } else {
                     label::TreeHandle::Collapsed
                 };
-                // Blank a Manual marker that only repeats what the repo row
-                // above already shows (see `ManagementMarker::unless_matching`).
-                // Auto is always drawn, even when it matches its repo's own
-                // Auto state — the common case, and the one this exemption
-                // exists to keep from reading as an unmanaged worktree.
-                let agent_marker =
-                    label::ManagementMarker::of(agent.parent_agent_id.as_deref(), agent.management)
-                        .unless_matching(label::ManagementMarker::of_repo(repo.management));
                 let prefix = label::agent_row_prefix(
                     marker,
-                    agent_marker,
-                    app.config.project_icon,
                     &row.ancestor_continues,
                     row.is_last,
                     handle,
                     THEME.tree_structure_style(selected),
-                    THEME.management_marker_style(selected),
                 );
                 let title = match &agent.task_number {
                     Some(number) => format!("#{number} {}", agent.title),

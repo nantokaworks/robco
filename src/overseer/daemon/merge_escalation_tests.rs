@@ -26,7 +26,6 @@ fn entry() -> LedgerEntry {
             passes: 30,
             escalated: true,
         },
-        manual_merge_skip: None,
         merge_hold_cap_escalated: true,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: Some("merge_state:dirty".into()),

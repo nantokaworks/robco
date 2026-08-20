@@ -2,7 +2,6 @@ use super::*;
 use crate::{
     dropr::{DroprTaskCandidate, DroprTaskFetch},
     locale::Locale,
-    model::ManagementMode,
 };
 
 fn task(display_id: &str) -> DroprTaskCandidate {
@@ -30,7 +29,6 @@ fn repo_node(
         name: "repo".into(),
         remote_url: None,
         pinned: true,
-        management: ManagementMode::Auto,
         agents: Vec::new(),
         dropr: None,
         dropr_tasks: DroprTaskFetch {

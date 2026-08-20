@@ -183,7 +183,6 @@ mod tests {
             name: "repo".into(),
             remote_url: None,
             pinned: false,
-            management: crate::model::ManagementMode::Auto,
             agents: Vec::new(),
             dropr: None,
             dropr_tasks: crate::dropr::DroprTaskFetch::default(),

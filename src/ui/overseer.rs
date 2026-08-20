@@ -9,7 +9,7 @@ use chrono::Utc;
 use ratatui::text::Text;
 
 use crate::{
-    model::{ManagementMode, MergeLifecycle, OverseerCategory, Status},
+    model::{MergeLifecycle, OverseerCategory, Status},
     overseer::{
         config::OverseerConfig, discord_channels::DiscordChannels, ledger::Ledger,
         logging::DecisionEntry, other_prs::OtherPrs,
@@ -32,8 +32,6 @@ pub(in crate::ui) use discord_agents::{
     channel_preview as discord_channel_preview, ordered_channel_ids,
 };
 pub(in crate::ui) use inbox_rows::item_preview as inbox_item_preview;
-
-pub(super) type WorkerManagement = (String, ManagementMode);
 
 /// Decisions a snapshot reads out of the append-only log
 /// ([`crate::ui::actions::overseer_refresh`]).
@@ -144,39 +142,6 @@ impl OverseerSnapshot {
     ) -> Option<String> {
         decisions::merge_hold_detail(locale, &self.ledger, agent_id)
     }
-}
-
-pub(super) fn active_worker_management(app: &App) -> Vec<WorkerManagement> {
-    let mut seen_agent_ids = std::collections::HashSet::new();
-    let workers = app
-        .registry
-        .repos
-        .iter()
-        .flat_map(|repo| &repo.agents)
-        .filter(|agent| crate::overseer::is_overseer_child(agent.parent_agent_id.as_deref()))
-        .map(|agent| (agent.id.as_str(), agent.title.as_str(), agent.management))
-        .collect::<Vec<_>>();
-
-    app.overseer_snapshot
-        .ledger
-        .entries
-        .iter()
-        .filter(|entry| !render::terminal(entry.phase))
-        .filter(|entry| seen_agent_ids.insert(entry.agent_id.as_str()))
-        .filter_map(|entry| {
-            workers
-                .iter()
-                .find(|(id, _, _)| *id == entry.agent_id)
-                .map(|(_, title, management)| {
-                    let label = if entry.display_id.is_empty() {
-                        (*title).to_string()
-                    } else {
-                        entry.display_id.clone()
-                    };
-                    (label, *management)
-                })
-        })
-        .collect()
 }
 
 pub(super) fn category_preview(app: &App, category: OverseerCategory) -> (String, Text<'static>) {

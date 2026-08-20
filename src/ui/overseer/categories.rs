@@ -10,10 +10,10 @@ use crate::{
 };
 
 use super::{
-    App, active_worker_management,
+    App,
     decisions::{DETAIL_LIMIT, append_decisions},
     discord_agents, inbox_rows,
-    render::{append_health, append_ledger, append_worker_management},
+    render::{append_health, append_ledger},
 };
 
 pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> Vec<Line<'static>> {
@@ -31,18 +31,12 @@ pub(in crate::ui) fn category_detail(app: &App, category: OverseerCategory) -> V
             app.locale,
         ),
         OverseerCategory::Ledger => {
-            let management = active_worker_management(app);
             append_ledger(
                 &mut lines,
                 &snapshot.ledger,
                 &snapshot.decisions,
-                &management,
                 &app.registry,
             );
-            while lines.last().is_some_and(|line| line.spans.is_empty()) {
-                lines.pop();
-            }
-            append_worker_management(&mut lines, &management);
         }
         OverseerCategory::Inbox => lines.extend(inbox_rows::detail_lines(app)),
         OverseerCategory::Decisions => {

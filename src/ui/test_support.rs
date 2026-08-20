@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::{
-    model::{AgentNode, ManagementMode, RepoNode, Status},
+    model::{AgentNode, RepoNode, Status},
     registry::Registry,
 };
 
@@ -17,7 +17,6 @@ pub(in crate::ui) fn agent(id: &str, worktree_path: PathBuf) -> AgentNode {
     AgentNode {
         id: id.to_string(),
         parent_agent_id: None,
-        management: ManagementMode::Manual,
         title: id.to_string(),
         task_number: None,
         worktree_path,
@@ -55,7 +54,6 @@ pub(in crate::ui) fn repo(path: PathBuf, agents: Vec<AgentNode>) -> RepoNode {
         path,
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

@@ -1,7 +1,7 @@
 use super::*;
 use crate::overseer::ledger::LedgerEntry;
 
-fn registry_with(parent: Option<&str>, management: &str) -> Registry {
+fn registry_with(parent: Option<&str>) -> Registry {
     serde_json::from_value(serde_json::json!({
         "version": 1,
         "repos": [{
@@ -11,7 +11,6 @@ fn registry_with(parent: Option<&str>, management: &str) -> Registry {
             "agents": [{
                 "id": "manual-worker",
                 "parent_agent_id": parent,
-                "management": management,
                 "title": "#154",
                 "worktree_path": "/repo/worker",
                 "branch": "task-154",
@@ -42,7 +41,6 @@ fn ledger_for(agent_id: &str) -> Ledger {
             branch_updates: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
-            manual_merge_skip: None,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
@@ -60,11 +58,12 @@ fn ledger_for(agent_id: &str) -> Ledger {
     }
 }
 
-/// The state `g` leaves behind on the `Manual -> Unmanaged` step: ownership is
-/// cleared while the registry row survives carrying `Manual`.
+/// A worker whose registry row survives with a parent that is not the
+/// Overseer's own id is reported detached — including a row with no parent
+/// at all.
 #[test]
 fn detached_worker_is_reported_detached() {
-    let registry = registry_with(None, "manual");
+    let registry = registry_with(None);
 
     assert_eq!(
         detached_agents(&ledger_for("manual-worker"), &registry),
@@ -74,7 +73,7 @@ fn detached_worker_is_reported_detached() {
 
 #[test]
 fn overseer_children_and_unregistered_agents_are_not_detached() {
-    let registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID), "manual");
+    let registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
 
     assert!(detached_agents(&ledger_for("manual-worker"), &registry).is_empty());
     // An agent that left the registry entirely is dead, not detached: dropping
@@ -82,28 +81,18 @@ fn overseer_children_and_unregistered_agents_are_not_detached() {
     assert!(detached_agents(&ledger_for("gone-worker"), &registry).is_empty());
 }
 
+/// A worker with no parent at all is not the Overseer's to adopt. Every
+/// creation path (`agent::creation::enroll_with_overseer`, `adopt_worktree`)
+/// sets `parent_agent_id` to the Overseer's own id up front, so a `None`
+/// parent here means the worker genuinely belongs to nobody.
 #[test]
-fn manual_overseer_children_are_not_adopted() {
-    let registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID), "manual");
+fn agent_with_no_parent_is_not_adopted() {
+    let registry = registry_with(None);
     let mut ledger = Ledger::default();
 
     adopt_registry_children_from(&mut ledger, &registry);
 
     assert!(ledger.entries.is_empty());
-}
-
-/// Nothing sets `parent_agent_id` any more -- the dispatcher that used to is
-/// gone -- so a worker the TUI or `robco_agent_create` started, with no
-/// parent at all, must still be adopted as long as it is `Auto`-managed.
-#[test]
-fn auto_agent_with_no_parent_is_adopted() {
-    let registry = registry_with(None, "auto");
-    let mut ledger = Ledger::default();
-
-    adopt_registry_children_from(&mut ledger, &registry);
-
-    assert_eq!(ledger.entries.len(), 1);
-    assert_eq!(ledger.entries[0].agent_id, "manual-worker");
 }
 
 /// Pins dropr:489: adoption used to run once at daemon startup, so a worker
@@ -123,7 +112,7 @@ fn worker_started_after_the_daemon_booted_is_adopted_on_a_later_pass() {
 
     // The worker starts while the daemon keeps running. A later pass reads
     // the registry again and must still find it, with no restart in between.
-    let registry_with_worker = registry_with(None, "auto");
+    let registry_with_worker = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
     adopt_registry_children_from(&mut ledger, &registry_with_worker);
 
     assert_eq!(ledger.entries.len(), 1);
@@ -132,7 +121,7 @@ fn worker_started_after_the_daemon_booted_is_adopted_on_a_later_pass() {
 
 #[test]
 fn an_agent_already_in_the_ledger_is_not_adopted_twice() {
-    let registry = registry_with(None, "auto");
+    let registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
     let mut ledger = Ledger::default();
 
     adopt_registry_children_from(&mut ledger, &registry);
@@ -152,7 +141,7 @@ fn a_settled_entry_retention_pruned_does_not_come_back_next_pass() {
     use crate::overseer::ledger::LedgerPhase;
     use crate::overseer::monitor::{Observations, TASK_ABSENT, TaskObservation};
 
-    let empty_registry = registry_with(None, "auto");
+    let empty_registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
     let mut ledger = Ledger::default();
     adopt_registry_children_from(&mut ledger, &empty_registry);
     ledger.entries[0].phase = LedgerPhase::Escalated;
