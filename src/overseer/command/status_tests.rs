@@ -1,50 +1,16 @@
 use chrono::Utc;
 
 use super::*;
-use crate::model::ManagementMode;
-use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 use crate::ui::inbox::{InboxItem, InboxKind};
 
-fn repo(name: &str, management: ManagementMode) -> crate::model::RepoNode {
+fn repo(name: &str) -> crate::model::RepoNode {
     let mut repo = crate::discover::repo_node(format!("/tmp/{name}").into(), false);
     repo.name = name.to_string();
-    repo.management = management;
     repo
 }
 
 fn registry_with(repos: Vec<crate::model::RepoNode>) -> Registry {
     Registry { version: 1, repos }
-}
-
-fn ledger_entry(phase: LedgerPhase) -> LedgerEntry {
-    LedgerEntry {
-        task_id: "task-1".into(),
-        display_id: "#12".into(),
-        repo: "/tmp/robco".into(),
-        agent_id: "agent-1".into(),
-        branch: "branch".into(),
-        phase,
-        dispatched_at: Utc::now(),
-        settled_at: None,
-        retries: 0,
-        pr_url: None,
-        branch_updates: 0,
-        merge_recovery: Default::default(),
-        merge_hold: Default::default(),
-        manual_merge_skip: None,
-        merge_hold_cap_escalated: false,
-        merge_hold_rechecks: 0,
-        merge_hold_recheck_reason: None,
-        merge_hold_recheck_head: None,
-        prerequisite_wait: None,
-        merge_hold_stuck_notified: false,
-        escalation_notified_reason: None,
-        escalation_notified_head: None,
-        worker_escalated: false,
-        operator_override: None,
-        merge_approval: None,
-        pr_facts: None,
-    }
 }
 
 fn answerable_escalation() -> InboxItem {
@@ -113,44 +79,10 @@ fn waiting_summary_counts_what_it_lists() {
 
 #[test]
 fn waiting_reasons_includes_only_actionable_inbox_items() {
-    let ledger = Ledger::default();
-    let registry = registry_with(vec![]);
     let items = vec![answerable_escalation(), watch_only_escalation()];
-    let reasons = waiting_reasons(&ledger, &items, &registry);
+    let reasons = waiting_reasons(&items);
     assert_eq!(reasons.len(), 1);
     assert!(reasons[0].contains("agent-1"));
-}
-
-#[test]
-fn waiting_reasons_names_pull_requests_the_merge_gate_is_holding_for_a_human() {
-    // This is the fix for the bug the task exists to close: a raw ledger
-    // phase tally cannot tell a pull request still needing a decision apart
-    // from a task an operator already resolved elsewhere, but the manual
-    // merge skip marker can.
-    let mut entry = ledger_entry(LedgerPhase::PrOpened);
-    entry.manual_merge_skip = Some("worker manual".into());
-    let ledger = Ledger {
-        entries: vec![entry],
-        ..Ledger::default()
-    };
-    let registry = registry_with(vec![repo("robco", ManagementMode::Manual)]);
-    let reasons = waiting_reasons(&ledger, &[], &registry);
-    assert_eq!(reasons.len(), 1);
-    assert!(reasons[0].contains("#12"));
-    assert!(reasons[0].contains("robco"));
-    assert!(!reasons[0].contains("/tmp/robco"));
-}
-
-#[test]
-fn waiting_reasons_excludes_a_manual_skip_that_already_settled() {
-    let mut entry = ledger_entry(LedgerPhase::Merged);
-    entry.manual_merge_skip = Some("worker manual".into());
-    let ledger = Ledger {
-        entries: vec![entry],
-        ..Ledger::default()
-    };
-    let registry = registry_with(vec![]);
-    assert!(waiting_reasons(&ledger, &[], &registry).is_empty());
 }
 
 #[test]
@@ -193,7 +125,7 @@ fn running_line_names_repos() {
         ..ActiveWorkers::default()
     };
     active.repos.insert("/tmp/robco".into(), 1);
-    let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
+    let registry = registry_with(vec![repo("robco")]);
     let line = running_line(&active, &BTreeMap::new(), &registry);
     assert_eq!(line, "running now: 1 worker(s) (robco=1)");
     assert!(!line.contains("/tmp"));
@@ -207,7 +139,7 @@ fn running_line_names_the_primary_holder_per_repository() {
     };
     active.repos.insert("/tmp/robco".into(), 2);
     let primary_holders = BTreeMap::from([("/tmp/robco".to_string(), "#452".to_string())]);
-    let registry = registry_with(vec![repo("robco", ManagementMode::Auto)]);
+    let registry = registry_with(vec![repo("robco")]);
     let line = running_line(&active, &primary_holders, &registry);
     assert_eq!(line, "running now: 2 worker(s) (robco=2 (primary #452))");
 }

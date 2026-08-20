@@ -52,14 +52,6 @@ pub struct LedgerEntry {
     /// ledgers written before the field existed still load.
     #[serde(default)]
     pub merge_hold: MergeHold,
-    /// Pull request the merge pass has already recorded a manual-management skip
-    /// for. The skip is a standing state — it lasts as long as the operator
-    /// leaves the worker manual — so recording it once per pull request keeps it
-    /// out of `decisions.jsonl` on every later poll pass. Cleared as soon as the
-    /// entry is Overseer's to merge again. Defaulted so ledgers written before
-    /// the field existed still load.
-    #[serde(default)]
-    pub manual_merge_skip: Option<String>,
     /// Whether this entry sits in `Escalated` because the merge-hold budget ran
     /// out. Kept apart from `merge_hold`, which resets on the reconsideration
     /// pass this flag grants. Cleared on merge.
@@ -162,28 +154,12 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    /// Live merge candidates the merge pass is declining because their worker is
-    /// manual-managed.
-    ///
-    /// Read off the marker the merge pass itself writes rather than re-derived
-    /// from the registry, so every surface reports the gate's own verdict instead
-    /// of a second opinion that can disagree with it. Terminal entries are
-    /// excluded: a pull request a human merged themselves is no longer something
-    /// Overseer is holding back.
-    pub fn manual_merge_skips(&self) -> usize {
-        self.entries
-            .iter()
-            .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
-            .count()
-    }
-
     /// Merges Discord's `!merge` queued an approval for while they were still
     /// waiting on the deterministic gate, and have not yet drained.
     ///
-    /// Read by `robco overseer status --debug`, the same way
-    /// [`Self::manual_merge_skips`] is, so an operator can see how many
-    /// pending merges already carry their own approval rather than a future
-    /// escalation.
+    /// Read by `robco overseer status --debug`, so an operator can see how
+    /// many pending merges already carry their own approval rather than a
+    /// future escalation.
     pub fn queued_merge_approvals(&self) -> usize {
         self.entries
             .iter()

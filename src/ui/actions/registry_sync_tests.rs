@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use super::{adopt_stored_agents, dialog_agent, restore_dialog_agent};
 use crate::{
-    model::{AgentNode, ManagementMode, RepoNode, Status},
+    model::{AgentNode, RepoNode, Status},
     registry::Registry,
     ui::Mode,
 };
@@ -13,7 +13,6 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         name: path.rsplit('/').next().unwrap_or("repo").to_string(),
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),
@@ -36,7 +35,6 @@ fn agent(id: &str) -> AgentNode {
     AgentNode {
         id: id.to_string(),
         parent_agent_id: None,
-        management: ManagementMode::Auto,
         title: id.to_string(),
         task_number: None,
         worktree_path: PathBuf::from(format!("/wt/{id}")),
@@ -151,18 +149,18 @@ fn a_row_this_process_has_never_seen_is_adopted() {
     assert_eq!(repos[0].agents[1].pane_pid, None);
 }
 
-/// Persisted edits belong to disk too: a management mode another client changed
+/// Persisted edits belong to disk too: a persisted field another client changed
 /// must not be overwritten by this process's stale copy of the same row.
 #[test]
 fn a_surviving_row_takes_the_stored_persisted_fields() {
     let mut repos = vec![repo("/a/one", vec![agent("kept")])];
-    repos[0].agents[0].management = ManagementMode::Auto;
+    repos[0].agents[0].task_number = Some("1".into());
     let mut stored_repo = repo("/a/one", vec![agent("kept")]);
-    stored_repo.agents[0].management = ManagementMode::Manual;
+    stored_repo.agents[0].task_number = Some("2".into());
 
     adopt_stored_agents(&mut repos, &stored(vec![stored_repo]));
 
-    assert_eq!(repos[0].agents[0].management, ManagementMode::Manual);
+    assert_eq!(repos[0].agents[0].task_number.as_deref(), Some("2"));
 }
 
 /// Discovery adopts a repository into memory a tick before the save thread

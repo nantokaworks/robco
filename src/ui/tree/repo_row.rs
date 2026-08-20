@@ -1,8 +1,7 @@
 //! The repo row: name, agent count, dropr/indicator glyphs, and — when
 //! collapsed — a rollup of its agents' statuses. Split out of `tree::draw`
 //! because the repo row alone carries as much rendering logic as every other
-//! row kind combined, and `#306` (repo-level Overseer opt-out) added its own
-//! marker and dimming on top of that.
+//! row kind combined.
 
 use ratatui::{
     style::Style,
@@ -10,7 +9,7 @@ use ratatui::{
 };
 
 use crate::locale::t;
-use crate::model::{ManagementMode, Status};
+use crate::model::Status;
 use crate::ui::{App, theme::DEFAULT as THEME};
 
 use super::indicator::{self, IndicatorState, select, select_supplementary};
@@ -29,17 +28,7 @@ pub(super) fn build(
     let repo = &app.registry.repos[repo_idx];
     let expanded = app.expanded.get(repo_idx).copied().unwrap_or(true);
     let prefix = app.config.project_icon.marker(expanded);
-    // Opted out of the Overseer entirely (`G` key): dim the row so the whole
-    // subtree reads as hands-off at a glance, without hunting for the
-    // one-cell marker that follows.
-    let unmanaged = repo.management == ManagementMode::Manual;
-    let title_style = if selected {
-        style
-    } else if unmanaged {
-        THEME.muted_style()
-    } else {
-        style
-    };
+    let title_style = style;
     let mut right = vec![Span::styled(
         format!(" {}", repo.agents.len()),
         if selected { style } else { THEME.hint_style() },
@@ -71,15 +60,7 @@ pub(super) fn build(
     }
     let mut lines = vec![label::labeled_row(
         projects_width,
-        vec![
-            Span::styled(format!("{marker} {prefix} "), style),
-            label::repo_management_glyph(
-                repo.management,
-                app.config.project_icon,
-                THEME.management_marker_style(selected),
-            ),
-            Span::styled(" ", style),
-        ],
+        vec![Span::styled(format!("{marker} {prefix} "), style)],
         primary,
         &repo.name,
         title_style,
@@ -88,12 +69,12 @@ pub(super) fn build(
         right,
     )];
     if expanded && repo.agents.is_empty() {
-        // Eight columns: where an agent row's own title would start (cursor +
-        // separator + connector + separator + marker cell + separator), so the
-        // filler text sits where an actual agent title would.
+        // Six columns: where an agent row's own title would start (cursor +
+        // separator + connector + separator), so the filler text sits where
+        // an actual agent title would.
         lines.push(Line::from(Span::styled(
             format!(
-                "        {}{}",
+                "      {}{}",
                 label::AGENT_INDENT,
                 t(app.locale, "(no agents)")
             ),

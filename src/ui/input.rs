@@ -19,9 +19,6 @@ mod dropr_task_body;
 mod dropr_task_drill;
 mod inbox_dismiss;
 mod inbox_respond;
-// `dialog` phrases the bulk-toggle confirmation from the same helper the
-// resulting message uses, so the prompt and the outcome cannot drift apart.
-pub(in crate::ui) mod management;
 mod mouse;
 mod overseer;
 mod prompt_agent;
@@ -266,8 +263,6 @@ impl App {
                     },
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
-                KeyCode::Char('g') => management::cycle_selected(self)?,
-                KeyCode::Char('G') => management::toggle_repo_overseer(self)?,
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('c') => self.checkout_main_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
@@ -287,8 +282,7 @@ impl App {
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
-            | Mode::ConfirmRemoveDiscordChannel { .. }
-            | Mode::ConfirmOverseerBulkToggle { .. } => unreachable!("handled above"),
+            | Mode::ConfirmRemoveDiscordChannel { .. } => unreachable!("handled above"),
         }
 
         self.clamp_selection();

@@ -15,9 +15,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
             name: "repo".to_string(),
             remote_url: None,
             pinned: false,
-            management: crate::model::ManagementMode::Auto,
             agents: vec![AgentNode {
-                management: crate::model::ManagementMode::Manual,
                 id: id.to_string(),
                 parent_agent_id: None,
                 title: "task".to_string(),

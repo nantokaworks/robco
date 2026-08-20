@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     dropr::{DroprTaskCandidate, DroprTaskFetch, DroprWorkspace},
     git::test_repo::TestRepo,
-    model::{AgentNode, ManagementMode, RepoNode},
+    model::{AgentNode, RepoNode},
     registry::Registry,
 };
 
@@ -12,7 +12,6 @@ fn agent_node(id: &str, title: &str, task_number: Option<&str>) -> AgentNode {
     AgentNode {
         id: id.to_string(),
         parent_agent_id: None,
-        management: ManagementMode::Manual,
         title: title.to_string(),
         task_number: task_number.map(str::to_string),
         worktree_path: format!("/tmp/{id}").into(),
@@ -62,7 +61,6 @@ fn repo_node(path: std::path::PathBuf, tasks: Vec<DroprTaskCandidate>) -> RepoNo
         name: "repo".into(),
         remote_url: None,
         pinned: true,
-        management: ManagementMode::Auto,
         agents: Vec::new(),
         dropr: Some(DroprWorkspace {
             kind: "materialised".into(),

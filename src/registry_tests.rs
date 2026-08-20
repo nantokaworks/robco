@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::SystemTime};
 
 use super::*;
-use crate::model::{AgentNode, ManagementMode, RepoNode};
+use crate::model::{AgentNode, RepoNode};
 use crate::subagents::{SubagentStatus, TaskSubagent};
 
 fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
@@ -10,7 +10,6 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
         name: path.rsplit('/').next().unwrap_or("repo").to_string(),
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents,
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),
@@ -33,7 +32,6 @@ fn dummy_agent() -> AgentNode {
     AgentNode {
         id: "agent123".to_string(),
         parent_agent_id: None,
-        management: ManagementMode::Manual,
         title: "t".to_string(),
         task_number: None,
         worktree_path: "/tmp/wt".into(),
@@ -156,33 +154,6 @@ fn parent_agent_id_defaults_and_round_trips() {
     agent.parent_agent_id = Some("parent123".into());
     let loaded: AgentNode = serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
     assert_eq!(loaded.parent_agent_id.as_deref(), Some("parent123"));
-}
-
-#[test]
-fn management_mode_round_trips() {
-    let mut agent = dummy_agent();
-    agent.management = ManagementMode::Auto;
-    let loaded: AgentNode = serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
-    assert_eq!(loaded.management, ManagementMode::Auto);
-
-    agent.management = ManagementMode::Manual;
-    let loaded: AgentNode = serde_json::from_str(&serde_json::to_string(&agent).unwrap()).unwrap();
-    assert_eq!(loaded.management, ManagementMode::Manual);
-}
-
-#[test]
-fn missing_management_field_defaults_to_auto() {
-    let registry = Registry {
-        version: 1,
-        repos: vec![repo("/repo", vec![dummy_agent()])],
-    };
-    let mut legacy = serde_json::to_value(&registry).unwrap();
-    legacy["repos"][0]["agents"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("management");
-    let loaded: Registry = serde_json::from_value(legacy).unwrap();
-    assert_eq!(loaded.repos[0].agents[0].management, ManagementMode::Auto);
 }
 
 #[test]

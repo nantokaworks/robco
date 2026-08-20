@@ -24,7 +24,7 @@ use crate::{
         daemon::merge_pass_telemetry,
         exec::process_alive,
         heartbeat, heartbeat_path,
-        ledger::{ActiveWorkers, Ledger, terminal},
+        ledger::{ActiveWorkers, Ledger},
         logging, merge_pass_path,
         session::health::SessionHealth,
     },
@@ -50,7 +50,7 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
     let session_health = SessionHealth::load()?;
 
     let inbox = inbox::current(&registry)?;
-    let waiting = waiting_reasons(&ledger, &inbox.items, &registry);
+    let waiting = waiting_reasons(&inbox.items);
     print_section(&waiting_summary(&waiting), &waiting);
 
     let stuck = stuck_reasons(
@@ -76,7 +76,6 @@ pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
         print_debug_section(
             config,
             &ledger,
-            &registry,
             session_health.as_ref(),
             healthy,
             pid,
@@ -119,36 +118,20 @@ fn summarize_reason(reason: &str) -> String {
     }
 }
 
-/// "Is anything waiting on me?" — every actionable Inbox item (the same
-/// dismissal-aware, reconciled set the TUI's `N/M actionable` count reads) plus
-/// every pull request the merge gate is holding back for manual management.
-/// Both need an operator's decision; nothing else does.
+/// "Is anything waiting on me?" — every actionable Inbox item, the same
+/// dismissal-aware, reconciled set the TUI's `N/M actionable` count reads.
 ///
 /// Reusing the Inbox aggregation rather than the raw ledger phase tally is
 /// what fixes `escalated: 2` reading as two things needing attention when an
 /// operator already resolved both elsewhere (one task correctly marked
 /// `blocked`, one already `closed`): the Inbox is dismissal-aware, the raw
 /// tally never was.
-fn waiting_reasons(ledger: &Ledger, items: &[InboxItem], registry: &Registry) -> Vec<String> {
-    let mut reasons: Vec<String> = items
+fn waiting_reasons(items: &[InboxItem]) -> Vec<String> {
+    items
         .iter()
         .filter(|item| item.actionable())
         .map(|item| format!("[{}] {}", item.remedy().tag(), item.label))
-        .collect();
-    reasons.extend(
-        ledger
-            .entries
-            .iter()
-            .filter(|entry| entry.manual_merge_skip.is_some() && !terminal(entry.phase))
-            .map(|entry| {
-                format!(
-                    "[MERGE] {} — ready to merge, held back for manual management ({})",
-                    entry.display_id,
-                    registry.repo_label(&entry.repo)
-                )
-            }),
-    );
-    reasons
+        .collect()
 }
 
 fn waiting_summary(reasons: &[String]) -> String {

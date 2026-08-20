@@ -24,7 +24,6 @@ const AGENT_HINTS: Hints = &[
     ("r", "restart"),
     ("m", "merge"),
     ("p", "pr"),
-    ("g", "manage"),
     ("x", "remove"),
     ("?", "help"),
     ("q", "quit"),
@@ -34,7 +33,6 @@ const REPO_HINTS: Hints = &[
     ("n", "new"),
     ("a", "add"),
     ("r", "reload"),
-    ("g", "manage"),
     ("?", "help"),
     ("q", "quit"),
 ];

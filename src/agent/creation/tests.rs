@@ -93,33 +93,13 @@ fn adopt_preserves_recovered_identity() {
     );
     assert_eq!(adopted.id, "child-id");
     assert_eq!(adopted.parent_agent_id.as_deref(), Some("parent-id"));
-    assert_eq!(adopted.management, crate::model::ManagementMode::Manual);
     assert!(adopted.claude_session_id.is_none());
 }
 
-/// A re-adopted Overseer worker must return under automatic dispatch: a
-/// hardcoded `Manual` would leave it counted as manual and its task skipped.
-#[test]
-fn adopted_overseer_worker_comes_back_as_auto() {
-    let adopted = adopt_worktree(
-        &repo_named("dropr"),
-        &Config::default(),
-        "/tmp/wt".into(),
-        Some("dropr/worker".into()),
-        None,
-        Some("robco_dropr_worker".into()),
-        Some(RecoveredIdentity {
-            id: "worker-id".into(),
-            parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
-        }),
-    );
-    assert_eq!(adopted.management, crate::model::ManagementMode::Auto);
-}
-
 /// A hand-made worktree has no session to recover a parent from, so it is
-/// adopted unowned and stays `Manual` until `g` enrolls it.
+/// adopted unowned, with no parent at all.
 #[test]
-fn adopted_worktree_without_a_recovered_parent_stays_manual() {
+fn adopted_worktree_without_a_recovered_parent_stays_unowned() {
     let adopted = adopt_worktree(
         &repo_named("dropr"),
         &Config::default(),
@@ -130,7 +110,6 @@ fn adopted_worktree_without_a_recovered_parent_stays_manual() {
         None,
     );
     assert_eq!(adopted.parent_agent_id, None);
-    assert_eq!(adopted.management, crate::model::ManagementMode::Manual);
 }
 
 #[test]
@@ -192,33 +171,29 @@ fn adopt_keeps_full_label_for_foreign_branch() {
 /// A worker created with no parent is enrolled with the Overseer.
 #[test]
 fn create_agent_with_no_parent_is_enrolled_with_overseer() {
-    let (parent_agent_id, management) = enroll_with_overseer(None);
+    let parent_agent_id = enroll_with_overseer(None);
     assert_eq!(
         parent_agent_id.as_deref(),
         Some(crate::overseer::OVERSEER_AGENT_ID)
     );
-    assert_eq!(management, crate::model::ManagementMode::Auto);
 }
 
 /// A worker created with a supplied parent keeps exactly that parent.
 #[test]
 fn create_agent_with_supplied_parent_keeps_it() {
-    let (parent_agent_id, management) = enroll_with_overseer(Some("some-other-agent"));
+    let parent_agent_id = enroll_with_overseer(Some("some-other-agent"));
     assert_eq!(parent_agent_id.as_deref(), Some("some-other-agent"));
-    assert_eq!(management, crate::model::ManagementMode::Manual);
 }
 
 /// A subagent spawned by an Overseer-managed worker (its own id is the
-/// Overseer's) keeps that parent unmodified, and still reads as `Auto`.
+/// Overseer's) keeps that parent unmodified.
 #[test]
-fn create_agent_with_overseer_as_supplied_parent_stays_auto() {
-    let (parent_agent_id, management) =
-        enroll_with_overseer(Some(crate::overseer::OVERSEER_AGENT_ID));
+fn create_agent_with_overseer_as_supplied_parent_is_kept() {
+    let parent_agent_id = enroll_with_overseer(Some(crate::overseer::OVERSEER_AGENT_ID));
     assert_eq!(
         parent_agent_id.as_deref(),
         Some(crate::overseer::OVERSEER_AGENT_ID)
     );
-    assert_eq!(management, crate::model::ManagementMode::Auto);
 }
 
 /// A worker enrolled with the Overseer can resolve a report target.
@@ -232,7 +207,7 @@ fn create_agent_with_overseer_as_supplied_parent_stays_auto() {
 /// regress silently.
 #[test]
 fn worker_enrolled_with_overseer_can_resolve_a_report_target() {
-    let (parent_agent_id, _) = enroll_with_overseer(None);
+    let parent_agent_id = enroll_with_overseer(None);
     let env = agent_env("worker-id", parent_agent_id.as_deref());
 
     let parent_value = env

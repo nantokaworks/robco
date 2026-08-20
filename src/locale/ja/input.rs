@@ -19,33 +19,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "dismissed merge notice" => "merge通知を閉じました",
         "IME is on; switch to ASCII input" => "IMEが有効です。ASCII入力に切り替えてください",
-
-        // input/management.rs
-        "g: select a repo or a worktree to cycle overseer management" => {
-            "g: overseer管理を切り替えるリポジトリかworktreeを選択してください"
-        }
-        "overseer management: auto" => "overseer管理: auto",
-        "overseer management: manual" => "overseer管理: manual",
-        "detached from overseer management (worker left running)" => {
-            "overseer管理から切り離しました(workerは起動したまま)"
-        }
-        "g: this worktree belongs to another agent, not the overseer" => {
-            "g: このworktreeはoverseerではなく別のagentに属しています"
-        }
-        "g: selected worktree was not found" => "g: 選択したworktreeが見つかりませんでした",
-        "g: no worktrees under this repo for the overseer to manage" => {
-            "g: このリポジトリにはoverseerが管理できるworktreeがありません"
-        }
-        "g: no workers left to {}" => "g: {} 対象のworkerがもうありません",
-        "1 worker {}" => "workerを1台 {}",
-        "{} workers {}" => "workerを{}台 {}",
-        "G: select a repo to toggle overseer management" => {
-            "G: overseer管理を切り替えるリポジトリを選択してください"
-        }
-        "overseer management: repo back under auto" => "overseer管理: リポジトリをautoに戻しました",
-        "overseer management: repo opted out (running workers keep going)" => {
-            "overseer管理: リポジトリを対象外にしました(実行中のworkerはそのまま継続)"
-        }
         _ => return None,
     })
 }

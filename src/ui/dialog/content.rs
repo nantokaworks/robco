@@ -3,9 +3,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use super::super::{
-    App, Mode, error_dialog, help, input::management, input_wrap, spinner, theme::DEFAULT as THEME,
-};
+use super::super::{App, Mode, error_dialog, help, input_wrap, spinner, theme::DEFAULT as THEME};
 use crate::locale::{fmt, t};
 
 #[path = "content_widgets.rs"]
@@ -95,24 +93,6 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                     "ends the running session now and removes the worktree",
                 )),
                 hint_line(locale, "y delete   n/esc cancel"),
-            ],
-            None,
-        ),
-        Mode::ConfirmOverseerBulkToggle {
-            repo_name,
-            target,
-            count,
-            ..
-        } => (
-            t(locale, "manage whole repo?"),
-            vec![
-                Line::from(repo_name.clone()),
-                Line::from(fmt(
-                    locale,
-                    "{} worker(s) {}",
-                    &[&count.to_string(), management::bulk_action(*target)],
-                )),
-                hint_line(locale, "y apply   n/esc cancel"),
             ],
             None,
         ),

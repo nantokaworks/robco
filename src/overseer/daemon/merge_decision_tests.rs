@@ -16,7 +16,6 @@ fn entry() -> LedgerEntry {
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -54,50 +53,6 @@ fn a_loosened_gate_is_identifiable_from_the_decision_alone() {
     ))
     .unwrap();
     assert!(unrelated.get("protection_mode").is_none());
-}
-
-#[test]
-fn manual_management_declines_a_merge_candidate_out_loud_but_only_once() {
-    let mut entry = entry();
-
-    let recorded = serde_json::to_value(manual_skip(&mut entry, false).unwrap()).unwrap();
-    assert_eq!(recorded["kind"], "skip");
-    assert_eq!(recorded["reason"], "manual");
-    // The source is what separates this from the dispatch gate's identically
-    // worded skip: the merge gate declined a pull request that was ready to land.
-    assert_eq!(recorded["source"], "auto_merge");
-    assert_eq!(recorded["pr_url"], "https://pr/1");
-    assert_eq!(recorded["task"], "task");
-
-    // An unchanged second pass says nothing, so the standing state cannot bury
-    // the log it was meant to become visible in.
-    assert!(manual_skip(&mut entry, false).is_none());
-
-    // A different pull request is a different decision.
-    entry.pr_url = Some("https://pr/2".into());
-    let reopened = manual_skip(&mut entry, false).unwrap();
-    assert_eq!(reopened.pr_url.as_deref(), Some("https://pr/2"));
-}
-
-#[test]
-fn a_worker_returned_to_auto_can_be_declined_out_loud_again() {
-    let mut entry = entry();
-    assert!(manual_skip(&mut entry, false).is_some());
-
-    assert!(manual_skip(&mut entry, true).is_none());
-    assert_eq!(entry.manual_merge_skip, None);
-
-    assert!(manual_skip(&mut entry, false).is_some());
-}
-
-#[test]
-fn an_entry_without_a_pull_request_is_not_a_candidate_to_decline() {
-    let mut entry = LedgerEntry {
-        pr_url: None,
-        ..entry()
-    };
-    assert!(manual_skip(&mut entry, false).is_none());
-    assert_eq!(entry.manual_merge_skip, None);
 }
 
 #[test]

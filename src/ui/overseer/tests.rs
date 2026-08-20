@@ -4,135 +4,14 @@ use crate::locale::Locale;
 use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 use crate::{
     config::Config,
-    model::{AgentNode, ManagementMode, OverseerCategory, RepoNode, Status},
+    model::{OverseerCategory, Status},
     registry::Registry,
 };
-use chrono::Local;
 use ratatui::style::Color;
 
 fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();
     App::new(Registry::default(), Config::default(), temp.path().into())
-}
-
-fn overseer_worker(id: &str, title: &str, management: ManagementMode) -> AgentNode {
-    let now = Local::now();
-    AgentNode {
-        id: id.into(),
-        parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
-        management,
-        title: title.into(),
-        task_number: None,
-        worktree_path: format!("/tmp/{id}").into(),
-        branch: id.into(),
-        base_commit: String::new(),
-        program: "codex".into(),
-        claude_session_id: None,
-        profile: None,
-        tmux_session: id.into(),
-        created_at: now,
-        updated_at: now,
-        status: Status::Running,
-        worktree_missing: false,
-        merge_error: None,
-        last_capture: None,
-        last_spinner: None,
-        last_change_at: None,
-        last_auto_accept_at: None,
-        shell_working: false,
-        mcp_active: false,
-        pane_pid: None,
-        tracked_command: None,
-        subagents: Vec::new(),
-        children: Vec::new(),
-    }
-}
-
-fn management_app() -> App {
-    let mut app = test_app();
-    app.registry.repos.push(RepoNode {
-        path: "/tmp/repo".into(),
-        name: "repo".into(),
-        remote_url: None,
-        pinned: false,
-        management: crate::model::ManagementMode::Auto,
-        agents: vec![
-            overseer_worker("auto-agent", "auto title", ManagementMode::Auto),
-            overseer_worker("manual-agent", "manual title", ManagementMode::Manual),
-        ],
-        dropr: None,
-        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
-        main_status: None,
-        main_last_capture: None,
-        main_last_spinner: None,
-        main_last_change_at: None,
-        main_shell_working: false,
-        main_mcp_active: false,
-        main_pane_pid: None,
-        main_tracked_command: None,
-        main_subagents_active: 0,
-        main_behind_origin: None,
-        checkout_state: None,
-    });
-    app.overseer_snapshot.ledger.entries = vec![
-        LedgerEntry {
-            task_id: "auto-task".into(),
-            display_id: "#1".into(),
-            repo: "repo".into(),
-            agent_id: "auto-agent".into(),
-            branch: "auto".into(),
-            phase: LedgerPhase::Working,
-            dispatched_at: Utc::now(),
-            settled_at: None,
-            retries: 0,
-            pr_url: None,
-            branch_updates: 0,
-            merge_recovery: Default::default(),
-            merge_hold: Default::default(),
-            manual_merge_skip: None,
-            merge_hold_cap_escalated: false,
-            merge_hold_rechecks: 0,
-            merge_hold_recheck_reason: None,
-            merge_hold_recheck_head: None,
-            prerequisite_wait: None,
-            merge_hold_stuck_notified: false,
-            escalation_notified_reason: None,
-            escalation_notified_head: None,
-            worker_escalated: false,
-            operator_override: None,
-            merge_approval: None,
-            pr_facts: None,
-        },
-        LedgerEntry {
-            task_id: "manual-task".into(),
-            display_id: String::new(),
-            repo: "repo".into(),
-            agent_id: "manual-agent".into(),
-            branch: "manual".into(),
-            phase: LedgerPhase::Claimed,
-            dispatched_at: Utc::now(),
-            settled_at: None,
-            retries: 0,
-            pr_url: None,
-            branch_updates: 0,
-            merge_recovery: Default::default(),
-            merge_hold: Default::default(),
-            manual_merge_skip: None,
-            merge_hold_cap_escalated: false,
-            merge_hold_rechecks: 0,
-            merge_hold_recheck_reason: None,
-            merge_hold_recheck_head: None,
-            prerequisite_wait: None,
-            merge_hold_stuck_notified: false,
-            escalation_notified_reason: None,
-            escalation_notified_head: None,
-            worker_escalated: false,
-            operator_override: None,
-            merge_approval: None,
-            pr_facts: None,
-        },
-    ];
-    app
 }
 
 #[test]
@@ -396,74 +275,6 @@ fn info_pane_reads_auto_merge_from_snapshot_not_stale_config() {
 }
 
 #[test]
-fn ledger_detail_shows_active_worker_management_counts() {
-    let app = management_app();
-
-    assert!(category_text(&app, OverseerCategory::Ledger).contains("management: auto=1, manual=1"));
-}
-
-#[test]
-fn ledger_detail_shows_zero_manual_worker_count() {
-    let mut app = management_app();
-    app.overseer_snapshot
-        .ledger
-        .entries
-        .retain(|entry| entry.agent_id == "auto-agent");
-
-    assert!(category_text(&app, OverseerCategory::Ledger).contains("management: auto=1, manual=0"));
-}
-
-#[test]
-fn ledger_detail_reports_the_pull_requests_management_is_withholding() {
-    let mut app = management_app();
-    // Nothing is being withheld until the merge pass says so, and the operator
-    // should not read a manual worker that has not opened a pull request yet as
-    // one whose merge is being declined.
-    assert!(!category_text(&app, OverseerCategory::Ledger).contains("merge-eligible, manual"));
-
-    let entry = app
-        .overseer_snapshot
-        .ledger
-        .entries
-        .iter_mut()
-        .find(|entry| entry.agent_id == "manual-agent")
-        .unwrap();
-    entry.phase = LedgerPhase::PrOpened;
-    entry.pr_url = Some("https://pr/1".into());
-    entry.manual_merge_skip = Some("https://pr/1".into());
-
-    assert!(category_text(&app, OverseerCategory::Ledger).contains("merge-eligible, manual: 1"));
-}
-
-#[test]
-fn ledger_detail_shows_each_active_worker_management_mode() {
-    let app = management_app();
-    let lines = category_detail(&app, OverseerCategory::Ledger);
-    let rendered = lines
-        .iter()
-        .flat_map(|line| line.spans.iter())
-        .map(|span| span.content.as_ref())
-        .collect::<String>();
-
-    assert!(rendered.contains("worker #1: Auto"));
-    assert!(rendered.contains("worker manual title: Manual"));
-}
-
-#[test]
-fn duplicate_active_agent_is_counted_and_listed_once() {
-    let mut app = management_app();
-    let mut duplicate = app.overseer_snapshot.ledger.entries[0].clone();
-    duplicate.task_id = "duplicate-task".into();
-    duplicate.display_id = "#duplicate".into();
-    app.overseer_snapshot.ledger.entries.push(duplicate);
-
-    let rendered = category_text(&app, OverseerCategory::Ledger);
-    assert!(rendered.contains("management: auto=1, manual=1"));
-    assert_eq!(rendered.matches("worker #1: Auto").count(), 1);
-    assert!(!rendered.contains("worker #duplicate"));
-}
-
-#[test]
 fn every_category_has_summary_detail_and_preview() {
     let app = test_app();
     for category in OverseerCategory::ALL {
@@ -481,13 +292,7 @@ fn every_category_has_summary_detail_and_preview() {
 #[test]
 fn empty_ledger_hides_empty_detail_lines() {
     let mut lines = Vec::new();
-    append_ledger(
-        &mut lines,
-        &Ledger::default(),
-        &[],
-        &[],
-        &Registry::default(),
-    );
+    append_ledger(&mut lines, &Ledger::default(), &[], &Registry::default());
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -516,7 +321,6 @@ fn active_phases_excludes_terminal_entries() {
                 branch_updates: 0,
                 merge_recovery: Default::default(),
                 merge_hold: Default::default(),
-                manual_merge_skip: None,
                 merge_hold_cap_escalated: false,
                 merge_hold_rechecks: 0,
                 merge_hold_recheck_reason: None,
@@ -544,7 +348,6 @@ fn active_phases_excludes_terminal_entries() {
                 branch_updates: 0,
                 merge_recovery: Default::default(),
                 merge_hold: Default::default(),
-                manual_merge_skip: None,
                 merge_hold_cap_escalated: false,
                 merge_hold_rechecks: 0,
                 merge_hold_recheck_reason: None,
@@ -562,7 +365,7 @@ fn active_phases_excludes_terminal_entries() {
         ..Ledger::default()
     };
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &ledger, &[], &[], &Registry::default());
+    append_ledger(&mut lines, &ledger, &[], &Registry::default());
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -591,7 +394,6 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
             branch_updates: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
-            manual_merge_skip: None,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
@@ -614,7 +416,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
         repos: vec![repo],
     };
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &ledger, &[], &[], &registry);
+    append_ledger(&mut lines, &ledger, &[], &registry);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())
@@ -643,7 +445,6 @@ fn primary_holder_names_the_repo_and_the_task() {
             branch_updates: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
-            manual_merge_skip: None,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
@@ -666,7 +467,7 @@ fn primary_holder_names_the_repo_and_the_task() {
         repos: vec![repo],
     };
     let mut lines = Vec::new();
-    append_ledger(&mut lines, &ledger, &[], &[], &registry);
+    append_ledger(&mut lines, &ledger, &[], &registry);
     let rendered = lines
         .iter()
         .flat_map(|line| line.spans.iter())

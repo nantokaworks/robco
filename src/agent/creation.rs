@@ -13,8 +13,8 @@ use crate::{
     Error, Result,
     config::Config,
     git,
-    model::{AgentNode, ManagementMode, RepoNode},
-    overseer::{OVERSEER_AGENT_ID, is_overseer_child},
+    model::{AgentNode, RepoNode},
+    overseer::OVERSEER_AGENT_ID,
     tmux,
 };
 
@@ -26,28 +26,19 @@ fn resolve_base_branch(repo: &RepoNode) -> Result<String> {
         .ok_or_else(|| Error::DefaultBranchUnresolved(repo.path.clone()))
 }
 
-/// Decide a new worker's Overseer parentage and management mode.
+/// Decide a new worker's Overseer parentage.
 ///
 /// A caller-supplied parent is never touched: it may be another agent's id
 /// (a subagent spawned by `robco new`), and overwriting it would break the
 /// identity tree `model::agent_order` builds from, with no way to restore the
-/// old value later (see `ui::input::management::cycle_step`).
+/// old value later.
 ///
 /// A worker created with no parent has nothing to lose, so it starts enrolled
-/// with the Overseer: `parent_agent_id` becomes the Overseer's id and
-/// `management` becomes `Auto`. This is the `Unmanaged -> Auto` step of the
-/// `g` cycle, done up front instead of left for the operator to press `g` for.
-fn enroll_with_overseer(parent_agent_id: Option<&str>) -> (Option<String>, ManagementMode) {
+/// with the Overseer: `parent_agent_id` becomes the Overseer's id.
+fn enroll_with_overseer(parent_agent_id: Option<&str>) -> Option<String> {
     match parent_agent_id {
-        Some(parent) => (
-            Some(parent.to_string()),
-            if is_overseer_child(Some(parent)) {
-                ManagementMode::Auto
-            } else {
-                ManagementMode::Manual
-            },
-        ),
-        None => (Some(OVERSEER_AGENT_ID.to_string()), ManagementMode::Auto),
+        Some(parent) => Some(parent.to_string()),
+        None => Some(OVERSEER_AGENT_ID.to_string()),
     }
 }
 
@@ -105,7 +96,7 @@ pub(crate) fn create_agent_with_launch(
     let mut launch_args = session_id_args(claude_session_id.as_deref());
     launch_args.extend_from_slice(extra_args);
     let command = launch_command(&program, initial_prompt, &launch_args);
-    let (parent_agent_id, management) = enroll_with_overseer(parent_agent_id);
+    let parent_agent_id = enroll_with_overseer(parent_agent_id);
     let mut owned_env = agent_env(&id, parent_agent_id.as_deref())
         .into_iter()
         .map(|(key, value)| (key.to_string(), value))
@@ -121,7 +112,6 @@ pub(crate) fn create_agent_with_launch(
     Ok(AgentNode {
         id,
         parent_agent_id,
-        management,
         title: title.to_string(),
         task_number,
         worktree_path,
@@ -196,21 +186,11 @@ pub fn adopt_worktree(
         .unwrap_or_else(|| (nanoid!(8), None));
     AgentNode {
         id,
-        // Adoption recovers `parent_agent_id` from the live session, so derive
-        // the mode from it exactly as `create_agent` does: an Overseer worker
-        // that gets re-adopted must come back under automatic dispatch instead
-        // of returning as a worker the daemon skips as manual.
-        //
-        // Unlike `create_agent_with_launch`, a `None` parent here is NOT
+        // Adoption recovers `parent_agent_id` from the live session as-is,
+        // unlike `create_agent_with_launch`: a `None` parent here is NOT
         // enrolled. A session that reports no parent may be a worker created
-        // before enrolment existed, or one an operator deliberately detached
-        // with `g`. Adoption cannot tell those apart, so it leaves the worker
-        // as `Manual`/unowned and lets the operator press `g` to enrol it.
-        management: if is_overseer_child(parent_agent_id.as_deref()) {
-            ManagementMode::Auto
-        } else {
-            ManagementMode::Manual
-        },
+        // before enrolment existed, or one an operator deliberately detached.
+        // Adoption cannot tell those apart, so it leaves the worker unowned.
         parent_agent_id,
         title: label,
         // Adoption never learns a dropr task number: nothing here carries the

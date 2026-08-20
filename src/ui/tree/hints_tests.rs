@@ -17,17 +17,14 @@ fn agent_row_advertises_its_own_actions() {
     .to_string();
     assert_eq!(
         line,
-        "[↵] ATTACH [r] RESTART [m] MERGE [p] PR [g] MANAGE [x] REMOVE [?] HELP [q] QUIT"
+        "[↵] ATTACH [r] RESTART [m] MERGE [p] PR [x] REMOVE [?] HELP [q] QUIT"
     );
 }
 
 #[test]
 fn repo_row_advertises_its_own_actions() {
     let line = hints_line(None, Some(Selection::Repo(0)), None, false).to_string();
-    assert_eq!(
-        line,
-        "[n] NEW [a] ADD [r] RELOAD [g] MANAGE [?] HELP [q] QUIT"
-    );
+    assert_eq!(line, "[n] NEW [a] ADD [r] RELOAD [?] HELP [q] QUIT");
 }
 
 #[test]
@@ -115,10 +112,7 @@ fn reading_a_task_body_advertises_scroll_start_browser_and_back_only() {
 #[test]
 fn a_repo_row_without_a_drill_down_keeps_its_own_hints() {
     let line = hints_line(None, Some(Selection::Repo(0)), None, false).to_string();
-    assert_eq!(
-        line,
-        "[n] NEW [a] ADD [r] RELOAD [g] MANAGE [?] HELP [q] QUIT"
-    );
+    assert_eq!(line, "[n] NEW [a] ADD [r] RELOAD [?] HELP [q] QUIT");
 }
 
 #[test]

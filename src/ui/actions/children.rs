@@ -92,11 +92,11 @@ pub(super) fn reconcile(
 /// removed directory falls back to its lexical spelling, which need not match
 /// how git spells the same worktree. The session at the candidate path then
 /// hands back an id the registry already holds, and adopting it would leave two
-/// rows sharing one id. Every per-agent path resolves an id to a single row
-/// (`ui::input::management`, `overseer::exec`, background-refresh merge-back),
-/// so the extra row would never receive a management change and would keep
-/// rendering whatever mode it was adopted with. Keeping the tracked row instead
-/// loses nothing: it carries the same identity and the same tmux session.
+/// rows sharing one id. Every per-agent path (`overseer::exec`,
+/// background-refresh merge-back) resolves an id to a single row, so the extra
+/// row would go stale and never receive an update the tracked row got. Keeping
+/// the tracked row instead loses nothing: it carries the same identity and the
+/// same tmux session.
 fn adopt_top_level(
     repo: &mut RepoNode,
     config: &Config,

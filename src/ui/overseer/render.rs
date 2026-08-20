@@ -4,7 +4,6 @@ use std::time::Duration;
 use ratatui::text::Line;
 
 use crate::locale::{Locale, fmt};
-use crate::model::ManagementMode;
 use crate::overseer::{
     config::{OverseerConfig, ProtectionMode},
     ledger::Ledger,
@@ -12,10 +11,8 @@ use crate::overseer::{
 };
 use crate::registry::Registry;
 
-use super::WorkerManagement;
 pub(super) use super::render_format::{
-    flags_line, list_text, management_name, map_text, merge_recovery_state, on_off, pair, terminal,
-    warning,
+    flags_line, list_text, map_text, merge_recovery_state, on_off, pair, terminal, warning,
 };
 
 pub(super) fn append_health(
@@ -78,7 +75,6 @@ pub(super) fn append_ledger(
     lines: &mut Vec<Line<'static>>,
     ledger: &Ledger,
     decisions: &[DecisionEntry],
-    management: &[WorkerManagement],
     registry: &Registry,
 ) {
     let active = ledger
@@ -116,32 +112,6 @@ pub(super) fn append_ledger(
     if !phases.is_empty() {
         lines.push(pair("active phases", &map_text(&phases), false));
     }
-    if !management.is_empty() {
-        let auto = management
-            .iter()
-            .filter(|(_, mode)| *mode == ManagementMode::Auto)
-            .count();
-        let manual = management
-            .iter()
-            .filter(|(_, mode)| *mode == ManagementMode::Manual)
-            .count();
-        lines.push(pair(
-            "management",
-            &format!("auto={auto}, manual={manual}"),
-            false,
-        ));
-    }
-    // The management pair above counts live workers; this one counts the pull
-    // requests that management is actually withholding from the merge gate, which
-    // is the state an operator mistakes for a merge that failed.
-    let manual_merges = ledger.manual_merge_skips();
-    if manual_merges != 0 {
-        lines.push(pair(
-            "merge-eligible, manual",
-            &manual_merges.to_string(),
-            false,
-        ));
-    }
     if !ledger.skip_list.is_empty() {
         lines.push(pair("skip list", &list_text(&ledger.skip_list), false));
     }
@@ -152,17 +122,4 @@ pub(super) fn append_ledger(
         lines.push(pair("standing off", &standoffs.join(", "), false));
     }
     lines.push(Line::default());
-}
-
-pub(super) fn append_worker_management(
-    lines: &mut Vec<Line<'static>>,
-    management: &[WorkerManagement],
-) {
-    for (label, mode) in management {
-        lines.push(pair(
-            &format!("worker {label}"),
-            management_name(*mode),
-            false,
-        ));
-    }
 }

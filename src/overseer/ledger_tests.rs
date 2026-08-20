@@ -19,7 +19,6 @@ fn save_load_round_trip() {
             branch_updates: 0,
             merge_recovery: Default::default(),
             merge_hold: Default::default(),
-            manual_merge_skip: None,
             merge_hold_cap_escalated: false,
             merge_hold_rechecks: 0,
             merge_hold_recheck_reason: None,
@@ -101,7 +100,6 @@ fn active_workers_counts_every_non_terminal_entry() {
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -165,50 +163,6 @@ fn a_ledger_written_before_merge_recovery_still_loads() {
 }
 
 #[test]
-fn manual_merge_skips_count_only_the_pull_requests_still_being_withheld() {
-    let entry = |phase, skip: Option<&str>| LedgerEntry {
-        task_id: "task-1".into(),
-        display_id: "#1".into(),
-        repo: "/one".into(),
-        agent_id: "agent".into(),
-        branch: "branch".into(),
-        phase,
-        dispatched_at: Utc::now(),
-        settled_at: None,
-        retries: 0,
-        pr_url: skip.map(str::to_owned),
-        branch_updates: 0,
-        merge_recovery: Default::default(),
-        merge_hold: Default::default(),
-        manual_merge_skip: skip.map(str::to_owned),
-        merge_hold_cap_escalated: false,
-        merge_hold_rechecks: 0,
-        merge_hold_recheck_reason: None,
-        merge_hold_recheck_head: None,
-        prerequisite_wait: None,
-        merge_hold_stuck_notified: false,
-        escalation_notified_reason: None,
-        escalation_notified_head: None,
-        worker_escalated: false,
-        operator_override: None,
-        merge_approval: None,
-        pr_facts: None,
-    };
-    let ledger = Ledger {
-        entries: vec![
-            entry(LedgerPhase::PrOpened, Some("https://pr/1")),
-            entry(LedgerPhase::PrOpened, Some("https://pr/2")),
-            entry(LedgerPhase::PrOpened, None),
-            // Merged by its own owner: no longer held back by anyone.
-            entry(LedgerPhase::Merged, Some("https://pr/3")),
-        ],
-        ..Ledger::default()
-    };
-
-    assert_eq!(ledger.manual_merge_skips(), 2);
-}
-
-#[test]
 fn queued_merge_approvals_count_only_non_terminal_entries_with_a_live_approval() {
     let entry = |phase, approved: bool| LedgerEntry {
         task_id: "task-1".into(),
@@ -224,7 +178,6 @@ fn queued_merge_approvals_count_only_non_terminal_entries_with_a_live_approval()
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
@@ -291,7 +244,6 @@ fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         // A stale look from a prior escalation this entry has already
         // spent — the grant must reset it, not add to it.

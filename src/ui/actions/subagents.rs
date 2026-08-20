@@ -106,9 +106,7 @@ mod tests {
             name: "repo".into(),
             remote_url: None,
             pinned: false,
-            management: crate::model::ManagementMode::Auto,
             agents: vec![AgentNode {
-                management: crate::model::ManagementMode::Manual,
                 id: "agent".into(),
                 parent_agent_id: None,
                 title: "task".into(),

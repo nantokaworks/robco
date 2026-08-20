@@ -11,13 +11,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 
-use crate::{
-    Result,
-    config::Config,
-    locale::Locale,
-    model::{ManagementMode, Selection},
-    registry::Registry,
-};
+use crate::{Result, config::Config, locale::Locale, model::Selection, registry::Registry};
 
 use actions::{
     background_refresh::BackgroundRefresh, dropr_tasks::DroprTaskRefresh,
@@ -96,16 +90,6 @@ enum Mode {
     ConfirmKill {
         repo: usize,
         agent: usize,
-    },
-    /// Move every worker under one repo the overseer may touch to `target` at
-    /// once, enrolling unmanaged worktrees when `target` is Auto. `count` is
-    /// how many of them the dialog expects to change; the applied count is
-    /// recomputed under the registry lock.
-    ConfirmOverseerBulkToggle {
-        repo_path: PathBuf,
-        repo_name: String,
-        target: ManagementMode,
-        count: usize,
     },
     ConfirmRemoveRepo {
         path: PathBuf,

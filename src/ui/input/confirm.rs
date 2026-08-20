@@ -1,10 +1,8 @@
-use std::path::PathBuf;
-
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::{Result, locale::t, model::ManagementMode};
+use crate::{Result, locale::t};
 
-use super::{App, Mode, management};
+use super::{App, Mode};
 
 pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>> {
     let confirmed = matches!(
@@ -26,8 +24,7 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
-            | Mode::ConfirmRemoveDiscordChannel { .. }
-            | Mode::ConfirmOverseerBulkToggle { .. } => Some(Ok(())),
+            | Mode::ConfirmRemoveDiscordChannel { .. } => Some(Ok(())),
             _ => None,
         };
     }
@@ -120,17 +117,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
                 app.remove_discord_channel(&channel_id, &label);
             }
             Some(Ok(()))
-        }
-        Mode::ConfirmOverseerBulkToggle {
-            repo_path, target, ..
-        } => {
-            let (repo_path, target): (PathBuf, ManagementMode) = (repo_path.clone(), *target);
-            app.mode = Mode::Normal;
-            Some(if confirmed {
-                management::bulk_toggle_repo(app, &repo_path, target)
-            } else {
-                Ok(())
-            })
         }
         _ => None,
     }

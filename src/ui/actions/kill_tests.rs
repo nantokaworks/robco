@@ -55,7 +55,6 @@ impl Fixture {
 fn test_agent(worktree_path: std::path::PathBuf) -> AgentNode {
     let now = Local::now();
     AgentNode {
-        management: crate::model::ManagementMode::Manual,
         id: "stable-agent".into(),
         parent_agent_id: None,
         title: "agent".into(),
@@ -91,7 +90,6 @@ fn test_repo(path: std::path::PathBuf, agent: AgentNode) -> RepoNode {
         name: "repo".into(),
         remote_url: None,
         pinned: false,
-        management: crate::model::ManagementMode::Auto,
         agents: vec![agent],
         dropr: None,
         dropr_tasks: crate::dropr::DroprTaskFetch::default(),

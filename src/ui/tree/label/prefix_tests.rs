@@ -1,83 +1,25 @@
-//! The agent row's prefix layout: where the marker cell sits relative to the
-//! row's indentation, and the box-drawing connector each row draws under its
-//! ancestors. Marker *semantics* (glyph choice, blanking rule, Nerdfont
-//! gating) live in `marker_tests.rs`.
+//! The agent row's prefix layout: the box-drawing connector each row draws
+//! under its ancestors, and where a child-worktree row's connector lines up
+//! with its owning agent's.
 
-use ratatui::{
-    style::{Color, Modifier, Style},
-    text::Span,
-};
+use ratatui::style::Style;
 use unicode_width::UnicodeWidthStr;
 
 use super::*;
 
-/// The two prefix styles a text assertion does not care about, so a prefix
-/// reads as one string rather than as three spans. Defaults to
-/// `ProjectIcon::None` — the round-glyph fallback — since these tests care
-/// about structure/placement, not the Nerdfont pair.
-fn prefix(
-    cursor: &str,
-    management: ManagementMarker,
-    ancestor_continues: &[bool],
-    is_last: bool,
-    handle: TreeHandle,
-) -> String {
+/// A prefix reads as one string rather than as separate spans, since these
+/// tests care about structure/placement, not styling.
+fn prefix(cursor: &str, ancestor_continues: &[bool], is_last: bool, handle: TreeHandle) -> String {
     agent_row_prefix(
         cursor,
-        management,
-        ProjectIcon::None,
         ancestor_continues,
         is_last,
         handle,
-        Style::default(),
         Style::default(),
     )
     .iter()
     .map(|span| span.content.as_ref())
     .collect()
-}
-
-const ALL: [ManagementMarker; 3] = [
-    ManagementMarker::Auto,
-    ManagementMarker::Manual,
-    ManagementMarker::Unmanaged,
-];
-
-/// The marker rides the indentation, so a deeper row carries it further right.
-#[test]
-fn the_marker_moves_right_with_the_row_depth() {
-    let column = |depth: usize| {
-        let ancestors = vec![true; depth];
-        prefix(
-            " ",
-            ManagementMarker::Auto,
-            &ancestors,
-            true,
-            TreeHandle::Leaf,
-        )
-        .find(ManagementMarker::Auto.glyph(ProjectIcon::None))
-        .expect("marked prefix carries the marker")
-    };
-    assert!(column(1) > column(0));
-    assert!(column(2) > column(1));
-}
-
-/// The marker spends a cell the prefix already reserved, so the title starts at
-/// the same column on every state, at every depth, with or without children.
-#[test]
-fn the_marker_does_not_move_the_title_column() {
-    for (ancestors, handle) in [
-        (vec![], TreeHandle::Leaf),
-        (vec![true], TreeHandle::Leaf),
-        (vec![true, false], TreeHandle::Expanded),
-    ] {
-        let width = |management| {
-            UnicodeWidthStr::width(prefix(" ", management, &ancestors, true, handle).as_str())
-        };
-        for management in ALL {
-            assert_eq!(width(management), width(ManagementMarker::Auto));
-        }
-    }
 }
 
 /// Child-worktree rows hang off an agent through `leaf_row_prefix`, which
@@ -91,12 +33,9 @@ fn a_child_worktree_row_shares_its_owning_agents_connector_column() {
     let is_last = false;
     let agent = agent_row_prefix(
         ">",
-        ManagementMarker::Unmanaged,
-        ProjectIcon::None,
         &ancestors,
         is_last,
         TreeHandle::Expanded,
-        Style::default(),
         Style::default(),
     );
     let agent_prefix: String = agent.iter().map(|span| span.content.as_ref()).collect();
@@ -116,19 +55,13 @@ fn a_child_worktree_row_shares_its_owning_agents_connector_column() {
 }
 
 /// A leaf spends the same handle column an expandable row does — with a plain
-/// dash instead of a triangle — so neither the marker nor the title drifts
-/// depending on whether a row happens to have children.
+/// dash instead of a triangle — so the title does not drift depending on
+/// whether a row happens to have children.
 #[test]
 fn a_leaf_spends_the_same_handle_column_as_an_expandable_row() {
-    let leaf = prefix(" ", ManagementMarker::Auto, &[], true, TreeHandle::Leaf);
-    let expanded = prefix(" ", ManagementMarker::Auto, &[], true, TreeHandle::Expanded);
-    let collapsed = prefix(
-        " ",
-        ManagementMarker::Auto,
-        &[],
-        true,
-        TreeHandle::Collapsed,
-    );
+    let leaf = prefix(" ", &[], true, TreeHandle::Leaf);
+    let expanded = prefix(" ", &[], true, TreeHandle::Expanded);
+    let collapsed = prefix(" ", &[], true, TreeHandle::Collapsed);
     assert_eq!(
         UnicodeWidthStr::width(leaf.as_str()),
         UnicodeWidthStr::width(expanded.as_str())
@@ -144,26 +77,8 @@ fn a_leaf_spends_the_same_handle_column_as_an_expandable_row() {
 /// elsewhere in the row.
 #[test]
 fn the_connector_reflects_last_sibling_and_fuses_the_handle() {
-    assert_eq!(
-        prefix(
-            " ",
-            ManagementMarker::Unmanaged,
-            &[],
-            true,
-            TreeHandle::Expanded
-        ),
-        "  └─▾   "
-    );
-    assert_eq!(
-        prefix(
-            " ",
-            ManagementMarker::Unmanaged,
-            &[],
-            false,
-            TreeHandle::Collapsed
-        ),
-        "  ├─▸   "
-    );
+    assert_eq!(prefix(" ", &[], true, TreeHandle::Expanded), "  └─▾ ");
+    assert_eq!(prefix(" ", &[], false, TreeHandle::Collapsed), "  ├─▸ ");
 }
 
 /// A nested row's guide over an ancestor's column continues (`│`) when that
@@ -171,69 +86,10 @@ fn the_connector_reflects_last_sibling_and_fuses_the_handle() {
 /// last-sibling case must hold at every depth, not just the row's own.
 #[test]
 fn ancestor_guides_continue_or_blank_independently_of_the_rows_own_branch() {
+    assert_eq!(prefix(" ", &[true], true, TreeHandle::Leaf), "  │ └── ");
+    assert_eq!(prefix(" ", &[false], true, TreeHandle::Leaf), "    └── ");
     assert_eq!(
-        prefix(
-            " ",
-            ManagementMarker::Unmanaged,
-            &[true],
-            true,
-            TreeHandle::Leaf
-        ),
-        "  │ └──   "
-    );
-    assert_eq!(
-        prefix(
-            " ",
-            ManagementMarker::Unmanaged,
-            &[false],
-            true,
-            TreeHandle::Leaf
-        ),
-        "    └──   "
-    );
-    assert_eq!(
-        prefix(
-            " ",
-            ManagementMarker::Unmanaged,
-            &[true, false],
-            false,
-            TreeHandle::Leaf
-        ),
-        "  │   ├──   "
-    );
-}
-
-/// The whole point of returning spans: the structural cells and the state
-/// marker are separately styled, so the marker does not read as one more expand
-/// arrow sitting beside the real one.
-#[test]
-fn the_structure_and_the_state_marker_are_drawn_in_different_styles() {
-    let structure = Style::default().fg(Color::DarkGray);
-    let marker = Style::default()
-        .fg(Color::Green)
-        .add_modifier(Modifier::BOLD);
-    let spans: Vec<Span<'static>> = agent_row_prefix(
-        ">",
-        ManagementMarker::Auto,
-        ProjectIcon::None,
-        &[true],
-        false,
-        TreeHandle::Collapsed,
-        structure,
-        marker,
-    );
-
-    let accented: Vec<_> = spans
-        .iter()
-        .filter(|span| span.style == marker)
-        .map(|span| span.content.as_ref())
-        .collect();
-    assert_eq!(accented, ["●"]);
-    assert!(
-        spans
-            .iter()
-            .filter(|span| span.style == structure)
-            .any(|span| span.content.contains('▸')),
-        "the expand handle belongs to the structure layer: {spans:?}"
+        prefix(" ", &[true, false], false, TreeHandle::Leaf),
+        "  │   ├── "
     );
 }

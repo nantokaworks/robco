@@ -48,13 +48,6 @@ pub(super) fn gather(
     // runs before the loop below so this same pass's session/PR probes and
     // `registered_agents` list already cover the newly adopted entry.
     adopt_registry_children_from(ledger, &registry);
-    observations.manual_agents = registry
-        .repos
-        .iter()
-        .flat_map(|repo| &repo.agents)
-        .filter(|agent| agent.management == crate::model::ManagementMode::Manual)
-        .map(|agent| agent.id.clone())
-        .collect();
     observations.detached_agents = detached_agents(ledger, &registry);
     for entry in &ledger.entries {
         // A detached worker is not ours to probe: `monitor::reconcile` drops its
@@ -87,16 +80,6 @@ pub(super) fn gather(
                 }
             }
         }
-        // The registry sweep above already listed every registered Manual agent; the
-        // recheck can surface one it missed, so fold that back in before reading it.
-        if agent
-            .as_ref()
-            .is_some_and(|agent| agent.management == crate::model::ManagementMode::Manual)
-            && !observations.manual_agents.contains(&entry.agent_id)
-        {
-            observations.manual_agents.push(entry.agent_id.clone());
-        }
-        let manual = observations.manual_agents.contains(&entry.agent_id);
         if let Some(agent) = agent {
             // Every phase, not just `merged`. `monitor::reconcile` only asks
             // about a merged entry — whose cleanup is re-pushed for as long as
@@ -105,13 +88,6 @@ pub(super) fn gather(
             // session is still standing would let its entry be forgotten while
             // the worktree it names is still there.
             observations.registered_agents.push(entry.agent_id.clone());
-            // Overseer never kills, restarts, or fails a Manual agent's session, so a
-            // session probe could not drive any decision — but its PR state still has to
-            // be collected below, or the entry never advances past the phase it was
-            // frozen at. See `monitor::reconcile_manual_entry`.
-            if manual {
-                continue;
-            }
             match liveness::probe_session_status(&agent.tmux_session) {
                 Ok(dead) => {
                     let last_activity_at = if dead {
@@ -146,7 +122,7 @@ pub(super) fn gather(
                         .about(&entry.task_id, &entry.repo),
                 ),
             }
-        } else if !terminal(entry.phase) && !manual {
+        } else if !terminal(entry.phase) {
             observations.sessions.push(SessionObservation {
                 agent_id: entry.agent_id.clone(),
                 status: "dead".into(),
@@ -158,22 +134,18 @@ pub(super) fn gather(
     owned_ledger
         .entries
         .retain(|entry| !observations.detached_agents.contains(&entry.agent_id));
-    // The dropr task state only feeds escalation, which never fires for a Manual
-    // agent; PR state feeds phase advancement, which does.
-    let mut auto_ledger = owned_ledger.clone();
-    auto_ledger
-        .entries
-        .retain(|entry| !observations.manual_agents.contains(&entry.agent_id));
-    gather_task_states(&auto_ledger, &mut observations, now);
+    gather_task_states(&owned_ledger, &mut observations, now);
     gather_pr_states(&owned_ledger, &mut observations, now);
     gather_branch_activity(&owned_ledger, &mut observations, now);
     observations
 }
 
-/// Ledger entries whose worker is still registered but no longer an Overseer
-/// child — the state `g` leaves behind when it detaches a Manual worker. An
-/// entry whose agent has left the registry entirely is not detached; that is the
-/// dead-session path, which [`gather`] still reports.
+/// Ledger entries whose worker is still registered but is not (or is no
+/// longer) an Overseer child — a worker whose `parent_agent_id` changed
+/// underneath it, or an entry left over from a registry written before the
+/// worker was enrolled. An entry whose agent has left the registry entirely
+/// is not detached; that is the dead-session path, which [`gather`] still
+/// reports.
 fn detached_agents(ledger: &Ledger, registry: &Registry) -> Vec<String> {
     ledger
         .entries
@@ -231,12 +203,21 @@ fn tmux_activity(session: &str) -> std::result::Result<DateTime<Utc>, String> {
         .ok_or_else(|| format!("session_activity epoch {epoch} out of range"))
 }
 
+/// Adopts every registry agent that belongs to the Overseer
+/// (`is_overseer_child(agent.parent_agent_id)`) and has no ledger entry yet.
+///
+/// Ownership is the only signal left once `ManagementMode` is gone: since
+/// `agent::creation::enroll_with_overseer` and `adopt_worktree` both set
+/// `parent_agent_id` to the Overseer's id up front for every worker they
+/// create or recover, there is no separate "owned but opted out" state left
+/// to filter on. A worker with a different (or no) parent stays out, exactly
+/// as it does today.
 fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
     for repo in &registry.repos {
         for agent in repo
             .agents
             .iter()
-            .filter(|agent| agent.management == crate::model::ManagementMode::Auto)
+            .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()))
         {
             if ledger
                 .entries
@@ -259,7 +240,6 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
                 branch_updates: 0,
                 merge_recovery: Default::default(),
                 merge_hold: Default::default(),
-                manual_merge_skip: None,
                 merge_hold_cap_escalated: false,
                 merge_hold_rechecks: 0,
                 merge_hold_recheck_reason: None,

@@ -16,7 +16,6 @@ pub struct Observations {
     pub prs: Vec<PrObservation>,
     pub branches: Vec<BranchObservation>,
     pub errors: Vec<ObservationError>,
-    pub manual_agents: Vec<String>,
     /// Agents that still hold a ledger entry but are no longer Overseer
     /// children. Their entries are dropped rather than reconciled — see
     /// [`crate::overseer::monitor`].

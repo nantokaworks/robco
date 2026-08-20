@@ -19,7 +19,6 @@ fn app_with_a_numbered_and_a_manual_worker(title: &str) -> App {
         serde_json::json!({
             "id": id,
             "parent_agent_id": parent,
-            "management": "auto",
             "title": title,
             "task_number": task_number,
             "worktree_path": config.worktree_root.join(id),

@@ -16,7 +16,6 @@ fn base_entry(phase: LedgerPhase) -> LedgerEntry {
         branch_updates: 0,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
-        manual_merge_skip: None,
         merge_hold_cap_escalated: false,
         merge_hold_rechecks: 0,
         merge_hold_recheck_reason: None,
