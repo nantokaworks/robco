@@ -33,12 +33,11 @@
 //! set up on its own. Operators who *do* wire one up have the `BROWSER`
 //! escape hatch below.
 //!
-//! One suggestion from dropr:511 is not implemented: also showing the URL as
-//! an OSC 8 hyperlink. OSC 8 marks up text in the terminal grid, and the grid
-//! belongs to ratatui here. ratatui 0.29 has no hyperlink support and paints
-//! cell by cell, so the sequence would either be repainted away on the next
-//! frame or shown as raw escape bytes. The URL is still shown as plain text,
-//! which every terminal can select and copy. See dropr:512.
+//! The URL is also shown as plain text, which every terminal can select and
+//! copy. `ui::hyperlink` marks that text up as an OSC 8 hyperlink after each
+//! frame, so a terminal with OSC 8 support can open it with a click; that
+//! part has to live next to the drawing code, because OSC 8 marks up text in
+//! the terminal grid and the grid belongs to ratatui (dropr:512).
 
 use std::{
     env,
