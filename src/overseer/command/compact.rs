@@ -1,4 +1,4 @@
-//! `robco overseer compact-decisions`: quarantine unparseable decision-log
+//! `robco decisions compact`: quarantine unparseable decision-log
 //! lines to a sidecar file, keeping every valid line intact and in order.
 
 use crate::{

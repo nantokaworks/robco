@@ -82,7 +82,9 @@ pub enum Error {
 #[tokio::main]
 async fn main() -> ExitCode {
     let raw_args: Vec<OsString> = std::env::args_os().collect();
-    let args = match Args::try_parse_from(&raw_args) {
+    let legacy_overseer = cli::rewrite_legacy_overseer(&raw_args);
+    let parse_args = legacy_overseer.as_deref().unwrap_or(&raw_args);
+    let args = match Args::try_parse_from(parse_args) {
         Ok(args) => args,
         Err(err) => {
             if err.kind() == ErrorKind::DisplayVersion {
@@ -90,7 +92,7 @@ async fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             if let Some(message) =
-                cli::report_parse_error_message(&err, cli::invocation_targets_report(&raw_args))
+                cli::report_parse_error_message(&err, cli::invocation_targets_report(parse_args))
             {
                 eprintln!("{message}");
                 return ExitCode::from(3);
@@ -98,6 +100,14 @@ async fn main() -> ExitCode {
             err.exit();
         }
     };
+    if let Some(rewritten) = &legacy_overseer {
+        let new_form = rewritten[1..]
+            .iter()
+            .map(|arg| arg.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        eprintln!("robco: `overseer` is retired; run `robco {new_form}` next time");
+    }
     if matches!(&args.command, Some(Command::Version)) {
         version::print();
         return ExitCode::SUCCESS;
@@ -131,12 +141,7 @@ async fn run(args: Args) -> Result<()> {
         if matches!(command, Command::McpStdio) {
             return mcp::run_stdio();
         }
-        if matches!(
-            command,
-            Command::Overseer(cli::OverseerArgs {
-                command: cli::OverseerCommand::Run
-            })
-        ) {
+        if matches!(command, Command::Daemon) {
             return overseer::daemon::run_daemon().await;
         }
         return run_command(command, &config, args.launch_dir.as_deref());
@@ -172,7 +177,8 @@ fn run_command(
             )?;
             println!("added {}", path.display());
         }
-        Command::Overseer(args) => overseer::command::run(args, config)?,
+        Command::Config(args) => overseer::command::run_config(args.command)?,
+        Command::Daemon => unreachable!("daemon is handled before sync commands"),
         Command::Debug => {
             println!("config: {}", config::config_file_path()?.display());
             println!("state: {}", config::state_path()?.display());
@@ -182,6 +188,8 @@ fn run_command(
             println!("dropr_overlay: {}", config.dropr_overlay);
             println!("auto_accept: {}", config.auto_accept);
         }
+        Command::Decisions(args) => overseer::command::run_decisions(args.command)?,
+        Command::Inbox(args) => overseer::command::run_inbox(args.command)?,
         Command::Install(args) => setup::install_command(&args)?,
         Command::List(args) => {
             let roots = effective_roots(&config.repos_root, args.dir.as_deref().or(ephemeral_root));
@@ -189,8 +197,11 @@ fn run_command(
         }
         Command::McpStdio => unreachable!("mcp-stdio is handled before sync commands"),
         Command::New(args) => new_agent::run(args, config)?,
+        Command::Panic => overseer::command::panic_stop()?,
         Command::Rename(args) => run_rename(&args)?,
         Command::Report(_) => unreachable!("report is handled before config loading"),
+        Command::Restart => overseer::command::restart()?,
+        Command::Service(args) => overseer::command::run_service(args.command)?,
         Command::Spawn(args) => {
             let parent = args.parent.or_else(|| {
                 std::env::var(config::ENV_AGENT_ID)
@@ -232,6 +243,9 @@ fn run_command(
                 println!("state file not found: {}", path.display());
             }
         }
+        Command::Start => overseer::command::start()?,
+        Command::Status(args) => overseer::command::status(config, args.debug)?,
+        Command::Stop => overseer::command::stop()?,
         Command::Uninstall(args) => setup::uninstall(&args)?,
         Command::Version => unreachable!("version is handled before config loading"),
     }

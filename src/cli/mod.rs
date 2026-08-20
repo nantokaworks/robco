@@ -2,7 +2,12 @@ use std::{ffi::OsString, path::PathBuf};
 
 use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
 
-use crate::overseer::config::ProtectionMode;
+mod daemon;
+
+pub use daemon::{
+    ConfigArgs, ConfigCommand, DecisionsArgs, DecisionsCommand, InboxArgs, InboxCommand,
+    OverseerSetting, OverseerStatusArgs, ServiceArgs, ServiceCommand,
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -35,10 +40,16 @@ pub struct Args {
 pub enum Command {
     /// Clone a git repository into the managed repos directory.
     Add(AddArgs),
-    /// Run and administer the autonomous Overseer control plane.
-    Overseer(OverseerArgs),
+    /// Group runtime config toggles: auto-merge, notify channel, protection.
+    Config(ConfigArgs),
+    /// Run the Overseer daemon in the foreground.
+    Daemon,
     /// Print config and state paths.
     Debug,
+    /// Manage the decision log.
+    Decisions(DecisionsArgs),
+    /// Manage the Overseer inbox.
+    Inbox(InboxArgs),
     /// Register RobCo's MCP server in supported client configs.
     Install(InstallArgs),
     /// Print discovered repositories and exit.
@@ -47,14 +58,29 @@ pub enum Command {
     McpStdio,
     /// Create a child agent linked to the calling agent session.
     New(NewArgs),
+    /// Terminate all Overseer workers.
+    Panic,
     /// Rename a registered repository's local directory.
     Rename(RenameArgs),
     /// Report turn completion to a controller agent.
     Report(ReportArgs),
-    /// Create an agent in any registered repository.
-    Spawn(SpawnArgs),
     /// Remove RobCo's persisted state file.
     Reset,
+    /// Restart the daemon: reload the launchd service if one is installed
+    /// (bootout, then bootstrap), else explain how to run it.
+    Restart,
+    /// Manage the launchd service.
+    Service(ServiceArgs),
+    /// Create an agent in any registered repository.
+    Spawn(SpawnArgs),
+    /// Start the daemon: load the launchd service if one is installed, else
+    /// explain how to run it.
+    Start,
+    /// Answer whether anything needs you, is stuck, or is running.
+    Status(OverseerStatusArgs),
+    /// Durably stop the running daemon: bootout the launchd service if one is
+    /// installed and loaded, else signal the manually-run process.
+    Stop,
     /// Remove RobCo's MCP server from supported client configs.
     Uninstall(InstallArgs),
     /// Print version information.
@@ -71,108 +97,6 @@ pub struct AddArgs {
     /// Destination directory name under repos_root.
     #[arg(long)]
     pub name: Option<String>,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerArgs {
-    #[command(subcommand)]
-    pub command: OverseerCommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub enum OverseerCommand {
-    /// Run the Overseer daemon in the foreground.
-    Run,
-    /// Answer whether anything needs you, is stuck, or is running.
-    Status(OverseerStatusArgs),
-    /// Durably stop the running daemon: bootout the launchd service if one is
-    /// installed and loaded, else signal the manually-run process.
-    Stop,
-    /// Start the daemon: load the launchd service if one is installed, else
-    /// explain how to run it.
-    Start,
-    /// Restart the daemon: reload the launchd service if one is installed
-    /// (bootout, then bootstrap), else explain how to run it.
-    Restart,
-    /// Persist a runtime toggle in RobCo's JSON config.
-    Set(OverseerSetArgs),
-    /// Choose the channel that receives reports (decision notifications and
-    /// digests). Cleared, reports fall back to the chat channel.
-    NotifyChannel(OverseerNotifyChannelArgs),
-    /// Set how strictly auto-merge requires the base branch to be protected.
-    Protection(OverseerProtectionArgs),
-    /// Terminate all Overseer workers.
-    Panic,
-    /// Hide every currently listed Inbox item. Suppression only: the decision
-    /// log and the ledger are left alone, and a newer escalation for the same
-    /// target is listed again.
-    ClearInbox,
-    /// Write a launchd service plist and load or reload it after confirmation.
-    InstallService,
-    /// Quarantine unparseable decision-log lines to a sidecar file, keeping
-    /// every valid line byte-identical and in order. Safe to run while the
-    /// daemon is appending.
-    CompactDecisions(OverseerCompactDecisionsArgs),
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerSetArgs {
-    #[arg(value_enum)]
-    pub setting: OverseerSetting,
-    #[arg(value_enum)]
-    pub value: OnOff,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerStatusArgs {
-    /// Also print internal bookkeeping: the raw ledger phase tally, `workers by
-    /// repo` keyed by absolute path, the skip list, and the recent decision-log
-    /// tail. Nothing here is deleted from the daemon's records — this only
-    /// changes what the command prints by default.
-    #[arg(long)]
-    pub debug: bool,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerNotifyChannelArgs {
-    /// Discord channel id that receives reports.
-    #[arg(required_unless_present = "clear")]
-    pub channel_id: Option<String>,
-    /// Clear the report channel; reports fall back to the chat channel.
-    #[arg(long, conflicts_with = "channel_id")]
-    pub clear: bool,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerProtectionArgs {
-    /// `required` demands a pull-request rule and required status checks, `relaxed`
-    /// demands only the pull-request rule, `off` skips the probe entirely.
-    #[arg(value_enum)]
-    pub mode: ProtectionMode,
-}
-
-#[derive(Debug, ClapArgs)]
-pub struct OverseerCompactDecisionsArgs {
-    /// Report kept/quarantined counts without rewriting the log.
-    #[arg(long)]
-    pub dry_run: bool,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum OverseerSetting {
-    AutoMerge,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum OnOff {
-    On,
-    Off,
-}
-
-impl OnOff {
-    pub fn enabled(self) -> bool {
-        matches!(self, Self::On)
-    }
 }
 
 #[derive(Debug, ClapArgs)]
@@ -285,6 +209,41 @@ pub(crate) fn report_parse_error_message(
     }
 }
 
+/// Rewrites a retired `overseer <sub>` invocation into its flat replacement
+/// before clap ever sees it, so an already-installed launchd plist (whose
+/// `ProgramArguments` still say `overseer run`) keeps starting the daemon
+/// without the operator reinstalling the service. Only the two leading
+/// tokens are replaced; every flag or positional after the old subcommand
+/// name is passed through untouched. Any other `overseer ...` invocation
+/// (an unknown sub, or `overseer` alone) is left alone and falls through to
+/// clap's normal "unrecognized subcommand" error.
+pub(crate) fn rewrite_legacy_overseer(args: &[OsString]) -> Option<Vec<OsString>> {
+    if args.get(1).map(OsString::as_os_str) != Some(std::ffi::OsStr::new("overseer")) {
+        return None;
+    }
+    let sub = args.get(2)?.to_str()?;
+    let replacement: &[&str] = match sub {
+        "run" => &["daemon"],
+        "status" => &["status"],
+        "stop" => &["stop"],
+        "start" => &["start"],
+        "restart" => &["restart"],
+        "panic" => &["panic"],
+        "set" => &["config", "set"],
+        "notify-channel" => &["config", "notify-channel"],
+        "protection" => &["config", "protection"],
+        "clear-inbox" => &["inbox", "clear"],
+        "install-service" => &["service", "install"],
+        "compact-decisions" => &["decisions", "compact"],
+        _ => return None,
+    };
+    let mut rewritten: Vec<OsString> = args[..1].to_vec();
+    rewritten.extend(replacement.iter().map(OsString::from));
+    rewritten.extend(args[3..].iter().cloned());
+    Some(rewritten)
+}
+
 #[cfg(test)]
-#[path = "cli_tests.rs"]
+mod legacy_tests;
+#[cfg(test)]
 mod tests;

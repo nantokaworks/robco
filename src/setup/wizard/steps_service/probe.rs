@@ -20,7 +20,7 @@ pub(crate) struct ServiceProbe {
     pub(crate) state: ServiceState,
 }
 
-/// Also the probe `robco overseer stop|start|restart` uses
+/// Also the probe `robco stop|start|restart` uses
 /// (`overseer::command::service::control`) to decide which of the durable
 /// launchd path or the manual pidfile path applies — kept here rather than
 /// duplicated since it is exactly the same launchd/plist state the wizard's

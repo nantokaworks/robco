@@ -39,7 +39,7 @@ pub(super) fn render(
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>com.robco.overseer</string>
-<key>ProgramArguments</key><array><string>{}</string><string>overseer</string><string>run</string></array>
+<key>ProgramArguments</key><array><string>{}</string><string>daemon</string></array>
 <key>EnvironmentVariables</key><dict>{environment}</dict>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string>
@@ -93,6 +93,23 @@ mod tests {
         vars.iter()
             .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
             .collect()
+    }
+
+    #[test]
+    fn program_arguments_invoke_the_flat_daemon_subcommand() {
+        // The launchd label stays `com.robco.overseer` — only the argv the
+        // service invokes moves off the retired `overseer run` spelling.
+        let plist = render(
+            &PathBuf::from("/usr/local/bin/robco"),
+            "/usr/bin",
+            &PathBuf::from("/log"),
+            &BTreeMap::new(),
+        );
+
+        assert!(plist.contains("<key>Label</key><string>com.robco.overseer</string>"));
+        assert!(plist.contains(
+            "<key>ProgramArguments</key><array><string>/usr/local/bin/robco</string><string>daemon</string></array>"
+        ));
     }
 
     #[test]

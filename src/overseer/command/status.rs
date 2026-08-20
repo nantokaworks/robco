@@ -1,4 +1,4 @@
-//! `robco overseer status`: the one read an operator gets of what the daemon is
+//! `robco status`: the one read an operator gets of what the daemon is
 //! doing, and the line builders that read is assembled from.
 //!
 //! The default output answers exactly three questions — is anything waiting on
@@ -36,7 +36,7 @@ use crate::{
 mod status_debug;
 use status_debug::print_debug_section;
 
-pub(super) fn status(config: &Config, debug: bool) -> Result<()> {
+pub(crate) fn status(config: &Config, debug: bool) -> Result<()> {
     let ledger = Ledger::load()?;
     let registry = Registry::load()?;
     let pid = read_pid();

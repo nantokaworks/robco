@@ -27,7 +27,7 @@ pub(crate) fn install_service() -> Result<()> {
 }
 
 /// Whether the launchd Overseer service is installed and, if so, loaded —
-/// what `robco overseer stop|start|restart` (dropr:412) branch on to choose
+/// what `robco stop|start|restart` (dropr:412) branch on to choose
 /// between a durable launchd bootout/bootstrap and the manual pidfile path.
 /// `Unsupported` stands in for `target_os != "macos"`, where launchd does not
 /// exist at all.
@@ -161,7 +161,7 @@ fn legacy_service_is_absent(status: Option<i32>, stderr: &[u8]) -> bool {
 /// The config is loaded here rather than threaded in from the wizard: this is
 /// the installer, and what it installs is a function of the config on disk. A
 /// config that cannot be read installs the defaults, which is the same daemon
-/// the operator would get by running `robco overseer run` by hand.
+/// the operator would get by running `robco daemon` by hand.
 #[cfg(target_os = "macos")]
 pub(crate) fn write_service_plist() -> Result<std::path::PathBuf> {
     remove_legacy_service()?;

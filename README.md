@@ -117,12 +117,12 @@ end. Tokens are referenced by environment-variable name and are never stored.
 Start the daemon and inspect it — there is nothing to enable first:
 
 ```bash
-robco overseer run
+robco daemon
 # In another terminal:
-robco overseer status
+robco status
 ```
 
-On macOS, `robco overseer install-service` writes a launchd plist; run the
+On macOS, `robco service install` writes a launchd plist; run the
 `launchctl bootstrap` command it prints to load the service.
 
 ## Release

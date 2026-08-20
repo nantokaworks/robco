@@ -25,7 +25,7 @@ pub(crate) fn status() -> crate::Result<String> {
     Ok(status_line(&config.overseer, active))
 }
 
-/// Render the `status` reply. Kept in step with `robco overseer status`: it
+/// Render the `status` reply. Kept in step with `robco status`: it
 /// reports only toggles the daemon honours, so the surfaces cannot disagree
 /// about whether the Overseer is running.
 fn status_line(config: &OverseerConfig, active: usize) -> String {

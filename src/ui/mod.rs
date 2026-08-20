@@ -149,7 +149,7 @@ enum Mode {
     // only while an OVERSEER row is selected.
     ConfirmOverseerPanic,
     /// Durably stop the Overseer daemon process itself (launchd bootout, or a
-    /// manual SIGTERM for a daemon started with `robco overseer run`) — unlike
+    /// manual SIGTERM for a daemon started with `robco daemon`) — unlike
     /// `ConfirmOverseerPanic`, this ends the daemon process, not just its
     /// workers. Reachable only while the overseer panel is visible and the
     /// daemon is alive.

@@ -33,7 +33,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  y              on an item row: approve it (sends y + enter)"),
         l("  d              on an item row: dismiss it (hides the row only)"),
         l("  D              on an item or Inbox row: clear the inbox (confirms)"),
-        l("                 also: robco overseer clear-inbox"),
+        l("                 also: robco inbox clear"),
         l("Overseer discord"),
         l("  l              expand OVERSEER > Discord to reach its channel rows"),
         l("  enter          on a channel row: attach its tmux session (live"),

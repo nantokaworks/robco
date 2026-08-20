@@ -1,4 +1,5 @@
 use super::*;
+use crate::overseer::config::ProtectionMode;
 
 #[test]
 fn parses_report_subcommand() {
@@ -69,43 +70,95 @@ fn parses_spawn_subcommand() {
 }
 
 #[test]
-fn parses_overseer_set() {
-    let args = Args::try_parse_from(["robco", "overseer", "set", "auto-merge", "on"]).unwrap();
-    let Some(Command::Overseer(args)) = args.command else {
-        panic!("expected overseer")
-    };
-    assert!(matches!(args.command, OverseerCommand::Set(_)));
+fn parses_daemon_subcommand() {
+    let args = Args::try_parse_from(["robco", "daemon"]).unwrap();
+    assert!(matches!(args.command, Some(Command::Daemon)));
 }
 
 #[test]
-fn parses_overseer_clear_inbox() {
-    // The scriptable equivalent of the TUI's `D`, so the operator can clear a
-    // stale inbox without the TUI running.
-    let args = Args::try_parse_from(["robco", "overseer", "clear-inbox"]).unwrap();
-    let Some(Command::Overseer(args)) = args.command else {
-        panic!("expected overseer")
+fn parses_status_subcommand() {
+    let args = Args::try_parse_from(["robco", "status", "--debug"]).unwrap();
+    let Some(Command::Status(args)) = args.command else {
+        panic!("expected status command");
     };
-    assert!(matches!(args.command, OverseerCommand::ClearInbox));
+    assert!(args.debug);
 }
 
 #[test]
-fn parses_overseer_protection_modes() {
+fn parses_stop_start_restart_panic_subcommands() {
+    assert!(matches!(
+        Args::try_parse_from(["robco", "stop"]).unwrap().command,
+        Some(Command::Stop)
+    ));
+    assert!(matches!(
+        Args::try_parse_from(["robco", "start"]).unwrap().command,
+        Some(Command::Start)
+    ));
+    assert!(matches!(
+        Args::try_parse_from(["robco", "restart"]).unwrap().command,
+        Some(Command::Restart)
+    ));
+    assert!(matches!(
+        Args::try_parse_from(["robco", "panic"]).unwrap().command,
+        Some(Command::Panic)
+    ));
+}
+
+#[test]
+fn parses_config_set_subcommand() {
+    let args = Args::try_parse_from(["robco", "config", "set", "auto-merge", "on"]).unwrap();
+    let Some(Command::Config(args)) = args.command else {
+        panic!("expected config command")
+    };
+    assert!(matches!(args.command, ConfigCommand::Set(_)));
+}
+
+#[test]
+fn parses_inbox_clear_subcommand() {
+    let args = Args::try_parse_from(["robco", "inbox", "clear"]).unwrap();
+    let Some(Command::Inbox(args)) = args.command else {
+        panic!("expected inbox command")
+    };
+    assert!(matches!(args.command, InboxCommand::Clear));
+}
+
+#[test]
+fn parses_service_install_subcommand() {
+    let args = Args::try_parse_from(["robco", "service", "install"]).unwrap();
+    let Some(Command::Service(args)) = args.command else {
+        panic!("expected service command")
+    };
+    assert!(matches!(args.command, ServiceCommand::Install));
+}
+
+#[test]
+fn parses_decisions_compact_subcommand() {
+    let args = Args::try_parse_from(["robco", "decisions", "compact", "--dry-run"]).unwrap();
+    let Some(Command::Decisions(args)) = args.command else {
+        panic!("expected decisions command")
+    };
+    let DecisionsCommand::Compact(args) = args.command;
+    assert!(args.dry_run);
+}
+
+#[test]
+fn parses_config_protection_modes() {
     for (argument, expected) in [
         ("required", ProtectionMode::Required),
         ("relaxed", ProtectionMode::Relaxed),
         ("off", ProtectionMode::Off),
     ] {
-        let args = Args::try_parse_from(["robco", "overseer", "protection", argument]).unwrap();
-        let Some(Command::Overseer(args)) = args.command else {
-            panic!("expected overseer")
+        let args = Args::try_parse_from(["robco", "config", "protection", argument]).unwrap();
+        let Some(Command::Config(args)) = args.command else {
+            panic!("expected config command")
         };
-        let OverseerCommand::Protection(args) = args.command else {
+        let ConfigCommand::Protection(args) = args.command else {
             panic!("expected protection")
         };
         assert_eq!(args.mode, expected);
     }
     // The three-valued mode is a dedicated subcommand, not an on/off `set` setting.
-    assert!(Args::try_parse_from(["robco", "overseer", "set", "protection", "relaxed"]).is_err());
+    assert!(Args::try_parse_from(["robco", "config", "set", "protection", "relaxed"]).is_err());
 }
 
 #[test]
@@ -150,6 +203,23 @@ fn parses_list_subcommand_after_launch_directory() {
         panic!("expected list command");
     };
     assert_eq!(args.dir, None);
+}
+
+#[test]
+fn bare_daemon_token_is_parsed_as_the_daemon_subcommand_not_a_launch_dir() {
+    // A directory that happens to be named "daemon" cannot be launched bare —
+    // same pre-existing shadowing every other subcommand name already has
+    // (see parses_list_subcommand_with_default_directory above).
+    let args = Args::try_parse_from(["robco", "daemon"]).unwrap();
+    assert_eq!(args.launch_dir, None);
+    assert!(matches!(args.command, Some(Command::Daemon)));
+}
+
+#[test]
+fn a_qualified_path_named_daemon_is_still_a_launch_dir() {
+    let args = Args::try_parse_from(["robco", "./daemon"]).unwrap();
+    assert_eq!(args.launch_dir, Some(PathBuf::from("./daemon")));
+    assert!(args.command.is_none());
 }
 
 #[test]

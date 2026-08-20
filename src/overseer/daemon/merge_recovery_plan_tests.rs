@@ -89,7 +89,7 @@ fn a_disabled_recovery_records_nothing_for_an_operator_only_failure() {
     assert_eq!(entry.merge_recovery, MergeRecovery::default());
 }
 
-/// The drops the disabled setting accumulated are what `robco overseer status`
+/// The drops the disabled setting accumulated are what `robco status`
 /// reports next to the switch, terminal entries included: an entry that escalated
 /// because nobody was handed its failure is the case worth reading.
 #[test]

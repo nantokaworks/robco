@@ -29,7 +29,7 @@ const VERSION_PREFIX: &str = "version=";
 
 /// The one recovery, named in both drift messages: the daemon rereads its
 /// executable only at startup, so nothing short of a restart moves it.
-const RESTART_HINT: &str = "restart it with `robco overseer stop` and `robco overseer run` (or restart the installed service) to pick up the installed build";
+const RESTART_HINT: &str = "restart it with `robco stop` and `robco daemon` (or restart the installed service) to pick up the installed build";
 
 /// Record a completed pass, with the build that ran it.
 ///
@@ -136,7 +136,7 @@ mod tests {
         let warning = drift(Some("0.0.1")).expect("differing builds must warn");
         assert!(warning.contains("0.0.1"), "{warning}");
         assert!(warning.contains(VERSION), "{warning}");
-        assert!(warning.contains("robco overseer stop"), "{warning}");
+        assert!(warning.contains("robco stop"), "{warning}");
     }
 
     #[test]

@@ -151,7 +151,7 @@ pub fn tail(limit: usize) -> Result<Vec<DecisionEntry>> {
 /// append. Every reader (`tail_from`, `DigestCursor`, the Discord cursor)
 /// already skips a line it cannot parse, because there is nothing else to do
 /// with it; this is the counterpart that makes the skip visible instead of
-/// silent, surfaced by `robco overseer status` (dropr:VYj8In1jqvunWtAy3OtCo).
+/// silent, surfaced by `robco status` (dropr:VYj8In1jqvunWtAy3OtCo).
 ///
 /// A fresh full-file scan rather than a running counter: readers only see the
 /// window they poll (`tail_from`'s last 64KiB, the cursor's unread tail), so

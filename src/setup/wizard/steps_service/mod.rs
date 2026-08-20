@@ -1,6 +1,6 @@
 mod plan;
 // `probe` and `settle` hold the launchd primitives `overseer::command::service::control`
-// reuses for `robco overseer stop|start|restart` (dropr:412), so both need to be
+// reuses for `robco stop|start|restart` (dropr:412), so both need to be
 // reachable outside this module tree; `plan` and `workflow` stay private to the
 // interactive install/reload flow.
 pub(crate) mod probe;
@@ -126,8 +126,8 @@ where
         output,
         "▌ robco ▸ WARNING ·········· the Overseer daemon is not running — nothing merges, \
          launches a named task, or answers Discord/MCP commands until it is. Start it with \
-         `robco overseer run`, or install the always-on service with \
-         `robco overseer install-service`."
+         `robco daemon`, or install the always-on service with \
+         `robco service install`."
     )?;
     Ok(())
 }

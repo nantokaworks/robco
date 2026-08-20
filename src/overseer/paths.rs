@@ -94,7 +94,7 @@ pub fn preflight_dir() -> Result<PathBuf> {
 
 /// Last verdict on whether a daemon-spawned session can authenticate. Written
 /// by the start-up probe and by any session refused on credentials; read by
-/// `robco overseer status`.
+/// `robco status`.
 pub fn session_health_path() -> Result<PathBuf> {
     Ok(overseer_home()?.join("session_health.json"))
 }

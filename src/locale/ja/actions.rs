@@ -122,11 +122,11 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "overseer daemon shutdown requested; a pass may still be finishing, but it will not restart automatically" => {
             "overseerデーモンの停止を要求しました：passが完了中の場合がありますが、自動再起動はしません"
         }
-        "no launchd service installed; install it with `robco overseer install-service`, or run `robco overseer run` in a terminal" => {
-            "launchdサービスが未インストールです。`robco overseer install-service`でインストールするか、ターミナルで`robco overseer run`を実行してください"
+        "no launchd service installed; install it with `robco service install`, or run `robco daemon` in a terminal" => {
+            "launchdサービスが未インストールです。`robco service install`でインストールするか、ターミナルで`robco daemon`を実行してください"
         }
-        "launchd service management is unavailable on this OS; run `robco overseer run` in a terminal" => {
-            "このOSではlaunchdサービス管理を利用できません。ターミナルで`robco overseer run`を実行してください"
+        "launchd service management is unavailable on this OS; run `robco daemon` in a terminal" => {
+            "このOSではlaunchdサービス管理を利用できません。ターミナルで`robco daemon`を実行してください"
         }
         "overseer is already running" => "overseerは既に稼働しています",
         "overseer started" => "overseerを起動しました",

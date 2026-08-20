@@ -4,7 +4,7 @@
 //! and `tailscale status` all exist because a broken credential is otherwise
 //! only visible as the work failing. This record is written by the start-up
 //! preflight and by the first session that fails on authentication, and read
-//! back by `robco overseer status`.
+//! back by `robco status`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -90,7 +90,7 @@ impl SessionHealth {
             .save();
     }
 
-    /// The `robco overseer status` line. Reads as a sentence rather than a
+    /// The `robco status` line. Reads as a sentence rather than a
     /// field dump because it sits among warnings an operator scans.
     pub(crate) fn summary(&self) -> String {
         let channel = match (&self.credential, &self.source) {
@@ -122,7 +122,7 @@ impl SessionHealth {
 
 /// Named here rather than at the call site because the CLI, the docs, and the
 /// preflight all have to describe the same recovery.
-pub(crate) const SESSION_AUTH_HINT: &str = "daemon-spawned sessions cannot authenticate — a launchd agent has no access to the interactive login session's keychain. Give it a non-interactive credential: run `claude setup-token`, put `CLAUDE_CODE_OAUTH_TOKEN=<token>` in `~/.robco/env` (or `overseer.session_env` in `~/.robco/config.json`), then reinstall the service with `robco overseer install-service` and reload it.";
+pub(crate) const SESSION_AUTH_HINT: &str = "daemon-spawned sessions cannot authenticate — a launchd agent has no access to the interactive login session's keychain. Give it a non-interactive credential: run `claude setup-token`, put `CLAUDE_CODE_OAUTH_TOKEN=<token>` in `~/.robco/env` (or `overseer.session_env` in `~/.robco/config.json`), then reinstall the service with `robco service install` and reload it.";
 
 #[cfg(test)]
 mod tests {

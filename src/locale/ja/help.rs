@@ -68,8 +68,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  D              on an item or Inbox row: clear the inbox (confirms)" => {
             "  D              項目またはInbox行：Inboxを全消去（要確認）"
         }
-        "                 also: robco overseer clear-inbox" => {
-            "                 同等コマンド: robco overseer clear-inbox"
+        "                 also: robco inbox clear" => {
+            "                 同等コマンド: robco inbox clear"
         }
         "  l              expand OVERSEER > Discord to reach its channel rows" => {
             "  l              OVERSEER > Discordを展開しチャンネル行を表示"
