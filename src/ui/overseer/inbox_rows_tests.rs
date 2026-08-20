@@ -118,6 +118,59 @@ fn a_row_names_its_repository() {
     assert!(lines[0].contains("[ESC] REVIEW robco #159"), "{lines:?}");
 }
 
+/// dropr:498 — a row says what happened, not only its kind and target.
+#[test]
+fn a_row_with_a_known_reason_shows_the_humanized_sentence() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.detail = "merge_state:dirty".into();
+    let app = inbox_app(vec![row]);
+    let lines = rendered(&detail_lines(&app));
+
+    assert!(
+        lines[0].contains("[ESC] REVIEW #159 — The branch has conflicts with its base."),
+        "{lines:?}"
+    );
+}
+
+/// An unrecognised reason still says something rather than nothing: the
+/// row falls back to the reason's own first line, verbatim.
+#[test]
+fn a_row_with_an_unknown_reason_shows_the_raw_reason() {
+    let app = inbox_app(vec![item(InboxKind::Escalation, "#159", None)]);
+    let lines = rendered(&detail_lines(&app));
+
+    assert!(
+        lines[0].contains(&format!("[ESC] REVIEW #159 — {LONG_REASON}")),
+        "{lines:?}"
+    );
+}
+
+/// The reason is the row's lowest-priority field: it renders after the
+/// target id and gives way to width before the target id does, so the row
+/// still reads at the narrowest sidebar even when a reason cannot fit.
+#[test]
+fn at_the_narrowest_sidebar_width_the_reason_gives_way_before_the_target_id() {
+    let mut row = item(InboxKind::Escalation, "#159", None);
+    row.repo = Some("robco".into());
+    row.detail = "merge_state:dirty".into();
+    let app = inbox_app(vec![row]);
+    let lines = detail_lines(&app);
+
+    let narrowest = rendered_at_width(&lines, 24);
+    assert!(narrowest[0].contains("[ESC] REVIEW robco"), "{narrowest:?}");
+    assert!(
+        !narrowest[0].contains("conflicts"),
+        "reason showed at the width the target id itself barely fits: {narrowest:?}"
+    );
+
+    // Comfortably wide: the reason shows in full.
+    let wide = rendered_at_width(&lines, 80);
+    assert!(
+        wide[0].contains("The branch has conflicts with its base."),
+        "{wide:?}"
+    );
+}
+
 #[test]
 fn a_row_with_no_matching_ledger_entry_still_renders() {
     // `repo` stays `None` for a decision-sourced row whose ledger lookup

@@ -35,18 +35,27 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
 /// Why an item cannot be answered, said where its target session would go.
 const DISPLAY_ONLY: &str = "display-only";
 
-/// A row is `[ESC] REVIEW robco #296`: the kind code stays (it is the
-/// dismissal identity), and the remedy's tag replaces the raw reason and the
-/// `=> {session} | display-only` suffix — at the 24-column sidebar minimum
-/// the row was clipped well ahead of that suffix, and `display-only` is now
-/// said positively by the tag itself (a `Watch` row needs no live session any
-/// more than a `Merge` one does). The repository sits between the tag and the
+/// A row is `[ESC] REVIEW robco #296 — the branch has conflicts with its
+/// base.`: the kind code stays (it is the dismissal identity), and the
+/// remedy's tag replaces the raw reason and the `=> {session} |
+/// display-only` suffix — at the 24-column sidebar minimum the row was
+/// clipped well ahead of that suffix, and `display-only` is now said
+/// positively by the tag itself (a `Watch` row needs no live session any more
+/// than a `Merge` one does). The repository sits between the tag and the
 /// target id — with four repositories registered here, the tag and the
 /// repository are what tell an operator whether a row is theirs, so the
 /// target id is the reasonable thing to trim first when the row runs out of
 /// width; a decision-sourced row with no matching ledger entry omits it
-/// rather than rendering a blank gap. Two spans so a `WATCH` tag renders muted
-/// while the rest of the row keeps its normal selection/accent style.
+/// rather than rendering a blank gap.
+///
+/// The reason ([`row_reason`]) trails the target id, so it is the *next*
+/// thing to give way, and only ever renders past the width the tag,
+/// repository, and target id already claimed — this is what says *what
+/// happened*, where everything ahead of it says *whose row this is* and
+/// *what to do about it*. Three spans so a `WATCH` tag renders muted while
+/// the rest of the row keeps its normal selection/accent style, and the
+/// reason renders muted on its own so it reads as detail rather than as
+/// urgent as the tag.
 fn item_line(item: &InboxItem, selected: bool) -> Line<'static> {
     let marker = if selected { ">" } else { " " };
     let remedy = item.remedy();
@@ -65,13 +74,38 @@ fn item_line(item: &InboxItem, selected: bool) -> Line<'static> {
         .as_deref()
         .map(|repo| format!("{repo} "))
         .unwrap_or_default();
+    let reason = row_reason(&item.detail)
+        .map(|reason| format!(" — {reason}"))
+        .unwrap_or_default();
     Line::from(vec![
         Span::styled(format!("{marker} [{}] ", item.kind.code()), base_style),
         Span::styled(
             format!("{} {repo}{}", remedy.tag(), item.target_id),
             tag_style,
         ),
+        Span::styled(reason, THEME.muted_style()),
     ])
+}
+
+/// A short, English, untranslated fragment of `item.detail` for the row: the
+/// known sentence when `discord::humanize` recognises the reason as one of
+/// its table entries, otherwise the reason's own first line, trimmed. `None`
+/// when the first line is empty.
+///
+/// Row content stays English regardless of locale (see the module's own
+/// `t`-free preview title and the workspace localization policy: labels and
+/// row content are English, prose in a pane or dialog follows the locale) —
+/// unlike [`item_preview`], which localizes both the humanized sentence and
+/// the "what this means" / "next step" guidance, this never calls `t`.
+/// `item.sentence`, the board reviewer's one-sentence summary, is excluded
+/// for the same reason: it is written in the operator's configured language,
+/// so putting it on an English row would mix scripts inside one line.
+fn row_reason(detail: &str) -> Option<&str> {
+    let first_line = detail.lines().next().unwrap_or(detail).trim();
+    if first_line.is_empty() {
+        return None;
+    }
+    Some(humanize::static_sentence(first_line).unwrap_or(first_line))
 }
 
 /// The preview for a selected item row: what the row is, who it is about, and
