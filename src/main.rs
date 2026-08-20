@@ -210,12 +210,7 @@ fn run_command(
                     .filter(|value| !value.is_empty())
             });
             let extra_args = if args.autonomous {
-                config
-                    .profiles
-                    .iter()
-                    .find(|profile| profile.name == config.default_program)
-                    .map(|profile| profile.autonomous_args.clone())
-                    .unwrap_or_default()
+                config.default_program_autonomous_args()
             } else {
                 Vec::new()
             };

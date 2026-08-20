@@ -88,12 +88,7 @@ pub(super) fn spawn_candidate(
     if let Some(profile) = &config.overseer.worker_profile {
         worker_config.default_program.clone_from(profile);
     }
-    let extra_args = worker_config
-        .profiles
-        .iter()
-        .find(|profile| profile.name == worker_config.default_program)
-        .map(|profile| profile.autonomous_args.clone())
-        .unwrap_or_default();
+    let extra_args = worker_config.default_program_autonomous_args();
     // Read next to where the display id is captured, the way defect 1
     // (dropr:yD5Gf6TX23VMvuSLFsmvO) asks: a leaf task simply comes back
     // empty, which renders the same childless prompt as before.

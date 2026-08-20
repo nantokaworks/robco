@@ -263,6 +263,14 @@ impl Config {
             .map(|profile| profile.program.clone())
             .unwrap_or_else(|| self.default_program.clone())
     }
+
+    pub fn default_program_autonomous_args(&self) -> Vec<String> {
+        self.profiles
+            .iter()
+            .find(|profile| profile.name == self.default_program)
+            .map(|profile| profile.autonomous_args.clone())
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
