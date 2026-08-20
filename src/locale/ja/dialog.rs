@@ -35,6 +35,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "enter add   esc cancel" => "enterで追加   escでキャンセル",
         "enter send   esc cancel" => "enterで送信   escでキャンセル",
         "y delete   n/esc cancel" => "yで削除   n/escでキャンセル",
+        "ends the running session now and removes the worktree" => {
+            "実行中のセッションを直ちに終了し、worktreeを削除します"
+        }
         "{} worker(s) {}" => "{} 個のworkerが{}",
         "y apply   n/esc cancel" => "yで適用   n/escでキャンセル",
         "y remove   n/esc cancel" => "yで削除   n/escでキャンセル",
@@ -46,8 +49,13 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "PRを作成して承認をキューに追加します。チェック通過後にmergeします"
         }
         "y land   n/esc cancel" => "yでland   n/escでキャンセル",
-        "already merged: pull main, remove worktree, delete branch" => {
-            "merge済み：main pull、worktree削除、ブランチ削除を実行"
+        "already merged" => "merge済みです",
+        "pulls main, removes the worktree, deletes the branch here and \
+     on GitHub, and ends the running session — anything left uncommitted in \
+     the worktree is discarded" => {
+            "main をpullし、worktreeを削除し、ブランチをローカルとGitHubの両方から削除し、\
+             実行中のセッションを終了します。worktreeにコミットされていない変更が残っていれば、\
+             それも破棄されます"
         }
         "y clean up   n/esc cancel" => "yでクリーンアップ   n/escでキャンセル",
         "checking session/PR… {}" => "セッション/PR確認中… {}",
@@ -56,6 +64,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "enterで送信   ctrl-sで保存のみ   escでキャンセル"
         }
         "y delete   n/esc keep" => "yで削除   n/escで維持",
+        "force delete: any commits not merged elsewhere are lost" => {
+            "強制削除：他にmergeされていないコミットは失われます"
+        }
         "y kill   n/esc cancel" => "yで終了   n/escでキャンセル",
         "disable dispatch + kill all overseer workers" => {
             "dispatchを無効化し全overseer workerを終了"
@@ -74,14 +85,19 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "running workers are not touched; start it again with R" => {
             "稼働中のworkerには影響しません。Rで再度起動できます"
         }
-        "hide all {} listed item(s)" => "表示中の{}件をすべて非表示にします",
-        "decisions.jsonl and ledger.json are not modified;" => {
-            "decisions.jsonlとledger.jsonは変更されません；"
+        "hiding {} item(s):" => "{}件を非表示にします：",
+        "nothing on record is deleted, only removed from this list" => {
+            "記録は削除されません。このリストから消えるだけです"
         }
-        "a newer escalation for the same target is listed again" => {
-            "同じ対象への新しいエスカレーションは再度表示されます"
+        "a hidden item returns only if the same target escalates again; \
+                     otherwise it stays hidden even if it still needs you" => {
+            "非表示にした項目は、同じ対象が再度エスカレーションした時だけ再表示されます。\
+             対応が必要なままでも、それ以外は非表示のままです"
         }
         "y clear   n/esc cancel" => "yで消去   n/escでキャンセル",
+        "deletes its whole record, history included — this cannot be undone" => {
+            "履歴を含む記録全体を削除します。元に戻せません"
+        }
         _ => return None,
     })
 }

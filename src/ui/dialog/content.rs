@@ -4,10 +4,16 @@ use ratatui::{
 };
 
 use super::super::{
-    App, Mode, error_dialog, help, input::management, input_wrap, spinner, text_input::TextInput,
-    theme::DEFAULT as THEME,
+    App, Mode, error_dialog, help, input::management, input_wrap, spinner, theme::DEFAULT as THEME,
 };
-use crate::locale::{Locale, fmt, t};
+use crate::locale::{fmt, t};
+
+#[path = "content_widgets.rs"]
+mod content_widgets;
+#[path = "inbox_dismiss_content.rs"]
+mod inbox_dismiss_content;
+
+use content_widgets::{CLEANUP_FOLLOWS, confirm_lines, hint_line, input_line};
 
 /// A dialog's title and body, plus where the text caret belongs inside it.
 pub(super) struct DialogContent {
@@ -82,11 +88,14 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
         }
         Mode::ConfirmKill { repo, agent } => (
             t(locale, "delete worktree?"),
-            confirm_lines(
-                locale,
-                app.registry.repos[*repo].agents[*agent].title.clone(),
-                "y delete   n/esc cancel",
-            ),
+            vec![
+                Line::from(app.registry.repos[*repo].agents[*agent].title.clone()),
+                Line::from(t(
+                    locale,
+                    "ends the running session now and removes the worktree",
+                )),
+                hint_line(locale, "y delete   n/esc cancel"),
+            ],
             None,
         ),
         Mode::ConfirmOverseerBulkToggle {
@@ -129,29 +138,28 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                     &[app.config.merge_strategy.label()],
                 )));
             }
-            lines.extend([
-                Line::from(match plan {
-                    super::super::LandPlan::MergeNow => t(locale, "It will merge now"),
-                    super::super::LandPlan::QueueApproval => {
-                        t(locale, "Approval is queued; it will merge once the checks pass")
-                    }
-                    super::super::LandPlan::OpenPrThenQueue => t(
-                        locale,
-                        "It will open a pull request and queue approval; it will merge once the checks pass",
-                    ),
-                }),
-                hint_line(locale, "y land   n/esc cancel"),
-            ]);
+            lines.push(Line::from(match plan {
+                super::super::LandPlan::MergeNow => t(locale, "It will merge now"),
+                super::super::LandPlan::QueueApproval => {
+                    t(locale, "Approval is queued; it will merge once the checks pass")
+                }
+                super::super::LandPlan::OpenPrThenQueue => t(
+                    locale,
+                    "It will open a pull request and queue approval; it will merge once the checks pass",
+                ),
+            }));
+            if *plan == super::super::LandPlan::MergeNow {
+                lines.push(Line::from(t(locale, CLEANUP_FOLLOWS)));
+            }
+            lines.push(hint_line(locale, "y land   n/esc cancel"));
             (t(locale, "land task?"), lines, None)
         }
         Mode::ConfirmCleanup { repo, agent } => (
             t(locale, "clean up merged PR?"),
             vec![
                 Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
-                Line::from(t(
-                    locale,
-                    "already merged: pull main, remove worktree, delete branch",
-                )),
+                Line::from(t(locale, "already merged")),
+                Line::from(t(locale, CLEANUP_FOLLOWS)),
                 hint_line(locale, "y clean up   n/esc cancel"),
             ],
             None,
@@ -190,11 +198,14 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
         }
         Mode::ConfirmDeleteBranch { repo, agent } => (
             t(locale, "delete branch?"),
-            confirm_lines(
-                locale,
-                app.registry.repos[*repo].agents[*agent].branch.clone(),
-                "y delete   n/esc keep",
-            ),
+            vec![
+                Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
+                Line::from(t(
+                    locale,
+                    "force delete: any commits not merged elsewhere are lost",
+                )),
+                hint_line(locale, "y delete   n/esc keep"),
+            ],
             None,
         ),
         Mode::ConfirmKillOrphan { session } => (
@@ -228,27 +239,19 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
         ),
         Mode::ConfirmInboxDismissAll { count } => (
             t(locale, "clear the overseer inbox?"),
-            vec![
-                Line::from(fmt(
-                    locale,
-                    "hide all {} listed item(s)",
-                    &[&count.to_string()],
-                )),
-                Line::from(t(
-                    locale,
-                    "decisions.jsonl and ledger.json are not modified;",
-                )),
-                Line::from(t(
-                    locale,
-                    "a newer escalation for the same target is listed again",
-                )),
-                hint_line(locale, "y clear   n/esc cancel"),
-            ],
+            inbox_dismiss_content::body(locale, *count, &app.overseer_inbox),
             None,
         ),
         Mode::ConfirmRemoveDiscordChannel { label, .. } => (
             t(locale, "remove channel?"),
-            confirm_lines(locale, label.clone(), "y remove   n/esc cancel"),
+            vec![
+                Line::from(label.clone()),
+                Line::from(t(
+                    locale,
+                    "deletes its whole record, history included — this cannot be undone",
+                )),
+                hint_line(locale, "y remove   n/esc cancel"),
+            ],
             None,
         ),
         Mode::ErrorDialog {
@@ -271,23 +274,6 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
     })
 }
 
-fn confirm_lines(locale: Locale, subject: String, hint: &'static str) -> Vec<Line<'static>> {
-    vec![Line::from(subject), hint_line(locale, hint)]
-}
-
-/// One-line labelled input, paired with the display column its caret sits at.
-fn input_line(label: &str, input: &TextInput) -> (Line<'static>, usize) {
-    let prefix = format!(" {label}: ");
-    let column =
-        input_wrap::display_width(&prefix) + input_wrap::text_width(input.text(), input.cursor());
-    let mut spans = vec![Span::styled(prefix, THEME.dialog_label_style())];
-    spans.extend(input_wrap::input_spans(input.text(), Some(input.cursor())));
-    (Line::from(spans), column)
-}
-
-fn hint_line(locale: Locale, text: &'static str) -> Line<'static> {
-    Line::from(Span::styled(
-        t(locale, text).to_string(),
-        THEME.hint_style(),
-    ))
-}
+#[cfg(test)]
+#[path = "content_tests.rs"]
+mod tests;
