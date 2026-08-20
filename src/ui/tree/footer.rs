@@ -5,7 +5,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::ui::{App, layout, theme::DEFAULT as THEME};
+use crate::ui::{App, Mode, layout, theme::DEFAULT as THEME};
 
 pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect, message: Option<&str>) {
     let footer = layout::footer(area);
@@ -20,6 +20,7 @@ pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect, message: Option
         message,
         app.selected_item(),
         app.dropr_task_focus,
+        matches!(app.mode, Mode::TaskBody { .. }),
     ))
     .alignment(Alignment::Center);
     frame.render_widget(hints, footer.zones.hints);

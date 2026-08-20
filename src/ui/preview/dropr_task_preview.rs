@@ -1,8 +1,13 @@
 //! The repo row's own INFO preview (dropr:475): its plain summary, or — while
-//! the dropr task drill-down is focused — the task list highlighting its
-//! cursor (Level 1) or one task's full body in its place (Level 2/3). Split
-//! out of `ui::preview` to keep that file under this project's source file
-//! size limit.
+//! the dropr task list is focused — the same summary with the cursor
+//! highlighted in its DROPR section. Split out of `ui::preview` to keep that
+//! file under this project's source file size limit.
+//!
+//! Reading one task's full body used to swap this pane's whole render target
+//! for a second, task-only view (`DroprTaskFocus::Body`); it is now
+//! `Mode::TaskBody`, a dialog drawn over whatever this function renders
+//! (dropr:501) — see `ui::dialog::task_body`. So this function always renders
+//! the list; it has nothing left to fall back from.
 
 use std::path::Path;
 
@@ -12,10 +17,7 @@ use crate::{
     locale::Locale,
     model::RepoNode,
     overseer::{ledger::Ledger, other_prs::OtherPrs},
-    ui::{
-        DroprTaskFocus,
-        summary::{dropr_task_body, repo_summary},
-    },
+    ui::{DroprTaskFocus, summary::repo_summary},
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -28,18 +30,6 @@ pub(super) fn render(
     locale: Locale,
     focus: Option<DroprTaskFocus>,
 ) -> (String, Text<'static>) {
-    // Falls back to the plain summary below when the focused task drifted
-    // out of the list mid-read (e.g. it closed) rather than showing a body
-    // for a task that is no longer there.
-    if let Some(DroprTaskFocus::Body { task }) = focus
-        && let Some(result) = dropr_task_body(repo, task, locale)
-    {
-        return result;
-    }
-    let selected_task = match focus {
-        Some(DroprTaskFocus::List { task }) => Some(task),
-        _ => None,
-    };
     repo_summary(
         repo,
         repos_root,
@@ -47,6 +37,6 @@ pub(super) fn render(
         other_prs,
         width,
         locale,
-        selected_task,
+        focus.map(|focus| focus.task),
     )
 }

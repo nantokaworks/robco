@@ -264,7 +264,10 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             None,
         ),
         Mode::Help { .. } => (t(locale, "help"), help::lines(locale), None),
-        Mode::Normal => return None,
+        // Drawn by `super::draw`'s own `task_body` branch, ahead of this
+        // function, since its content is per-task and dynamic rather than
+        // the static translated strings every arm above builds from.
+        Mode::TaskBody { .. } | Mode::Normal => return None,
     };
 
     Some(DialogContent {

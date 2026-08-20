@@ -1,7 +1,8 @@
 //! Opening the selected dropr task in the operator's browser (dropr:499):
-//! `o` from the task list, or the same key from the task body — one URL
-//! builder, two entry points, the same list/body pair
-//! `dropr_task_drill.rs`'s own launch keys (`n` / `s`) already use.
+//! `o` from the task list, or the same key from the task-body reading dialog
+//! (`Mode::TaskBody`, dropr:501) — one URL builder, two entry points, the
+//! same list/reading pair `dropr_task_drill.rs`'s own launch keys (`n` / `s`)
+//! already use.
 //!
 //! The console route this builds — `https://dropr.sh/{owner}/{repo}/tasks/
 //! {task_id}` — was recovered from the console's own published JS bundle
@@ -18,22 +19,21 @@ use crate::{
     model::Selection,
 };
 
-use super::super::{App, DroprTaskFocus, summary::dropr_tasks};
+use super::super::{App, DroprTaskFocus, Mode, summary::dropr_tasks};
 
 impl App {
     /// `o` at the task list focus level: open the selected task.
     pub(in crate::ui) fn open_dropr_task_from_list(&mut self) {
-        let Some(DroprTaskFocus::List { task }) = self.dropr_task_focus else {
+        let Some(DroprTaskFocus { task }) = self.dropr_task_focus else {
             return;
         };
         self.open_dropr_task(task);
     }
 
-    /// `o` at the task body focus level: open the same task the body shows.
-    pub(in crate::ui) fn open_dropr_task_from_body(&mut self) {
-        let Some(DroprTaskFocus::Body { task }) = self.dropr_task_focus else {
-            return;
-        };
+    /// `o` from the task-body reading dialog (`Mode::TaskBody`, dropr:501):
+    /// open the same task the dialog shows. `task` comes straight from the
+    /// mode, which already names the row.
+    pub(in crate::ui) fn open_dropr_task_from_reading(&mut self, task: usize) {
         self.open_dropr_task(task);
     }
 
@@ -53,6 +53,7 @@ impl App {
     {
         let Some(Selection::Repo(repo)) = self.selected_item() else {
             self.dropr_task_focus = None;
+            self.mode = Mode::Normal;
             return;
         };
         // `visible()` never emits `Selection::Repo(repo)` for an out-of-bounds

@@ -106,38 +106,40 @@ fn select_repo_row(app: &mut App) {
         .expect("repo row is visible");
 }
 
-fn focused_at_body(app: &mut App, repo: RepoNode, task: usize) {
+fn reading(app: &mut App, repo: RepoNode, task: usize) {
     app.registry.repos = vec![repo];
     select_repo_row(app);
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task });
+    app.dropr_task_focus = Some(DroprTaskFocus { task });
+    app.mode = Mode::TaskBody { task, scroll: 0 };
 }
 
 fn focused_at_list(app: &mut App, repo: RepoNode, task: usize) {
     app.registry.repos = vec![repo];
     select_repo_row(app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task });
+    app.dropr_task_focus = Some(DroprTaskFocus { task });
 }
 
 #[test]
-fn no_repo_selected_clears_focus_without_a_message() {
+fn no_repo_selected_clears_focus_and_closes_the_dialog_without_a_message() {
     // A stale focus outliving the repository row it was entered from (the
     // cursor moved some other way while it was set) drops silently rather
     // than acting on a selection that no longer names a task list.
     let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 0 });
+    app.mode = Mode::TaskBody { task: 0, scroll: 0 };
 
-    app.launch_dropr_task_from_body();
+    app.launch_dropr_task_from_reading(0);
 
     assert_eq!(app.message, None);
     assert_eq!(app.dropr_task_focus, None);
+    assert!(matches!(app.mode, Mode::Normal));
 }
 
 #[test]
 fn a_task_index_no_longer_listed_only_shows_a_message() {
     let mut app = test_app();
-    focused_at_body(&mut app, repo_node("/repo".into(), vec![task("#1")]), 5);
+    reading(&mut app, repo_node("/repo".into(), vec![task("#1")]), 5);
 
-    app.launch_dropr_task_from_body();
+    app.launch_dropr_task_from_reading(5);
 
     assert_eq!(
         app.message.as_ref().map(|(message, _)| message.as_str()),
@@ -150,9 +152,9 @@ fn no_linked_workspace_refuses_before_touching_dropr() {
     let mut app = test_app();
     let mut repo = repo_node("/repo".into(), vec![task("#1")]);
     repo.dropr = None;
-    focused_at_body(&mut app, repo, 0);
+    reading(&mut app, repo, 0);
 
-    app.launch_dropr_task_from_body();
+    app.launch_dropr_task_from_reading(0);
 
     assert_eq!(
         app.message.as_ref().map(|(message, _)| message.as_str()),
@@ -165,9 +167,9 @@ fn a_task_without_a_dropr_id_refuses() {
     let mut app = test_app();
     let mut candidate = task("#1");
     candidate.id = String::new();
-    focused_at_body(&mut app, repo_node("/repo".into(), vec![candidate]), 0);
+    reading(&mut app, repo_node("/repo".into(), vec![candidate]), 0);
 
-    app.launch_dropr_task_from_body();
+    app.launch_dropr_task_from_reading(0);
 
     assert_eq!(
         app.message.as_ref().map(|(message, _)| message.as_str()),
@@ -181,9 +183,9 @@ fn a_live_worker_for_the_task_refuses_naming_it() {
     let mut repo = repo_node("/repo".into(), vec![task("#1")]);
     repo.agents
         .push(agent_node("existing-worker", "existing worker", Some("1")));
-    focused_at_body(&mut app, repo, 0);
+    reading(&mut app, repo, 0);
 
-    app.launch_dropr_task_from_body();
+    app.launch_dropr_task_from_reading(0);
 
     let message = app.message.as_ref().map(|(message, _)| message.as_str());
     assert!(message.is_some_and(|message| message.contains("existing worker")));
@@ -198,13 +200,13 @@ fn an_existing_branch_for_the_task_refuses_naming_it() {
     repo.feature_branch(&branch, "claimed.txt");
 
     let mut app = test_app();
-    focused_at_body(
+    reading(
         &mut app,
         repo_node(repo.path().to_path_buf(), vec![candidate]),
         0,
     );
 
-    app.launch_dropr_task_from_body();
+    app.launch_dropr_task_from_reading(0);
 
     let message = app.message.as_ref().map(|(message, _)| message.as_str());
     assert!(message.is_some_and(|message| message.contains(&branch)));
@@ -212,10 +214,10 @@ fn an_existing_branch_for_the_task_refuses_naming_it() {
 
 #[test]
 fn list_focus_no_repo_selected_clears_focus_without_a_message() {
-    // Mirrors `no_repo_selected_clears_focus_without_a_message` above, from
-    // the list entry point (dropr:482).
+    // Mirrors `no_repo_selected_clears_focus_and_closes_the_dialog_without_a_message`
+    // above, from the list entry point (dropr:482).
     let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     app.launch_dropr_task_from_list();
 
@@ -239,7 +241,7 @@ fn list_focus_a_task_index_no_longer_listed_only_shows_a_message() {
 #[test]
 fn list_focus_a_live_worker_for_the_task_refuses_naming_it() {
     // Same refusal `a_live_worker_for_the_task_refuses_naming_it` proves from
-    // the body — `n` at the list level shares the same launch path
+    // the reading dialog — `n` at the list level shares the same launch path
     // (dropr:482), so it must refuse the same way.
     let mut app = test_app();
     let mut repo = repo_node("/repo".into(), vec![task("#1")]);

@@ -1,4 +1,4 @@
-//! The subtask lookup `dropr_task_drill::launch_dropr_task_from_body` needs
+//! The subtask lookup `dropr_task_drill::launch_dropr_task_from_reading` needs
 //! for its `Close Dropr:` lines (dropr:479).
 //!
 //! Split out of `dropr_task_drill.rs` to keep that file under the 300-line

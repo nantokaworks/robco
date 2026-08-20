@@ -1,5 +1,5 @@
 //! Selection/highlight coverage for the dropr task drill-down's list focus
-//! (`ui::DroprTaskFocus::List`, dropr:475; originally `Selection::DroprTask`,
+//! (`ui::DroprTaskFocus`, dropr:475; originally `Selection::DroprTask`,
 //! dropr:470), split out of `dropr_tasks_tests.rs` to keep that file under
 //! this project's source file size limit.
 

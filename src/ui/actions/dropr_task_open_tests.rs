@@ -77,13 +77,14 @@ fn select_repo_row(app: &mut App) {
 fn focused_at_list(app: &mut App, repo: RepoNode, task: usize) {
     app.registry.repos = vec![repo];
     select_repo_row(app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task });
+    app.dropr_task_focus = Some(DroprTaskFocus { task });
 }
 
-fn focused_at_body(app: &mut App, repo: RepoNode, task: usize) {
+fn reading(app: &mut App, repo: RepoNode, task: usize) {
     app.registry.repos = vec![repo];
     select_repo_row(app);
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task });
+    app.dropr_task_focus = Some(DroprTaskFocus { task });
+    app.mode = Mode::TaskBody { task, scroll: 0 };
 }
 
 fn message(app: &App) -> Option<&str> {
@@ -91,20 +92,21 @@ fn message(app: &App) -> Option<&str> {
 }
 
 #[test]
-fn no_repo_selected_clears_focus_without_a_message() {
+fn no_repo_selected_clears_focus_and_closes_the_dialog_without_a_message() {
     let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 0 });
+    app.mode = Mode::TaskBody { task: 0, scroll: 0 };
 
-    app.open_dropr_task_from_body();
+    app.open_dropr_task_from_reading(0);
 
     assert_eq!(app.message, None);
     assert_eq!(app.dropr_task_focus, None);
+    assert!(matches!(app.mode, Mode::Normal));
 }
 
 #[test]
 fn a_task_index_no_longer_listed_only_shows_a_message() {
     let mut app = test_app();
-    focused_at_body(
+    reading(
         &mut app,
         repo_node(
             Some("https://github.com/nantokaworks/robco.git"),
@@ -113,7 +115,7 @@ fn a_task_index_no_longer_listed_only_shows_a_message() {
         5,
     );
 
-    app.open_dropr_task_from_body();
+    app.open_dropr_task_from_reading(5);
 
     assert_eq!(message(&app), Some("task is no longer listed"));
 }
@@ -123,7 +125,7 @@ fn a_task_without_a_dropr_id_refuses() {
     let mut app = test_app();
     let mut candidate = task("#1");
     candidate.id = String::new();
-    focused_at_body(
+    reading(
         &mut app,
         repo_node(
             Some("https://github.com/nantokaworks/robco.git"),
@@ -132,7 +134,7 @@ fn a_task_without_a_dropr_id_refuses() {
         0,
     );
 
-    app.open_dropr_task_from_body();
+    app.open_dropr_task_from_reading(0);
 
     assert_eq!(message(&app), Some("task is missing its dropr id"));
 }
@@ -140,9 +142,9 @@ fn a_task_without_a_dropr_id_refuses() {
 #[test]
 fn no_git_remote_refuses_before_building_a_url() {
     let mut app = test_app();
-    focused_at_body(&mut app, repo_node(None, vec![task("#1")]), 0);
+    reading(&mut app, repo_node(None, vec![task("#1")]), 0);
 
-    app.open_dropr_task_from_body();
+    app.open_dropr_task_from_reading(0);
 
     assert_eq!(message(&app), Some("this repository has no git remote"));
 }
@@ -150,13 +152,13 @@ fn no_git_remote_refuses_before_building_a_url() {
 #[test]
 fn a_non_github_remote_refuses_naming_the_reason() {
     let mut app = test_app();
-    focused_at_body(
+    reading(
         &mut app,
         repo_node(Some("https://gitlab.com/owner/repo.git"), vec![task("#1")]),
         0,
     );
 
-    app.open_dropr_task_from_body();
+    app.open_dropr_task_from_reading(0);
 
     assert_eq!(
         message(&app),
@@ -167,7 +169,7 @@ fn a_non_github_remote_refuses_naming_the_reason() {
 #[test]
 fn a_listed_github_task_is_launched_at_its_console_url() {
     let mut app = test_app();
-    focused_at_body(
+    reading(
         &mut app,
         repo_node(
             Some("https://github.com/nantokaworks/robco.git"),
@@ -192,7 +194,7 @@ fn a_listed_github_task_is_launched_at_its_console_url() {
 #[test]
 fn a_launch_failure_reaches_the_operator() {
     let mut app = test_app();
-    focused_at_body(
+    reading(
         &mut app,
         repo_node(
             Some("https://github.com/nantokaworks/robco.git"),
@@ -211,7 +213,7 @@ fn a_launch_failure_reaches_the_operator() {
 #[test]
 fn list_focus_no_repo_selected_clears_focus_without_a_message() {
     let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     app.open_dropr_task_from_list();
 
