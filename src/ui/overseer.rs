@@ -43,6 +43,19 @@ pub(super) type WorkerManagement = (String, ManagementMode);
 /// history it is leaving out.
 pub(in crate::ui) const DECISION_SNAPSHOT_LIMIT: usize = 200;
 
+/// Columns a detail row (an Inbox item, a Discord channel) spends on its own
+/// marker before its content starts: one marker column, one gap column.
+/// `overseer_frame::DETAIL_INDENT` nests every detail row under its category
+/// label; this is the row's own share of the line, on top of that indent.
+/// Every detail-row builder in this module must agree on it, or two rows
+/// nested the same way visibly snap to different columns — the way Discord's
+/// row drifted from Inbox's (dropr:497). A continuation line with no marker
+/// of its own (a Discord channel's error line) pads out to this width too,
+/// so it lines up under the row's content instead of under a blank marker
+/// cell. A test in `tests.rs` pins this so a third builder cannot drift
+/// again.
+const ROW_LEFT_EDGE: usize = 2;
+
 /// Point-in-time overseer state captured off the UI thread by the background
 /// status worker ([`crate::ui::actions::background_refresh`]). The overseer
 /// frame and previews render from this snapshot instead of reading
