@@ -72,3 +72,17 @@ fn a_failed_probe_does_not_disturb_an_existing_wait_timestamp() {
     apply(&mut e, Probe::Failed);
     assert_eq!(e.prerequisite_wait, Some(since));
 }
+
+#[test]
+fn an_entry_with_no_known_dropr_task_is_clear_without_asking_dropr() {
+    // dropr:496 — registry adoption fills a ledger entry from the agent
+    // record alone, and its AgentNode::task_number is None for exactly that
+    // case. Such an entry has no dependency edges by construction, so the
+    // probe must not shell out at all; it must answer Clear right away,
+    // instead of asking dropr about a task id that is really just an agent
+    // id and letting that fail.
+    assert!(matches!(
+        probe("agent-id-used-as-task-id", false),
+        Probe::Clear
+    ));
+}
