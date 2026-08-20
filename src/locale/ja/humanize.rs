@@ -38,9 +38,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "このタスクにはPRのURLが記録されていません。"
         }
         "The pull request was closed without merging." => "PRはmergeされずにcloseされました。",
-        "The autonomy policy held this merge for an operator. Approve it from the TUI inbox or with `robco_approve` on Discord." => {
-            "autonomyポリシーがこのmergeをoperator向けに保留しました。TUIのinboxか、Discordの`robco_approve`で承認してください。"
-        }
         "The automated handback gave up after repeated attempts." => {
             "自動handbackは繰り返し試行した末に諦めました。"
         }

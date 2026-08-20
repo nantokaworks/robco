@@ -99,27 +99,6 @@ fn parses_overseer_protection_modes() {
 }
 
 #[test]
-fn parses_overseer_autonomy_levels() {
-    for (argument, expected) in [
-        ("approval_only", AutonomyLevel::ApprovalOnly),
-        ("conservative", AutonomyLevel::Conservative),
-        ("full_auto", AutonomyLevel::FullAuto),
-    ] {
-        let args = Args::try_parse_from(["robco", "overseer", "autonomy", argument]).unwrap();
-        let Some(Command::Overseer(args)) = args.command else {
-            panic!("expected overseer")
-        };
-        let OverseerCommand::Autonomy(args) = args.command else {
-            panic!("expected autonomy")
-        };
-        assert_eq!(args.level, expected);
-    }
-    // The CLI spelling is the one the config file and the MCP policy tool use, so
-    // a level copied off either surface parses back unchanged.
-    assert!(Args::try_parse_from(["robco", "overseer", "autonomy", "full-auto"]).is_err());
-}
-
-#[test]
 fn parses_new_subcommand() {
     let args = Args::try_parse_from(["robco", "new", "--title", "x", "--prompt", "y"]).unwrap();
     let Some(Command::New(args)) = args.command else {

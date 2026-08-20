@@ -7,12 +7,7 @@
 use std::path::Path;
 
 use super::on_off;
-use crate::{
-    Result,
-    cli::OverseerSetting,
-    config::Config,
-    overseer::{autonomy::AutonomyLevel, config::ProtectionMode},
-};
+use crate::{Result, cli::OverseerSetting, config::Config, overseer::config::ProtectionMode};
 
 pub(super) fn set(setting: OverseerSetting, enabled: bool) -> Result<()> {
     set_runtime(setting, enabled)?;
@@ -73,26 +68,6 @@ pub(super) fn protection_mode(mode: ProtectionMode) -> Result<()> {
         println!("warning: {warning}");
     }
     Ok(())
-}
-
-pub(super) fn autonomy_level(level: AutonomyLevel) -> Result<()> {
-    // `Config::save` creates the directory first; writing to an explicit path has
-    // to do the same, or the very first setting written on a fresh machine fails.
-    crate::config::ensure_robco_dir()?;
-    persist_autonomy_level_at(&crate::config::config_file_path()?, level)?;
-    println!("autonomy: {}", level.label());
-    if let Some(warning) = level.envelope_warning() {
-        println!("warning: {warning}");
-    }
-    Ok(())
-}
-
-/// Split from the printing so the round-trip can be tested against a temp file
-/// rather than the operator's own `~/.robco/config.json`.
-fn persist_autonomy_level_at(path: &Path, level: AutonomyLevel) -> Result<()> {
-    let mut config = Config::load_at(path)?;
-    config.overseer.autonomy_level = level;
-    config.save_at(path)
 }
 
 /// Names what a loosened gate no longer verifies, so `status` and the mode command warn

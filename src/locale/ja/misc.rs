@@ -21,10 +21,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "dispatch circuit is open after repeated worker failures — dispatch stays disabled until you reset it: press [R] here, or run `robco overseer set dispatch on` (re-enables dispatch and clears the failure counter)." => {
             "worker失敗の繰り返しによりdispatch回路がopenになりました — リセットするまでdispatchは無効のままです：ここで[R]を押すか、`robco overseer set dispatch on` を実行してください（dispatchを再有効化し失敗カウンタをクリアします）。"
         }
-        "autonomy is full_auto — the merge envelope no longer escalates ambiguous requirements, dependency bumps, large diffs, or prod/CI-config changes; only the hard stops (destructive, security, repeated failures, budget, external side effects) still hold." => {
-            "autonomyがfull_autoです — merge envelopeは曖昧な要件、依存関係の更新、大きなdiff、prod/CI設定変更をエスカレーションしなくなります。破壊的操作・セキュリティ・失敗の繰り返し・予算・外部副作用などのhard stopのみ有効です。"
-        }
-
         // Empty-state lines
         "No AI session. Press enter to open one." => {
             "AIセッションがありません。enterで開始できます。"

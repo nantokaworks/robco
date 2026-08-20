@@ -178,8 +178,8 @@ fn a_non_escalated_entry_is_left_alone() {
 }
 
 /// The merge-escalation regression: `LedgerPhase::Escalated` is shared with
-/// the merge subsystem's own safety-valve escalations (an autonomy-envelope
-/// hard stop, an exhausted recovery or reconsideration budget, a pull request
+/// the merge subsystem's own safety-valve escalations (a spent hold budget,
+/// an exhausted recovery or reconsideration budget, a pull request
 /// closed without merging), whose worktree and tmux session stay alive exactly like
 /// a worker-blocked entry's do. Every one of the three signals can fire for
 /// such an entry too, but none of them says anything about whether the

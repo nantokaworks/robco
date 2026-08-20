@@ -1,6 +1,5 @@
 use super::*;
 use crate::model::ManagementMode;
-use crate::overseer::autonomy::AutonomyLevel;
 
 fn repo(name: &str, management: ManagementMode) -> crate::model::RepoNode {
     let mut repo = crate::discover::repo_node(format!("/tmp/{name}").into(), false);
@@ -44,7 +43,7 @@ fn toggle_line_reports_no_switch_the_daemon_ignores() {
     let line = toggle_line(&config, 0);
     assert_eq!(
         line,
-        "auto-merge: off (protection: required)  autonomy: conservative  merge-recovery: off"
+        "auto-merge: off (protection: required)  merge-recovery: off"
     );
     // A dispatching daemon must never be described as switched off.
     assert!(!line.contains("overseer: off"));
@@ -72,27 +71,6 @@ fn toggle_line_reports_what_a_switched_off_recovery_has_dropped() {
     assert!(toggle_line(&config, 4).contains("merge-recovery: off (4 dropped)"));
     // Nothing dropped is not an exception worth a number.
     assert!(toggle_line(&config, 0).ends_with("merge-recovery: off"));
-}
-
-#[test]
-fn toggle_line_reports_the_autonomy_level_the_envelope_runs_under() {
-    // The level decides how much the merge envelope clears on its own, so a
-    // status line that omits it leaves a widened envelope indistinguishable from
-    // the default one.
-    for (level, label) in [
-        (AutonomyLevel::ApprovalOnly, "approval_only"),
-        (AutonomyLevel::Conservative, "conservative"),
-        (AutonomyLevel::FullAuto, "full_auto"),
-    ] {
-        let config = OverseerConfig {
-            autonomy_level: level,
-            ..OverseerConfig::default()
-        };
-        assert!(
-            toggle_line(&config, 0).contains(&format!("autonomy: {label}")),
-            "expected autonomy: {label}"
-        );
-    }
 }
 
 #[test]

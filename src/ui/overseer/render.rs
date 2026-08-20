@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use ratatui::text::Line;
 
-use crate::locale::{Locale, fmt, t};
+use crate::locale::{Locale, fmt};
 use crate::model::ManagementMode;
 use crate::overseer::{
     config::{OverseerConfig, ProtectionMode},
@@ -58,11 +58,6 @@ pub(super) fn append_health(
             config.auto_merge && config.protection_mode != ProtectionMode::Required,
         ),
         (
-            "autonomy",
-            config.autonomy_level.label().into(),
-            config.auto_merge && config.autonomy_level.envelope_warning().is_some(),
-        ),
-        (
             "merge-recovery",
             merge_recovery_state(config),
             // Recovery without auto-merge is inert: nothing ever fails a merge
@@ -75,14 +70,6 @@ pub(super) fn append_health(
     // has been merged since it started.
     if let Some(drift) = version_drift {
         lines.push(warning(drift));
-    }
-    // Gated on auto-merge, like the red `autonomy` flag above: the envelope only
-    // decides anything while the merge pass runs, so warning about it otherwise
-    // would name a gate that is not currently in the path.
-    if config.auto_merge
-        && let Some(hint) = config.autonomy_level.envelope_warning()
-    {
-        lines.push(warning(t(locale, hint)));
     }
     lines.push(Line::default());
 }

@@ -2,8 +2,6 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::autonomy::AutonomyLevel;
-
 #[path = "config_notify_level.rs"]
 mod notify_level;
 pub use notify_level::{NotifyLevel, NotifyTier};
@@ -33,6 +31,11 @@ fn default_max_concurrent_merge_repos() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct OverseerConfig {
+    /// Master switch for whether the daemon drives any pull request to a
+    /// merge at all. Only a pull request the operator asked for (see
+    /// `overseer::daemon::merge_repo_pass`) is ever a candidate, so this now
+    /// gates whether a requested merge reaches the daemon; it never enables
+    /// merging anything nobody asked about.
     pub auto_merge: bool,
     pub protection_mode: ProtectionMode,
     /// Lets the auto-merge gate proceed on a repository whose GitHub plan does not
@@ -47,7 +50,6 @@ pub struct OverseerConfig {
     /// because the condition it targets — a probe that cannot possibly answer — only
     /// ever arises on a plan-limited repository in the first place.
     pub allow_unverifiable_protection: bool,
-    pub autonomy_level: AutonomyLevel,
     pub daily_llm_budget: u32,
     /// Retired: the merge strategy is the top-level `merge_strategy`, which the
     /// TUI reads too. Kept as a read-only field so a config still carrying the
@@ -112,11 +114,9 @@ pub struct OverseerConfig {
     pub terminal_retention_per_repo: usize,
     pub poll_interval_secs: u64,
     pub stuck_after_mins: u64,
-    /// Consecutive worker-spawn failures before the merge envelope's
-    /// `RepeatedFailures` risk trips (see `autonomy::risks`) and the board
-    /// reviewer flags `circuit_open` / `circuit_at_risk` (see
-    /// `review::findings::circuit`). No longer gates anything about starting
-    /// work — see dropr:476.
+    /// Consecutive worker-spawn failures before the board reviewer flags
+    /// `circuit_open` / `circuit_at_risk` (see `review::findings::circuit`).
+    /// No longer gates anything about starting work — see dropr:476.
     pub failure_circuit_threshold: u32,
     pub triage_enabled: bool,
     pub triage_profile: Option<String>,
@@ -136,9 +136,9 @@ pub struct OverseerConfig {
     pub review_profile: Option<String>,
     pub review_interval_mins: u64,
     /// Daily call budget for the board reviewer, deliberately separate from
-    /// `daily_llm_budget` (the autonomy envelope's own budget risk category).
-    /// The reviewer runs on a clock rather than on demand, so sharing one
-    /// budget would let it starve whatever else draws against it.
+    /// `daily_llm_budget`. The reviewer runs on a clock rather than on
+    /// demand, so sharing one budget would let it starve whatever else draws
+    /// against it.
     pub daily_review_budget: u32,
     pub triage_timeout_mins: u64,
     pub worker_env_blocklist: Vec<String>,
@@ -218,7 +218,6 @@ impl Default for OverseerConfig {
             auto_merge: false,
             protection_mode: ProtectionMode::Required,
             allow_unverifiable_protection: false,
-            autonomy_level: AutonomyLevel::Conservative,
             daily_llm_budget: 200,
             legacy_merge_strategy: None,
             max_branch_updates: 3,

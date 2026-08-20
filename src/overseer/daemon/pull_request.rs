@@ -1,9 +1,8 @@
 //! Reading the pull request the auto-merge gate decides on.
 //!
-//! Every fact the gate uses — base branch, check rollup, merge state, and the change
-//! metadata the autonomy envelope reasons about — comes from one `gh pr view`, so the
-//! gate reasons about a single consistent snapshot rather than several reads taken at
-//! different moments.
+//! Every fact the gate uses — base branch, check rollup, merge state, and change
+//! metadata — comes from one `gh pr view`, so the gate reasons about a single
+//! consistent snapshot rather than several reads taken at different moments.
 
 use std::process::Command;
 

@@ -31,7 +31,6 @@ pub(crate) fn status() -> crate::Result<String> {
 fn status_line(config: &OverseerConfig, active: usize) -> String {
     [
         format!("**automerge** {}", on_off(config.auto_merge)),
-        format!("**autonomy** {}", config.autonomy_level.label()),
         format!("**workers** {active}"),
     ]
     .join("\n")

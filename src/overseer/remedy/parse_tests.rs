@@ -33,10 +33,10 @@ fn checks_waiting_is_never_actionable_even_with_a_live_session() {
 
 #[test]
 fn a_move_that_is_not_an_answer_ignores_session_state() {
-    // `autonomy_envelope` resolves to `Merge`, which ORPHANED never touches:
-    // merging by hand needs no tmux session either way.
-    assert_eq!(resolve("autonomy_envelope", false).step, Move::Merge);
-    assert_eq!(resolve("autonomy_envelope", true).step, Move::Merge);
+    // `merge_request_stale` resolves to `Merge`, which ORPHANED never
+    // touches: merging by hand needs no tmux session either way.
+    assert_eq!(resolve("merge_request_stale", false).step, Move::Merge);
+    assert_eq!(resolve("merge_request_stale", true).step, Move::Merge);
 }
 
 #[test]

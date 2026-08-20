@@ -2,10 +2,10 @@
 //! cleared.
 //!
 //! `merge_hold::charge` moves an entry to `Escalated` once its hold budget is
-//! spent, but the condition it escalated on — protection, checks, merge
-//! state, or the autonomy envelope — is never cached anywhere else. Left
-//! alone, an entry escalated this way never returns to the gate even after an
-//! operator fixes exactly the condition it was held on.
+//! spent, but the condition it escalated on — protection, checks, or merge
+//! state — is never cached anywhere else. Left alone, an entry escalated
+//! this way never returns to the gate even after an operator fixes exactly
+//! the condition it was held on.
 //!
 //! `merge_hold` itself cannot carry the marker this needs: `merge_hold::cleared`
 //! resets it to default the moment a pass gets past whatever it held on —
@@ -105,9 +105,8 @@ pub(super) fn exhausted(reason: &str) -> String {
     format!("merge_hold_recheck_exhausted:{reason}")
 }
 
-/// Retires the marker once the entry leaves `Escalated` for good by merging,
-/// or once the deterministic gate and the autonomy envelope clear it instead
-/// (see `merge_allow::merge_allows`).
+/// Retires the marker once the entry leaves `Escalated` for good by merging
+/// (see `merge_repo_pass::run`'s `Outcome::Merged` arm).
 ///
 /// Also retires `settled_at` and `merge_hold_stuck_notified` —
 /// `merge_escalation::sweep_stuck`'s own markers for the same escalation —

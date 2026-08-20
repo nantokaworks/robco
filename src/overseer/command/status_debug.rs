@@ -221,10 +221,9 @@ fn repos_line(registry: &Registry) -> String {
 /// part in.
 fn toggle_line(config: &OverseerConfig, recovery_drops: u32) -> String {
     format!(
-        "auto-merge: {} (protection: {})  autonomy: {}  merge-recovery: {}",
+        "auto-merge: {} (protection: {})  merge-recovery: {}",
         on_off(config.auto_merge),
         config.protection_mode.label(),
-        config.autonomy_level.label(),
         merge_recovery_state(config, recovery_drops),
     )
 }

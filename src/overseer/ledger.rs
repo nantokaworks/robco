@@ -104,8 +104,8 @@ pub struct LedgerEntry {
     pub merge_hold_stuck_notified: bool,
     /// `(reason, head)` the last immediate Discord escalation for this entry
     /// reported, for an escalation reason outside `merge_escalation`'s
-    /// terminal/transient vocabulary (the autonomy envelope, a branch-update
-    /// cap). A later pass reporting the identical pair is the
+    /// terminal/transient vocabulary (a branch-update cap, an unprotected
+    /// base). A later pass reporting the identical pair is the
     /// same unresolved condition already shown to the operator, not a new
     /// one, and suppresses its notification (dropr:414). Reset alongside
     /// `settled_at` wherever the entry leaves this escalation behind:
@@ -121,14 +121,15 @@ pub struct LedgerEntry {
     /// `monitor::apply::apply_escalation_resolution` — see there for why.
     #[serde(default)]
     pub worker_escalated: bool,
-    /// A pending one-time operator bypass for the autonomy-envelope verdict
-    /// blocking this entry — see [`OperatorOverride`]. Defaulted so ledgers
-    /// written before the field existed still load.
+    /// A pending one-time operator merge request granted through
+    /// `robco_approve`'s no-live-session fallback — see [`OperatorOverride`].
+    /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub operator_override: Option<OperatorOverride>,
-    /// A merge approval queued by Discord's `!merge` against a pull request
-    /// that had not yet reached `Escalated` — see [`MergeApproval`].
-    /// Defaulted so ledgers written before the field existed still load.
+    /// A merge request queued by the TUI `m` key or Discord's `!merge`
+    /// against a pull request, whatever phase it was in — see
+    /// [`MergeApproval`]. Defaulted so ledgers written before the field
+    /// existed still load.
     #[serde(default)]
     pub merge_approval: Option<MergeApproval>,
     /// The pull request's own title, size, and any failing check, as of the

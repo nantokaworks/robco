@@ -35,7 +35,7 @@ fn base_entry(phase: LedgerPhase) -> LedgerEntry {
 #[test]
 fn take_operator_override_returns_false_and_leaves_the_entry_alone_when_none_is_pending() {
     let mut entry = base_entry(LedgerPhase::Escalated);
-    assert!(!take_operator_override(&mut entry, "head1", "autonomy_envelope").unwrap());
+    assert!(!take_operator_override(&mut entry, "head1").unwrap());
     assert!(entry.operator_override.is_none());
 }
 
@@ -47,7 +47,7 @@ fn take_operator_override_consumes_but_refuses_a_mismatched_head() {
         granted_at: chrono::Utc::now(),
     });
 
-    assert!(!take_operator_override(&mut entry, "new-head", "autonomy_envelope").unwrap());
+    assert!(!take_operator_override(&mut entry, "new-head").unwrap());
 
     // Taken either way: a stale grant is spent, not retried against a
     // revision it was never approved for.
@@ -55,14 +55,14 @@ fn take_operator_override_consumes_but_refuses_a_mismatched_head() {
 }
 
 #[test]
-fn take_operator_override_bypasses_on_a_matching_head() {
+fn take_operator_override_confirms_on_a_matching_head() {
     let mut entry = base_entry(LedgerPhase::Escalated);
     entry.operator_override = Some(OperatorOverride {
         head: "abc123".into(),
         granted_at: chrono::Utc::now(),
     });
 
-    assert!(take_operator_override(&mut entry, "abc123", "autonomy_envelope").unwrap());
+    assert!(take_operator_override(&mut entry, "abc123").unwrap());
 
     assert!(entry.operator_override.is_none());
     // `take_operator_override` never touches `phase` itself.
@@ -93,7 +93,7 @@ fn take_merge_approval_consumes_but_refuses_a_mismatched_head() {
 }
 
 #[test]
-fn take_merge_approval_bypasses_on_a_matching_head() {
+fn take_merge_approval_confirms_on_a_matching_head() {
     let mut entry = base_entry(LedgerPhase::PrOpened);
     entry.merge_approval = Some(MergeApproval {
         head: "abc123".into(),
@@ -107,50 +107,52 @@ fn take_merge_approval_bypasses_on_a_matching_head() {
 }
 
 #[test]
-fn an_uncontended_envelope_allows_the_merge_without_touching_any_bypass() {
+fn a_matching_merge_approval_completes_the_requested_merge() {
     let mut entry = base_entry(LedgerPhase::PrOpened);
-    let config = Config::default();
-    let value = serde_json::json!({
-        "headRefOid": "abc123",
-        "files": [{"path": "docs/readme.md"}],
-        "changedFiles": 1,
-        "additions": 1,
-        "deletions": 0,
+    entry.merge_approval = Some(MergeApproval {
+        head: "abc123".into(),
+        granted_at: chrono::Utc::now(),
     });
-
-    let judgment = merge_allows(&mut entry, &value, &config, 0).unwrap();
-
-    assert!(matches!(judgment, Judgment::Allow));
-    assert!(entry.operator_override.is_none());
-}
-
-#[test]
-fn an_escalating_envelope_halts_without_a_pending_bypass() {
-    let mut entry = base_entry(LedgerPhase::PrOpened);
-    let config = Config::default();
-    // Unknown facts (no file/line data at all) always escalate.
     let value = serde_json::json!({"headRefOid": "abc123"});
 
-    let judgment = merge_allows(&mut entry, &value, &config, 0).unwrap();
+    let judgment = confirm_requested(&mut entry, &value).unwrap();
 
-    match judgment {
-        Judgment::Halt(halt) => assert_eq!(halt.reason, "autonomy_envelope"),
-        Judgment::Allow => panic!("expected a halt"),
-    }
+    assert!(matches!(judgment, Judgment::Allow));
+    assert!(entry.merge_approval.is_none());
 }
 
 #[test]
-fn an_escalating_envelope_is_bypassed_by_a_matching_operator_override() {
+fn a_matching_operator_override_completes_the_requested_merge() {
     let mut entry = base_entry(LedgerPhase::PrOpened);
     entry.operator_override = Some(OperatorOverride {
         head: "abc123".into(),
         granted_at: chrono::Utc::now(),
     });
-    let config = Config::default();
     let value = serde_json::json!({"headRefOid": "abc123"});
 
-    let judgment = merge_allows(&mut entry, &value, &config, 0).unwrap();
+    let judgment = confirm_requested(&mut entry, &value).unwrap();
 
     assert!(matches!(judgment, Judgment::Allow));
     assert!(entry.operator_override.is_none());
+}
+
+#[test]
+fn a_pull_request_pushed_past_the_approved_head_stays_held_rather_than_merging() {
+    // Neither field is live for the current head — the worker pushed a fix
+    // after the operator approved an older revision. Nothing here is a
+    // problem: the operator has to look and press `m` again.
+    let mut entry = base_entry(LedgerPhase::PrOpened);
+    entry.merge_approval = Some(MergeApproval {
+        head: "old-head".into(),
+        granted_at: chrono::Utc::now(),
+    });
+    let value = serde_json::json!({"headRefOid": "new-head"});
+
+    let judgment = confirm_requested(&mut entry, &value).unwrap();
+
+    match judgment {
+        Judgment::Halt(halt) => assert_eq!(halt.reason, "merge_request_stale"),
+        Judgment::Allow => panic!("expected a halt"),
+    }
+    assert!(entry.merge_approval.is_none());
 }

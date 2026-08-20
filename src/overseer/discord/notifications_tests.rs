@@ -306,7 +306,7 @@ fn a_digest_of_long_reasons_stays_under_the_embed_limit() {
 /// link, humanized reason, and a `×N` count instead of repeated lines.
 #[test]
 fn a_digest_line_carries_repo_display_id_pr_link_and_a_humanized_reason() {
-    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "checks_not_green");
     entry.task = Some("vm04Y9jTaBcDeFgHiJkLm".into());
     entry.repo = Some("/home/op/.robco/repos/nex".into());
     entry.pr_url = Some("https://github.com/acme/nex/pull/766".into());
@@ -318,8 +318,7 @@ fn a_digest_line_carries_repo_display_id_pr_link_and_a_humanized_reason() {
     assert_eq!(
         lines[1],
         "- nex · #490 [#766](https://github.com/acme/nex/pull/766): \
-         The autonomy policy held this merge for an operator. \
-         Approve it from the TUI inbox or with `robco_approve` on Discord. ×3"
+         A required check failed on the pull request. ×3"
     );
     assert_eq!(lines.len(), 2);
 }
@@ -328,13 +327,13 @@ fn a_digest_line_carries_repo_display_id_pr_link_and_a_humanized_reason() {
 /// the reason still humanizes.
 #[test]
 fn a_digest_line_falls_back_to_the_nanoid_when_no_display_id_resolves() {
-    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    let mut entry = DecisionEntry::new(DecisionKind::Escalate, "checks_not_green");
     entry.task = Some("vm04Y9jTaBcDeFgHiJkLm".into());
     let notification = digest(&DiscordConfig::default(), &[entry]).unwrap();
     assert!(
         notification
             .description
-            .contains("- `vm04Y9jTaBcDeFgHiJkLm`: The autonomy policy held this merge")
+            .contains("- `vm04Y9jTaBcDeFgHiJkLm`: A required check failed")
     );
 }
 
@@ -342,9 +341,9 @@ fn a_digest_line_falls_back_to_the_nanoid_when_no_display_id_resolves() {
 /// lines, and the header counts distinct alerts, not raw entries.
 #[test]
 fn dedup_keeps_the_same_reason_apart_across_tasks() {
-    let mut first = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    let mut first = DecisionEntry::new(DecisionKind::Escalate, "checks_not_green");
     first.task = Some("task-a".into());
-    let mut second = DecisionEntry::new(DecisionKind::Escalate, "autonomy_envelope");
+    let mut second = DecisionEntry::new(DecisionKind::Escalate, "checks_not_green");
     second.task = Some("task-b".into());
     let notification = digest(&DiscordConfig::default(), &[first.clone(), second, first]).unwrap();
     let lines: Vec<_> = notification.description.lines().collect();

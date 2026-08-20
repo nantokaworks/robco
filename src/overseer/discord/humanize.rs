@@ -68,10 +68,6 @@ const EXACT: &[(&str, &str)] = &[
         "pr_closed_unmerged",
         "The pull request was closed without merging.",
     ),
-    (
-        "autonomy_envelope",
-        "The autonomy policy held this merge for an operator. Approve it from the TUI inbox or with `robco_approve` on Discord.",
-    ),
     // Spent budgets (`merge_recovery`).
     (
         "merge_recovery_cap_reached",

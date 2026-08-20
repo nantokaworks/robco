@@ -119,7 +119,7 @@ fn close_directive_instruction(display_id: &str, subtasks: &[Subtask]) -> String
 /// What a worker is told when Overseer could not merge the pull request it opened.
 ///
 /// The failure reason is passed through verbatim — for a merge state it names
-/// the state to resolve, for an autonomy-envelope hold it says so directly.
+/// the state to resolve, for a protection hold it says so directly.
 /// Paraphrasing it here would put an Overseer-side guess between the reason
 /// and the worker acting on it.
 ///
