@@ -1,3 +1,11 @@
+//! The footer's per-row key hints.
+//!
+//! Only the keys worth a permanent slot in the footer, chosen per selected
+//! row so the hints never promise a binding the row does not accept. The
+//! complete keymap lives behind `?` (see `crate::ui::help`), so the footer
+//! stays an entry point rather than a reference: a row may accept more keys
+//! than it advertises, but it must accept every key it does advertise.
+
 use ratatui::text::{Line, Span};
 
 use crate::model::{OverseerCategory, Selection};
@@ -7,17 +15,13 @@ use super::THEME;
 
 type Hints = &'static [(&'static str, &'static str)];
 
-/// Only the keys worth a permanent slot in the footer, chosen per selected
-/// row so the hints never promise a binding the row does not accept. The
-/// complete keymap lives behind `?` (see `crate::ui::help`), so the footer
-/// stays an entry point rather than a reference.
-const NONE_HINTS: Hints = &[
-    ("↵", "attach"),
-    ("n", "new"),
-    ("m", "merge"),
-    ("?", "help"),
-    ("q", "quit"),
-];
+/// Nothing is selected only when the tree has no rows at all — no overseer,
+/// no repository, no orphan session. `attach` and `merge` used to sit here,
+/// but both act on a row, so both were inert (dropr:509). `a` is the one key
+/// that does something on an empty tree; `n` opens the same add-repository
+/// prompt and is left as the unhinted synonym rather than a second slot for
+/// one action.
+const NONE_HINTS: Hints = &[("a", "add"), ("?", "help"), ("q", "quit")];
 
 const AGENT_HINTS: Hints = &[
     ("↵", "attach"),
@@ -33,6 +37,7 @@ const REPO_HINTS: Hints = &[
     ("n", "new"),
     ("a", "add"),
     ("r", "reload"),
+    ("g", "rename"),
     ("?", "help"),
     ("q", "quit"),
 ];
@@ -104,7 +109,10 @@ const ORPHAN_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
-const HEADER_HINTS: Hints = &[("?", "help"), ("q", "quit")];
+/// A section header folds the same way a category row does, so it advertises
+/// the same key (dropr:509). `enter` and `h` fold it too; the bar names one
+/// key per action, not every synonym.
+const HEADER_HINTS: Hints = &[("l", "expand"), ("?", "help"), ("q", "quit")];
 
 fn hints_for(
     selection: Option<Selection>,
