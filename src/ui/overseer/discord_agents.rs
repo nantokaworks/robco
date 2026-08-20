@@ -68,8 +68,11 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
             app.started.elapsed(),
         ));
         if let Some(error) = &agent.last_error {
+            // No marker of its own, so it pads out to `super::ROW_LEFT_EDGE`
+            // instead — the same column the channel label above it starts
+            // at, not the column a copied row prefix would land on.
             lines.push(Line::styled(
-                format!("    ⚠ {error}"),
+                format!("{}⚠ {error}", " ".repeat(super::ROW_LEFT_EDGE)),
                 THEME.failure_style(),
             ));
         }
@@ -86,6 +89,13 @@ pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
 /// the shared vocabulary — but they render after the indicator's own spans
 /// rather than before, the position `repo_row`/`tree`'s agent row place
 /// their own supplementary content.
+///
+/// The marker prefix itself does NOT copy `control_ai_line`: that row sits
+/// at the top of the frame and pads out to the category label's own column,
+/// while this one is a detail row that `overseer_frame::indent_detail`
+/// already nests under its category — so it only spends `super::
+/// ROW_LEFT_EDGE` columns on marker plus gap, the same as an Inbox item row,
+/// not the wider padding a top-level row needs.
 fn channel_line(
     label: &str,
     agent: &ChannelAgent,
@@ -107,7 +117,8 @@ fn channel_line(
     let indicator_state = IndicatorState::with_status(Some(status));
     let primary = select(indicator_state);
     let mut spans = vec![
-        Span::styled(format!("{marker}   {label}{GAP}"), row_style),
+        // Marker + one gap space = `super::ROW_LEFT_EDGE` columns.
+        Span::styled(format!("{marker} {label}{GAP}"), row_style),
         indicator::primary_span(primary, selected, elapsed, INDICATOR_WIDTH),
     ];
     let mut right = indicator::supplementary_spans(

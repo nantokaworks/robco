@@ -78,6 +78,8 @@ fn item_line(item: &InboxItem, selected: bool) -> Line<'static> {
         .map(|reason| format!(" — {reason}"))
         .unwrap_or_default();
     Line::from(vec![
+        // Marker + one gap space = `super::ROW_LEFT_EDGE` columns, the same
+        // left edge every other detail row in this frame keeps to.
         Span::styled(format!("{marker} [{}] ", item.kind.code()), base_style),
         Span::styled(
             format!("{} {repo}{}", remedy.tag(), item.target_id),

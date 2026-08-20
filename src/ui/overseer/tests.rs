@@ -738,3 +738,63 @@ fn primary_holder_names_the_repo_and_the_task() {
     assert!(rendered.contains("robco=#452"));
     assert!(!rendered.contains("/Users/operator"));
 }
+
+#[test]
+fn inbox_and_discord_rows_agree_on_their_left_edge() {
+    // dropr:497 — a Discord channel row used to render two columns further
+    // right than an Inbox row nested the same way, because the two row
+    // builders disagreed about how many columns their own marker took. Both
+    // must start their content at `ROW_LEFT_EDGE`, no matter what either one
+    // draws after that.
+    let mut app = test_app();
+    app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
+        kind: crate::ui::inbox::InboxKind::Escalation,
+        repo: None,
+        target_session: None,
+        target_id: "task-1".into(),
+        label: "task-1".into(),
+        detail: "needs user".into(),
+        at: chrono::Utc::now(),
+        pr_url: None,
+        pr_facts: None,
+        sentence: None,
+    }];
+    let inbox_line = inbox_rows::detail_lines(&app)[0].to_string();
+    assert_eq!(
+        inbox_line.len() - inbox_line.trim_start().len(),
+        ROW_LEFT_EDGE,
+        "inbox row: {inbox_line:?}"
+    );
+
+    let mut channels = crate::overseer::discord_channels::DiscordChannels::default();
+    channels.channels.insert(
+        "c1".into(),
+        crate::overseer::discord_channels::ChannelAgent {
+            first_seen_at: chrono::Utc::now(),
+            last_active_at: chrono::Utc::now(),
+            turn_count: 1,
+            status: crate::overseer::discord_channels::ChannelAgentStatus::Failed,
+            last_error: Some("session timed out".into()),
+            history: Vec::new(),
+            channel_name: None,
+        },
+    );
+    app.overseer_snapshot.discord_channels = channels;
+    let discord_lines = discord_agents::detail_lines(&app);
+
+    let channel_line = discord_lines[0].to_string();
+    assert_eq!(
+        channel_line.len() - channel_line.trim_start().len(),
+        ROW_LEFT_EDGE,
+        "discord row: {channel_line:?}"
+    );
+
+    // The error sub-line carries no marker of its own; it must still land on
+    // the same column as the channel label above it.
+    let error_line = discord_lines[1].to_string();
+    assert_eq!(
+        error_line.len() - error_line.trim_start().len(),
+        ROW_LEFT_EDGE,
+        "discord error row: {error_line:?}"
+    );
+}
