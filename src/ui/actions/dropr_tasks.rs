@@ -174,7 +174,7 @@ impl App {
         refresh_visible(&self.dropr_task_refresh, workspace_id)
     }
 
-    fn schedule_dropr_tasks(&mut self, workspace_id: String, manual: bool) -> bool {
+    pub(super) fn schedule_dropr_tasks(&mut self, workspace_id: String, manual: bool) -> bool {
         if track_refresh(&mut self.dropr_task_refresh, &workspace_id, manual) {
             return true;
         }

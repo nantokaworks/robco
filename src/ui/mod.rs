@@ -321,6 +321,10 @@ pub struct App {
     task_launch_job: Option<actions::dropr_task_worker::TaskLaunchJob>,
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
+    /// Workspaces whose dropr task list a merge robco just finished has
+    /// invalidated. Drained once per tick by
+    /// `actions::dropr_task_settle` (dropr:510).
+    dropr_task_settle: Vec<String>,
     background_refresh: BackgroundRefresh,
     preview_capture: PreviewCapture,
     /// Aggregated inbox, newest first. The rows the operator moves between are
@@ -412,6 +416,7 @@ impl App {
             task_launch_job: None,
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
+            dropr_task_settle: Vec::new(),
             background_refresh: BackgroundRefresh::new(),
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),

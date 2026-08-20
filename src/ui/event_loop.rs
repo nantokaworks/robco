@@ -111,6 +111,7 @@ fn run_loop<B: ratatui::backend::Backend>(
         app.drain_pr_precheck_events();
         app.drain_task_launch_events();
         app.drain_clone_events();
+        app.drain_dropr_task_settle();
 
         if app
             .message
