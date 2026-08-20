@@ -1,7 +1,7 @@
-//! Level 2 of the dropr task drill-down (dropr:475): one task's full body —
-//! title, status, priority, description, and its subtasks — rendered in
-//! place of the whole repo summary while `ui::DroprTaskFocus::Body` is
-//! focused. See `ui::preview::draw`'s `DroprTaskFocus::Body` arm.
+//! One task's full body — title, status, priority, description, and its
+//! subtasks — for the reading dialog `Mode::TaskBody` opens over the task
+//! list (dropr:501; originally rendered in place of the whole repo summary
+//! as `ui::DroprTaskFocus::Body`, dropr:475). See `ui::dialog::task_body`.
 
 use ratatui::text::{Line, Span};
 

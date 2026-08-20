@@ -13,6 +13,7 @@ mod caret;
 #[path = "dialog/centering_tests.rs"]
 mod centering_tests;
 mod content;
+mod task_body;
 #[cfg(test)]
 mod tests;
 
@@ -20,6 +21,13 @@ use caret::caret_position;
 use content::DialogContent;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App) -> Option<(u16, u16)> {
+    // Dispatched ahead of the generic `content()` flow below: its content is
+    // per-task and dynamic, unlike every mode `content()` handles (dropr:501)
+    // — see `task_body`'s own doc comment.
+    if let Mode::TaskBody { task, scroll } = app.mode {
+        return task_body::draw(frame, app, task, scroll);
+    }
+
     let body = layout::root(frame.area()).body;
     let DialogContent {
         title,

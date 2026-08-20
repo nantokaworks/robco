@@ -6,6 +6,7 @@ use crate::{
     dropr::{DroprTaskCandidate, DroprTaskFetch},
     model::{ManagementMode, RepoNode},
     registry::Registry,
+    ui::{DroprTaskFocus, Mode},
 };
 
 fn task(display_id: &str) -> DroprTaskCandidate {
@@ -75,86 +76,51 @@ fn unfocused_claims_nothing() {
 }
 
 #[test]
-fn list_focus_claims_movement_open_and_back() {
+fn list_focus_claims_movement_and_opens_the_reading_dialog_on_enter() {
     let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     assert!(handle_normal(&mut app, KeyCode::Down));
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 1 }));
 
+    // Enter opens `Mode::TaskBody` (dropr:501) — a distinct mode with its own
+    // exclusive key routing in `ui::input`, not this guard clause — so the
+    // list's own focus is left exactly where it was; closing the dialog is
+    // covered by `ui::tests`'s `Mode::TaskBody` coverage, not here.
     assert!(handle_normal(&mut app, KeyCode::Enter));
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::Body { task: 1 }));
-
-    assert!(handle_normal(&mut app, KeyCode::Esc));
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 1 }));
+    assert!(matches!(app.mode, Mode::TaskBody { task: 1, scroll: 0 }));
 }
 
 #[test]
 fn list_focus_ignores_unrelated_keys() {
     let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
     assert!(!handle_normal(&mut app, KeyCode::Char('?')));
 }
 
 #[test]
 fn list_focus_n_starts_the_launch_path() {
     let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     assert!(handle_normal(&mut app, KeyCode::Char('n')));
-    // Same as `body_focus_s_starts_the_launch_path` below: the fixture's task
-    // has no dropr workspace linked, so the launch refuses immediately
-    // without reaching the network — this only asserts the key is claimed
-    // and routed to the same launch path `s` uses from the body (dropr:482).
+    // The fixture's task has no dropr workspace linked, so the launch
+    // refuses immediately without reaching the network — this only asserts
+    // the key is claimed and routed to the same launch path `s` uses from
+    // the reading dialog (dropr:482).
     assert!(app.message.is_some());
 }
 
 #[test]
 fn list_focus_o_starts_the_open_path() {
     let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     assert!(handle_normal(&mut app, KeyCode::Char('o')));
     // The fixture's repo has no git remote, so the open action refuses
     // immediately — this only asserts the key is claimed and routed to the
     // browser-open path (dropr:499), not the outcome (covered by
     // `ui::actions::dropr_task_open`'s own tests).
-    assert!(app.message.is_some());
-}
-
-#[test]
-fn body_focus_claims_scroll_and_back_but_not_launch_on_enter() {
-    let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 1 });
-
-    assert!(!handle_normal(&mut app, KeyCode::Enter));
-    assert!(handle_normal(&mut app, KeyCode::Down));
-    assert!(handle_normal(&mut app, KeyCode::PageUp));
-
-    assert!(handle_normal(&mut app, KeyCode::Char('h')));
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
-}
-
-#[test]
-fn body_focus_s_starts_the_launch_path() {
-    let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 0 });
-
-    assert!(handle_normal(&mut app, KeyCode::Char('s')));
-    // The listed task has no dropr workspace linked, so the launch refuses
-    // immediately without reaching the network — this only asserts the key
-    // is claimed and routed, not the launch outcome (covered by
-    // `ui::actions::dropr_task_drill`'s own tests).
-    assert!(app.message.is_some());
-}
-
-#[test]
-fn body_focus_o_starts_the_open_path() {
-    let mut app = app_with_tasks();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 0 });
-
-    assert!(handle_normal(&mut app, KeyCode::Char('o')));
-    // Same reasoning as `list_focus_o_starts_the_open_path` above: this only
-    // proves `o` is claimed and routed from the body focus too (dropr:499).
     assert!(app.message.is_some());
 }

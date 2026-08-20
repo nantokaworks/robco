@@ -1,4 +1,4 @@
-//! Key routing for the dropr task drill-down (dropr:475), while
+//! Key routing for the dropr task-list focus (dropr:475), while
 //! `App::dropr_task_focus` is `Some`. Same guard-clause shape as
 //! `input::overseer::handle_normal`: claims the keys that mean something
 //! different at this focus level and returns `false` for everything else, so
@@ -9,23 +9,27 @@
 //! able to tell which list a keypress just moved.
 //!
 //! `list_key` also claims `n` (dropr:482): it launches the selected task the
-//! same way `s` does from the body, one key sooner. Since this module's
-//! `handle_normal` runs as a guard ahead of the outer `Mode::Normal` match in
-//! `input.rs` (`code if dropr_task_drill::handle_normal(self, code) => {}`
-//! before that match's own `n` arm), claiming `n` here only changes what it
-//! does while the list is focused — `n`'s "new agent" meaning elsewhere, and
-//! at the body focus below, is untouched.
+//! same way `s` does from the task-body reading dialog, one key sooner.
+//! Since this module's `handle_normal` runs as a guard ahead of the outer
+//! `Mode::Normal` match in `input.rs` (`code if
+//! dropr_task_drill::handle_normal(self, code) => {}` before that match's own
+//! `n` arm), claiming `n` here only changes what it does while the list is
+//! focused — `n`'s "new agent" meaning elsewhere is untouched.
+//!
+//! Reading a task's body used to be a second focus level here, routed the
+//! same guard-clause way; it is now `Mode::TaskBody`, a distinct `Mode` with
+//! its own exclusive arm in `input.rs`'s top-level match (dropr:501) — see
+//! that arm for its key routing.
 
 use crossterm::event::KeyCode;
 
-use super::super::{App, DroprTaskFocus};
+use super::super::App;
 
 pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
-    match app.dropr_task_focus {
-        Some(DroprTaskFocus::List { .. }) => list_key(app, code),
-        Some(DroprTaskFocus::Body { .. }) => body_key(app, code),
-        None => false,
+    if app.dropr_task_focus.is_none() {
+        return false;
     }
+    list_key(app, code)
 }
 
 fn list_key(app: &mut App, code: KeyCode) -> bool {
@@ -57,49 +61,6 @@ fn list_key(app: &mut App, code: KeyCode) -> bool {
         // claims here.
         KeyCode::Char('o') => {
             app.open_dropr_task_from_list();
-            true
-        }
-        _ => false,
-    }
-}
-
-fn body_key(app: &mut App, code: KeyCode) -> bool {
-    match code {
-        KeyCode::Down | KeyCode::Char('j') => {
-            app.scroll_preview(false, 1);
-            true
-        }
-        KeyCode::Up | KeyCode::Char('k') => {
-            app.scroll_preview(true, 1);
-            true
-        }
-        KeyCode::PageDown => {
-            app.scroll_preview(false, 10);
-            true
-        }
-        KeyCode::PageUp => {
-            app.scroll_preview(true, 10);
-            true
-        }
-        KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => {
-            app.close_dropr_task_body();
-            true
-        }
-        // The launch key (dropr:475 Level 3), deliberately not `enter`: the
-        // operator drilled in with two `enter` presses already, and a third
-        // one starting real work — a worktree, a branch, a live tmux
-        // session — on a keystroke that also means "open" one level up is
-        // exactly the kind of accidental action this drill-down exists to
-        // prevent.
-        KeyCode::Char('s') => {
-            app.launch_dropr_task_from_body();
-            true
-        }
-        // Open the selected task in the browser (dropr:499), the same key
-        // the list uses. `o` is free at this focus level too — `j`/`k`/`h`/
-        // `s`/page-up/page-down are the only other keys it claims here.
-        KeyCode::Char('o') => {
-            app.open_dropr_task_from_body();
             true
         }
         _ => false,

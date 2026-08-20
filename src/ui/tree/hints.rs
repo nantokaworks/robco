@@ -86,12 +86,15 @@ const DROPR_TASK_LIST_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
+/// `Mode::TaskBody`'s hints (dropr:501). No `?`/`q`: unlike every other focus
+/// level here, this mode owns input exclusively while open (see its arm in
+/// `ui::input`), so those keys are genuinely inert — a hint promising a key
+/// that does not work is worse than no hint.
 const DROPR_TASK_BODY_HINTS: Hints = &[
+    ("j/k", "scroll"),
     ("s", "start"),
     ("o", "browser"),
     ("esc", "back"),
-    ("?", "help"),
-    ("q", "quit"),
 ];
 
 const CHILD_WORKTREE_HINTS: Hints = &[("↵", "attach"), ("?", "help"), ("q", "quit")];
@@ -105,15 +108,23 @@ const ORPHAN_HINTS: Hints = &[
 
 const HEADER_HINTS: Hints = &[("?", "help"), ("q", "quit")];
 
-fn hints_for(selection: Option<Selection>, dropr_task_focus: Option<DroprTaskFocus>) -> Hints {
+fn hints_for(
+    selection: Option<Selection>,
+    dropr_task_focus: Option<DroprTaskFocus>,
+    reading_task_body: bool,
+) -> Hints {
     // The drill-down (dropr:475) changes what `Selection::Repo`'s own keys
     // mean without changing the selection itself, so its hints take priority
-    // over `REPO_HINTS` whenever a level is focused.
+    // over `REPO_HINTS` whenever a level is focused. `reading_task_body`
+    // (`Mode::TaskBody`, dropr:501) takes priority over the list hints in
+    // turn — the dialog it names is drawn over the list and owns input
+    // while it is open.
     if matches!(selection, Some(Selection::Repo(_))) {
-        match dropr_task_focus {
-            Some(DroprTaskFocus::List { .. }) => return DROPR_TASK_LIST_HINTS,
-            Some(DroprTaskFocus::Body { .. }) => return DROPR_TASK_BODY_HINTS,
-            None => {}
+        if reading_task_body {
+            return DROPR_TASK_BODY_HINTS;
+        }
+        if dropr_task_focus.is_some() {
+            return DROPR_TASK_LIST_HINTS;
         }
     }
     match selection {
@@ -136,12 +147,13 @@ pub(super) fn hints_line(
     message: Option<&str>,
     selection: Option<Selection>,
     dropr_task_focus: Option<DroprTaskFocus>,
+    reading_task_body: bool,
 ) -> Line<'static> {
     if let Some(text) = message {
         return Line::from(Span::styled(text.to_string(), THEME.hint_style()));
     }
 
-    let key_hints = hints_for(selection, dropr_task_focus);
+    let key_hints = hints_for(selection, dropr_task_focus, reading_task_body);
     let mut spans = Vec::with_capacity(key_hints.len() * 5);
     for (key, label) in key_hints {
         if !spans.is_empty() {

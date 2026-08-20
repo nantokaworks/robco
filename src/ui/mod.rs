@@ -169,6 +169,17 @@ enum Mode {
     ConfirmInboxDismissAll {
         count: usize,
     },
+    /// Read-only view of one dropr task's full body (dropr:501), opened by
+    /// `Enter` on a task-list row while `DroprTaskFocus` is focused. Drawn as
+    /// a dialog (`ui::dialog::task_body`) over the task list, which stays
+    /// untouched underneath — closing this (`Esc`/`h`/`Left`) returns to the
+    /// exact list cursor and scroll position it had before the body opened.
+    /// `scroll` is this dialog's own paragraph scroll, independent of the
+    /// list pane's `preview_scroll`.
+    TaskBody {
+        task: usize,
+        scroll: u16,
+    },
     /// Delete a retained Discord channel record. Holds the channel id (not an
     /// index) since the row order re-derives from `last_active_at` on every
     /// refresh — the same hazard `ConfirmKillOrphan` guards against. `label`
@@ -194,20 +205,23 @@ struct ForceKillTarget {
     agent_id: String,
 }
 
-/// Focus inside a repository's dropr task drill-down, entered from
+/// Focus inside a repository's dropr task-list drill-down, entered from
 /// `Selection::Repo` with the INFO pane showing (dropr:475). Task rows are no
 /// longer members of the outer cursor list — `App::selected` stays on the
 /// repository row the whole time this is `Some`, and movement keys are
 /// intercepted (`ui::input::dropr_task_drill::handle_normal`) to walk this
 /// instead. `task` indexes into the same
-/// `ui::summary::dropr_tasks::selectable_tasks` order `Selection::DroprTask`
-/// used to.
+/// `ui::summary::dropr_tasks::selectable_tasks` order `ui::actions`'s
+/// dropr-task modules (walking the list, opening a body, launching it) read
+/// this same list.
+///
+/// Reading one task's full body used to be a second state here
+/// (`DroprTaskFocus::Body`); it is now `Mode::TaskBody`, a dialog drawn over
+/// this list instead of a state that replaces it (dropr:501) — this cursor
+/// never changes while that dialog is open.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DroprTaskFocus {
-    /// Walking the repo's task list; `Enter` opens the task at `task`.
-    List { task: usize },
-    /// Reading one task's full body; the launch key starts the work.
-    Body { task: usize },
+pub(crate) struct DroprTaskFocus {
+    pub(crate) task: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

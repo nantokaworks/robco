@@ -71,13 +71,13 @@ fn select_repo_row(app: &mut App) {
 fn entering_the_task_list_starts_on_the_first_row() {
     let mut app = test_app();
     app.enter_dropr_task_list();
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 0 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 0 }));
 }
 
 #[test]
 fn leaving_the_task_list_clears_focus() {
     let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 2 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 2 });
     app.leave_dropr_task_list();
     assert_eq!(app.dropr_task_focus, None);
 }
@@ -87,16 +87,16 @@ fn moving_the_task_cursor_clamps_to_what_is_listed() {
     let mut app = test_app();
     app.registry.repos = vec![repo_node(vec![task("#1"), task("#2")])];
     select_repo_row(&mut app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     app.move_dropr_task_cursor(-1);
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 0 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 0 }));
 
     app.move_dropr_task_cursor(1);
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 1 }));
 
     app.move_dropr_task_cursor(1);
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 1 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 1 }));
 }
 
 #[test]
@@ -104,29 +104,24 @@ fn opening_a_stale_task_row_does_nothing() {
     let mut app = test_app();
     app.registry.repos = vec![repo_node(vec![task("#1")])];
     select_repo_row(&mut app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 5 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 5 });
 
     app.open_dropr_task_body();
 
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 5 }));
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 5 }));
+    assert!(matches!(app.mode, Mode::Normal));
 }
 
 #[test]
-fn opening_a_listed_task_row_moves_to_its_body() {
+fn opening_a_listed_task_row_opens_the_reading_dialog_without_moving_the_list() {
     let mut app = test_app();
     app.registry.repos = vec![repo_node(vec![task("#1")])];
     select_repo_row(&mut app);
-    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+    app.dropr_task_focus = Some(DroprTaskFocus { task: 0 });
 
     app.open_dropr_task_body();
 
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::Body { task: 0 }));
-}
-
-#[test]
-fn closing_the_body_returns_to_the_list_on_the_same_task() {
-    let mut app = test_app();
-    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 3 });
-    app.close_dropr_task_body();
-    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus::List { task: 3 }));
+    // The list's own focus is untouched — only `mode` changes (dropr:501).
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 0 }));
+    assert!(matches!(app.mode, Mode::TaskBody { task: 0, scroll: 0 }));
 }

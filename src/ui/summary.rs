@@ -24,8 +24,8 @@ use dropr_section::dropr_section;
 use history::history_section;
 use other_prs::other_prs_section;
 
-/// One task's full body — see `dropr_tasks::body`, the drill-down's Level 2
-/// (dropr:475).
+/// One task's full body — see `dropr_tasks::body`, read by the
+/// `Mode::TaskBody` dialog (dropr:501).
 pub(in crate::ui) fn dropr_task_body(
     repo: &RepoNode,
     task_index: usize,

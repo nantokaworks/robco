@@ -1,9 +1,10 @@
 //! The launch step of the dropr task drill-down (dropr:475): `s` from the
-//! task body, or `n` from the task list (dropr:482) — the same launch path
-//! one key sooner, for an operator who already knows which task they want.
-//! Walking the list and opening a body — the steps that get an operator to
-//! either entry point — live in `dropr_task_nav`, split out to keep this
-//! file under the line-count limit.
+//! task-body reading dialog (`Mode::TaskBody`, dropr:501), or `n` from the
+//! task list (dropr:482) — the same launch path one key sooner, for an
+//! operator who already knows which task they want. Walking the list and
+//! opening the reading dialog — the steps that get an operator to either
+//! entry point — live in `dropr_task_nav`, split out to keep this file under
+//! the line-count limit.
 //!
 //! The launch itself replaces PR #373's queued `RuntimeRequest::RunTask` (see
 //! `overseer::runtime_request`, still used by Discord's `!run` and kept for
@@ -21,7 +22,7 @@ use crate::{
     overseer::{exec::COMMAND_TIMEOUT, templates::worker_prompt},
 };
 
-use super::super::{App, DroprTaskFocus, summary::dropr_tasks};
+use super::super::{App, DroprTaskFocus, Mode, summary::dropr_tasks};
 use super::dropr_task_launch::{mark_task_in_progress, resolve_launch_subtasks};
 
 /// Identifies a task claim taken by this drill-down, distinct from the
@@ -30,21 +31,21 @@ use super::dropr_task_launch::{mark_task_in_progress, resolve_launch_subtasks};
 const DIRECT_LAUNCH_AGENT_ID: &str = "robco-ui";
 
 impl App {
-    /// The launch key from the task body: claim the task, then create the
-    /// worker in this process — immediately, the way `n` (new agent) does.
-    pub(in crate::ui) fn launch_dropr_task_from_body(&mut self) {
-        let Some(DroprTaskFocus::Body { task }) = self.dropr_task_focus else {
-            return;
-        };
+    /// The launch key from the task-body reading dialog (`Mode::TaskBody`,
+    /// dropr:501): claim the task, then create the worker in this process —
+    /// immediately, the way `n` (new agent) does. `task` comes straight from
+    /// the mode, which already names the row without needing a
+    /// `DroprTaskFocus` unwrap.
+    pub(in crate::ui) fn launch_dropr_task_from_reading(&mut self, task: usize) {
         self.launch_dropr_task(task);
     }
 
     /// `n` at the list focus level (dropr:482): the same launch path as
-    /// [`Self::launch_dropr_task_from_body`], one key sooner — for an
+    /// [`Self::launch_dropr_task_from_reading`], one key sooner — for an
     /// operator who already knows which task they want and does not need to
     /// read its body first.
     pub(in crate::ui) fn launch_dropr_task_from_list(&mut self) {
-        let Some(DroprTaskFocus::List { task }) = self.dropr_task_focus else {
+        let Some(DroprTaskFocus { task }) = self.dropr_task_focus else {
             return;
         };
         self.launch_dropr_task(task);
@@ -55,6 +56,7 @@ impl App {
     fn launch_dropr_task(&mut self, task: usize) {
         let Some(Selection::Repo(repo)) = self.selected_item() else {
             self.dropr_task_focus = None;
+            self.mode = Mode::Normal;
             return;
         };
         // `visible()` never emits `Selection::Repo(repo)` for an out-of-bounds
@@ -204,6 +206,10 @@ impl App {
                     mark_task_in_progress(&mut repo.dropr_tasks, &task_id);
                 }
                 self.dropr_task_focus = None;
+                // Closes the reading dialog too when the launch key was `s`;
+                // a no-op when it was already `n` from the list, where the
+                // mode is Normal already.
+                self.mode = Mode::Normal;
                 match result {
                     Ok(()) if registered => {
                         self.restore_selection(Some(format!("agent:{new_agent_id}")));

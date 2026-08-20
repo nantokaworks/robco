@@ -15,6 +15,7 @@ use super::{
 };
 
 mod confirm;
+mod dropr_task_body;
 mod dropr_task_drill;
 mod inbox_dismiss;
 mod inbox_respond;
@@ -167,6 +168,10 @@ impl App {
                     self.force_kill(target)?;
                 }
             }
+            // The task-body reading dialog (dropr:501); its own key routing
+            // lives in `dropr_task_body` to keep this file under the
+            // line-count limit.
+            Mode::TaskBody { .. } => dropr_task_body::handle(self, key.code),
             Mode::Help { scroll } => {
                 let height = help::terminal_height();
                 if help::max_scroll(height) == 0 {
