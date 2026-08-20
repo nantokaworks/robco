@@ -20,12 +20,7 @@ pub(super) fn spawn(args: SpawnArgs) -> ToolResult<Value> {
     validate_non_blank("title", &args.title)?;
     let config = Config::load().map_err(exec_err)?;
     let extra_args = if args.autonomous {
-        config
-            .profiles
-            .iter()
-            .find(|profile| profile.name == config.default_program)
-            .map(|profile| profile.autonomous_args.clone())
-            .unwrap_or_default()
+        config.default_program_autonomous_args()
     } else {
         Vec::new()
     };

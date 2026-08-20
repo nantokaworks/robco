@@ -76,7 +76,15 @@ pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode
         return Ok(());
     }
 
-    tmux::new_session(&session, &repo.path, &config.default_program_command(), &[])
+    tmux::new_session(&session, &repo.path, &repo_claude_command(config), &[])
+}
+
+fn repo_claude_command(config: &Config) -> String {
+    launch_command(
+        &config.default_program_command(),
+        None,
+        &config.default_program_autonomous_args(),
+    )
 }
 
 pub fn kill_agent(repo: &RepoNode, agent: &AgentNode, force: bool) -> Result<()> {

@@ -1,5 +1,30 @@
 use super::*;
 use crate::agent::test_support::{agent_titled, repo_named, run_git};
+use crate::config::Profile;
+
+#[test]
+fn repo_claude_command_appends_profile_autonomous_args() {
+    let config = Config::default();
+    assert_eq!(
+        repo_claude_command(&config),
+        "claude '--dangerously-skip-permissions'"
+    );
+}
+
+#[test]
+fn repo_claude_command_is_bare_program_without_autonomous_args() {
+    let config = Config {
+        profiles: vec![Profile {
+            name: "claude".to_string(),
+            program: "claude".to_string(),
+            autonomous_args: Vec::new(),
+            model: None,
+            backend: None,
+        }],
+        ..Config::default()
+    };
+    assert_eq!(repo_claude_command(&config), "claude");
+}
 
 #[test]
 fn relaunch_command_reuses_stored_claude_session_id() {
