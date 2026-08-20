@@ -15,7 +15,7 @@ pub use claim::{ClaimAttempt, TaskClaim, claim_task, release_claim, task_claim};
 pub use dependency::blocking_prerequisite_timeout;
 pub use lineage::{Subtask, fetch_subtasks};
 pub use repo_tasks::{DroprTaskFetch, FETCH_BUDGET, TASK_FETCH_LIMIT};
-pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo};
+pub use workspace::{DroprOverlay, DroprWorkspace, canonical_repo, task_console_url};
 pub use writes::{WriteError, WriteResult};
 pub(crate) use writes::{scribble_create_timeout, task_create_timeout, task_status_update_timeout};
 

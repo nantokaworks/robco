@@ -86,7 +86,7 @@ fn dropr_task_list_focus_advertises_move_open_start_and_back() {
     .to_string();
     assert_eq!(
         line,
-        "[j/k] MOVE [↵] OPEN [n] START [esc] BACK [?] HELP [q] QUIT"
+        "[j/k] MOVE [↵] OPEN [n] START [o] BROWSER [esc] BACK [?] HELP [q] QUIT"
     );
 }
 
@@ -98,7 +98,7 @@ fn dropr_task_body_focus_advertises_start_and_back() {
         Some(DroprTaskFocus::Body { task: 0 }),
     )
     .to_string();
-    assert_eq!(line, "[s] START [esc] BACK [?] HELP [q] QUIT");
+    assert_eq!(line, "[s] START [o] BROWSER [esc] BACK [?] HELP [q] QUIT");
 }
 
 #[test]

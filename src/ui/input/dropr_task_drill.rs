@@ -52,6 +52,13 @@ fn list_key(app: &mut App, code: KeyCode) -> bool {
             app.launch_dropr_task_from_list();
             true
         }
+        // Open the selected task in the browser (dropr:499). `o` is free at
+        // this focus level — `j`/`k`/`h`/`n` are the only other keys it
+        // claims here.
+        KeyCode::Char('o') => {
+            app.open_dropr_task_from_list();
+            true
+        }
         _ => false,
     }
 }
@@ -86,6 +93,13 @@ fn body_key(app: &mut App, code: KeyCode) -> bool {
         // prevent.
         KeyCode::Char('s') => {
             app.launch_dropr_task_from_body();
+            true
+        }
+        // Open the selected task in the browser (dropr:499), the same key
+        // the list uses. `o` is free at this focus level too — `j`/`k`/`h`/
+        // `s`/page-up/page-down are the only other keys it claims here.
+        KeyCode::Char('o') => {
+            app.open_dropr_task_from_body();
             true
         }
         _ => false,

@@ -101,6 +101,23 @@ pub(super) fn parse_workspace_line(line: &str) -> Option<DroprWorkspace> {
     })
 }
 
+/// The dropr console's own web host. Confirmed (dropr:499) by fetching
+/// `https://dropr.sh/` and reading its published JS bundle's route table —
+/// see the dropr:499 decision scribble — not carried over as a guess.
+const CONSOLE_BASE_URL: &str = "https://dropr.sh";
+
+/// The URL a browser can open to show one task, for a repository-linked
+/// workspace. `dropr`'s console routes a single task at
+/// `/{owner}/{repo}/tasks/{task_id}`, recovered the same way as
+/// [`CONSOLE_BASE_URL`] (dropr:499). Reuses [`canonical_repo`]'s own
+/// GitHub-URL parsing rather than a second one, so this answers `None` for
+/// exactly the repos that never get a materialised dropr workspace either.
+pub fn task_console_url(repo_url: &str, task_id: &str) -> Option<String> {
+    let canonical = canonical_repo(repo_url)?;
+    let slug = canonical.strip_prefix("github:")?;
+    Some(format!("{CONSOLE_BASE_URL}/{slug}/tasks/{task_id}"))
+}
+
 pub fn canonical_repo(url: &str) -> Option<String> {
     let url = url.trim().trim_end_matches(".git");
     if let Some(rest) = url.strip_prefix("git@github.com:") {
@@ -131,6 +148,29 @@ mod tests {
         assert_eq!(
             canonical_repo("git@github.com:nantokaworks/dropr.git"),
             Some("github:nantokaworks/dropr".to_string())
+        );
+    }
+
+    #[test]
+    fn builds_a_task_console_url_for_a_github_repo() {
+        assert_eq!(
+            task_console_url(
+                "https://github.com/NantokaWorks/robco.git",
+                "A4xleaedxJXKFasY9HSum"
+            ),
+            Some("https://dropr.sh/nantokaworks/robco/tasks/A4xleaedxJXKFasY9HSum".to_string())
+        );
+        assert_eq!(
+            task_console_url("git@github.com:nantokaworks/dropr.git", "abc123"),
+            Some("https://dropr.sh/nantokaworks/dropr/tasks/abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn refuses_a_task_console_url_for_a_non_github_remote() {
+        assert_eq!(
+            task_console_url("https://gitlab.com/owner/repo.git", "abc123"),
+            None
         );
     }
 

@@ -80,6 +80,7 @@ const DROPR_TASK_LIST_HINTS: Hints = &[
     ("j/k", "move"),
     ("↵", "open"),
     ("n", "start"),
+    ("o", "browser"),
     ("esc", "back"),
     ("?", "help"),
     ("q", "quit"),
@@ -87,6 +88,7 @@ const DROPR_TASK_LIST_HINTS: Hints = &[
 
 const DROPR_TASK_BODY_HINTS: Hints = &[
     ("s", "start"),
+    ("o", "browser"),
     ("esc", "back"),
     ("?", "help"),
     ("q", "quit"),

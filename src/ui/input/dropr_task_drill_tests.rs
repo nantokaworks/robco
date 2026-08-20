@@ -110,6 +110,19 @@ fn list_focus_n_starts_the_launch_path() {
 }
 
 #[test]
+fn list_focus_o_starts_the_open_path() {
+    let mut app = app_with_tasks();
+    app.dropr_task_focus = Some(DroprTaskFocus::List { task: 0 });
+
+    assert!(handle_normal(&mut app, KeyCode::Char('o')));
+    // The fixture's repo has no git remote, so the open action refuses
+    // immediately — this only asserts the key is claimed and routed to the
+    // browser-open path (dropr:499), not the outcome (covered by
+    // `ui::actions::dropr_task_open`'s own tests).
+    assert!(app.message.is_some());
+}
+
+#[test]
 fn body_focus_claims_scroll_and_back_but_not_launch_on_enter() {
     let mut app = app_with_tasks();
     app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 1 });
@@ -132,5 +145,16 @@ fn body_focus_s_starts_the_launch_path() {
     // immediately without reaching the network — this only asserts the key
     // is claimed and routed, not the launch outcome (covered by
     // `ui::actions::dropr_task_drill`'s own tests).
+    assert!(app.message.is_some());
+}
+
+#[test]
+fn body_focus_o_starts_the_open_path() {
+    let mut app = app_with_tasks();
+    app.dropr_task_focus = Some(DroprTaskFocus::Body { task: 0 });
+
+    assert!(handle_normal(&mut app, KeyCode::Char('o')));
+    // Same reasoning as `list_focus_o_starts_the_open_path` above: this only
+    // proves `o` is claimed and routed from the body focus too (dropr:499).
     assert!(app.message.is_some());
 }
