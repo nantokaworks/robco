@@ -50,10 +50,23 @@ pub(super) enum Probe {
 /// Reads whether `entry`'s task still carries an unresolved `blocks`
 /// dependency edge.
 ///
+/// `has_dropr_task` says whether there is a dropr task to ask about at all.
+/// `daemon::observations::adopt_registry_children_from` fills a ledger entry
+/// straight from the agent record when Overseer never dispatched it itself,
+/// and `model::AgentNode::task_number` is `None` for exactly that agent (see
+/// that field's own doc) — such an entry has no dependency edges by
+/// construction, so `false` here answers `Clear` without asking dropr at
+/// all. That is not the same thing as a probe that ran and could not answer:
+/// there being no such task IS the answer, not a response nobody confirmed.
+/// See dropr:496.
+///
 /// Read fresh every pass rather than cached: the edge resolves itself the
 /// moment its prerequisite closes, so a stale answer would hold a pull
 /// request the prerequisite has already cleared.
-pub(super) fn probe(task_id: &str) -> Probe {
+pub(super) fn probe(task_id: &str, has_dropr_task: bool) -> Probe {
+    if !has_dropr_task {
+        return Probe::Clear;
+    }
     match crate::dropr::blocking_prerequisite_timeout(task_id, COMMAND_TIMEOUT) {
         Ok(Some(prerequisite)) => Probe::Blocking(prerequisite.display_id),
         Ok(None) => Probe::Clear,
