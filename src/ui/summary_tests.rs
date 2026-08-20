@@ -233,7 +233,9 @@ fn a_repo_caught_up_with_origin_main_shows_no_drift_line() {
 #[test]
 fn a_detached_primary_checkout_shows_a_warning_through_the_summary() {
     let mut node = repo(None, DroprTaskFetch::default());
-    node.checkout_state = Some(crate::model::CheckoutState::Detached);
+    node.checkout_state = Some(crate::model::CheckoutState::Detached {
+        default_branch: "main".into(),
+    });
 
     let lines = rendered(&node);
 

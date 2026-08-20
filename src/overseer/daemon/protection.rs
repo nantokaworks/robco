@@ -4,9 +4,8 @@
 //! `branches/{branch}/protection` endpoint and the rulesets endpoint
 //! `rules/branches/{branch}`, which returns the rules already merged across every
 //! ruleset that targets the branch. A repository protected only by rulesets answers
-//! `404 Branch not protected` on the classic endpoint, so probing one endpoint alone
-//! reports genuinely protected repositories as unprotected. Both sources are therefore
-//! probed and their facts unioned — GitHub enforces them simultaneously.
+//! `404 Branch not protected` on the classic endpoint, so probing one alone reports
+//! genuinely protected repositories as unprotected — both are probed and unioned.
 
 use std::{
     collections::HashMap,
@@ -38,6 +37,8 @@ pub(super) const NO_PULL_REQUEST_RULE: &str = "no_pull_request_rule";
 pub(super) const NO_REQUIRED_STATUS_CHECKS: &str = "no_required_status_checks";
 pub(super) const PROBE_UNAVAILABLE: &str = "probe_unavailable";
 pub(super) const UNKNOWN_REMOTE: &str = "unknown_remote";
+/// No base branch to probe at all — never a guessed `main` (dropr:503).
+pub(super) const BASE_BRANCH_UNKNOWN: &str = "base_branch_unknown";
 /// The repository's GitHub plan does not expose branch protection at all — every
 /// probe answered `403`, not a timeout or a transient failure. Unlike
 /// `PROBE_UNAVAILABLE`, this is cached: retrying it every pass would keep spending
@@ -66,10 +67,9 @@ impl CacheState {
 
 /// Memoises the last classification of (repository, branch, mode) triples. Loosening
 /// the mode or moving to another base branch is a different question, so it re-probes
-/// rather than reusing an answer given for a stricter one.
-///
-/// Interior-mutable so several repositories' concurrent auto-merge evaluations can
-/// share one `&ProtectionCache`; the mutex guards only the `HashMap`, never `api` below.
+/// rather than reusing an answer given for a stricter one. Interior-mutable so several
+/// repositories' concurrent auto-merge evaluations can share one `&ProtectionCache`;
+/// the mutex guards only the `HashMap`, never `api` below.
 #[derive(Default)]
 pub(super) struct ProtectionCache(Mutex<HashMap<String, (CacheState, Instant)>>);
 
@@ -226,10 +226,9 @@ pub(super) fn unmet_condition(
 }
 
 /// Turns the branch's protection facts, together with what the probes themselves
-/// reported, into the gate's answer. A branch that answered with real (if
-/// insufficient) facts is told the specific rule it is missing; one whose plan cannot
-/// serve the answer at all is told that permanently; a probe that merely failed to
-/// answer is told to retry.
+/// reported, into the gate's answer: a real (if insufficient) fact names the
+/// missing rule, an unsupported plan is told that permanently, and a probe that
+/// simply failed to answer is told to retry.
 fn classify(
     facts: ProtectionFacts,
     mode: ProtectionMode,

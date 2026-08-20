@@ -35,23 +35,45 @@ pub(crate) fn git(repo: &Path, args: &[&str]) {
 pub(crate) struct TestRepo {
     temp: TempDir,
     repo: PathBuf,
+    default_branch: String,
 }
 
 impl TestRepo {
     /// A bare `origin` plus a clone holding one commit on `main`, pushed.
     pub(crate) fn new() -> Self {
+        Self::new_with_default_branch("main")
+    }
+
+    /// Same shape as [`Self::new`], but the bare `origin` (and so
+    /// `refs/remotes/origin/HEAD` in the clone) is cut on `default_branch`
+    /// instead of `main` — for tests that must prove behaviour follows the
+    /// repository's own default branch rather than assuming `main`
+    /// (dropr:503).
+    pub(crate) fn new_with_default_branch(default_branch: &str) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().to_path_buf();
-        git(&root, &["init", "-q", "--bare", "-b", "main", "origin.git"]);
+        git(
+            &root,
+            &["init", "-q", "--bare", "-b", default_branch, "origin.git"],
+        );
         git(&root, &["clone", "-q", "origin.git", "repo"]);
         let repo = Self {
             repo: root.join("repo"),
             temp,
+            default_branch: default_branch.to_string(),
         };
         std::fs::write(repo.path().join("base.txt"), "base").unwrap();
         git(repo.path(), &["add", "base.txt"]);
         git(repo.path(), &["commit", "-qm", "base"]);
-        git(repo.path(), &["push", "-q", "-u", "origin", "main"]);
+        git(repo.path(), &["push", "-q", "-u", "origin", default_branch]);
+        // The bare `origin` had no commits yet at clone time, so `git clone`
+        // could not learn its `HEAD` then — `refs/remotes/origin/HEAD` is
+        // left unset until something resolves it, exactly like a repository
+        // an operator would repair with `git remote set-head origin -a`
+        // (dropr:503). Do that repair here, now that `origin` actually has a
+        // branch, so fixtures answer `git::default_branch` the way a real
+        // clone would have.
+        git(repo.path(), &["remote", "set-head", "origin", "-a"]);
         repo
     }
 
@@ -59,9 +81,10 @@ impl TestRepo {
         &self.repo
     }
 
-    /// Branches off `main` and commits one file. Leaves `HEAD` on the branch.
+    /// Branches off the default branch and commits one file. Leaves `HEAD`
+    /// on the branch.
     pub(crate) fn feature_branch(&self, branch: &str, file: &str) {
-        git(self.path(), &["checkout", "-q", "main"]);
+        git(self.path(), &["checkout", "-q", &self.default_branch]);
         git(self.path(), &["checkout", "-qb", branch]);
         self.write_commit(file, file);
     }
@@ -75,7 +98,7 @@ impl TestRepo {
     /// Checks `branch` out into its own worktree, as a task agent would.
     pub(crate) fn worktree(&self, branch: &str) -> PathBuf {
         let worktree = self.temp.path().join(format!("wt-{branch}"));
-        git(self.path(), &["checkout", "-q", "main"]);
+        git(self.path(), &["checkout", "-q", &self.default_branch]);
         git(
             self.path(),
             &["worktree", "add", "-q", worktree.to_str().unwrap(), branch],
@@ -97,13 +120,13 @@ impl TestRepo {
             git(root, &["clone", "-q", "origin.git", "lander"]);
         }
         git(&lander, &["fetch", "-q", "origin"]);
-        git(&lander, &["checkout", "-q", "main"]);
+        git(&lander, &["checkout", "-q", &self.default_branch]);
         git(
             &lander,
             &["merge", "-q", "--squash", &format!("origin/{branch}")],
         );
         git(&lander, &["commit", "-qm", &format!("squashed {branch}")]);
-        git(&lander, &["push", "-q", "origin", "main"]);
+        git(&lander, &["push", "-q", "origin", &self.default_branch]);
     }
 
     fn write_commit(&self, file: &str, contents: &str) {

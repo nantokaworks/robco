@@ -163,6 +163,34 @@ fn ready_accepts_a_clean_checkout_already_on_the_merged_commit() {
     assert_eq!(ready(repo.path()), Ok(()));
 }
 
+/// dropr:503 — the same acceptance, on a repository whose default branch is
+/// `master`: readiness must follow `origin/HEAD`, not a hardcoded `main`.
+#[test]
+fn ready_accepts_a_clean_checkout_on_a_master_default_repository() {
+    let repo = TestRepo::new_with_default_branch("master");
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    repo.land_squash("task");
+    git(repo.path(), &["checkout", "-q", "master"]);
+    git(repo.path(), &["fetch", "-q", "origin"]);
+    git(repo.path(), &["merge", "-q", "--ff-only", "origin/master"]);
+
+    assert_eq!(ready(repo.path()), Ok(()));
+}
+
+/// A repository with no `origin` at all cannot resolve a default branch, so
+/// readiness must name that explicitly rather than assume `main`.
+#[test]
+fn ready_reports_an_unresolved_default_branch() {
+    let temp = tempfile::tempdir().unwrap();
+    git(temp.path(), &["init", "-q"]);
+
+    assert_eq!(
+        ready(temp.path()),
+        Err("default_branch_unresolved".to_string())
+    );
+}
+
 #[test]
 fn consider_is_silent_for_a_repository_without_the_release_script() {
     let repo = TestRepo::new();

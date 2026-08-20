@@ -1,6 +1,44 @@
 use super::*;
 use crate::agent::env::RecoveredIdentity;
 use crate::agent::test_support::{agent_titled, repo_named};
+use crate::git::test_repo::TestRepo;
+
+fn repo_at(repo: &TestRepo, name: &str) -> RepoNode {
+    let mut node = repo_named(name);
+    node.path = repo.path().to_path_buf();
+    node
+}
+
+/// dropr:503 — a worker's base commit comes from the repository's own
+/// default branch, not a hardcoded `main`.
+#[test]
+fn resolve_base_branch_follows_a_master_default_repository() {
+    let repo = TestRepo::new_with_default_branch("master");
+    assert_eq!(
+        resolve_base_branch(&repo_at(&repo, "myapp")).unwrap(),
+        "master"
+    );
+}
+
+#[test]
+fn resolve_base_branch_follows_the_default_main_fixture() {
+    let repo = TestRepo::new();
+    assert_eq!(
+        resolve_base_branch(&repo_at(&repo, "myapp")).unwrap(),
+        "main"
+    );
+}
+
+/// A repository with no `origin` at all must error rather than guess `main`.
+#[test]
+fn resolve_base_branch_errors_when_origin_head_is_unresolved() {
+    let temp = tempfile::tempdir().unwrap();
+    crate::git::test_repo::git(temp.path(), &["init", "-q"]);
+    let mut node = repo_named("myapp");
+    node.path = temp.path().to_path_buf();
+
+    assert!(resolve_base_branch(&node).is_err());
+}
 
 #[test]
 fn adopt_strips_branch_prefix_to_match_created_session_name() {

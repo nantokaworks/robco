@@ -54,6 +54,10 @@ pub enum Error {
     },
     #[error("worktree has tracked changes: {0}")]
     DirtyWorktree(PathBuf),
+    #[error(
+        "{0}: the repository's default branch could not be resolved; run `git remote set-head origin -a`"
+    )]
+    DefaultBranchUnresolved(PathBuf),
     #[error("child worktrees remain under {0}; remove them first")]
     ChildWorktreesPresent(PathBuf),
     #[error("robco new must run inside a robco agent session (ROBCO_AGENT_ID is not set)")]

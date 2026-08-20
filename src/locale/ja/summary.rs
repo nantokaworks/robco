@@ -39,11 +39,14 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "nested under agent worktree" => "agentのworktree配下にネストされています",
 
         // summary.rs — checkout_branch_warning
-        "HEAD is detached — press c to check out main (clean tree only)" => {
-            "HEADがdetached状態です — cキーでmainをcheckoutできます（作業ツリーがcleanな場合のみ）"
+        "HEAD is detached — press c to check out {} (clean tree only)" => {
+            "HEADがdetached状態です — cキーで{}をcheckoutできます（作業ツリーがcleanな場合のみ）"
         }
-        "on branch {}, not main — press c to check out main (clean tree only)" => {
-            "mainではなくブランチ{}上です — cキーでmainをcheckoutできます（作業ツリーがcleanな場合のみ）"
+        "on branch {}, not {} — press c to check out {} (clean tree only)" => {
+            "ブランチ{}上です（{}ではありません） — cキーで{}をcheckoutできます（作業ツリーがcleanな場合のみ）"
+        }
+        "default branch could not be resolved — run git remote set-head origin -a" => {
+            "default branchを特定できませんでした — git remote set-head origin -aを実行してください"
         }
 
         // summary.rs — main_drift_warning

@@ -36,23 +36,51 @@ fn rendered(checkout_state: Option<CheckoutState>) -> Vec<String> {
 /// `git pull` fails, both invisibly, until this line names the state.
 #[test]
 fn a_detached_primary_checkout_shows_a_warning() {
-    let lines = rendered(Some(CheckoutState::Detached));
+    let lines = rendered(Some(CheckoutState::Detached {
+        default_branch: "main".into(),
+    }));
 
     assert!(lines.iter().any(|line| line.contains("detached")));
 }
 
-/// A primary checkout on a branch other than `main` names that branch.
+/// A primary checkout on a branch other than the default names both.
 #[test]
 fn a_primary_checkout_on_another_branch_names_it() {
-    let lines = rendered(Some(CheckoutState::OtherBranch("wip".into())));
+    let lines = rendered(Some(CheckoutState::OtherBranch {
+        current: "wip".into(),
+        default_branch: "main".into(),
+    }));
 
     assert!(lines.iter().any(|line| line.contains("wip")));
 }
 
-/// On `main`, no checkout-state warning renders at all.
+/// dropr:503 — the same warning follows a repository whose default branch
+/// is `master`, naming `master` rather than a hardcoded `main`.
 #[test]
-fn a_primary_checkout_on_main_shows_no_checkout_warning() {
+fn a_primary_checkout_on_another_branch_names_a_master_default() {
+    let lines = rendered(Some(CheckoutState::OtherBranch {
+        current: "wip".into(),
+        default_branch: "master".into(),
+    }));
+
+    assert!(lines.iter().any(|line| line.contains("wip")));
+    assert!(lines.iter().any(|line| line.contains("master")));
+    assert!(lines.iter().all(|line| !line.contains("main")));
+}
+
+/// On the default branch, no checkout-state warning renders at all.
+#[test]
+fn a_primary_checkout_on_the_default_branch_shows_no_checkout_warning() {
     let lines = rendered(None);
 
     assert!(lines.is_empty());
+}
+
+/// dropr:503 — an unresolved default branch must warn the operator to fix
+/// `origin/HEAD`, never silently assume `main`.
+#[test]
+fn an_unresolved_default_branch_shows_a_warning() {
+    let lines = rendered(Some(CheckoutState::DefaultBranchUnknown));
+
+    assert!(lines.iter().any(|line| line.contains("default branch")));
 }

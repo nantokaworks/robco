@@ -126,6 +126,50 @@ fn already_on_main_is_a_harmless_no_op() {
     );
 }
 
+/// dropr:503 — `c` must check out the repository's own default branch, not
+/// a hardcoded `main`.
+#[test]
+fn checks_out_the_repositorys_own_default_branch_when_it_is_master() {
+    let repo = TestRepo::new_with_default_branch("master");
+    repo.feature_branch("task", "task.txt");
+    let mut app = test_app();
+    app.registry.repos = vec![repo_node(&repo)];
+    select_repo(&mut app);
+
+    app.checkout_main_selected();
+
+    assert_eq!(
+        crate::git::current_branch(repo.path()).unwrap().as_deref(),
+        Some("master")
+    );
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("checked out master")
+    );
+}
+
+/// dropr:503 — a repository with no `origin` at all cannot be checked out
+/// onto a default branch robco has no way to name; it must say so and leave
+/// the checkout untouched, never guess `main`.
+#[test]
+fn refuses_to_guess_when_the_default_branch_is_unresolved() {
+    let temp = tempfile::tempdir().unwrap();
+    crate::git::test_repo::git(temp.path(), &["init", "-q"]);
+    let mut app = test_app();
+    let mut node = repo_node(&TestRepo::new());
+    node.path = temp.path().to_path_buf();
+    app.registry.repos = vec![node];
+    select_repo(&mut app);
+
+    app.checkout_main_selected();
+
+    assert!(
+        app.message
+            .as_ref()
+            .is_some_and(|(message, _)| message.contains("default branch"))
+    );
+}
+
 /// Regression guard for the "never automatically" requirement: the
 /// background probe (`status::refresh_checkout_branch`, run every discovery
 /// tick) only ever reads `HEAD` — it must report the state, not fix it, so a
@@ -140,7 +184,10 @@ fn the_background_probe_never_moves_head() {
 
     assert_eq!(
         node.checkout_state,
-        Some(crate::model::CheckoutState::OtherBranch("task".into()))
+        Some(crate::model::CheckoutState::OtherBranch {
+            current: "task".into(),
+            default_branch: "main".into(),
+        })
     );
     assert_eq!(
         crate::git::current_branch(repo.path()).unwrap().as_deref(),
