@@ -1,8 +1,11 @@
-//! The subtask lookup `dropr_task_drill::launch_dropr_task_from_reading` needs
-//! for its `Close Dropr:` lines (dropr:479).
+//! The subtask lookup a launch needs for its `Close Dropr:` lines
+//! (dropr:479), and the cached-row status flip that follows a launch that
+//! landed (dropr:482).
 //!
 //! Split out of `dropr_task_drill.rs` to keep that file under the 300-line
-//! limit; `resolve_launch_subtasks` has no other caller.
+//! limit. `resolve_launch_subtasks` runs on the launch worker thread
+//! (`dropr_task_worker`, dropr:508); `mark_task_in_progress` runs on the UI
+//! thread when the result comes back. Neither has any other caller.
 
 use std::time::Duration;
 

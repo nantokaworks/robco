@@ -210,6 +210,12 @@ impl App {
                             "merge in progress: {} — wait or ctrl-c to force quit",
                             &[&merging.join(", ")],
                         ));
+                    } else if let Some(launching) = self.launching_task() {
+                        self.show_message(fmt(
+                            self.locale,
+                            "launch in progress: {} — wait or ctrl-c to force quit",
+                            &[&launching],
+                        ));
                     } else if matches!(key.code, KeyCode::Esc) && self.dismiss_merge_outcome() {
                         self.show_message(t(self.locale, "dismissed merge notice"));
                     } else {

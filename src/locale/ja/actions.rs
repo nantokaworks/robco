@@ -40,6 +40,13 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "launched {}, but its repository is no longer registered" => {
             "{} を起動しましたが、そのリポジトリは登録が解除されています"
         }
+        "a launch is already in progress: {}" => "起動処理が既に進行中です: {}",
+        "launching {}…" => "{} を起動中…",
+        "could not launch {}: {}" => "{} を起動できませんでした: {}",
+        "launched {}, but could not save the registry: {}" => {
+            "{} を起動しましたが、レジストリを保存できませんでした: {}"
+        }
+        "launch worker for {} terminated unexpectedly" => "{} の起動ワーカーが予期せず終了しました",
 
         // actions/dropr_task_open.rs
         "this repository has no git remote" => "このリポジトリにはgit remoteがありません",

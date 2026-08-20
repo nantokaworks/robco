@@ -109,6 +109,7 @@ fn run_loop<B: ratatui::backend::Backend>(
         drain_stdout_notifications(notify_rx, app);
         app.drain_merge_events()?;
         app.drain_pr_precheck_events();
+        app.drain_task_launch_events();
         app.drain_clone_events();
 
         if app

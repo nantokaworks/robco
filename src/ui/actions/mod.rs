@@ -12,6 +12,7 @@ mod dropr_task_drill;
 mod dropr_task_launch;
 mod dropr_task_nav;
 mod dropr_task_open;
+pub(super) mod dropr_task_worker;
 pub(super) mod dropr_tasks;
 mod kill;
 mod land;

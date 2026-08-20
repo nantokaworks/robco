@@ -315,6 +315,10 @@ pub struct App {
     /// Keyed the same way so one repository's result cannot overwrite another's.
     merge_outcomes: HashMap<PathBuf, actions::merge::MergeOutcome>,
     pr_precheck_job: Option<actions::pr_precheck::PrPrecheckJob>,
+    /// The dropr task launch currently in flight, if any. One at a time: the
+    /// slot is the guard that stops a second `n` from starting a duplicate
+    /// worker (dropr:508).
+    task_launch_job: Option<actions::dropr_task_worker::TaskLaunchJob>,
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
     background_refresh: BackgroundRefresh,
@@ -405,6 +409,7 @@ impl App {
             merge_jobs: HashMap::new(),
             merge_outcomes: HashMap::new(),
             pr_precheck_job: None,
+            task_launch_job: None,
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
             background_refresh: BackgroundRefresh::new(),
