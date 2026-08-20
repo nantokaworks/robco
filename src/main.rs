@@ -1,4 +1,5 @@
 mod agent;
+mod browser;
 mod cli;
 mod clone;
 mod config;

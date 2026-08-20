@@ -2,8 +2,8 @@
 //! `src/ui/actions/lifecycle.rs`, `src/ui/actions/kill.rs`,
 //! `src/ui/actions/pr.rs`, `src/ui/actions/discord_channels.rs`,
 //! `src/ui/actions/checkout_main.rs`, `src/ui/actions/dropr_task_drill.rs`,
-//! and `src/ui/input/overseer.rs` — the status messages `show_message`
-//! renders after an operator action.
+//! `src/ui/actions/dropr_task_open.rs`, and `src/ui/input/overseer.rs` —
+//! the status messages `show_message` renders after an operator action.
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
@@ -40,6 +40,14 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "launched {}, but its repository is no longer registered" => {
             "{} を起動しましたが、そのリポジトリは登録が解除されています"
         }
+
+        // actions/dropr_task_open.rs
+        "this repository has no git remote" => "このリポジトリにはgit remoteがありません",
+        "could not build a console URL for this repository" => {
+            "このリポジトリのコンソールURLを作成できませんでした"
+        }
+        "opened {} in the browser" => "{} をブラウザで開きました",
+        "could not open the browser for {}: {}" => "{} のブラウザを開けませんでした: {}",
 
         // actions/lifecycle.rs
         "repository changed, not removed" => "リポジトリが変更されたため削除しませんでした",
