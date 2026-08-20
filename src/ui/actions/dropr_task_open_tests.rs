@@ -2,6 +2,7 @@ use std::cell::RefCell;
 
 use super::*;
 use crate::{
+    browser::Opened,
     config::Config,
     dropr::{DroprTaskCandidate, DroprTaskFetch, DroprWorkspace},
     model::RepoNode,
@@ -180,7 +181,7 @@ fn a_listed_github_task_is_launched_at_its_console_url() {
     let seen = RefCell::new(None);
     app.open_dropr_task_with(0, |url| {
         *seen.borrow_mut() = Some(url.to_string());
-        Ok(())
+        Ok(Opened::Launcher)
     });
 
     assert_eq!(
@@ -188,6 +189,27 @@ fn a_listed_github_task_is_launched_at_its_console_url() {
         Some("https://dropr.sh/nantokaworks/robco/tasks/nanoid-1".to_string())
     );
     assert_eq!(message(&app), Some("opened #1 in the browser"));
+}
+
+#[test]
+fn the_clipboard_route_shows_the_url_instead_of_claiming_a_browser_opened() {
+    let mut app = test_app();
+    reading(
+        &mut app,
+        repo_node(
+            Some("https://github.com/nantokaworks/robco.git"),
+            vec![task("#1")],
+        ),
+        0,
+    );
+
+    app.open_dropr_task_with(0, |_url| Ok(Opened::Clipboard));
+
+    assert_eq!(
+        message(&app),
+        Some("copied the URL for #1: https://dropr.sh/nantokaworks/robco/tasks/nanoid-1")
+    );
+    assert!(app.force_redraw);
 }
 
 #[test]
@@ -235,7 +257,7 @@ fn list_focus_a_listed_github_task_is_launched_at_its_console_url() {
     let seen = RefCell::new(None);
     app.open_dropr_task_with(0, |url| {
         *seen.borrow_mut() = Some(url.to_string());
-        Ok(())
+        Ok(Opened::Launcher)
     });
 
     assert_eq!(

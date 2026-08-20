@@ -54,7 +54,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "このリポジトリのコンソールURLを作成できませんでした"
         }
         "opened {} in the browser" => "{} をブラウザで開きました",
-        "could not open the browser for {}: {}" => "{} のブラウザを開けませんでした: {}",
+        "copied the URL for {}: {}" => "{} のURLをコピーしました: {}",
+        "could not open {}: {}" => "{} を開けませんでした: {}",
 
         // actions/lifecycle.rs
         "repository changed, not removed" => "リポジトリが変更されたため削除しませんでした",

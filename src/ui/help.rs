@@ -55,6 +55,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("                 on a task row: open its body in a popup"),
         l("  n              on a task row: start it now, same as s (skip body)"),
         l("  o              on a task row or its body: open the task in a browser"),
+        l("                 over SSH: copies its URL to your clipboard instead"),
         l("  s              on a task body: start the work now (worktree, branch,"),
         l("                 tmux session), claiming it in dropr first"),
         l("  j/k            on a task body: scroll it"),
