@@ -35,16 +35,14 @@ pub(crate) enum RuntimeRequest {
         repo: String,
         at: DateTime<Utc>,
     },
-    /// A one-time operator decision to bypass the autonomy envelope's hard
-    /// stop currently blocking one escalated pull request — granted by
-    /// `mcp::tools::approve`'s fallback when the
-    /// worker's own session that would otherwise receive the decision is no
-    /// longer live to answer into. `target` is the ledger entry's `agent_id`
-    /// or `display_id`, the same two keys `robco_approve` and the Inbox
-    /// already key on. Applying it re-reads the pull request's current head
-    /// rather than trusting one carried on the request, so a request that
-    /// waited out a busy drain still names the revision the merge pass is
-    /// about to see, not one taken at request time.
+    /// A one-time operator merge request — granted by `mcp::tools::approve`'s
+    /// fallback when the worker's own session that would otherwise receive
+    /// the decision is no longer live to answer into. `target` is the ledger
+    /// entry's `agent_id` or `display_id`, the same two keys `robco_approve`
+    /// and the Inbox already key on. Applying it re-reads the pull request's
+    /// current head rather than trusting one carried on the request, so a
+    /// request that waited out a busy drain still names the revision the
+    /// merge pass is about to see, not one taken at request time.
     OperatorMergeOverride {
         source: String,
         target: String,
@@ -219,7 +217,7 @@ pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest) {
 }
 
 /// Finds the ledger entry `target` names (by `agent_id` or `display_id`) and
-/// records a bypass scoped to its pull request's current head.
+/// records a merge request scoped to its pull request's current head.
 ///
 /// Silently a no-op when the entry is gone, carries no pull request yet, or
 /// GitHub cannot be read right now — an operator override that missed its

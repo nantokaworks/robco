@@ -191,11 +191,6 @@ fn stuck_reasons(
     {
         reasons.push(warning.to_string());
     }
-    if config.auto_merge
-        && let Some(warning) = config.autonomy_level.envelope_warning()
-    {
-        reasons.push(warning.to_string());
-    }
     if let Some(warning) = corrupt_lines_warning(corrupt_lines) {
         reasons.push(warning);
     }

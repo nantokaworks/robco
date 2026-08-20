@@ -44,7 +44,6 @@ pub(super) fn auto_merge_pass(
     }
     let started = Instant::now();
     let registry = Registry::load()?;
-    let consecutive_failures = ledger.counters.consecutive_failures;
     // Merges are serialised per repository: a merge advances the base and leaves every
     // other pull request of that repository behind, so their reads from earlier in this
     // pass no longer describe a mergeable branch, and the primary checkout's local main
@@ -97,7 +96,6 @@ pub(super) fn auto_merge_pass(
             config,
             cache,
             &registry,
-            consecutive_failures,
             max_rechecks,
             max_settle_passes,
         )

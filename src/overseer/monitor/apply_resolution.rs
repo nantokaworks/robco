@@ -25,9 +25,9 @@ use super::{Action, LedgerEntry, LedgerPhase, Observations};
 /// is left for a human exactly as it always was.
 ///
 /// Also gated on `entry.worker_escalated`. `LedgerPhase::Escalated` is shared
-/// with the merge subsystem's own safety-valve escalations — an
-/// autonomy-envelope hard stop, an exhausted branch-update or recovery
-/// budget, a pull request closed without merging — whose worktree and tmux session stay
+/// with the merge subsystem's own safety-valve escalations — an exhausted
+/// hold, branch-update, or recovery budget, a pull request closed without
+/// merging — whose worktree and tmux session stay
 /// alive exactly like a worker-blocked entry's do (`monitor::reconcile_entry`
 /// keeps cleanup pending until `Merged`), so the same three signals fire for
 /// them too. None of the three says anything about whether the specific

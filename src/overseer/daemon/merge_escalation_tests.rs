@@ -68,7 +68,7 @@ fn reasons_outside_the_vocabulary_notify_once_per_reason_and_head() {
     for reason in [
         "some_unrecognised_code",
         "a free-text escalation reason",
-        "autonomy_envelope",
+        "merge_request_stale",
         "behind_update_cap_reached",
         "worker blocked",
         "task_escalated",

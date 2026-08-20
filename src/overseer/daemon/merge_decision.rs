@@ -1,7 +1,7 @@
 //! How one pull request's turn through the auto-merge gate is named and recorded.
 //!
 //! The gate has many exits — a failed read, an unprotected base, a red check, a
-//! non-mergeable state, an autonomy-envelope escalation, a refused merge — and
+//! non-mergeable state, a stale request, a refused merge — and
 //! two readers care which one it took: `decisions.jsonl`, and the
 //! merge-recovery step that decides whether the failure is the owning
 //! worker's to fix. Naming every exit in one place is what lets both read the
@@ -28,9 +28,9 @@ pub(super) enum Outcome {
         head: String,
         base: String,
     },
-    /// Everything this pull request needed was done — the gate cleared, the
-    /// autonomy envelope allowed — but an earlier merge into the same
-    /// repository has not settled, so the merge itself waits. Kept apart from
+    /// Everything this pull request needed was done — the gate cleared — but
+    /// an earlier merge into the same repository has not settled, so the
+    /// merge itself waits. Kept apart from
     /// a [`Halt`] because it carries no budget: waiting for the repository's
     /// own post-merge fast-forward is the expected steady state, not a
     /// condition to escalate out of.

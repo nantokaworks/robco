@@ -11,12 +11,12 @@
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
-        // table::merge::EXACT — "autonomy_envelope"
-        "the autonomy envelope held this back for an operator's own decision" => {
-            "autonomy envelopeが、operator自身の判断のためにこれを保留しました"
+        // table::merge::EXACT — "merge_request_stale"
+        "the operator's merge request was for an older revision of this pull request, so the gate dropped it and is carrying no merge for it now" => {
+            "operatorのmerge requestは古いrevision向けだったため、gateはそれを破棄し、現在mergeを保留していません"
         }
-        "merge it by hand (`m` on the agent row), or raise it with `robco overseer autonomy <level>`" => {
-            "手動でmergeする（agent行で`m`）か、`robco overseer autonomy <level>`でautonomyレベルを引き上げてください"
+        "press `m` on the agent row again to request the merge for the new revision" => {
+            "agent行で再度`m`を押し、新しいrevisionのmergeをrequestしてください"
         }
 
         // table::merge::EXACT — "checks_waiting"

@@ -28,7 +28,7 @@ use inbox::clear_inbox;
 pub(crate) use service::write_service_plist;
 use service::{ServiceState, StopOutcome, install_service, service_state};
 pub(crate) use settings::set_runtime;
-use settings::{autonomy_level, notify_channel, protection_mode, set};
+use settings::{notify_channel, protection_mode, set};
 use status::status;
 
 #[cfg(target_os = "macos")]
@@ -49,7 +49,6 @@ pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
             notify_channel(if args.clear { None } else { args.channel_id })
         }
         OverseerCommand::Protection(args) => protection_mode(args.mode),
-        OverseerCommand::Autonomy(args) => autonomy_level(args.level),
         OverseerCommand::Panic => panic_stop(),
         OverseerCommand::ClearInbox => clear_inbox(),
         OverseerCommand::InstallService => install_service(),

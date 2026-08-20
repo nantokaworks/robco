@@ -67,7 +67,6 @@ pub(super) fn run(
     config: &Config,
     cache: &ProtectionCache,
     registry: &Registry,
-    consecutive_failures: u32,
     max_rechecks: u32,
     max_settle_passes: u32,
 ) -> Result<RepoOutcome> {
@@ -85,15 +84,28 @@ pub(super) fn run(
         // — most of all on a pass that clears the gate and only waits on a
         // judgment, which arrives once and is not a condition to re-check.
         let recheck = merge_hold_recheck::due(entry, max_rechecks);
-        // An operator-granted bypass earns its own look even when the hold-cap
-        // budget would not otherwise grant one — the autonomy envelope's own
-        // hard stop never enters that budget, so without this an
-        // envelope-escalated entry with a pending override would sit parked
+        // An operator-granted override earns its own look even when the
+        // hold-cap budget would not otherwise grant one — a live
+        // `operator_override` never enters that budget on its own, so
+        // without this an escalated entry carrying one would sit parked
         // forever the same way it does without one. See
         // `merge_allow::take_operator_override`.
         let reconsidering =
             entry.phase == LedgerPhase::Escalated && (recheck || entry.operator_override.is_some());
         if entry.phase != LedgerPhase::PrOpened && !reconsidering {
+            continue;
+        }
+        // dropr:500: only a pull request the operator actually asked about —
+        // a live `merge_approval` (TUI `m`, Discord `!merge`) or
+        // `operator_override` (`robco_approve`'s no-live-session fallback) —
+        // is ever looked at. Nothing here yet for a `PrOpened` entry with
+        // neither: no gate, no management check, no decision-log entry.
+        // `reconsidering` above already proves a request existed for an
+        // escalated entry reaching this point.
+        if entry.phase == LedgerPhase::PrOpened
+            && entry.merge_approval.is_none()
+            && entry.operator_override.is_none()
+        {
             continue;
         }
         // The management check is not the phase check. An entry the phase check
@@ -152,16 +164,7 @@ pub(super) fn run(
             continue;
         };
         let phase_before = entry.phase;
-        let outcome = evaluate(
-            entry,
-            &url,
-            config,
-            cache,
-            registry,
-            consecutive_failures,
-            &mut heads,
-            settling,
-        )?;
+        let outcome = evaluate(entry, &url, config, cache, registry, &mut heads, settling)?;
         match outcome {
             Outcome::Merged => {
                 merged = true;

@@ -25,7 +25,7 @@ fn item(target_id: &str, detail: &str, facts: Option<PrFacts>) -> InboxItem {
 fn a_row_with_facts_carries_its_title_size_and_failed_checks() {
     let items = vec![item(
         "#159",
-        "autonomy_envelope",
+        "checks_not_green",
         Some(PrFacts {
             title: "Add merge approval queue".into(),
             files_changed: 53,
@@ -38,7 +38,7 @@ fn a_row_with_facts_carries_its_title_size_and_failed_checks() {
 
     assert_eq!(cases.len(), 1);
     assert_eq!(cases[0].id, "#159");
-    assert_eq!(cases[0].reason, "autonomy_envelope");
+    assert_eq!(cases[0].reason, "checks_not_green");
     assert_eq!(
         cases[0].pr_title.as_deref(),
         Some("Add merge approval queue")

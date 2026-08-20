@@ -1,141 +1,73 @@
-//! Whether the autonomy envelope allows one pull request the deterministic
-//! gate cleared to merge.
+//! Confirming that the pull request the deterministic gate just cleared is
+//! still the one an operator's live request named (dropr:500).
 //!
-//! Split out to keep the caller under its size limit: the envelope check and
-//! the operator-bypass handling are one cohesive unit that
-//! `merge_evaluate::evaluate` only needs to invoke, not inline.
+//! `merge_repo_pass::run` only ever reaches `merge_evaluate::evaluate` for an
+//! entry that already carries a live request (`merge_approval` or
+//! `operator_override`), so by the time this module runs, some request
+//! exists. What is left to confirm is that it still names the pull request's
+//! *current* head: a worker can push a fix after the operator approved an
+//! older revision, and that push must earn its own request rather than ride
+//! on one granted for a head it has since moved past.
 
 use serde_json::Value;
 
 use super::merge_decision::{Halt, log};
 use crate::{
     Result,
-    config::Config,
-    overseer::{
-        autonomy::{ChangeFacts, Decision, merge_envelope_decision},
-        ledger::LedgerEntry,
-        logging::DecisionKind,
-    },
+    overseer::{ledger::LedgerEntry, logging::DecisionKind},
 };
 
-/// What the autonomy envelope said about a pull request the deterministic
-/// gate cleared.
+/// Whether a live request still covers the pull request's current head.
 pub(super) enum Judgment {
     Allow,
-    /// The autonomy envelope stopped the merge under this reason.
+    /// No live request names the current head.
     Halt(Halt),
 }
 
-pub(super) fn change_facts(value: &Value, consecutive_failures: u32) -> ChangeFacts {
-    let files = value.get("files").and_then(Value::as_array);
-    let additions = value.get("additions").and_then(Value::as_u64);
-    let deletions = value.get("deletions").and_then(Value::as_u64);
-    let changed = value.get("changedFiles").and_then(Value::as_u64);
-    let paths = files
-        .into_iter()
-        .flatten()
-        .filter_map(|file| file.get("path").and_then(Value::as_str))
-        .collect::<Vec<_>>();
-    let files_known = files.is_some_and(|items| {
-        items
-            .iter()
-            .all(|file| file.get("path").and_then(Value::as_str).is_some())
-            && changed.is_some_and(|count| count == paths.len() as u64)
-    });
-    let only_docs_or_tests = !paths.is_empty()
-        && paths.iter().all(|path| {
-            path.starts_with("docs/")
-                || path.starts_with("tests/")
-                || path.contains("/tests/")
-                || path.ends_with(".md")
-                || path.ends_with("_test.rs")
-                || path.ends_with("_tests.rs")
-        });
-    let contains = |needles: &[&str]| {
-        paths
-            .iter()
-            .any(|path| needles.iter().any(|needle| path.contains(needle)))
-    };
-    ChangeFacts {
-        facts_known: additions.is_some() && deletions.is_some() && changed.is_some() && files_known,
-        files_changed: changed.unwrap_or(0).min(u32::MAX as u64) as u32,
-        lines_changed: additions
-            .unwrap_or(0)
-            .saturating_add(deletions.unwrap_or(0))
-            .min(u32::MAX as u64) as u32,
-        only_docs_or_tests,
-        touches_security: contains(&["security", "auth", "permission", "secret"]),
-        touches_dependencies: contains(&["Cargo.toml", "Cargo.lock", "package.json", "lockfile"]),
-        touches_prod_or_ci: contains(&[".github/", "Dockerfile", "deploy", "production"]),
-        consecutive_failures,
-        ..ChangeFacts::default()
-    }
-}
-
-/// Whether the autonomy envelope allows `entry`'s pull request to merge, now
-/// that the deterministic gate has cleared it.
-pub(super) fn merge_allows(
-    entry: &mut LedgerEntry,
-    value: &Value,
-    config: &Config,
-    consecutive_failures: u32,
-) -> Result<Judgment> {
-    let facts = change_facts(value, consecutive_failures);
+/// Whether `entry`'s pull request is still covered by the request that let
+/// it reach the gate, now that the deterministic gate has cleared it.
+pub(super) fn confirm_requested(entry: &mut LedgerEntry, value: &Value) -> Result<Judgment> {
     let head = crate::overseer::daemon::pull_request::head_sha(value);
-    if !matches!(
-        merge_envelope_decision(true, true, &facts, &config.overseer),
-        Decision::Escalate(_)
-    ) {
+    if take_operator_override(entry, head)? || take_merge_approval(entry, head)? {
         return Ok(Judgment::Allow);
     }
-    if take_operator_override(entry, head, "autonomy_envelope")?
-        || take_merge_approval(entry, head)?
-    {
-        return Ok(Judgment::Allow);
-    }
-    Ok(Judgment::Halt(Halt::escalate("autonomy_envelope")))
+    // Reachable only when both requests were stale on the same pass — every
+    // other case is caught by `merge_repo_pass::run`'s own request check
+    // before the gate ever runs. `Halt::skip` keeps this out of the hold
+    // budget: there is nothing here to reconsider until the operator asks
+    // again.
+    Ok(Judgment::Halt(Halt::skip("merge_request_stale")))
 }
 
 /// Consumes `entry.operator_override` if it is still live and its head
-/// matches the pull request's current one, logging the bypass under what it
-/// bypassed.
+/// matches the pull request's current one.
 ///
-/// Matching on the exact head is what keeps the bypass scoped to the
+/// Matching on the exact head is what keeps the request scoped to the
 /// revision the operator actually approved (see `ledger::OperatorOverride`):
 /// a later push presents a head the operator never saw, and that revision
-/// must clear the gate — or earn its own override — on its own. Taken
-/// (cleared) either way, matched or not: an override granted for a head this
-/// pull request has since moved past is spent, not saved for a revision it
-/// was never granted for.
-pub(super) fn take_operator_override(
-    entry: &mut LedgerEntry,
-    head: &str,
-    bypassed: &str,
-) -> Result<bool> {
+/// must earn its own request. Taken (cleared) either way, matched or not: a
+/// request granted for a head this pull request has since moved past is
+/// spent, not saved for a revision it was never granted for.
+pub(super) fn take_operator_override(entry: &mut LedgerEntry, head: &str) -> Result<bool> {
     let Some(granted) = entry.operator_override.take() else {
         return Ok(false);
     };
     if granted.head != head {
         return Ok(false);
     }
-    log(
-        entry,
-        DecisionKind::Merge,
-        &format!("operator_override:{bypassed}"),
-        head,
-    )?;
+    log(entry, DecisionKind::Merge, "operator_override", head)?;
     Ok(true)
 }
 
 /// Consumes `entry.merge_approval` if it is still live and its head matches
-/// the pull request's current one — the approval Discord's `!merge` queued
-/// (see `discord::ledger_requests::LedgerRequest::Approve`). This is the
-/// bypass an entry's own reconsideration reaches this arm to spend: the
-/// approval also reset `merge_hold_recheck`
+/// the pull request's current one — the approval the TUI `m` key or
+/// Discord's `!merge` queued (see
+/// `discord::ledger_requests::LedgerRequest::Approve`). This is the request
+/// an entry's own reconsideration reaches this arm to spend: the approval
+/// also reset `merge_hold_recheck`
 /// (`discord::ledger_requests::record_approval`), which is what let this
 /// entry's escalated phase be looked at again in the first place.
 ///
-/// Only the autonomy envelope's decision to escalate is ever bypassed here.
 /// Taken (cleared) either way, matched or not: a head that no longer matches
 /// means the worker pushed after the operator approved, and the drop is
 /// recorded so it does not look, later, like a merge that should already
@@ -153,12 +85,7 @@ pub(super) fn take_merge_approval(entry: &mut LedgerEntry, head: &str) -> Result
         )?;
         return Ok(false);
     }
-    log(
-        entry,
-        DecisionKind::Merge,
-        "merge_approval:autonomy_envelope",
-        head,
-    )?;
+    log(entry, DecisionKind::Merge, "merge_approval", head)?;
     Ok(true)
 }
 

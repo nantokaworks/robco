@@ -12,7 +12,7 @@
 //! opinion about, and defaults every other unknown reason to `Review`. A
 //! table entry is worth adding only when the generic wording would be worse
 //! than useless, or when `classify` has no opinion at all (`checks_waiting`,
-//! `autonomy_envelope`, the circuit family).
+//! the circuit family).
 
 use super::Remedy;
 

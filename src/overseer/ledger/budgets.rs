@@ -95,10 +95,9 @@ pub struct MergeSettling {
     pub passes_held: u32,
 }
 
-/// A one-time operator decision to bypass the autonomy envelope's hard stop
-/// currently blocking a pull request — granted through
+/// A one-time operator merge request — granted through
 /// `overseer::runtime_request::RuntimeRequest::OperatorMergeOverride` when the
-/// worker's own tmux session is no longer live to answer a fix into (see
+/// worker's own tmux session is no longer live to answer into (see
 /// `mcp::tools::approve`'s fallback). Scoped to the head the operator saw:
 /// `daemon::merge_allow` consumes it only when the pull request's current
 /// head still matches, and clears it either way once consumed, so a later,
@@ -123,8 +122,10 @@ pub struct OperatorOverride {
 /// recorded in `decisions.jsonl`, because a silently dropped approval looks to
 /// the operator like a merge that should already have happened.
 ///
-/// Deliberately narrower than [`OperatorOverride`]: `daemon::merge_allow`
-/// consumes it only to satisfy the autonomy envelope's decision to escalate.
+/// Both this and [`OperatorOverride`] carry an operator's own request; they
+/// stay two fields because they are queued from different channels (the TUI
+/// or Discord, versus `robco_approve`'s no-live-session fallback) rather than
+/// because they mean different things to the gate.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MergeApproval {
     pub head: String,

@@ -29,9 +29,9 @@ fn consumed(planned: Planned) -> (usize, Vec<Notification>) {
 #[test]
 fn a_small_escalation_burst_renders_individual_notifications() {
     let entries = vec![
-        escalation("task-a", "autonomy_envelope"),
+        escalation("task-a", "checks_not_green"),
         escalation("task-b", "missing_pr_url"),
-        escalation("task-a", "autonomy_envelope"),
+        escalation("task-a", "checks_not_green"),
     ];
     let (count, notifications) = consumed(next_notification(
         &DiscordConfig::default(),
@@ -53,7 +53,7 @@ fn a_small_escalation_burst_renders_individual_notifications() {
 #[test]
 fn three_distinct_alerts_coalesce_into_one_digest() {
     let entries = vec![
-        escalation("task-a", "autonomy_envelope"),
+        escalation("task-a", "checks_not_green"),
         escalation("task-b", "missing_pr_url"),
         escalation("task-c", "pr_closed_unmerged"),
     ];

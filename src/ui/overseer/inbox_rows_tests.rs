@@ -10,8 +10,8 @@ use crate::{
 /// A reason far wider than any sidebar row, so the assertion that the pane
 /// carries it in full is not satisfied by a lucky trim.
 const LONG_REASON: &str = "merge blocked: the base branch has no required status checks \
-                           and the diff touches CI configuration, which the conservative \
-                           autonomy level always escalates";
+                           and the diff touches CI configuration, which no reviewer has \
+                           looked at yet";
 
 fn item(kind: InboxKind, target_id: &str, session: Option<&str>) -> InboxItem {
     InboxItem {
@@ -87,13 +87,13 @@ fn the_category_expands_straight_into_item_rows() {
 
 #[test]
 fn the_category_numerator_equals_the_non_watch_rendered_rows() {
-    // Mixed remedies: `autonomy_envelope` resolves to `Merge` regardless of
+    // Mixed remedies: `merge_request_stale` resolves to `Merge` regardless of
     // session, `checks_waiting` resolves to `Watch`, and a table-known reason
     // with a live session stays `Answer` — two of the three are actionable.
     let mut watching = item(InboxKind::Escalation, "#1", None);
     watching.detail = "checks_waiting".into();
     let mut merge_by_hand = item(InboxKind::Escalation, "#2", None);
-    merge_by_hand.detail = "autonomy_envelope".into();
+    merge_by_hand.detail = "merge_request_stale".into();
     let mut answerable = item(InboxKind::Escalation, "agent-1", Some("robco-agent-1"));
     answerable.detail = "checks_not_green".into();
     let app = inbox_app(vec![watching, merge_by_hand, answerable]);

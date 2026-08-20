@@ -92,8 +92,8 @@ impl ReviewPass {
     }
 
     /// Reviewer calls spent today, against `daily_review_budget`. Reported
-    /// separately from the autonomy envelope's own budget so an operator can
-    /// see which surface is spending.
+    /// separately from `daily_llm_budget` so an operator can see which
+    /// surface is spending.
     pub fn calls_today(&self) -> u32 {
         self.counter.count_today()
     }

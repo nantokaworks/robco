@@ -17,8 +17,8 @@
 //!   free reconsideration passes. Something may still look again, so this
 //!   notifies only once it has sat unresolved past [`STUCK_AFTER`].
 //!
-//! Every other escalation reason (the autonomy envelope, a branch-update cap)
-//! is outside this vocabulary — none of them name a
+//! Every other escalation reason (a branch-update cap, an unprotected base) is
+//! outside this vocabulary — none of them name a
 //! condition this module's own recheck/recovery budgets track. Left
 //! completely unmanaged, an entry the merge-hold recheck loop keeps
 //! reconsidering for free (see `merge_hold_recheck`'s module doc) can hit one

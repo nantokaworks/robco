@@ -3,12 +3,12 @@
 //! Split out of `merge` so that file holds the *pass* — which entries are
 //! candidates, what each per-repository barrier says, and what an outcome does
 //! to the ledger — while this one holds the sequence a single pull request runs
-//! through: read, conclusion, dependency, gate, autonomy envelope, merge.
-//! `merge_gate` already holds the read-only middle of that sequence for the
-//! same reason.
+//! through: read, conclusion, dependency, gate, requested-head confirmation,
+//! merge. `merge_gate` already holds the read-only middle of that sequence for
+//! the same reason.
 
 use super::{
-    merge_allow::{Judgment, merge_allows},
+    merge_allow::{self, Judgment},
     merge_apply::merge_now,
     merge_decision::{self, Halt, Outcome},
     merge_dependency, merge_gate, merge_queue, pr_facts,
@@ -18,23 +18,25 @@ use super::{
 use crate::{Result, config::Config, overseer::ledger::LedgerEntry, registry::Registry};
 
 /// Runs one pull request through the gate: read, conclusion, protection, merge
-/// state, checks, merge state queue, autonomy envelope, merge. Every non-merge
-/// exit names itself, so the caller has one place to record the decision and
-/// one place to decide whether the failure is the owning worker's to fix.
+/// state, checks, merge state queue, requested-head confirmation, merge. Every
+/// non-merge exit names itself, so the caller has one place to record the
+/// decision and one place to decide whether the failure is the owning worker's
+/// to fix.
 ///
 /// `settling` names a repository whose own last merge has not landed in the
 /// primary worktree yet. It stops the merge and nothing else: every step before
 /// the merge either reads GitHub or updates a branch on GitHub's side, and those
 /// are exactly the steps the pull request now at the head of the queue has to
 /// get through before it can merge at all.
-#[allow(clippy::too_many_arguments)]
+///
+/// Only ever called for an entry `merge_repo_pass::run` already confirmed
+/// carries a live request (dropr:500) — see that module's own top-level check.
 pub(super) fn evaluate(
     entry: &mut LedgerEntry,
     url: &str,
     config: &Config,
     cache: &ProtectionCache,
     registry: &Registry,
-    consecutive_failures: u32,
     heads: &mut merge_queue::Heads,
     settling: bool,
 ) -> Result<Outcome> {
@@ -63,12 +65,12 @@ pub(super) fn evaluate(
     }
     // Every step before this one either reads GitHub or updates a branch on
     // GitHub's side, and none of them merges. The repository's own settling
-    // wait stops here, before the autonomy envelope and the merge itself —
+    // wait stops here, before the request confirmation and the merge itself —
     // there is nothing left to overlap it with.
     if settling {
         return Ok(Outcome::Settling);
     }
-    match merge_allows(entry, &value, config, consecutive_failures)? {
+    match merge_allow::confirm_requested(entry, &value)? {
         Judgment::Allow => {}
         Judgment::Halt(halt) => return Ok(halt.on(&head, &base)),
     }

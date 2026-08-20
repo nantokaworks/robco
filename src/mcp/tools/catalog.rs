@@ -105,11 +105,10 @@ pub fn list_tools() -> Value {
         tool_with_output(
             "robco_approve",
             "Approve an agent confirmation prompt. If the agent has no live session \
-             (e.g. it was killed), instead grants a one-time bypass for the \
-             autonomy-envelope hard stop currently blocking its pull request, for the \
-             merge pass to pick up on its next tick — this fallback requires confirm: \
-             true, the same way robco_merge does, since it lets the merge pass skip \
-             the envelope's own hard stop rather than answer a live prompt.",
+             (e.g. it was killed), instead requests a merge for its pull request, for \
+             the merge pass to pick up on its next tick — this fallback requires \
+             confirm: true, the same way robco_merge does, since it drives a merge \
+             through the daemon rather than answer a live prompt.",
             json!({
                 "type": "object",
                 "properties": {

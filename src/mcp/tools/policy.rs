@@ -41,7 +41,6 @@ fn policy_with(
     Ok(json!({
         "auto_merge": config.auto_merge,
         "protection_mode": config.protection_mode.label(),
-        "autonomy_level": config.autonomy_level,
         "daily_llm_budget": config.daily_llm_budget,
         "daemon_alive": daemon_alive,
     }))
@@ -59,7 +58,6 @@ mod tests {
         let first = policy_with(
             || {
                 let mut config = Config::default();
-                config.overseer.autonomy_level = crate::overseer::autonomy::AutonomyLevel::FullAuto;
                 config.overseer.daily_llm_budget = 17;
                 Ok(config)
             },
@@ -68,7 +66,6 @@ mod tests {
         )
         .unwrap();
         let second = policy_with(|| Ok(Config::default()), &heartbeat, true).unwrap();
-        assert_eq!(first["autonomy_level"], "full_auto");
         assert_eq!(first["daily_llm_budget"], 17);
         assert_eq!(second["daemon_alive"], true);
 

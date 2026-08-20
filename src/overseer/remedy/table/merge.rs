@@ -4,17 +4,16 @@ use crate::overseer::remedy::{Move, Remedy};
 
 pub(super) const EXACT: &[(&str, Remedy)] = &[
     (
-        // `daemon::merge_allow::merge_allows` — the configured `autonomy_level`
-        // escalated this change rather than clearing it. There is no worker
-        // fix for a policy line, so this is the operator's call to make,
-        // either once by hand or by moving the line itself.
-        "autonomy_envelope",
+        // `daemon::merge_allow::confirm_requested` — the operator's merge
+        // request no longer matches the pull request's current head (a
+        // worker pushed after the operator pressed `m`), so the gate is not
+        // carrying a merge for it any more.
+        "merge_request_stale",
         Remedy {
             step: Move::Merge,
-            means: "this change is outside what `autonomy_level` lets the machine merge \
-                    on its own, so a person has to decide",
-            next: "merge it by hand (`m` on the agent row), or raise it with \
-                   `robco overseer autonomy <level>`",
+            means: "the operator's merge request was for an older revision of this pull \
+                    request, so the gate dropped it and is carrying no merge for it now",
+            next: "press `m` on the agent row again to request the merge for the new revision",
         },
     ),
     (

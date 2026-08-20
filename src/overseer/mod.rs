@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use crate::{Result, config::Config, tmux};
 
-pub mod autonomy;
 pub mod command;
 pub mod config;
 pub mod daemon;
@@ -65,11 +64,6 @@ pub fn ensure_control_session(config: &Config, cwd: &Path) -> Result<String> {
     }
     Ok(session)
 }
-
-/// Shown while the merge envelope runs under `full_auto`. It names the risks the
-/// widened level stops escalating, so the reader can tell a deliberately widened
-/// envelope from a gate that is failing to hold.
-pub const FULL_AUTO_ENVELOPE_HINT: &str = "autonomy is full_auto — the merge envelope no longer escalates ambiguous requirements, dependency bumps, large diffs, or prod/CI-config changes; only the hard stops (destructive, security, repeated failures, budget, external side effects) still hold.";
 
 pub fn overseer_home() -> Result<PathBuf> {
     migrate_overseer_home(&crate::config::robco_dir()?)

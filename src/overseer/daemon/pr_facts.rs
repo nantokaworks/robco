@@ -2,12 +2,9 @@
 //! gate already read — the title, size, and failing check an Inbox row shows
 //! beside its static guidance (dropr:461).
 //!
-//! `additions` / `deletions` / `changedFiles` are the same fields
-//! `merge_allow::change_facts` parses for the autonomy envelope; this module
-//! exists apart from it because `ChangeFacts` carries decision inputs
-//! (`only_docs_or_tests`, `touches_security`, ...) an Inbox row has no use
-//! for, and adding a display concern to a struct `autonomy::classify` reasons
-//! over would blur what that struct is for.
+//! `additions` / `deletions` / `changedFiles` are read here purely for
+//! display — this module carries no decision logic of its own, only the
+//! facts an Inbox row shows.
 
 use serde_json::Value;
 
