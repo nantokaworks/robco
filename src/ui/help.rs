@@ -3,30 +3,30 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 75;
-
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
     vec![
         l("Navigation"),
         l("  j/k or arrows  move selection; OVERSEER rows open local control info"),
-        l("  h/l            collapse or expand repo or OVERSEER category"),
+        l("  h/l            collapse or expand a repo, category, or section"),
         l("  shift-up/down  on a repo row: move it among its sibling repos"),
-        l("  tab/shift-tab  cycle claude / diff / terminal view"),
+        l("  tab/shift-tab  cycle the row's preview tabs (info/claude/diff/term)"),
+        l("  pgup/pgdn      scroll the preview pane"),
         Line::from(""),
         l("Sessions"),
         l("  n              new agent under selected repo (title | initial prompt)"),
         l("  enter          attach Claude/terminal (agent shell or main worktree)"),
         l("                 on OVERSEER: attach the control AI, creating it if absent"),
+        l("                 on a section header: fold or unfold that section"),
         l("  i              on the OVERSEER control AI row: send it an instruction"),
         l("  ctrl-q         return from attached tmux session"),
         l("  r              on a repo row: reload dropr tasks; else restart agent"),
-        l("  x              remove selected agent worktree or pinned repo"),
+        l("  x              remove an agent worktree, pinned repo, or orphan session"),
         l("  g              on a repo row: rename its local directory"),
-        l("  S              stop dispatch (kill workers); off: start dispatch"),
-        l("  R              reset dispatch circuit (open) or start the daemon"),
-        l("                 (not running)"),
+        l("  S              kill every overseer worker; the daemon keeps running"),
+        l("  R              start the overseer daemon (only when it is not running)"),
         l("  K              stop the overseer daemon process (running)"),
+        Line::from(""),
         l("Overseer inbox"),
         l("  l              expand OVERSEER > Inbox to reach its item rows"),
         l("  enter          on an item row: answer the waiting worker"),
@@ -34,25 +34,31 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  d              on an item row: dismiss it (hides the row only)"),
         l("  D              on an item or Inbox row: clear the inbox (confirms)"),
         l("                 also: robco inbox clear"),
+        Line::from(""),
         l("Overseer discord"),
         l("  l              expand OVERSEER > Discord to reach its channel rows"),
         l("  enter          on a channel row: attach its tmux session (live"),
         l("                 only while a turn is running for that channel)"),
         l("  r              on a channel row: reset a failed channel to idle"),
         l("  x              on a channel row: remove the retained record (confirms)"),
+        Line::from(""),
         l("Repo"),
         l("  a              clone <git-url> [branch], or add local repo path"),
         l("  m              land task: open a missing PR, then queue approval"),
         l("                 checks running: queue approval; green: merge now"),
         l("                 failed check: refuse; merged PR: clean up"),
+        l("                 PR closed without merging: says to reopen it"),
         l("  p              edit and request PR from selected running agent"),
-        l("  c              check out main in primary checkout (clean tree only)"),
+        l("  c              check out the default branch in the primary checkout"),
+        l("                 (clean tree only)"),
         l("  enter          on a repo row (INFO showing): open its dropr task list"),
-        l("                 on a task row: open its body"),
+        l("                 on a task row: open its body in a popup"),
         l("  n              on a task row: start it now, same as s (skip body)"),
+        l("  o              on a task row or its body: open the task in a browser"),
         l("  s              on a task body: start the work now (worktree, branch,"),
         l("                 tmux session), claiming it in dropr first"),
-        l("  esc/h/left     step back up one drill-down level"),
+        l("  j/k            on a task body: scroll it"),
+        l("  esc/h/left     step back up one drill-down level, or close the body"),
         Line::from(""),
         l("Text prompts"),
         l("  left/right     move the cursor within the text being typed"),
@@ -61,26 +67,29 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  ctrl-w/ctrl-u  delete the previous word / back to the line start"),
         Line::from(""),
         l("Indicators"),
-        l("  One primary per row: dead > running > waiting > TERM activity"),
-        l("    > subagents > dropr reload > static status"),
+        l("  One primary per row: dead > merging > running > waiting > MCP call"),
+        l("    > TERM activity > subagents > dropr reload > static status"),
         l("  ⠋… animated agent running   ? waiting   ✗ dead"),
+        l("  ⇄ merging   ◐… animated MCP tool call"),
         l("  ⌦ worktree missing (appended after primary; alone if no primary)"),
         l("  merge-failed native merge failed (appended after primary)"),
+        l("  blocked worker reported itself blocked (appended after primary)"),
         l("  ▖… animated TERM activity   ✻N active subagents"),
-        l("  ⟳ manual dropr reload (r key)"),
+        l("  ⠋… dimmed: manual dropr reload (r key)"),
         l("  ✓ done   · idle   ⎇ branch only (static fallback)"),
-        l("  ◆ merge approved and waiting on the deterministic gate"),
-        l("  ● overseer Auto   ○ overseer Manual   blank unmanaged (rides indent)"),
-        l("  nerdfont project_icon swaps in a bolt/hand pictograph pair instead"),
-        l("  Repo row always shows its own marker; Auto agent rows always show"),
-        l("  theirs too; a Manual agent row blanks only when its repo is Manual"),
-        l("  Opted-out repo (○): name and its agent rows render dimmed"),
+        l("  A done row whose PR is open shows the merge state instead:"),
+        l("  ◆ approved, waiting on the gate   ↻ checks running"),
+        l("  ‼ checks failing   ⏸ held for another reason (INFO says which)"),
+        l("  project_icon nerdfont/emoji swaps the fold marker for a folder pair"),
         l("  Collapsed repos: N ⠿ is running; status glyphs/N ⌦ are child counts"),
         l("  Child rows: * uncommitted changes   ⌁ tmux session"),
+        Line::from(""),
         l("General"),
         l("  ,              edit settings (config.json) in $EDITOR"),
         l("  ?              show this help"),
+        l("  j/k            scroll this help when it does not fit the terminal"),
         l("  q              quit without stopping agents"),
+        l("  ctrl-c         quit at once, even while a merge or launch runs"),
         Line::from(""),
         Line::from(Span::styled(
             t(locale, "press any key to close"),
@@ -89,13 +98,23 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     ]
 }
 
+/// Rows `lines()` emits. Derived, never hand-maintained: this number feeds
+/// `max_scroll`, and a constant sitting two hundred lines away from the list
+/// it had to match is how the help screen drifted out of date in the first
+/// place (dropr:509). Every locale emits one `Line` per entry — the table in
+/// `crate::locale::ja::help` translates lines, it never adds or drops one —
+/// so the English count is the count.
+fn content_line_count() -> u16 {
+    lines(Locale::En).len() as u16
+}
+
 /// Rows the frame loses around the help content: the 1-row top margin and
 /// 1-row footer from `layout::root`, plus the popup's two border rows.
 const FRAME_OVERHEAD_ROWS: u16 = 4;
 
 pub(crate) fn max_scroll(frame_height: u16) -> u16 {
     let visible_rows = frame_height.saturating_sub(FRAME_OVERHEAD_ROWS);
-    CONTENT_LINE_COUNT.saturating_sub(visible_rows)
+    content_line_count().saturating_sub(visible_rows)
 }
 
 pub(crate) fn clamp_scroll(scroll: u16, frame_height: u16) -> u16 {
@@ -113,7 +132,7 @@ pub(crate) fn scroll_down(scroll: u16, frame_height: u16) -> u16 {
 pub(crate) fn terminal_height() -> u16 {
     crossterm::terminal::size()
         .map(|(_, height)| height)
-        .unwrap_or(CONTENT_LINE_COUNT + FRAME_OVERHEAD_ROWS)
+        .unwrap_or_else(|_| content_line_count() + FRAME_OVERHEAD_ROWS)
 }
 
 pub(crate) fn scroll_title(scroll: u16, frame_height: u16, locale: Locale) -> Option<String> {
@@ -131,113 +150,5 @@ pub(crate) fn scroll_title(scroll: u16, frame_height: u16, locale: Locale) -> Op
 }
 
 #[cfg(test)]
-mod tests {
-    use ratatui::{Terminal, backend::TestBackend};
-
-    use super::*;
-    use crate::{config::Config, registry::Registry};
-
-    fn rendered_help_with_language(height: u16, scroll: u16, language: Option<&str>) -> String {
-        let temp = tempfile::tempdir().unwrap();
-        let config = Config {
-            language: language.map(str::to_string),
-            ..Config::default()
-        };
-        let mut app = super::super::App::new(Registry::default(), config, temp.path().into());
-        app.mode = super::super::Mode::Help { scroll };
-        let mut terminal = Terminal::new(TestBackend::new(100, height)).unwrap();
-        terminal
-            .draw(|frame| {
-                super::super::dialog::draw(frame, &app);
-            })
-            .unwrap();
-        terminal
-            .backend()
-            .buffer()
-            .content()
-            .iter()
-            .fold(String::new(), |mut output, cell| {
-                output.push_str(cell.symbol());
-                output
-            })
-    }
-
-    fn rendered_help(height: u16, scroll: u16) -> String {
-        rendered_help_with_language(height, scroll, None)
-    }
-
-    #[test]
-    fn short_terminal_can_render_last_help_line_at_max_scroll() {
-        assert_eq!(lines(Locale::En).len(), CONTENT_LINE_COUNT as usize);
-        let rendered = rendered_help(24, max_scroll(24));
-        assert!(rendered.contains("press any key to close"));
-        assert!(rendered.contains("j/k scroll"));
-    }
-
-    #[test]
-    fn tall_terminal_keeps_original_help_title_and_content() {
-        // CONTENT_LINE_COUNT rows plus FRAME_OVERHEAD_ROWS is the height at which
-        // the help fits without a scroll indicator.
-        let rendered = rendered_help(CONTENT_LINE_COUNT + FRAME_OVERHEAD_ROWS, 0);
-        assert!(rendered.contains("press any key to close"));
-        assert!(!rendered.contains("j/k scroll"));
-    }
-
-    #[test]
-    fn every_line_fits_an_80_column_terminal() {
-        for locale in [Locale::En, Locale::Ja] {
-            for (index, line) in lines(locale).iter().enumerate() {
-                assert!(
-                    line.width() <= 76,
-                    "{locale:?} help line {} is {} columns wide",
-                    index + 1,
-                    line.width()
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn scrolling_up_clamps_before_moving() {
-        assert_eq!(scroll_up(u16::MAX, 24), max_scroll(24) - 1);
-    }
-
-    #[test]
-    fn an_absent_language_renders_english_help_unchanged() {
-        let rendered =
-            rendered_help_with_language(CONTENT_LINE_COUNT + FRAME_OVERHEAD_ROWS, 0, None);
-        assert!(rendered.contains("press any key to close"));
-        assert!(rendered.contains("Navigation"));
-    }
-
-    #[test]
-    fn an_unrecognized_language_falls_back_to_english_help() {
-        let rendered = rendered_help_with_language(
-            CONTENT_LINE_COUNT + FRAME_OVERHEAD_ROWS,
-            0,
-            Some("Brazilian Portuguese"),
-        );
-        assert!(rendered.contains("press any key to close"));
-        assert!(rendered.contains("Navigation"));
-    }
-
-    // Asserted directly against `lines()` rather than through a rendered
-    // terminal buffer: a double-width CJK glyph occupies two buffer cells (the
-    // glyph, then a leftover blank continuation cell), so flattening the
-    // buffer cell-by-cell — fine for the single-width English fixtures above —
-    // does not reconstruct contiguous Japanese substrings.
-    #[test]
-    fn a_recognized_language_renders_localized_help() {
-        let localized = lines(Locale::Ja);
-        assert!(
-            localized
-                .iter()
-                .any(|line| line.to_string().contains("何かキーを押すと閉じます"))
-        );
-        assert!(
-            !localized
-                .iter()
-                .any(|line| line.to_string().contains("press any key to close"))
-        );
-    }
-}
+#[path = "help_tests.rs"]
+mod tests;
