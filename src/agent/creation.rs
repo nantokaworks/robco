@@ -10,13 +10,21 @@ use super::naming::{
     leading_task_number, naming_slug, profile_name, resolve_branch_prefix, worker_branch_name,
 };
 use crate::{
-    Result,
+    Error, Result,
     config::Config,
     git,
     model::{AgentNode, ManagementMode, RepoNode},
     overseer::{OVERSEER_AGENT_ID, is_overseer_child},
     tmux,
 };
+
+/// The repository's own default branch — new work bases on it, never on a
+/// hardcoded `main` (dropr:503). `Err` rather than a guess when it cannot be
+/// resolved: a worker's base commit has to come from somewhere real.
+fn resolve_base_branch(repo: &RepoNode) -> Result<String> {
+    git::default_branch(&repo.path)?
+        .ok_or_else(|| Error::DefaultBranchUnresolved(repo.path.clone()))
+}
 
 /// Decide a new worker's Overseer parentage and management mode.
 ///
@@ -79,10 +87,11 @@ pub(crate) fn create_agent_with_launch(
     let task_number = leading_task_number(name_slug);
     let slug = naming_slug(title, name_slug);
     let branch = worker_branch_name(config, &repo.name, title, name_slug);
-    // Base new work on `origin/main`, fetched fresh — not on whatever happens
-    // to be checked out in the primary worktree, which may be an operator's
-    // own branch mid-work.
-    let base_commit = git::remote_branch_commit(&repo.path, "main")?;
+    // Base new work on `origin/<default>`, fetched fresh — not on whatever
+    // happens to be checked out in the primary worktree, which may be an
+    // operator's own branch mid-work.
+    let base_branch = resolve_base_branch(repo)?;
+    let base_commit = git::remote_branch_commit(&repo.path, &base_branch)?;
     let worktree_path = config
         .worktree_root
         .join(format!("{}_{}_{}", repo.name, slug, &id[..6]));

@@ -144,6 +144,31 @@ pub fn remote_branch_commit(repo: &Path, branch: &str) -> Result<String> {
     command_output(output, "git rev-parse origin branch")
 }
 
+/// The repository's own default branch — the branch its clone came with.
+///
+/// Reads `refs/remotes/origin/HEAD`, a local pointer `git clone` sets by
+/// itself (or an operator repairs by hand with `git remote set-head origin
+/// -a`). Never touches the network and never guesses: a repository whose
+/// remote `HEAD` was never fetched, or one created locally with no remote,
+/// answers `None` rather than a hardcoded branch name — see dropr:503.
+pub fn default_branch(repo: &Path) -> Result<Option<String>> {
+    let mut command = Command::new("git");
+    command.args(["-C"]).arg(repo).args([
+        "symbolic-ref",
+        "--short",
+        "-q",
+        "refs/remotes/origin/HEAD",
+    ]);
+    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let full = command_output(output, "git symbolic-ref refs/remotes/origin/HEAD")?;
+    Ok(Some(
+        full.strip_prefix("origin/").unwrap_or(&full).to_string(),
+    ))
+}
+
 /// The branch `HEAD` currently points at, or `None` when it is detached.
 pub fn current_branch(repo: &Path) -> Result<Option<String>> {
     let mut command = Command::new("git");
@@ -192,87 +217,5 @@ pub fn fast_forward_ref(repo: &Path, branch: &str, from: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::git::test_repo::TestRepo;
-
-    /// The point of routing dispatch and cleanup through this function rather
-    /// than a plain `git pull`: it learns the remote branch's commit without
-    /// ever moving whatever the repository has checked out.
-    #[test]
-    fn remote_branch_commit_fetches_without_touching_the_checkout() {
-        let repo = TestRepo::new();
-        let branch_before = branch_name(repo.path());
-
-        let commit = remote_branch_commit(repo.path(), "main").unwrap();
-
-        assert_eq!(commit, rev_parse(repo.path(), "origin/main"));
-        assert_eq!(branch_name(repo.path()), branch_before);
-    }
-
-    fn branch_name(repo: &Path) -> String {
-        let output = Command::new("git")
-            .args(["-C"])
-            .arg(repo)
-            .args(["symbolic-ref", "--short", "HEAD"])
-            .output()
-            .unwrap();
-        String::from_utf8(output.stdout).unwrap().trim().to_string()
-    }
-
-    fn rev_parse(repo: &Path, reference: &str) -> String {
-        let output = Command::new("git")
-            .args(["-C"])
-            .arg(repo)
-            .args(["rev-parse", reference])
-            .output()
-            .unwrap();
-        String::from_utf8(output.stdout).unwrap().trim().to_string()
-    }
-
-    #[test]
-    fn a_branch_without_pull_requests_is_absent() {
-        assert_eq!(pr_state_from_list("[]").unwrap(), PrState::Absent);
-        assert_eq!(pr_state_from_list("").unwrap(), PrState::Absent);
-    }
-
-    #[test]
-    fn each_terminal_state_is_distinguished() {
-        assert_eq!(
-            pr_state_from_list(r#"[{"state":"MERGED"}]"#).unwrap(),
-            PrState::Merged
-        );
-        assert_eq!(
-            pr_state_from_list(r#"[{"state":"CLOSED"}]"#).unwrap(),
-            PrState::ClosedUnmerged
-        );
-        assert_eq!(
-            pr_state_from_list(r#"[{"state":"OPEN"}]"#).unwrap(),
-            PrState::Open
-        );
-    }
-
-    #[test]
-    fn an_open_pull_request_outranks_earlier_attempts() {
-        assert_eq!(
-            pr_state_from_list(r#"[{"state":"CLOSED"},{"state":"OPEN"},{"state":"MERGED"}]"#)
-                .unwrap(),
-            PrState::Open
-        );
-    }
-
-    #[test]
-    fn a_merge_outranks_an_abandoned_attempt() {
-        assert_eq!(
-            pr_state_from_list(r#"[{"state":"CLOSED"},{"state":"MERGED"}]"#).unwrap(),
-            PrState::Merged
-        );
-    }
-
-    /// Unreadable output must not read as "no pull request": that is the one
-    /// answer that tells the user to open one they may already have.
-    #[test]
-    fn unreadable_output_is_an_error() {
-        assert!(pr_state_from_list("not json").is_err());
-    }
-}
+#[path = "remote_tests.rs"]
+mod tests;

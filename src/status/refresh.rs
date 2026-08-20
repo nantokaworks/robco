@@ -124,32 +124,54 @@ pub fn refresh_repo_main(
     );
 }
 
-/// Refreshes how far the primary checkout's local `main` trails
-/// `origin/main`, purely from whichever refs are already known — no fetch of
-/// its own. The value only moves when the refs move (a fetch, merge, pull,
-/// or push), so this runs on the slower discovery tick rather than the
-/// 750 ms status tick. `None` when `main` is not behind, or the comparison
-/// could not be made at all (no local `main`, no `origin`, not a
-/// repository).
+/// Refreshes how far the primary checkout's local default branch trails
+/// `origin/<default>`, purely from whichever refs are already known — no
+/// fetch of its own. The value only moves when the refs move (a fetch,
+/// merge, pull, or push), so this runs on the slower discovery tick rather
+/// than the 750 ms status tick. `None` when the default branch is not
+/// behind, or the comparison could not be made at all (the repository's own
+/// default branch could not be resolved, no local copy of it, no `origin`,
+/// not a repository). See dropr:503 — this never assumes `main`.
 pub fn refresh_main_drift(repo: &mut crate::model::RepoNode) {
-    repo.main_behind_origin = git::ahead_behind(&repo.path, "main", "origin/main")
+    repo.main_behind_origin = git::default_branch(&repo.path)
         .ok()
+        .flatten()
+        .and_then(|default_branch| {
+            let origin_ref = format!("origin/{default_branch}");
+            git::ahead_behind(&repo.path, &default_branch, &origin_ref).ok()
+        })
         .map(|(_ahead, behind)| behind)
         .filter(|behind| *behind > 0);
 }
 
-/// Refreshes where the primary checkout's `HEAD` actually points, purely
-/// from a local `git symbolic-ref` — no fetch, no network. The value only
-/// moves when an operator (or the `c` repair action) moves it by hand, so
-/// this runs on the slower discovery tick rather than the 750 ms status
-/// tick, right alongside [`refresh_main_drift`]. `None` when `HEAD` is on
-/// `main`, or the probe itself failed (not a repository, `git` missing).
+/// Refreshes where the primary checkout's `HEAD` actually points, and what
+/// the repository's own default branch is — both purely from local reads
+/// (`git symbolic-ref`) — no fetch, no network. The value only moves when an
+/// operator (or the `c` repair action) moves `HEAD` by hand, or the
+/// repository's `origin/HEAD` changes, so this runs on the slower discovery
+/// tick rather than the 750 ms status tick, right alongside
+/// [`refresh_main_drift`]. `None` when `HEAD` is on the default branch, or a
+/// probe failed outright (not a repository, `git` missing) — see
+/// `crate::model::CheckoutState::DefaultBranchUnknown` for the case where
+/// `HEAD` reads fine but the default branch itself cannot be resolved
+/// (dropr:503).
 pub fn refresh_checkout_branch(repo: &mut crate::model::RepoNode) {
     use crate::model::CheckoutState;
+    let Ok(default_branch) = git::default_branch(&repo.path) else {
+        repo.checkout_state = None;
+        return;
+    };
+    let Some(default_branch) = default_branch else {
+        repo.checkout_state = Some(CheckoutState::DefaultBranchUnknown);
+        return;
+    };
     repo.checkout_state = match git::current_branch(&repo.path) {
-        Ok(Some(branch)) if branch == "main" => None,
-        Ok(Some(branch)) => Some(CheckoutState::OtherBranch(branch)),
-        Ok(None) => Some(CheckoutState::Detached),
+        Ok(Some(branch)) if branch == default_branch => None,
+        Ok(Some(branch)) => Some(CheckoutState::OtherBranch {
+            current: branch,
+            default_branch,
+        }),
+        Ok(None) => Some(CheckoutState::Detached { default_branch }),
         Err(_) => None,
     };
 }
@@ -172,70 +194,5 @@ fn refresh_process(
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::{discover, git::test_repo::TestRepo};
-
-    use super::*;
-
-    #[test]
-    fn refresh_main_drift_reports_how_far_local_main_trails_origin() {
-        let repo = TestRepo::new();
-        repo.feature_branch("task", "task.txt");
-        repo.push("task");
-        repo.land_squash("task");
-        crate::git::fetch_branch(repo.path(), "main").unwrap();
-        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
-
-        refresh_main_drift(&mut node);
-
-        assert_eq!(node.main_behind_origin, Some(1));
-    }
-
-    #[test]
-    fn refresh_main_drift_is_none_when_main_is_current() {
-        let repo = TestRepo::new();
-        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
-
-        refresh_main_drift(&mut node);
-
-        assert_eq!(node.main_behind_origin, None);
-    }
-
-    #[test]
-    fn refresh_checkout_branch_is_none_on_main() {
-        let repo = TestRepo::new();
-        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
-
-        refresh_checkout_branch(&mut node);
-
-        assert_eq!(node.checkout_state, None);
-    }
-
-    #[test]
-    fn refresh_checkout_branch_names_another_branch() {
-        let repo = TestRepo::new();
-        repo.feature_branch("task", "task.txt");
-        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
-
-        refresh_checkout_branch(&mut node);
-
-        assert_eq!(
-            node.checkout_state,
-            Some(crate::model::CheckoutState::OtherBranch("task".into()))
-        );
-    }
-
-    #[test]
-    fn refresh_checkout_branch_reports_detached_head() {
-        let repo = TestRepo::new();
-        crate::git::test_repo::git(repo.path(), &["checkout", "-q", "--detach", "main"]);
-        let mut node = discover::repo_node(repo.path().to_path_buf(), false);
-
-        refresh_checkout_branch(&mut node);
-
-        assert_eq!(
-            node.checkout_state,
-            Some(crate::model::CheckoutState::Detached)
-        );
-    }
-}
+#[path = "refresh_tests.rs"]
+mod tests;

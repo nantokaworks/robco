@@ -32,6 +32,34 @@ fn squash_merged_branch_and_worktree_are_removed() {
     assert!(!branch_exists(repo.path(), "task").unwrap());
 }
 
+/// dropr:503 — the whole sequence, unchanged in shape, run against a
+/// repository whose default branch is `master`: worktree and branch cleanup
+/// follow `origin/HEAD`, never a hardcoded `main`.
+#[test]
+fn squash_merged_branch_and_worktree_are_removed_on_a_master_default_repository() {
+    let repo = TestRepo::new_with_default_branch("master");
+    repo.feature_branch("task", "task.txt");
+    repo.push("task");
+    let worktree = repo.worktree("task");
+    repo.land_squash("task");
+
+    let outcome = cleanup(&repo, &worktree, OnFailure::Continue)
+        .run(|_| ())
+        .unwrap();
+
+    assert_eq!(outcome.notes, Vec::<String>::new());
+    assert!(outcome.base_pulled);
+    assert!(outcome.worktree_removed);
+    assert_eq!(outcome.branch, BranchOutcome::Deleted);
+    assert!(!worktree.exists());
+    assert!(!branch_exists(repo.path(), "task").unwrap());
+    assert_eq!(current_branch(&repo), "master");
+    assert_eq!(
+        rev_parse(&repo, "master"),
+        rev_parse(&repo, "origin/master")
+    );
+}
+
 /// This is the fix itself: when the primary checkout has `main` checked out
 /// with a clean tree, cleanup fast-forwards it — not just `origin/main` —
 /// so the checkout stops trailing behind what actually landed.
@@ -170,10 +198,11 @@ fn unmerged_branch_is_kept_with_a_reason() {
     assert!(branch_exists(repo.path(), "task").unwrap());
 }
 
-/// A base-branch fetch that cannot run must not strand the worktree: the
-/// daemon has nobody to report to, so it logs and finishes the sequence.
+/// Removing `origin` also removes `origin/HEAD`, so the base branch cannot
+/// even be resolved — not just fetched. This must not strand the worktree:
+/// the daemon has nobody to report to, so it logs and finishes the sequence.
 #[test]
-fn continue_records_a_failed_base_fetch_and_cleans_up_anyway() {
+fn continue_records_a_failed_base_resolution_and_cleans_up_anyway() {
     let repo = TestRepo::new();
     repo.feature_branch("task", "task.txt");
     repo.push("task");
@@ -188,19 +217,19 @@ fn continue_records_a_failed_base_fetch_and_cleans_up_anyway() {
     assert!(outcome.worktree_removed);
     assert!(!worktree.exists());
     assert!(
-        outcome.notes[0].starts_with("fetching the base branch failed:"),
+        outcome.notes[0].starts_with("resolving the base branch failed:"),
         "unexpected notes: {:?}",
         outcome.notes
     );
-    // `origin/main` never advanced, so the landed change is not visible here
-    // and the branch is held back rather than deleted on a stale answer.
+    // The base branch could never be resolved, so nothing in the base is
+    // provable and the branch is held back rather than deleted on a guess.
     assert_eq!(outcome.branch, BranchOutcome::Kept);
 }
 
 /// The interactive path keeps its own contract: the first failure is the
 /// caller's, and nothing after it runs.
 #[test]
-fn abort_stops_at_a_failed_base_fetch() {
+fn abort_stops_at_a_failed_base_resolution() {
     let repo = TestRepo::new();
     repo.feature_branch("task", "task.txt");
     let worktree = repo.worktree("task");
@@ -211,7 +240,7 @@ fn abort_stops_at_a_failed_base_fetch() {
         .unwrap_err();
 
     assert!(
-        error.to_string().contains("git fetch origin"),
+        error.to_string().contains("origin/HEAD"),
         "unexpected error: {error}"
     );
     assert!(worktree.exists());

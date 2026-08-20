@@ -69,13 +69,16 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "repository added" => "リポジトリを追加しました",
 
         // actions/checkout_main.rs
-        "c: select a repo to check out main in its primary checkout" => {
-            "c: primary checkoutでmainをcheckoutするリポジトリを選択してください"
+        "c: select a repo to check out its default branch in its primary checkout" => {
+            "c: primary checkoutでdefault branchをcheckoutするリポジトリを選択してください"
         }
-        "commit or clean untracked changes before checking out main" => {
-            "mainをcheckoutする前にcommitするか未追跡の変更を整理してください"
+        "commit or clean untracked changes before checking out {}" => {
+            "{}をcheckoutする前にcommitするか未追跡の変更を整理してください"
         }
-        "checked out main" => "mainをcheckoutしました",
+        "checked out {}" => "{}をcheckoutしました",
+        "default branch could not be resolved — run git remote set-head origin -a" => {
+            "default branchを特定できませんでした — git remote set-head origin -aを実行してください"
+        }
 
         // input/overseer.rs
         "circuit is closed; nothing to reset" => "回路はclosedです。リセットの必要はありません",

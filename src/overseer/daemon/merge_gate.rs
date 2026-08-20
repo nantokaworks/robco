@@ -16,7 +16,11 @@ use super::{
     protection::ProtectionCache,
     pull_request::{Checks, base_branch, checks},
 };
-use crate::{config::Config, overseer::ledger::LedgerEntry, registry::Registry};
+use crate::{
+    config::Config,
+    overseer::{config::ProtectionMode, ledger::LedgerEntry},
+    registry::Registry,
+};
 
 /// Reason recorded when a check finished and did not pass — the worker's own head is red.
 const CHECKS_FAILED: &str = "checks_not_green";
@@ -56,8 +60,13 @@ pub(super) fn gate(
         return Some(halt);
     }
     let mode = config.overseer.protection_mode;
-    if let Some(unmet) =
-        protection::unmet_condition(entry, registry, cache, mode, base_branch(value))
+    let unmet = match base_branch(value) {
+        Some(branch) => protection::unmet_condition(entry, registry, cache, mode, branch),
+        // No base branch to probe protection for at all — held the same way
+        // an unverifiable probe is, never filled in with a guessed `main`.
+        None => (mode != ProtectionMode::Off).then_some(protection::BASE_BRANCH_UNKNOWN),
+    };
+    if let Some(unmet) = unmet
         && !protection_gate_overridden(unmet, config.overseer.allow_unverifiable_protection)
     {
         return Some(Halt::gated(format!("unprotected:{unmet}")));

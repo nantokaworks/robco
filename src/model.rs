@@ -75,14 +75,27 @@ pub struct RepoNode {
     pub checkout_state: Option<CheckoutState>,
 }
 
-/// The one thing that can be wrong with the primary checkout's `HEAD`: it is
-/// detached, or it is on a named branch that is not `main`. Both leave
-/// `ready` (`overseer::release_pipeline`) unable to release and plain `git
-/// pull` failing for the operator — see `RepoNode::checkout_state`.
+/// What can be wrong with the primary checkout's `HEAD`: it is detached, it
+/// is on a named branch that is not the repository's own default branch, or
+/// that default branch itself could not be resolved at all. Every case but
+/// the last leaves `ready` (`overseer::release_pipeline`) unable to release
+/// and plain `git pull` failing for the operator — see
+/// `RepoNode::checkout_state`. The default branch name carried by the first
+/// two variants is resolved once, on the same tick this state itself is
+/// computed (`status::refresh_checkout_branch`) — see dropr:503.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckoutState {
-    Detached,
-    OtherBranch(String),
+    Detached {
+        default_branch: String,
+    },
+    OtherBranch {
+        current: String,
+        default_branch: String,
+    },
+    /// `origin/HEAD` could not be read at all — no remote, or a remote
+    /// whose `HEAD` was never fetched. Fixed by `git remote set-head origin
+    /// -a`, which the operator has to run; robco never guesses a name.
+    DefaultBranchUnknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

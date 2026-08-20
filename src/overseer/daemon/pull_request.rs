@@ -13,9 +13,6 @@ use super::check_rollup;
 pub(crate) use super::check_rollup::{Checks, classify as classify_checks, failed_names};
 use crate::overseer::exec::run_timeout;
 
-/// Base branch used when the pull request does not report one.
-pub(super) const DEFAULT_BASE_BRANCH: &str = "main";
-
 const FIELDS: &str = "state,statusCheckRollup,title,body,files,additions,deletions,changedFiles,headRefOid,baseRefName,baseRefOid,mergeStateStatus";
 
 /// Reads the pull request, or the hold reason its read failed under.
@@ -36,14 +33,18 @@ pub(crate) fn read(repo: &str, url: &str) -> Result<Value, String> {
     serde_json::from_slice(&output.stdout).map_err(|error| format!("check_parse:{error}"))
 }
 
-/// The pull request's base branch, which is the branch whose protection actually gates
-/// the merge.
-pub(super) fn base_branch(value: &Value) -> &str {
+/// The pull request's base branch, which is the branch whose protection
+/// actually gates the merge — `None` when GitHub did not report one.
+///
+/// This never falls back to a hardcoded `main` (dropr:503): `baseRefName`
+/// is authoritative when GitHub reports it, and its absence is a fact the
+/// gate has to act on explicitly (see `protection::BASE_BRANCH_UNKNOWN`),
+/// not a guess to paper over.
+pub(super) fn base_branch(value: &Value) -> Option<&str> {
     value
         .get("baseRefName")
         .and_then(Value::as_str)
         .filter(|branch| !branch.is_empty())
-        .unwrap_or(DEFAULT_BASE_BRANCH)
 }
 
 /// The revision the gate decided on, or an empty string when GitHub did not report one.
@@ -133,16 +134,13 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn base_branch_follows_the_pull_request_and_falls_back_to_main() {
+    fn base_branch_follows_the_pull_request_or_reports_unknown() {
         assert_eq!(
             base_branch(&json!({"baseRefName": "release/2026"})),
-            "release/2026"
+            Some("release/2026")
         );
-        assert_eq!(
-            base_branch(&json!({"baseRefName": ""})),
-            DEFAULT_BASE_BRANCH
-        );
-        assert_eq!(base_branch(&json!({})), DEFAULT_BASE_BRANCH);
+        assert_eq!(base_branch(&json!({"baseRefName": ""})), None);
+        assert_eq!(base_branch(&json!({})), None);
     }
 
     #[test]
