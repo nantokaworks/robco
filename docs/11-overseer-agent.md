@@ -11,7 +11,7 @@ used only for bounded judgment calls.
 
 ### Control plane
 
-`robco overseer run` starts a single crash-only daemon guarded by
+`robco daemon` starts a single crash-only daemon guarded by
 `~/.robco/overseer/overseer.pid`. On startup it loads the ledger and adopts any registered
 RobCo agents whose parent id is `overseer` but which are missing from the ledger. Every
 poll then performs the same ordered pass:
@@ -247,7 +247,7 @@ only, and there is no field through which the reviewer can dispatch, merge, unbl
 write the ledger. An exhausted budget stops the session but not the deterministic
 findings, and records `review_budget_exhausted` so a quiet reviewer does not read as a
 healthy board. A missing profile stops the session too, and records nothing: no budget is
-charged and no session is spawned, because there is no model to run. `robco overseer
+charged and no session is spawned, because there is no model to run. `robco
 status --debug` names the two states apart — `findings every 20m, no reviewer model`
 against `every 20m via <profile>` — so a quiet board can be read as "nothing was found"
 rather than "nothing looked".
@@ -328,9 +328,9 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 
 | Key | Type | Default | Implemented behavior |
 |-----|------|---------|----------------------|
-| `enabled` | boolean | `false` | Reported by status surfaces. It does not currently gate `robco overseer run` or the poll loop. |
+| `enabled` | boolean | `false` | Reported by status surfaces. It does not currently gate `robco daemon` or the poll loop. |
 | `auto_merge` | boolean | `false` | Enables the protected-branch and green-check auto-merge pass. |
-| `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco overseer protection <mode>`. |
+| `protection_mode` | `"required"`, `"relaxed"`, or `"off"` | `"required"` | How strictly the auto-merge gate requires the pull request's base branch to be protected. `required` demands both a pull-request requirement and at least one required status check; `relaxed` demands only the pull-request requirement; `off` skips the probe. Set it with `robco config protection <mode>`. |
 | `allow_unverifiable_protection` | boolean | `false` | Lets auto-merge proceed on a repository whose GitHub plan cannot answer the protection probe at all (`unprotected:plan_unsupported`), instead of holding it forever. Security-relevant: a plan-limited `403` is indistinguishable from a repository whose owner never configured protection, so enabling this accepts merges onto a base branch Overseer could never confirm is protected. It has no effect on a repository whose plan can actually answer the probe — those are still held on their real facts. |
 | `autonomy_level` | `"approval_only"`, `"conservative"`, or `"full_auto"` | `"conservative"` | How much of the merge envelope the daemon may clear without an operator. `approval_only` escalates every merge; `conservative` auto-merges only a docs-or-tests change under 5 files and 200 lines that trips no risk; `full_auto` escalates just the hard stops — destructive changes, security-sensitive changes, repeated failures, an exhausted LLM budget, and external side effects. Set it with `robco overseer autonomy <level>`. |
 | `merge_strategy` | — | — | Retired. The strategy is the top-level [`merge_strategy`](09-config-reference.md#merge_strategy), which the TUI reads too, so the two merge paths cannot disagree. A config still carrying this key is migrated on load and the key is dropped on the next write. |
@@ -354,7 +354,7 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 | `worker_env_blocklist` | array of strings | `["AWS_*", "*_TOKEN", "*_SECRET", "*_API_KEY"]` | Case-sensitive `*` globs for environment names neutralized in autonomous workers. Names the session credential channel resolves are exempt — see [Session credentials](#session-credentials). |
 | `session_env` | object of string → string | `{}` | Environment applied to every session the daemon spawns and to every agent robco launches (dispatched workers and TUI-created agents alike). Highest layer of the credential channel; also written into the launchd plist by the installer. See [Session credentials](#session-credentials). |
 | `session_env_file` | string (path) or `null` | `null` | `KEY=VALUE` file read below `session_env`. `null` reads `~/.robco/env`. A leading `~` is expanded. Read at spawn time, so a rotated token needs no reinstall. |
-| `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco overseer status`. |
+| `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco status`. |
 | `release_pipeline_enabled` | boolean | `false` | Runs `scripts/release.sh` unattended, from this project's own checkout, after a merge closes a `[release]`-scoped task in this project's own repository. A distinct privilege class from every other flag above: on success it publishes a public GitHub release with whatever credentials the daemon holds, and `scripts/release.sh` is itself part of this repository, so a future change to it runs with this same privilege on the next qualifying merge. Default-off; an operator opts in deliberately. See [`overseer::release_pipeline`](../src/overseer/release_pipeline.rs). |
 | `repo_watch_enabled` | boolean | `true` | Whether the periodic advisory/Dependabot repository health watch runs at all. See [Repository health watch](#repository-health-watch). |
 | `repo_watch_interval_hours` | non-negative integer | `24` | Hours between one repository's advisory/Dependabot watch passes. |
@@ -496,10 +496,10 @@ keychain, which is the failure the channel exists to route around.
 claude setup-token                       # prints a long-lived OAuth token
 printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOKEN" > ~/.robco/env
 chmod 600 ~/.robco/env
-robco overseer install-service           # rewrites the plist
+robco service install           # rewrites the plist
 launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.robco.overseer.plist
-robco overseer status --debug            # check the `session auth:` line
+robco status --debug            # check the `session auth:` line
 ```
 
 `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are recognised the same way; the three names are
@@ -508,7 +508,7 @@ passed through to the session.
 
 ### What the installer writes, and what it does not
 
-`robco overseer install-service` writes `overseer.session_env` into the plist's
+`robco service install` writes `overseer.session_env` into the plist's
 `EnvironmentVariables` dictionary, beside `PATH`, and then chmods the plist to `600`. It
 does **not** copy the env file in. That split is deliberate:
 
@@ -557,7 +557,7 @@ its own (see
 
 With `session_preflight` on (the default) the daemon spawns one probe session at start-up
 and records the verdict in `~/.robco/overseer/session_health.json`. Any live session that is
-refused on credentials overwrites the same record. `robco overseer status --debug` prints
+refused on credentials overwrites the same record. `robco status --debug` prints
 it:
 
 ```
@@ -690,7 +690,7 @@ So a held pass costs budget. Each one is charged to the entry's `merge_hold` and
 the worker's answer to the last one — and a changed reason each restart the count, while a
 frozen pair keeps spending it. When the budget runs out the entry reaches `escalated`,
 records `merge_hold_cap_reached:<reason>` once, and stops recording that hold, which is
-what puts it in front of an operator in `robco overseer status` and the TUI Inbox instead
+what puts it in front of an operator in `robco status` and the TUI Inbox instead
 of leaving it to accumulate identical lines.
 
 An entry escalated that way is not abandoned. The condition it stopped on — protection,
@@ -799,7 +799,7 @@ would loop forever. A spent budget escalates with `merge_recovery_cap_reached`.
 With `merge_recovery_enabled` off — the default — nothing is handed back, and the
 classification above is inert. It is not silent, though: a failure that classified as
 worker-fixable is recorded once per (entry, head sha) as
-`merge_recovery_disabled:<reason>`, and `robco overseer status --debug` reports the
+`merge_recovery_disabled:<reason>`, and `robco status --debug` reports the
 running total beside the switch as `merge-recovery: off (N dropped)`. The entry keeps its phase and no
 worker is touched, so the daemon behaves exactly as it did before; what changes is that
 the setting now reads as a consequence rather than a flag. Operator-only failures record
@@ -817,7 +817,7 @@ session is gone, escalates under
 `merge_recovery_skipped:send_failed:<error>` when the prompt did not reach the session, and
 `merge_recovery_cap_reached` when the budget runs out. Each handback also posts a scribble
 on the dropr task; a scribble that fails to land is logged and does not abort the merge
-pass. `robco overseer status --debug` and the TUI OVERSEER frame both report the switch and
+pass. `robco status --debug` and the TUI OVERSEER frame both report the switch and
 its cap.
 
 ### Discord rails
@@ -884,20 +884,20 @@ Start locally while validating the installation — the daemon never picks its o
 there is nothing to disable first:
 
 ```sh
-robco overseer run
+robco daemon
 ```
 
 In another terminal:
 
 ```sh
-robco overseer status
+robco status
 ```
 
-`robco overseer set auto-merge on|off` changes the merge toggle, and
-`robco overseer protection required|relaxed|off` changes how strictly that gate requires
+`robco config set auto-merge on|off` changes the merge toggle, and
+`robco config protection required|relaxed|off` changes how strictly that gate requires
 base-branch protection, and `robco overseer autonomy approval_only|conservative|full_auto`
 changes how much of the merge envelope the daemon clears on its own. These commands persist
-their values in `~/.robco/config.json`. `robco overseer status` and the TUI OVERSEER frame
+their values in `~/.robco/config.json`. `robco status` and the TUI OVERSEER frame
 report the active protection mode and autonomy level next to `auto-merge`, and both warn
 while auto-merge runs under a loosened gate — naming, for `full_auto`, the risks the
 envelope stops escalating.
@@ -907,14 +907,14 @@ envelope stops escalating.
 The daemon executes the image it started from until the service restarts, so a fix that
 is merged, released, and installed does not reach the board until the daemon is restarted
 too. Each pass therefore records its own version in the heartbeat, and
-`robco overseer status --debug` reports it as `version=` beside `pid` and `heartbeat`. When
+`robco status --debug` reports it as `version=` beside `pid` and `heartbeat`. When
 that version differs from the `robco` binary answering the command — the exact
 "installed but not restarted" state — both the status command and the TUI Health frame
 warn and name the two builds; the OVERSEER header carries it as a `stale build` warning
-row, and the plain (non-`--debug`) `robco overseer status` lists it under `stuck:`. A
+row, and the plain (non-`--debug`) `robco status` lists it under `stuck:`. A
 heartbeat written before the daemon recorded its build reads as `unknown` and warns the
 same way, because only a release older than this one leaves the field out. Restart the
-daemon (`robco overseer stop` then `robco overseer run`, or restart the installed service)
+daemon (`robco stop` then `robco daemon`, or restart the installed service)
 to clear it; nothing restarts it automatically on drift.
 
 ### Discord application
@@ -947,7 +947,7 @@ the env file when the name is absent there; it is never stored in `config.json`.
 Install the service definition:
 
 ```sh
-robco overseer install-service
+robco service install
 ```
 
 This writes `~/Library/LaunchAgents/com.robco.overseer.plist` with `RunAtLoad` and
@@ -986,17 +986,17 @@ service by accepting every prompt. The load is verified — a `launchctl bootstr
 exits 0 without producing a loaded service fails the run instead of reporting success —
 and a wizard that ends with the service still down closes with an explicit warning naming
 the recovery commands, since nothing merges, launches a named task, or answers
-Discord/MCP commands until it is loaded. `install-service` stays non-executing
+Discord/MCP commands until it is loaded. `service install` stays non-executing
 because it is the scripted, copy-the-command path: it is invoked from runbooks and
 non-interactive setups where loading the service is a separate, deliberate step.
 
 Inspect it at any time with:
 
 ```sh
-robco overseer status
+robco status
 ```
 
-For a foreground daemon, `robco overseer stop` sends `SIGTERM` and waits briefly. For the
+For a foreground daemon, `robco stop` sends `SIGTERM` and waits briefly. For the
 installed KeepAlive service, unload it to stop it without an immediate relaunch:
 
 ```sh
@@ -1051,7 +1051,7 @@ recorded count any more (dropr:476). The one thing a named launch still refuses 
 to refuse a launch any more; treat it as an operator/triage annotation, not an enforced
 exclusion.
 
-The JSONL decision log is the durable audit trail used by `robco overseer status`, the TUI
+The JSONL decision log is the durable audit trail used by `robco status`, the TUI
 Overseer info pane, and Discord notifications. The daemon writes observation snapshots
 separately so a failed probe becomes a logged skipped observation instead of invented
 state.
@@ -1127,7 +1127,7 @@ never ages out on its own, unlike a decision-sourced row, which falls out of the
 enough newer decisions accumulate. Before dismissal existed, the only way to clear one was
 to stop the daemon and hand-edit `ledger.json`.
 
-`robco overseer clear-inbox` is the scriptable equivalent of `D`: it aggregates the same
+`robco inbox clear` is the scriptable equivalent of `D`: it aggregates the same
 three sources and suppresses everything they currently produce, so the Inbox can be cleared
 with the TUI closed.
 
@@ -1163,7 +1163,7 @@ ledger update without executing the requested action again.
 Use the local or Discord `!panic` kill switch during an incident:
 
 ```sh
-robco overseer panic
+robco panic
 ```
 
 It kills every registered agent whose parent is `overseer` and audits the action. It does

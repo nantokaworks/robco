@@ -120,7 +120,7 @@ fn an_unloaded_service_warns_with_the_recovery_commands() {
     let warning = String::from_utf8(output).unwrap();
 
     assert!(warning.contains("WARNING"));
-    assert!(warning.contains("robco overseer run"));
+    assert!(warning.contains("robco daemon"));
 }
 
 #[test]

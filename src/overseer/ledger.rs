@@ -157,7 +157,7 @@ impl Ledger {
     /// Merges Discord's `!merge` queued an approval for while they were still
     /// waiting on the deterministic gate, and have not yet drained.
     ///
-    /// Read by `robco overseer status --debug`, so an operator can see how
+    /// Read by `robco status --debug`, so an operator can see how
     /// many pending merges already carry their own approval rather than a
     /// future escalation.
     pub fn queued_merge_approvals(&self) -> usize {

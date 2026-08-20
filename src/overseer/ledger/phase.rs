@@ -59,7 +59,7 @@ pub fn holds_capacity(entry: &LedgerEntry) -> bool {
 }
 
 /// Whether `entry` is currently idle, waiting on a dropr `blocks` dependency
-/// edge to resolve. Read by `robco overseer status --debug` and by
+/// edge to resolve. Read by `robco status --debug` and by
 /// `monitor::apply::apply_prerequisite_wait`'s escalation bound.
 pub fn waiting_on_prerequisite(entry: &LedgerEntry) -> bool {
     entry.prerequisite_wait.is_some() && !terminal(entry.phase)

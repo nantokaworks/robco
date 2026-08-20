@@ -15,7 +15,7 @@ pub struct ActiveWorkers {
 
 impl Ledger {
     /// The workers occupying capacity right now. The dispatch gate and
-    /// `robco overseer status` both read this one helper, so the count that
+    /// `robco status` both read this one helper, so the count that
     /// enforces each repository's primary/secondary slots is the count the
     /// operator sees.
     ///

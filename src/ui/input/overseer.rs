@@ -178,13 +178,13 @@ impl App {
             Ok(crate::overseer::command::StartAttempt::NotInstalled) => {
                 self.show_message(t(
                     self.locale,
-                    "no launchd service installed; install it with `robco overseer install-service`, or run `robco overseer run` in a terminal",
+                    "no launchd service installed; install it with `robco service install`, or run `robco daemon` in a terminal",
                 ));
             }
             Ok(crate::overseer::command::StartAttempt::Unsupported) => {
                 self.show_message(t(
                     self.locale,
-                    "launchd service management is unavailable on this OS; run `robco overseer run` in a terminal",
+                    "launchd service management is unavailable on this OS; run `robco daemon` in a terminal",
                 ));
             }
             Ok(crate::overseer::command::StartAttempt::AlreadyRunning) => {

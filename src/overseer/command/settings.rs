@@ -29,7 +29,7 @@ pub(crate) fn set_runtime(setting: OverseerSetting, enabled: bool) -> Result<()>
     Ok(())
 }
 
-/// `robco overseer notify-channel <id>` / `--clear`: where reports — decision
+/// `robco config notify-channel <id>` / `--clear`: where reports — decision
 /// notifications and digests — are delivered. The id is validated here so a
 /// typo fails at the terminal instead of silently falling back to the chat
 /// channel on every send (see `notify::report_channel_id`).

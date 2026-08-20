@@ -145,7 +145,7 @@ pub(crate) fn aggregate(
 }
 
 /// Aggregate the Inbox straight off disk, the way the TUI's background refresh
-/// does. Used by `robco overseer clear-inbox`, which has no App to read from.
+/// does. Used by `robco inbox clear`, which has no App to read from.
 pub(crate) fn current(registry: &Registry) -> Result<Inbox> {
     Ok(aggregate(
         &Ledger::load()?,

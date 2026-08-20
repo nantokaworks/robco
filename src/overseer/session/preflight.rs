@@ -36,7 +36,7 @@ const PROMPT: &str = "Write a file named result.json in the current directory co
 
 /// Run the preflight, report it, and persist what it found. Never fails the
 /// daemon: a probe that cannot run leaves an `Unknown` record, which is what
-/// `robco overseer status` then reports.
+/// `robco status` then reports.
 pub(crate) fn run(config: &Config) -> Result<()> {
     let health = probe(config, &crate::overseer::preflight_dir()?)?;
     logging::log_message(None, &health.summary())?;

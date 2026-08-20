@@ -93,7 +93,7 @@ pub(super) fn is_retry_of_undelivered(entry: &LedgerEntry) -> bool {
 /// The deduplication key is the (head, base) pair the handback would have used,
 /// so the cost is one decision per revision rather than one per poll — the same
 /// shape the enabled path already has. The count is kept on the entry so
-/// `robco overseer status` can report the setting's consequence beside the
+/// `robco status` can report the setting's consequence beside the
 /// setting itself.
 fn dropped(entry: &mut LedgerEntry, head_sha: &str, base_sha: &str) -> RecoveryPlan {
     if entry.merge_recovery.dropped_head.as_deref() == Some(head_sha)

@@ -1,4 +1,4 @@
-//! The internal bookkeeping `robco overseer status --debug` prints: the raw
+//! The internal bookkeeping `robco status --debug` prints: the raw
 //! ledger phase tally, `workers by repo` keyed by absolute path, the skip
 //! list, the decision-log tail, and the toggle/budget lines the three-question
 //! default output moved out from under (see `status.rs`'s module doc). Kept
@@ -184,7 +184,7 @@ fn daemon_line(
     )
 }
 
-/// Render the toggle summary line of `robco overseer status --debug`.
+/// Render the toggle summary line of `robco status --debug`.
 ///
 /// Every toggle reported here must be one the daemon actually honours; a switch
 /// that is only displayed invites the reader to blame it for an outage it has no

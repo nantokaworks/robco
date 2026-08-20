@@ -39,7 +39,7 @@ impl SettleBudget {
 /// The launchd domain the wizard is loading the Overseer plist into, plus the
 /// budget that bounds the wait for the domain to become available.
 ///
-/// Also used by `overseer::command::service::control` for `robco overseer
+/// Also used by `overseer::command::service::control` for `robco
 /// stop|start|restart`: the same async bootout-then-bootstrap dance applies
 /// whether the caller is the install wizard reloading onto a fresh binary or
 /// the CLI/TUI restarting an already-installed service.

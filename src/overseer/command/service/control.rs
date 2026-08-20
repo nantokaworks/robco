@@ -1,5 +1,5 @@
 //! Runtime control for the *installed* launchd Overseer service: durable
-//! stop and start, for `robco overseer stop|start|restart` (dropr:412).
+//! stop and start, for `robco stop|start|restart` (dropr:412).
 //!
 //! Built on the same probe/settle primitives the setup wizard's install and
 //! reload flow already relies on (`crate::setup::wizard::steps_service`),
@@ -102,7 +102,7 @@ fn wait_for_pid_exit_with(
 
 /// Bootout then bootstrap the loaded service, refusing to bootstrap onto a
 /// daemon that has not actually exited and confirming a new one took its
-/// place afterward — so `robco overseer restart` never reports success
+/// place afterward — so `robco restart` never reports success
 /// while the daemon it started with is still the one running (dropr:483).
 pub(crate) fn restart() -> Result<()> {
     let old_pid = daemon_pid();
@@ -122,7 +122,7 @@ fn still_shutting_down_error(pid: Option<u32>) -> Error {
     Error::Command {
         context: "restart launchd overseer service",
         stderr: format!(
-            "{who} is still running; refusing to start a second daemon. Once it exits on its own, run `robco overseer restart` again."
+            "{who} is still running; refusing to start a second daemon. Once it exits on its own, run `robco restart` again."
         ),
     }
 }

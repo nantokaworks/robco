@@ -9,8 +9,7 @@ use super::{
 };
 use crate::{
     Result,
-    cli::{OverseerArgs, OverseerCommand},
-    config::Config,
+    cli::{ConfigCommand, DecisionsCommand, InboxCommand, ServiceCommand},
     registry::Registry,
 };
 
@@ -29,7 +28,7 @@ pub(crate) use service::write_service_plist;
 use service::{ServiceState, StopOutcome, install_service, service_state};
 pub(crate) use settings::set_runtime;
 use settings::{notify_channel, protection_mode, set};
-use status::status;
+pub(crate) use status::status;
 
 #[cfg(target_os = "macos")]
 pub(crate) use super::ledger::ActiveWorkers;
@@ -37,22 +36,31 @@ pub(crate) use super::ledger::ActiveWorkers;
 use super::ledger::Ledger;
 pub(crate) use super::ledger::terminal;
 
-pub fn run(args: OverseerArgs, config: &Config) -> Result<()> {
-    match args.command {
-        OverseerCommand::Run => unreachable!("async overseer run handled by main"),
-        OverseerCommand::Status(args) => status(config, args.debug),
-        OverseerCommand::Stop => stop(),
-        OverseerCommand::Start => start(),
-        OverseerCommand::Restart => restart(),
-        OverseerCommand::Set(args) => set(args.setting, args.value.enabled()),
-        OverseerCommand::NotifyChannel(args) => {
+pub(crate) fn run_config(command: ConfigCommand) -> Result<()> {
+    match command {
+        ConfigCommand::Set(args) => set(args.setting, args.value.enabled()),
+        ConfigCommand::NotifyChannel(args) => {
             notify_channel(if args.clear { None } else { args.channel_id })
         }
-        OverseerCommand::Protection(args) => protection_mode(args.mode),
-        OverseerCommand::Panic => panic_stop(),
-        OverseerCommand::ClearInbox => clear_inbox(),
-        OverseerCommand::InstallService => install_service(),
-        OverseerCommand::CompactDecisions(args) => compact_decisions(args.dry_run),
+        ConfigCommand::Protection(args) => protection_mode(args.mode),
+    }
+}
+
+pub(crate) fn run_inbox(command: InboxCommand) -> Result<()> {
+    match command {
+        InboxCommand::Clear => clear_inbox(),
+    }
+}
+
+pub(crate) fn run_service(command: ServiceCommand) -> Result<()> {
+    match command {
+        ServiceCommand::Install => install_service(),
+    }
+}
+
+pub(crate) fn run_decisions(command: DecisionsCommand) -> Result<()> {
+    match command {
+        DecisionsCommand::Compact(args) => compact_decisions(args.dry_run),
     }
 }
 
@@ -87,7 +95,7 @@ pub(crate) enum RestartAttempt {
 /// Durably stop the daemon: bootout the launchd service if one is loaded —
 /// a `KeepAlive` job only leaves the domain that way, since a bare `SIGTERM`
 /// gets it respawned — else fall back to the manual pidfile/SIGTERM path for
-/// a daemon started with `robco overseer run` directly.
+/// a daemon started with `robco daemon` directly.
 pub(crate) fn stop_daemon() -> Result<StopAttempt> {
     stop_daemon_with(service_state, service::stop_service, stop_manual)
 }
@@ -128,7 +136,7 @@ fn stop_manual() -> Result<StopAttempt> {
 
 /// Start the daemon: bootstrap the launchd service if one is installed but
 /// not loaded. There is no manual-start equivalent — a daemon not running
-/// under launchd has to be launched with `robco overseer run` by hand, which
+/// under launchd has to be launched with `robco daemon` by hand, which
 /// this only names in the message.
 pub(crate) fn start_daemon() -> Result<StartAttempt> {
     start_daemon_with(service_state, service::start_service)
@@ -184,10 +192,10 @@ where
     }
 }
 
-const NO_SERVICE_HINT: &str = "no launchd service installed; run `robco overseer install-service` to install and load it, or `robco overseer run` to run the daemon in the foreground";
-const UNSUPPORTED_HINT: &str = "launchd service management is unavailable on this OS; run `robco overseer run` to run the daemon in the foreground";
+const NO_SERVICE_HINT: &str = "no launchd service installed; run `robco service install` to install and load it, or `robco daemon` to run the daemon in the foreground";
+const UNSUPPORTED_HINT: &str = "launchd service management is unavailable on this OS; run `robco daemon` to run the daemon in the foreground";
 
-fn stop() -> Result<()> {
+pub(crate) fn stop() -> Result<()> {
     match stop_daemon()? {
         StopAttempt::NotRunning => println!("overseer is not running"),
         StopAttempt::Stopped => println!("overseer stopped"),
@@ -198,7 +206,7 @@ fn stop() -> Result<()> {
     Ok(())
 }
 
-fn start() -> Result<()> {
+pub(crate) fn start() -> Result<()> {
     match start_daemon()? {
         StartAttempt::NotInstalled => println!("{NO_SERVICE_HINT}"),
         StartAttempt::Unsupported => println!("{UNSUPPORTED_HINT}"),
@@ -208,7 +216,7 @@ fn start() -> Result<()> {
     Ok(())
 }
 
-fn restart() -> Result<()> {
+pub(crate) fn restart() -> Result<()> {
     match restart_daemon()? {
         RestartAttempt::NotInstalled => println!("{NO_SERVICE_HINT}"),
         RestartAttempt::Unsupported => println!("{UNSUPPORTED_HINT}"),
@@ -218,7 +226,7 @@ fn restart() -> Result<()> {
     Ok(())
 }
 
-fn panic_stop() -> Result<()> {
+pub(crate) fn panic_stop() -> Result<()> {
     panic_stop_attributed("cli", None)?;
     println!("overseer panic stop complete");
     Ok(())
