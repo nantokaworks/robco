@@ -32,6 +32,7 @@ mod error_dialog;
 mod event_loop;
 mod expand;
 mod help;
+mod hyperlink;
 pub(crate) mod inbox;
 mod input;
 mod input_wrap;

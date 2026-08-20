@@ -25,7 +25,7 @@ use crate::{
     registry::Registry,
 };
 
-use super::{App, DISCOVERY_INTERVAL, dialog, layout, preview, spinner, tree};
+use super::{App, DISCOVERY_INTERVAL, dialog, hyperlink, layout, preview, spinner, tree};
 
 pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
     enable_raw_mode()?;
@@ -85,6 +85,9 @@ fn run_loop<B: ratatui::backend::Backend>(
 ) -> Result<()> {
     const MESSAGE_DURATION: Duration = Duration::from_secs(4);
 
+    // The OSC 8 markup the last frame wrote, so a link that moves or goes away
+    // can be cleaned off the cells that still carry it (dropr:512).
+    let mut last_link: Option<hyperlink::Painted> = None;
     let tick_interval = Duration::from_millis(app.config.poll_interval_ms);
     let mut last_tick = Instant::now() - tick_interval;
     let mut last_discovery = Instant::now();
@@ -126,10 +129,16 @@ fn run_loop<B: ratatui::backend::Backend>(
             terminal.clear()?;
             app.force_redraw = false;
         }
+        // The frame paints the URL as plain text; `hyperlink` marks those
+        // same cells up afterwards, once it can read where they landed
+        // (dropr:512).
+        let mut link = None;
+        let mut cursor_home = (0, 0);
         terminal.draw(|frame| {
             let visible = app.visible();
             let message = app.message.as_ref().map(|(message, _)| message.as_str());
-            let footer_caret = layout::footer(layout::root(frame.area()).footer).caret;
+            let footer = layout::footer(layout::root(frame.area()).footer);
+            let footer_caret = footer.caret;
             tree::draw(frame, app, &visible, message);
             preview::draw(
                 frame,
@@ -142,7 +151,20 @@ fn run_loop<B: ratatui::backend::Backend>(
             // per #189; #201 moves it right of the ROBCO ident to keep the brand clean.
             let cursor = dialog::draw(frame, app).unwrap_or(footer_caret);
             frame.set_cursor_position(cursor);
+            cursor_home = cursor;
+            // After the dialogs, so a dialog drawn over the footer hides the
+            // URL from this search instead of leaving a link on top of it.
+            link = message
+                .and_then(hyperlink::url_in)
+                .and_then(|url| hyperlink::find(frame.buffer_mut(), footer.zones.hints, url));
         })?;
+        if let Some(link) = &link {
+            hyperlink::draw(link, cursor_home)?;
+        }
+        if last_link.is_some() && last_link != link {
+            app.force_redraw = true;
+        }
+        last_link = link;
 
         if event::poll(spinner::FRAME_INTERVAL)? {
             match event::read()? {
