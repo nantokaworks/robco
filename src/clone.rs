@@ -67,13 +67,19 @@ fn repo_name(url: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
-fn validate_repo_name(name: &str) -> Result<()> {
+/// Whether `name` is safe to use as a single directory name: no separators,
+/// no `.`/`..`, not empty. Shared with `src/rename.rs`, which needs the same
+/// check for a renamed repository's new directory name.
+pub(crate) fn is_plain_component(name: &str) -> bool {
     let mut components = Path::new(name).components();
-    let is_plain_component = !name.is_empty()
+    !name.is_empty()
         && !name.contains(['/', '\\'])
         && matches!(components.next(), Some(Component::Normal(_)))
-        && components.next().is_none();
-    if is_plain_component {
+        && components.next().is_none()
+}
+
+fn validate_repo_name(name: &str) -> Result<()> {
+    if is_plain_component(name) {
         return Ok(());
     }
     Err(Error::Command {

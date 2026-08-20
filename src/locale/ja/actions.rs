@@ -68,6 +68,21 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "repository already listed" => "リポジトリは既に登録済みです",
         "repository added" => "リポジトリを追加しました",
 
+        // actions/rename.rs
+        "repository changed, not renamed" => "リポジトリが変更されたため名前を変更しませんでした",
+        "renamed to {}" => "名前を変更しました: {}",
+        "renamed the directory to {}, but it was no longer in robco's registry" => {
+            "ディレクトリを {} に変更しましたが、robcoの登録情報からは既に消えていました"
+        }
+        "renamed the directory to {}, but could not update robco's saved state ({}); restart robco to re-discover it" => {
+            "ディレクトリを {} に変更しましたが、robcoの保存状態を更新できませんでした（{}）。robcoを再起動して再検出してください"
+        }
+        "rename incomplete" => "名前変更が未完了です",
+        "these worktrees still need manual repair:" => "次のworktreeは手動での修復が必要です：",
+        "run: git -C {} worktree repair <worktree-path>" => {
+            "実行してください: git -C {} worktree repair <worktree-path>"
+        }
+
         // actions/checkout_main.rs
         "c: select a repo to check out its default branch in its primary checkout" => {
             "c: primary checkoutでdefault branchをcheckoutするリポジトリを選択してください"

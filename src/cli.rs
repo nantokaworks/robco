@@ -47,6 +47,8 @@ pub enum Command {
     McpStdio,
     /// Create a child agent linked to the calling agent session.
     New(NewArgs),
+    /// Rename a registered repository's local directory.
+    Rename(RenameArgs),
     /// Report turn completion to a controller agent.
     Report(ReportArgs),
     /// Create an agent in any registered repository.
@@ -188,6 +190,14 @@ pub struct NewArgs {
     /// Initial prompt for the launched program.
     #[arg(long)]
     pub prompt: Option<String>,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct RenameArgs {
+    /// Registered repository name or absolute path.
+    pub repo: String,
+    /// New directory name for the repository.
+    pub name: String,
 }
 
 #[derive(Debug, ClapArgs)]

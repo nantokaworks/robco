@@ -40,17 +40,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  x              remove selected agent worktree or pinned repo" => {
             "  x              選択したworktreeまたは固定リポジトリを削除"
         }
-        "  g              cycle selected worktree: unmanaged -> Auto -> Manual" => {
-            "  g              worktreeの状態を切替：unmanaged -> Auto -> Manual"
-        }
-        "                 on a repo row: any Auto -> all Manual, else all Auto" => {
-            "                 リポジトリ行：一部Auto -> 全Manual、他は全Auto"
-        }
-        "  G              on a repo row: toggle Overseer opt-out for the whole repo" => {
-            "  G              リポジトリ行：リポジトリ全体のOverseer対象外を切替"
-        }
-        "                 (opted out: no dispatch/merge; running workers untouched)" => {
-            "                 （対象外：dispatch/mergeなし。稼働中workerは継続）"
+        "  g              on a repo row: rename its local directory" => {
+            "  g              リポジトリ行：ローカルディレクトリの名前を変更"
         }
         "  S              stop dispatch (kill workers); off: start dispatch" => {
             "  S              dispatch停止（worker強制終了）／off時：dispatch開始"

@@ -57,6 +57,14 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                 Some((0, column)),
             )
         }
+        Mode::PromptRenameRepo { input, .. } => {
+            let (line, column) = input_line(t(locale, "new name"), input);
+            (
+                t(locale, "rename repo"),
+                vec![line, hint_line(locale, "enter rename   esc cancel")],
+                Some((0, column)),
+            )
+        }
         Mode::PromptOverseer { input } => {
             let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
             let wrapped = input_wrap::input_lines(

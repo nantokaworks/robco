@@ -75,6 +75,13 @@ enum Mode {
     PromptRepo {
         input: TextInput,
     },
+    /// Renames a repository's own directory. `path` is the pre-rename path,
+    /// used to find the row again on submit — the operator's `input` may not
+    /// have finished typing by the time another process changes the registry.
+    PromptRenameRepo {
+        path: PathBuf,
+        input: TextInput,
+    },
     PromptOverseer {
         input: TextInput,
     },

@@ -33,6 +33,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "enter create   esc cancel" => "enterで作成   escでキャンセル",
         "git format: <git-url> [branch]" => "形式: <git-url> [branch]",
         "enter add   esc cancel" => "enterで追加   escでキャンセル",
+        "enter rename   esc cancel" => "enterで名前変更   escでキャンセル",
         "enter send   esc cancel" => "enterで送信   escでキャンセル",
         "y delete   n/esc cancel" => "yで削除   n/escでキャンセル",
         "ends the running session now and removes the worktree" => {

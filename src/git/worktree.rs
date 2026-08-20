@@ -82,3 +82,18 @@ pub fn prune_worktrees(repo: &Path) -> Result<()> {
     let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
     command_unit(output, "git worktree prune")
 }
+
+/// Reconnects `worktree`'s `.git` file to `repo` after `repo`'s own directory
+/// moved. `repo` must already be at its new location: this is `git worktree
+/// repair` run from the main worktree, which fixes the *linked* worktree's
+/// back-link, the direction that breaks when the main repository moves.
+pub fn repair_worktree(repo: &Path, worktree: &Path) -> Result<()> {
+    let mut command = Command::new("git");
+    command
+        .args(["-C"])
+        .arg(repo)
+        .args(["worktree", "repair"])
+        .arg(worktree);
+    let output = run_timeout(command, GIT_LOCAL_TIMEOUT)?;
+    command_unit(output, "git worktree repair")
+}

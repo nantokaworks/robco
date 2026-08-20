@@ -3,7 +3,7 @@ use ratatui::text::{Line, Span};
 use super::theme::DEFAULT as THEME;
 use crate::locale::{Locale, t};
 
-pub(crate) const CONTENT_LINE_COUNT: u16 = 78;
+pub(crate) const CONTENT_LINE_COUNT: u16 = 75;
 
 pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
     let l = |text: &'static str| Line::from(t(locale, text));
@@ -22,10 +22,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  ctrl-q         return from attached tmux session"),
         l("  r              on a repo row: reload dropr tasks; else restart agent"),
         l("  x              remove selected agent worktree or pinned repo"),
-        l("  g              cycle selected worktree: unmanaged -> Auto -> Manual"),
-        l("                 on a repo row: any Auto -> all Manual, else all Auto"),
-        l("  G              on a repo row: toggle Overseer opt-out for the whole repo"),
-        l("                 (opted out: no dispatch/merge; running workers untouched)"),
+        l("  g              on a repo row: rename its local directory"),
         l("  S              stop dispatch (kill workers); off: start dispatch"),
         l("  R              reset dispatch circuit (open) or start the daemon"),
         l("                 (not running)"),

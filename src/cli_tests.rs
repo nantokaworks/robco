@@ -39,6 +39,16 @@ fn parses_add_subcommand() {
 }
 
 #[test]
+fn parses_rename_subcommand() {
+    let args = Args::try_parse_from(["robco", "rename", "myrepo", "renamed"]).unwrap();
+    let Some(Command::Rename(args)) = args.command else {
+        panic!("expected rename command");
+    };
+    assert_eq!(args.repo, "myrepo");
+    assert_eq!(args.name, "renamed");
+}
+
+#[test]
 fn parses_spawn_subcommand() {
     let args = Args::try_parse_from([
         "robco",
