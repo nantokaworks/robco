@@ -69,6 +69,19 @@ fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
     }
 }
 
+/// A repository linked to a dropr workspace. Only the dropr:510 tests need the
+/// link, so `repo` stays unlinked the way every other test here expects.
+fn linked_repo(path: &str, agents: Vec<AgentNode>, workspace_id: &str) -> RepoNode {
+    let mut node = repo(path, agents);
+    node.dropr = Some(crate::dropr::DroprWorkspace {
+        kind: "materialised".into(),
+        id: workspace_id.into(),
+        name: "workspace".into(),
+        repo_url: String::new(),
+    });
+    node
+}
+
 fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();
     App::new(Registry::default(), Config::default(), temp.path().into())
@@ -658,3 +671,37 @@ fn disconnected_worker_uses_merge_error_path() {
 
 #[path = "merge_scope_tests.rs"]
 mod scope;
+
+/// The wiring for dropr:510. A merge that landed is what changes the task's
+/// state in dropr, so finishing one has to record its workspace for the next
+/// tick to re-read. The tick, not this call, starts the fetch — which is why
+/// asserting on the recorded request needs no `dropr` on PATH.
+#[test]
+fn a_landed_merge_asks_dropr_for_the_repository_s_tasks_again() {
+    let mut app = test_app();
+    app.registry.repos = vec![linked_repo("/repo", vec![agent("wanted")], "workspace-1")];
+    install_job(&mut app, "/repo", "wanted");
+
+    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_| Ok(()))
+        .unwrap();
+
+    assert_eq!(app.dropr_task_settle, vec!["workspace-1".to_string()]);
+}
+
+/// The same wiring on the failure path: a merge that did not land leaves the
+/// row alone rather than claiming something that did not happen.
+#[test]
+fn a_failed_merge_asks_dropr_for_nothing() {
+    let mut app = test_app();
+    app.registry.repos = vec![linked_repo("/repo", vec![agent("wanted")], "workspace-1")];
+    install_job(&mut app, "/repo", "wanted");
+
+    app.finish_merge_with(
+        &PathBuf::from("/repo"),
+        Err("merge refused".to_string()),
+        |_| Ok(()),
+    )
+    .unwrap();
+
+    assert!(app.dropr_task_settle.is_empty());
+}

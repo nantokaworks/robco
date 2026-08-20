@@ -188,6 +188,8 @@ impl App {
                 result: result.clone(),
             },
         );
+        // The merge robco just ran is what changes this task's state in dropr.
+        self.note_merge_settled(repo_path, &result);
 
         match result {
             Ok(()) => {
