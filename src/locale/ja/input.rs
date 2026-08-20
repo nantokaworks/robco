@@ -17,6 +17,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "merge in progress: {} — wait or ctrl-c to force quit" => {
             "merge進行中: {} — 待つか、ctrl-cで強制終了してください"
         }
+        "launch in progress: {} — wait or ctrl-c to force quit" => {
+            "起動処理が進行中: {} — 待つか、ctrl-cで強制終了してください"
+        }
         "dismissed merge notice" => "merge通知を閉じました",
         "IME is on; switch to ASCII input" => "IMEが有効です。ASCII入力に切り替えてください",
         _ => return None,
