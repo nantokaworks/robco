@@ -11,7 +11,7 @@ use super::indicator::{self, Indicator};
 
 mod connector;
 use connector::tree_prefix;
-pub(super) use connector::{TreeHandle, leaf_row_prefix};
+pub(super) use connector::{TreeHandle, continuation_prefix, leaf_row_prefix};
 
 mod marquee;
 use marquee::display;
@@ -29,6 +29,12 @@ use marquee::display;
 /// Rows that must track the agent title column carry this too: the child-worktree
 /// row and the empty-repo filler in the parent module.
 pub(super) const AGENT_INDENT: &str = "";
+
+/// Columns [`labeled_row`] reserves for the primary indicator, between the
+/// prefix and the title. Named so a line that must land in the same column
+/// without going through `labeled_row` — an agent's reason line
+/// (`super::reason_line`) — cannot drift away from it.
+pub(super) const INDICATOR_WIDTH: usize = 2;
 
 /// The prefix of an agent row: cursor, the nesting step under the repo, the
 /// ancestor guide columns, then this row's own connector fused with its
@@ -108,7 +114,9 @@ pub(super) fn labeled_row(
     fit_prefix(&mut prefix, row_width);
     let prefix_width = spans_width(&prefix);
     let indicator_width = if primary.is_some() {
-        usize::from(row_width).saturating_sub(prefix_width).min(2)
+        usize::from(row_width)
+            .saturating_sub(prefix_width)
+            .min(INDICATOR_WIDTH)
     } else {
         0
     };
