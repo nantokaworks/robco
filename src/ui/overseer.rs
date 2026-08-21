@@ -143,6 +143,12 @@ impl OverseerSnapshot {
         decisions::merge_hold_detail(locale, &self.ledger, agent_id)
     }
 
+    /// Why `agent_id`'s ledger entry stopped in a terminal phase the operator
+    /// did not ask for. See [`decisions::terminal_reason`].
+    pub(in crate::ui) fn terminal_reason(&self, agent_id: &str) -> Option<String> {
+        decisions::terminal_reason(&self.ledger, &self.decisions, agent_id)
+    }
+
     /// Whether `agent_id`'s worker has reported itself finished while its
     /// entry is still live. See [`decisions::worker_finished`].
     pub(in crate::ui) fn worker_finished(&self, agent_id: &str) -> bool {

@@ -1,74 +1,12 @@
-use crate::config::Config;
+//! The `merge_error` half of the reason line (dropr:518): that it draws, what
+//! it draws, and that the tree's guides and cursor survive it. The
+//! terminal-ledger-phase half lives in `reason_line_phase_tests.rs`; the
+//! fixtures both use live in `reason_line_test_support.rs`.
+
 use crate::model::Selection;
-use crate::registry::Registry;
-use crate::ui::App;
-use crate::ui::test_support;
 use crate::ui::tree::render_test_support::{rendered_rows_at_width, title_column};
 
-/// Wide enough for the tree pane to reach its own maximum width, so these
-/// tests read the reason line's layout rather than the truncation every row
-/// already gets at the 24-column minimum.
-const WIDE: u16 = 160;
-
-/// The narrowest tree pane the layout allows, for the clipping case.
-const NARROW: u16 = 60;
-
-/// Flat agents in one local repo, titles kept short.
-fn app_with(names: &[&str]) -> App {
-    app_from(names, |_| None)
-}
-
-/// The same fixture, with `parent` deciding each agent's parent id by
-/// position — enough for the nested cases the guide columns must survive.
-fn app_from(names: &[&str], parent: impl Fn(usize) -> Option<String>) -> App {
-    let temp = tempfile::tempdir().unwrap();
-    let config = Config::default();
-    let agents = names
-        .iter()
-        .enumerate()
-        .map(|(index, name)| {
-            // Only worktrees under `worktree_root` survive
-            // `prune_unmanaged_agents`.
-            let mut agent = test_support::agent(name, config.worktree_root.join(name));
-            agent.parent_agent_id = parent(index);
-            agent
-        })
-        .collect();
-    let registry = Registry {
-        version: 1,
-        repos: vec![test_support::repo(temp.path().join("repo"), agents)],
-    };
-    let mut app = App::new(registry, config, temp.path().into());
-    // Ignore host tmux sessions and the OVERSEER pane so the rows are
-    // deterministic and start at the top of the frame.
-    app.orphans = Vec::new();
-    app.overseer_visible = false;
-    app
-}
-
-fn rows(app: &App) -> Vec<String> {
-    rendered_rows_at_width(app, WIDE)
-}
-
-fn set_error(app: &mut App, name: &str, error: Option<&str>) {
-    let agent = app.registry.repos[0]
-        .agents
-        .iter_mut()
-        .find(|agent| agent.title == name)
-        .expect("agent in fixture");
-    agent.merge_error = error.map(str::to_string);
-}
-
-/// The rendered reason line, trailing blanks trimmed.
-fn reason_row(rows: &[String]) -> Option<String> {
-    rows.iter()
-        .find(|row| row.contains('⚠'))
-        .map(|row| row.trim_end().to_string())
-}
-
-fn drawn_rows(rows: &[String]) -> usize {
-    rows.iter().filter(|row| !row.trim().is_empty()).count()
-}
+use super::test_support::{NARROW, app_from, app_with, drawn_rows, reason_row, rows, set_error};
 
 #[test]
 fn an_agent_without_an_error_stays_exactly_one_line() {
