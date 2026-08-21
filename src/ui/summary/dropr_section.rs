@@ -65,15 +65,20 @@ pub(super) fn dropr_section(
         field("name", dropr.name.clone()),
     ]);
     if !dropr.is_materialised() {
-        // A virtual workspace has no task board behind it, so the dispatch
-        // loop skips this repo quietly; the pane is where that state lives.
+        // A virtual workspace has no task board behind it: the dispatch loop
+        // skips this repo quietly (`overseer::dispatch::decision_log`), and
+        // `ui::actions::dropr_tasks` never asks it for tasks either — asking
+        // would only ever get "not found" back (dropr:516). One sentence
+        // here covers both, so the task list below is never rendered for a
+        // fetch that was never attempted.
         lines.push(Line::from(Span::styled(
             t(
                 locale,
-                "workspace is not materialised, so the overseer does not dispatch tasks for this repo",
+                "workspace is not materialised — no board exists yet, so no tasks are dispatched or listed for this repo",
             ),
             THEME.muted_style(),
         )));
+        return lines;
     }
     lines.extend(dropr_task_lines(&repo.dropr_tasks, locale, selected_task));
     lines

@@ -58,6 +58,9 @@ pub(super) enum DroprTaskReload {
     OverlayUnavailable,
     /// Overlay loading is switched off, so links are never resolved.
     OverlayDisabled,
+    /// Every linked repo's workspace is `virtual`: dropr knows the repository
+    /// but nobody made a board for it yet, so there is nothing to fetch.
+    NoMaterialisedWorkspaces,
 }
 
 /// Why no workspace is available to refresh. The distinction matters: reporting
@@ -72,6 +75,27 @@ fn no_workspace_reason(overlay_enabled: bool, status: OverlayStatus) -> DroprTas
         OverlayStatus::Loaded => DroprTaskReload::NoLinkedWorkspaces,
         OverlayStatus::Unavailable => DroprTaskReload::OverlayUnavailable,
     }
+}
+
+/// Whether any registered repo resolved to a dropr workspace at all, virtual
+/// or materialised. Kept apart from [`materialised_workspace_ids`] so "no
+/// linkage" and "linked, but no board yet" report as the distinct states they
+/// are.
+fn any_workspace_linked(repos: &[RepoNode]) -> bool {
+    repos.iter().any(|repo| repo.dropr.is_some())
+}
+
+/// The workspace ids worth asking dropr for tasks: the materialised links
+/// among the registered repos. A `virtual` workspace is a placeholder dropr
+/// lists for a repository it knows about but never created a board for, so
+/// `task_list` against it can only answer "not found" (dropr:516).
+fn materialised_workspace_ids(repos: &[RepoNode]) -> Vec<String> {
+    repos
+        .iter()
+        .filter_map(|repo| repo.dropr.as_ref())
+        .filter(|workspace| workspace.is_materialised())
+        .map(|workspace| workspace.id.clone())
+        .collect()
 }
 
 fn refresh_is_fresh(started: Instant, now: Instant) -> bool {
@@ -147,17 +171,15 @@ fn note_abandoned_reload(current: &mut DroprTaskFetch, locale: Locale) {
 impl App {
     pub(super) fn refresh_dropr_tasks(&mut self, manual: bool) -> DroprTaskReload {
         self.ingest_dropr_tasks();
-        let workspace_ids = self
-            .registry
-            .repos
-            .iter()
-            .filter_map(|repo| repo.dropr.as_ref().map(|workspace| workspace.id.clone()))
-            .collect::<Vec<_>>();
-        if workspace_ids.is_empty() {
+        if !any_workspace_linked(&self.registry.repos) {
             return no_workspace_reason(
                 self.config.dropr_overlay,
                 self.background_refresh.dropr_overlay_status,
             );
+        }
+        let workspace_ids = materialised_workspace_ids(&self.registry.repos);
+        if workspace_ids.is_empty() {
+            return DroprTaskReload::NoMaterialisedWorkspaces;
         }
         let mut any_running = false;
         for workspace_id in workspace_ids {

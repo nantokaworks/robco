@@ -159,23 +159,27 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
     );
 }
 
-/// A repo whose workspace is virtual is skipped by the dispatch loop, and the
-/// pane — not the decision log — is where that steady state must be visible.
+/// A repo whose workspace is virtual is skipped by the dispatch loop and by
+/// the task fetch, and the pane — not the decision log — is where that
+/// steady state must be visible. It must not render as a failed fetch either
+/// (dropr:516): there is no "tasks unavailable" panel for a fetch that was
+/// never attempted.
 #[test]
-fn a_virtual_workspace_repo_says_dispatch_is_skipped() {
+fn a_virtual_workspace_repo_says_dispatch_and_listing_are_skipped() {
     let mut virtual_workspace = workspace();
     virtual_workspace.kind = "virtual".into();
     let lines = rendered(&repo(Some(virtual_workspace), DroprTaskFetch::default()));
 
     assert!(lines.iter().any(|line| line == "kind: virtual"));
     assert!(lines.iter().any(|line| {
-        line == "workspace is not materialised, so the overseer does not dispatch tasks for this repo"
+        line == "workspace is not materialised — no board exists yet, so no tasks are dispatched or listed for this repo"
     }));
+    assert!(!lines.iter().any(|line| line == "tasks unavailable"));
 
     // A materialised workspace must not carry the notice.
     let lines = rendered(&repo(Some(workspace()), DroprTaskFetch::default()));
     assert!(!lines.iter().any(|line| {
-        line == "workspace is not materialised, so the overseer does not dispatch tasks for this repo"
+        line == "workspace is not materialised — no board exists yet, so no tasks are dispatched or listed for this repo"
     }));
 }
 

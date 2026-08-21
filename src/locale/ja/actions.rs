@@ -19,6 +19,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "dropr workspaces not loaded yet" => "droprワークスペースはまだ読み込まれていません",
         "dropr workspace listing unavailable" => "droprワークスペース一覧を取得できません",
         "dropr overlay is disabled" => "dropr overlayは無効です",
+        "linked repos have no materialised dropr board yet" => {
+            "連携リポジトリにmaterializeされたdroprボードがまだありません"
+        }
         "restart is not available for child worktrees" => "子worktreeでは再起動できません",
         "cannot restart an agent while it is merging" => "merge中のエージェントは再起動できません",
         "restarted {}" => "再起動しました: {}",

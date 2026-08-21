@@ -35,8 +35,8 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "no workspace resolved for this repo, so no tasks can be listed" => {
             "このリポジトリに対応するワークスペースが見つからないため、タスクを表示できません"
         }
-        "workspace is not materialised, so the overseer does not dispatch tasks for this repo" => {
-            "ワークスペースがmaterialiseされていないため、overseerはこのリポジトリのタスクをdispatchしません"
+        "workspace is not materialised — no board exists yet, so no tasks are dispatched or listed for this repo" => {
+            "ワークスペースはmaterializeされていません — droprボードがまだ存在しないため、このリポジトリのタスクはdispatchも一覧表示もされません"
         }
 
         // error_dialog.rs

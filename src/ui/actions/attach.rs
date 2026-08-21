@@ -198,6 +198,9 @@ impl App {
                 DroprTaskReload::OverlayPending => "dropr workspaces not loaded yet",
                 DroprTaskReload::OverlayUnavailable => "dropr workspace listing unavailable",
                 DroprTaskReload::OverlayDisabled => "dropr overlay is disabled",
+                DroprTaskReload::NoMaterialisedWorkspaces => {
+                    "linked repos have no materialised dropr board yet"
+                }
             };
             self.show_message(t(self.locale, message));
             return Ok(());
