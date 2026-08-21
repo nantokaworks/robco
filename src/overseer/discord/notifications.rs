@@ -66,24 +66,6 @@ pub fn from_decision(config: &DiscordConfig, entry: &DecisionEntry) -> Option<No
             "Dependabot coordination task filed",
             0xf39c12,
         ),
-        // The prefix only selects tier/title/color here; the description
-        // below still goes through `humanize::sentence`, which strips this
-        // same prefix and uses `overseer::release_pipeline`'s own words —
-        // the published version or the failed stage — verbatim.
-        (Some(reason), _) if reason.starts_with("release_published:") => {
-            (NotifyTier::Summary, "Release published", 0x2ecc71)
-        }
-        (Some(reason), _) if reason.starts_with("release_failed:") => {
-            (NotifyTier::Errors, "Release failed", 0xc0392b)
-        }
-        // An unready checkout blocks every release after it until an
-        // operator notices and fixes it by hand, so this is Errors-tier
-        // rather than left to go unnoticed in the decision log alone.
-        (Some(reason), _)
-            if reason.starts_with(crate::overseer::release_pipeline::SKIPPED_PREFIX) =>
-        {
-            (NotifyTier::Errors, "Release skipped", 0xe67e22)
-        }
         (_, DecisionKind::CircuitOpen) => (NotifyTier::Errors, "Circuit open", 0xe74c3c),
         (_, DecisionKind::Escalate) => (NotifyTier::Errors, "Escalation", 0xf1c40f),
         _ => return None,

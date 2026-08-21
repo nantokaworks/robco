@@ -70,8 +70,7 @@ pub struct RepoNode {
 /// What can be wrong with the primary checkout's `HEAD`: it is detached, it
 /// is on a named branch that is not the repository's own default branch, or
 /// that default branch itself could not be resolved at all. Every case but
-/// the last leaves `ready` (`overseer::release_pipeline`) unable to release
-/// and plain `git pull` failing for the operator — see
+/// the last leaves plain `git pull` failing for the operator — see
 /// `RepoNode::checkout_state`. The default branch name carried by the first
 /// two variants is resolved once, on the same tick this state itself is
 /// computed (`status::refresh_checkout_branch`) — see dropr:503.

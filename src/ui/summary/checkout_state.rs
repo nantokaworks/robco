@@ -2,10 +2,9 @@
 //!
 //! A primary checkout an operator or another tool left detached, or on some
 //! branch other than the repository's own default branch, breaks in ways
-//! that stay invisible until something else does: `ready`
-//! (`overseer::release_pipeline`) skips every release with an opaque
-//! reason, and a plain `git pull` errors out. This is where that state
-//! becomes visible, naming both the state and the fix.
+//! that stay invisible until something else does: a plain `git pull` errors
+//! out. This is where that state becomes visible, naming both the state and
+//! the fix.
 
 use ratatui::text::{Line, Span};
 
