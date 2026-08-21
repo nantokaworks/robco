@@ -273,6 +273,7 @@ mod tests {
             merge_approval: None,
             pr_facts: None,
             worker_finished_at: None,
+            approval_dropped: None,
         });
 
         assert_eq!(app.task_display_id(&ledgered), Some("#477".into()));

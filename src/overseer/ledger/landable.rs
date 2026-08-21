@@ -45,6 +45,7 @@ pub(crate) fn new_entry(agent: &AgentNode, repo: &str, now: DateTime<Utc>) -> Le
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     }
 }
 

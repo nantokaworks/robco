@@ -85,6 +85,12 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "handbackのメッセージがworkerに届きませんでした。"
         }
         "The session could not sign in." => "セッションがsign inできませんでした。",
+        "The worker pushed the fix Overseer asked for, and the approval moved to the new revision." => {
+            "workerがOverseerの依頼どおりに修正をpushしたため、approvalは新しいrevisionに引き継がれました。"
+        }
+        "The pull request moved past the approved revision, so the operator's merge approval no longer applies." => {
+            "PRがapproveされたrevisionより先に進んだため、operatorのmerge approvalは無効になりました。"
+        }
         _ => return None,
     })
 }

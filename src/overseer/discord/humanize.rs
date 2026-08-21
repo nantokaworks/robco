@@ -135,6 +135,14 @@ const PREFIX: &[(&str, &str)] = &[
         "The handback message did not reach the worker.",
     ),
     ("session_auth_failed:", "The session could not sign in."),
+    (
+        "merge_approval_carried:",
+        "The worker pushed the fix Overseer asked for, and the approval moved to the new revision.",
+    ),
+    (
+        "merge_approval_dropped:",
+        "The pull request moved past the approved revision, so the operator's merge approval no longer applies.",
+    ),
 ];
 
 /// The vocabulary-table half of [`sentence`]: `EXACT` / `PREFIX` only, no

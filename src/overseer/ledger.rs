@@ -142,6 +142,17 @@ pub struct LedgerEntry {
     /// field existed. See `monitor::apply::apply_inbox`.
     #[serde(default)]
     pub worker_finished_at: Option<DateTime<Utc>>,
+    /// Reason an operator's merge approval was dropped on its last try, worth
+    /// a line on the entry's own row until superseded — see
+    /// `ui::overseer::hold_reason` (dropr:534). Set by
+    /// `daemon::merge_allow::take_merge_approval` when a live head no longer
+    /// matches the approved one and does not qualify to carry forward.
+    /// Cleared the moment a fresh approval is granted
+    /// (`discord::ledger_requests::record_approval`) or an approval is
+    /// consumed, matched or carried forward. `None` for a ledger written
+    /// before the field existed.
+    #[serde(default)]
+    pub approval_dropped: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

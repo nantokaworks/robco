@@ -40,6 +40,7 @@ fn ledger(phase: LedgerPhase, reason: Option<&str>, passes: u32) -> Ledger {
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     });
     ledger
 }
@@ -104,4 +105,46 @@ fn a_phase_other_than_pr_opened_says_nothing_even_with_a_reason() {
 fn an_agent_with_no_ledger_entry_says_nothing() {
     let ledger = ledger(LedgerPhase::PrOpened, Some("checks_not_green"), 1);
     assert_eq!(held_reason(&ledger, "worker-2"), None);
+}
+
+/// dropr:534: a dropped merge approval earns a line immediately, unlike
+/// `merge_hold.reason` — there is no quiet window for it, because the
+/// operator's own `m` keypress is what stopped counting.
+#[test]
+fn a_dropped_merge_approval_earns_a_line_with_no_quiet_window() {
+    let mut ledger = ledger(LedgerPhase::PrOpened, None, 0);
+    ledger.entries[0].approval_dropped = Some("merge_approval_dropped:stale_head:abc..def".into());
+    assert_eq!(
+        held_reason(&ledger, "worker-1"),
+        Some(
+            "The pull request moved past the approved revision, so the operator's merge \
+             approval no longer applies."
+                .into()
+        )
+    );
+}
+
+/// dropr:534: a dropped approval outranks a stale, un-cleared
+/// `merge_hold.reason` left over from an earlier pass — `take_merge_approval`
+/// never touches that field, so without this priority the row could show a
+/// condition that no longer describes what actually happened.
+#[test]
+fn a_dropped_merge_approval_outranks_a_stale_hold_reason() {
+    let mut ledger = ledger(LedgerPhase::PrOpened, Some("checks_waiting"), 11);
+    ledger.entries[0].approval_dropped = Some("merge_approval_dropped:stale_head:abc..def".into());
+    assert_eq!(
+        held_reason(&ledger, "worker-1"),
+        Some(
+            "The pull request moved past the approved revision, so the operator's merge \
+             approval no longer applies."
+                .into()
+        )
+    );
+}
+
+#[test]
+fn a_dropped_merge_approval_says_nothing_once_the_entry_leaves_pr_opened() {
+    let mut ledger = ledger(LedgerPhase::Escalated, None, 0);
+    ledger.entries[0].approval_dropped = Some("merge_approval_dropped:stale_head:abc..def".into());
+    assert_eq!(held_reason(&ledger, "worker-1"), None);
 }

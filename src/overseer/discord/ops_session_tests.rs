@@ -244,6 +244,7 @@ fn ledger_entry(repo: &str, task_id: &str) -> crate::overseer::ledger::LedgerEnt
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     }
 }
 

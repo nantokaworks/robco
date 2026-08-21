@@ -69,6 +69,7 @@ fn escalated_ledger() -> Ledger {
             merge_approval: None,
             pr_facts: None,
             worker_finished_at: None,
+            approval_dropped: None,
         }],
         ..Ledger::default()
     }

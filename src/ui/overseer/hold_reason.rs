@@ -24,6 +24,18 @@
 //! foremost among them — means nothing will change without the worker or an
 //! operator doing something, so it earns a line the moment it is recorded.
 //! See the dropr:529 decision scribble for the full reasoning.
+//!
+//! dropr:534 adds a second, unrelated source: `entry.approval_dropped`, set
+//! by `daemon::merge_allow::take_merge_approval` when a worker's push moved
+//! the pull request past the head an operator's `m` approved and the push
+//! did not qualify to carry the approval forward. That event is a
+//! `DecisionKind::Hold` written straight to `decisions.jsonl` by
+//! `merge_allow` itself — it never touches `entry.merge_hold`, so
+//! `merge_hold::charge`'s own budget-scoped field never sees it and this
+//! module has to read it separately. Checked first and unconditionally
+//! (no quiet window): a dropped approval means the key the operator pressed
+//! stopped counting, and burying that behind `checks_waiting`'s noise
+//! filter would recreate the exact silence dropr:534 exists to end.
 
 use crate::overseer::discord::humanize;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
@@ -59,15 +71,20 @@ pub(super) fn held_reason(ledger: &Ledger, agent_id: &str) -> Option<String> {
     if entry.phase != LedgerPhase::PrOpened {
         return None;
     }
+    if let Some(reason) = entry.approval_dropped.as_deref() {
+        return Some(sentence(reason));
+    }
     let reason = entry.merge_hold.reason.as_deref()?;
     if reason == CHECKS_WAITING && entry.merge_hold.passes < QUIET_HOLD_PASSES {
         return None;
     }
-    Some(
-        humanize::static_sentence(reason)
-            .unwrap_or(reason)
-            .to_string(),
-    )
+    Some(sentence(reason))
+}
+
+fn sentence(reason: &str) -> String {
+    humanize::static_sentence(reason)
+        .unwrap_or(reason)
+        .to_string()
 }
 
 #[cfg(test)]

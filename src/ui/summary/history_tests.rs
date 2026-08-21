@@ -33,6 +33,7 @@ fn entry(display_id: &str, repo: &str, phase: LedgerPhase, settled_minute: u32) 
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     }
 }
 

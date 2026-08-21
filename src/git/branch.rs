@@ -34,7 +34,13 @@ pub fn branch_content_merged(repo: &Path, branch: &str, base: &str) -> Result<bo
     squash_landed(repo, base, branch)
 }
 
-fn is_ancestor(repo: &Path, commit: &str, base: &str) -> Result<bool> {
+/// Whether `commit` is an ancestor of `base` — a fast-forward relationship,
+/// the shape a plain push leaves behind. `pub(crate)`, not private: the
+/// auto-merge gate's merge-approval carry-forward
+/// (`overseer::daemon::merge_allow`) needs this exact question answered for
+/// a reason that has nothing to do with `branch_content_merged`'s own
+/// merge-strategy shapes (dropr:534).
+pub(crate) fn is_ancestor(repo: &Path, commit: &str, base: &str) -> Result<bool> {
     let mut command = Command::new("git");
     command
         .args(["-C"])

@@ -40,6 +40,7 @@ fn entry_settled(
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     }
 }
 
