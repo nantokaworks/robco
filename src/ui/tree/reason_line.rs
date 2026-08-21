@@ -75,7 +75,8 @@ pub(super) fn build(
         (reason, FAILURE_GLYPH, THEME.merge_failed_style(false))
     } else if let Some(reason) = first_line(stopped) {
         (reason, FAILURE_GLYPH, THEME.merge_failed_style(false))
-    } else if let Some(reason) = first_line(held) {
+    } else {
+        let reason = first_line(held)?;
         // The same glyph the row's own `MergeLifecycle::OnHold` badge already
         // uses, so the two read as one vocabulary rather than a second
         // warning symbol.
@@ -84,8 +85,6 @@ pub(super) fn build(
             crate::model::MergeLifecycle::OnHold.glyph(),
             THEME.merge_hold_style(false),
         )
-    } else {
-        return None;
     };
 
     let mut spans = vec![
