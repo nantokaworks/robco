@@ -126,10 +126,10 @@ pub fn worktree_is_clean(worktree: &Path) -> Result<bool> {
 
 /// Checks `branch` out in `repo`, moving `HEAD`. The only place in this
 /// codebase that does — every other caller of this module deliberately
-/// avoids touching a checkout's `HEAD` it does not own (see
-/// `post_merge` and `overseer::release_pipeline` module docs) — so this
-/// exists for the one operator-initiated action allowed to move it. Callers
-/// MUST check [`worktree_is_clean`] first: this refuses nothing on its own.
+/// avoids touching a checkout's `HEAD` it does not own (see `post_merge`'s
+/// module docs) — so this exists for the one operator-initiated action
+/// allowed to move it. Callers MUST check [`worktree_is_clean`] first: this
+/// refuses nothing on its own.
 pub fn checkout(repo: &Path, branch: &str) -> Result<()> {
     let mut command = Command::new("git");
     command.args(["-C"]).arg(repo).args(["checkout", branch]);

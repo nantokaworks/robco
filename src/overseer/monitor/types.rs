@@ -141,10 +141,4 @@ pub enum Action {
     Escalate { task_id: String, reason: String },
     Notify { message: String },
     LogDecision { task_id: Option<String>, message: String },
-    /// Considers whether the pull request that just merged should trigger the
-    /// local release pipeline. Pushed once, the pass an entry first reaches
-    /// `Merged`, and carries no verdict of its own — every guard (repo, task
-    /// scope, checkout readiness) is evaluated where the process actually
-    /// runs. See `overseer::release_pipeline::consider`.
-    CheckReleasePipeline { task_id: String, repo: String, pr_url: Option<String> },
 }

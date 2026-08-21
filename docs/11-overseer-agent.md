@@ -304,7 +304,6 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
     "session_env": {},
     "session_env_file": null,
     "session_preflight": true,
-    "release_pipeline_enabled": false,
     "repo_watch_enabled": true,
     "repo_watch_interval_hours": 24,
     "dependabot_stale_after_days": 3,
@@ -355,7 +354,6 @@ on, stay in English. With the key unset the Overseer sends the prompts it always
 | `session_env` | object of string → string | `{}` | Environment applied to every session the daemon spawns and to every agent robco launches (dispatched workers and TUI-created agents alike). Highest layer of the credential channel; also written into the launchd plist by the installer. See [Session credentials](#session-credentials). |
 | `session_env_file` | string (path) or `null` | `null` | `KEY=VALUE` file read below `session_env`. `null` reads `~/.robco/env`. A leading `~` is expanded. Read at spawn time, so a rotated token needs no reinstall. |
 | `session_preflight` | boolean | `true` | Spawns one probe session at daemon start to confirm the channel authenticates, and records the verdict for `robco status`. |
-| `release_pipeline_enabled` | boolean | `false` | Runs `scripts/release.sh` unattended, from this project's own checkout, after a merge closes a `[release]`-scoped task in this project's own repository. A distinct privilege class from every other flag above: on success it publishes a public GitHub release with whatever credentials the daemon holds, and `scripts/release.sh` is itself part of this repository, so a future change to it runs with this same privilege on the next qualifying merge. Default-off; an operator opts in deliberately. See [`overseer::release_pipeline`](../src/overseer/release_pipeline.rs). |
 | `repo_watch_enabled` | boolean | `true` | Whether the periodic advisory/Dependabot repository health watch runs at all. See [Repository health watch](#repository-health-watch). |
 | `repo_watch_interval_hours` | non-negative integer | `24` | Hours between one repository's advisory/Dependabot watch passes. |
 | `dependabot_stale_after_days` | integer | `3` | Days a Dependabot pull request may sit open, unconflicted, before the watch treats it as needing coordinated attention. A conflicted (`DIRTY`) pull request is flagged regardless of age. |

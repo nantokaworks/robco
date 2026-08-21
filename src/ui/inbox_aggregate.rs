@@ -46,18 +46,10 @@ pub(crate) fn aggregate(
         .collect::<HashMap<_, _>>();
     let mut items = Vec::new();
 
-    // A release-pipeline skip (`DecisionKind::Skip`, `overseer::
-    // release_pipeline::skip`) rides in here alongside a plain `Escalate`:
-    // it already reaches Discord (`discord::notifications::from_decision`),
-    // and an unready checkout blocks every release after it, so the operator
-    // needs the same TUI Inbox visibility a task escalation gets.
-    for decision in decisions.iter().filter(|entry| {
-        entry.kind == DecisionKind::Escalate
-            || (entry.kind == DecisionKind::Skip
-                && entry
-                    .reason
-                    .starts_with(crate::overseer::release_pipeline::SKIPPED_PREFIX))
-    }) {
+    for decision in decisions
+        .iter()
+        .filter(|entry| entry.kind == DecisionKind::Escalate)
+    {
         let ledger_entry = decision
             .task
             .as_deref()

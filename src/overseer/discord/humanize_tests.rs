@@ -44,60 +44,6 @@ fn free_form_prose_is_not_mapped() {
 }
 
 #[test]
-fn an_empty_release_pipeline_wrapper_is_not_mapped() {
-    assert_eq!(sentence("release_published:"), None);
-    assert_eq!(sentence("release_failed:   "), None);
-}
-
-#[test]
-fn a_release_pipeline_wrapper_unwraps_to_its_own_words() {
-    assert_eq!(
-        sentence("release_published:Published RobCo 0.1.93.").as_deref(),
-        Some("Published RobCo 0.1.93.")
-    );
-    assert_eq!(
-        sentence("release_failed:Failed at stage=check cargo test failed.").as_deref(),
-        Some("Failed at stage=check cargo test failed.")
-    );
-}
-
-#[test]
 fn surrounding_whitespace_does_not_defeat_the_lookup() {
     assert!(sentence("  merged  ").is_some());
-}
-
-#[test]
-fn a_release_pipeline_skip_reason_maps_to_a_sentence() {
-    assert_eq!(
-        sentence("release_pipeline_skipped:checkout_not_on_merged_commit").as_deref(),
-        Some("The release checkout is not on the merged commit, so the release did not run.")
-    );
-    assert_eq!(
-        sentence("release_pipeline_skipped:working_tree_dirty").as_deref(),
-        Some("The release checkout has uncommitted changes, so the release did not run.")
-    );
-}
-
-/// dropr:429 — a checkout off `main` gets its own sentence, distinct from
-/// the generic "not on the merged commit" one.
-#[test]
-fn a_release_pipeline_skip_reason_names_a_checkout_off_main() {
-    assert_eq!(
-        sentence("release_pipeline_skipped:checkout_detached").as_deref(),
-        Some("The release checkout has a detached HEAD, so the release did not run.")
-    );
-}
-
-/// dropr:444 — the branch name rides along after the prefix; the sentence
-/// names the fix, and the raw reason (still shown next to it) names the
-/// branch.
-#[test]
-fn a_release_pipeline_skip_reason_names_the_fix_for_a_checkout_off_main() {
-    assert_eq!(
-        sentence("release_pipeline_skipped:checkout_not_on_main:operator-wip").as_deref(),
-        Some(
-            "The release checkout is on another branch, not main, so the release did not run. \
-             Move the checkout back to main to unblock the release."
-        )
-    );
 }

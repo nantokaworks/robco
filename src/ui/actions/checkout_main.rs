@@ -1,9 +1,9 @@
 //! `c` on a repo row: return the primary checkout to its own default branch.
 //!
 //! The one place in the TUI allowed to move the primary checkout's `HEAD` —
-//! `git::post_merge` and `overseer::release_pipeline` deliberately never do,
-//! see their module docs — so this stays reachable only from a deliberate
-//! keypress, never from the daemon or any background refresh.
+//! `git::post_merge` deliberately never does, see its module docs — so this
+//! stays reachable only from a deliberate keypress, never from the daemon or
+//! any background refresh.
 
 use crate::{
     git,
