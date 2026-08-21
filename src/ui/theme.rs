@@ -187,4 +187,17 @@ impl Theme {
             style
         }
     }
+
+    /// Style for the "worker-done" badge — the worker's own claim that it
+    /// finished, not yet confirmed by an observed merge. Reuses `done`'s
+    /// colour: the meaning is the same "finished" the plain `Status::Done`
+    /// glyph carries, just reported rather than observed.
+    pub fn worker_finished_style(self, selected: bool) -> Style {
+        let style = Style::default().fg(self.done);
+        if selected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
+        }
+    }
 }

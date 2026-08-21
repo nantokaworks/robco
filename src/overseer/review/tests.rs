@@ -87,6 +87,7 @@ pub(super) fn live_entry(
         operator_override: None,
         merge_approval: None,
         pr_facts: None,
+        worker_finished_at: None,
     }
 }
 

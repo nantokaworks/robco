@@ -133,6 +133,15 @@ pub struct LedgerEntry {
     /// it, so a row with no facts yet still renders, just without them.
     #[serde(default)]
     pub pr_facts: Option<PrFacts>,
+    /// When the worker reported `--kind done` for this entry — the worker's
+    /// own claim that its work is finished, not proof of it. `Merged` /
+    /// `Failed` / `Escalated` stay derived from what is observed (PR state,
+    /// session state); this only lets the row distinguish "still working"
+    /// from "says it is done and this is waiting on an operator". `None`
+    /// while no such report has arrived, or for a ledger written before the
+    /// field existed. See `monitor::apply::apply_inbox`.
+    #[serde(default)]
+    pub worker_finished_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

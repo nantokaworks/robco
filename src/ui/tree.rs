@@ -100,6 +100,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         .overseer_snapshot
                         .blocked_reason(app.locale, &agent.id)
                         .is_some();
+                // Same gating: a worker that has resumed real work has moved
+                // past whatever `--kind done` it last reported.
+                indicator_state.worker_finished = agent.status != Status::Running
+                    && app.overseer_snapshot.worker_finished(&agent.id);
                 // Same gating as `needs_decision` above: a worker that has
                 // resumed real work has moved past whatever the ledger
                 // still records for its last pull request.

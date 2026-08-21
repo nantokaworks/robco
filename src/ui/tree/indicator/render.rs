@@ -92,6 +92,15 @@ pub(in crate::ui) fn supplementary_spans(
         };
         spans.push(Span::styled(format!("{prefix}blocked"), style));
     }
+    if supplementary.worker_finished {
+        let prefix = if spans.is_empty() { gap } else { " " };
+        let style = if selected {
+            sel
+        } else {
+            THEME.worker_finished_style(false)
+        };
+        spans.push(Span::styled(format!("{prefix}worker-done"), style));
+    }
     spans
 }
 
@@ -121,6 +130,7 @@ mod tests {
                 worktree_missing: true,
                 merge_failed: true,
                 needs_decision: true,
+                worker_finished: true,
             },
             true,
             " ",
@@ -151,11 +161,29 @@ mod tests {
                 worktree_missing: false,
                 merge_failed: false,
                 needs_decision: true,
+                worker_finished: false,
             },
             false,
             " ",
         );
         let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
         assert_eq!(text, " blocked");
+    }
+
+    #[test]
+    fn worker_finished_renders_a_worker_done_badge() {
+        let spans = supplementary_spans(
+            None,
+            SupplementaryIndicators {
+                worktree_missing: false,
+                merge_failed: false,
+                needs_decision: false,
+                worker_finished: true,
+            },
+            false,
+            " ",
+        );
+        let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
+        assert_eq!(text, " worker-done");
     }
 }

@@ -133,6 +133,20 @@ pub(super) fn merge_lifecycle(ledger: &Ledger, agent_id: &str) -> Option<MergeLi
     })
 }
 
+/// Whether `agent_id`'s worker has reported `--kind done` and the entry has
+/// not since settled. The report is the worker's own claim, not proof —
+/// `Merged` / `Failed` / `Escalated` are read from the ledger's own observed
+/// phase elsewhere, never from this — so this only lets a row distinguish
+/// "still working" from "says it is finished and this is waiting on an
+/// operator or the merge gate".
+pub(super) fn worker_finished(ledger: &Ledger, agent_id: &str) -> bool {
+    ledger.entries.iter().any(|entry| {
+        entry.agent_id == agent_id
+            && entry.worker_finished_at.is_some()
+            && !crate::overseer::ledger::terminal(entry.phase)
+    })
+}
+
 /// The raw gate reason behind `merge_lifecycle`'s bucket, for the Info pane.
 /// Deliberately verbatim rather than remapped to a friendlier label — the
 /// same convention `blocked_reason` and the decision list already follow for

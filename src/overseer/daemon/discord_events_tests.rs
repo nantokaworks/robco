@@ -33,6 +33,7 @@ fn entry(task: &str, agent: &str, phase: LedgerPhase) -> LedgerEntry {
         operator_override: None,
         merge_approval: None,
         pr_facts: None,
+        worker_finished_at: None,
     }
 }
 

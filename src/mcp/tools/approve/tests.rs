@@ -32,6 +32,7 @@ fn ledger_with_entry(agent_id: &str, display_id: &str) -> Ledger {
             operator_override: None,
             merge_approval: None,
             pr_facts: None,
+            worker_finished_at: None,
         }],
         ..Ledger::default()
     }

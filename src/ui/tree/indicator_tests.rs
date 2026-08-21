@@ -12,6 +12,7 @@ fn assert_missing_pair(state: IndicatorState, primary: Option<Indicator>) {
             worktree_missing: true,
             merge_failed: false,
             needs_decision: false,
+            worker_finished: false,
         }
     );
 }
@@ -116,6 +117,7 @@ fn missing_worktree_is_the_only_indicator_without_a_primary() {
                 worktree_missing: true,
                 merge_failed: false,
                 needs_decision: false,
+                worker_finished: false,
             }
         )
     );
@@ -133,6 +135,7 @@ fn row_without_missing_worktree_has_no_supplementary_indicator() {
                 worktree_missing: false,
                 merge_failed: false,
                 needs_decision: false,
+                worker_finished: false,
             }
         )
     );
@@ -148,6 +151,7 @@ fn merge_failure_is_supplementary() {
             worktree_missing: false,
             merge_failed: true,
             needs_decision: false,
+            worker_finished: false,
         }
     );
 }
@@ -162,6 +166,7 @@ fn needs_decision_is_supplementary() {
             worktree_missing: false,
             merge_failed: false,
             needs_decision: true,
+            worker_finished: false,
         }
     );
 }
