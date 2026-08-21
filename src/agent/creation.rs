@@ -6,6 +6,7 @@ use nanoid::nanoid;
 use super::env::{
     RecoveredIdentity, agent_env, claude_session_id, launch_command, session_id_args,
 };
+use super::hooks::write_report_hooks;
 use super::naming::{
     leading_task_number, naming_slug, profile_name, resolve_branch_prefix, worker_branch_name,
 };
@@ -58,7 +59,6 @@ pub fn create_agent(
         parent_agent_id,
         &[],
         &[],
-        |_| Ok(()),
     )
 }
 
@@ -72,7 +72,6 @@ pub(crate) fn create_agent_with_launch(
     parent_agent_id: Option<&str>,
     extra_args: &[String],
     extra_env: &[(String, String)],
-    prepare_worktree: impl FnOnce(&std::path::Path) -> Result<()>,
 ) -> Result<AgentNode> {
     let id = nanoid!(8);
     let task_number = leading_task_number(name_slug);
@@ -90,8 +89,12 @@ pub(crate) fn create_agent_with_launch(
 
     fs::create_dir_all(&config.worktree_root)?;
     git::add_worktree(&repo.path, &worktree_path, &branch, &base_commit)?;
-    prepare_worktree(&worktree_path)?;
     let program = config.default_program_command();
+    // Every worker robco creates gets its report hooks here, in the one
+    // place all three creation paths (`robco spawn`, TUI agent creation, the
+    // dropr-task `n` key) actually share — see the dropr:532 decision
+    // scribble on this task for why a per-caller closure was the wrong place.
+    write_report_hooks(&worktree_path, &program)?;
     let claude_session_id = claude_session_id(&program);
     let mut launch_args = session_id_args(claude_session_id.as_deref());
     launch_args.extend_from_slice(extra_args);

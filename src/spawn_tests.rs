@@ -134,6 +134,76 @@ fn interactive_spawns_still_receive_the_session_channel() {
     );
 }
 
+/// dropr:532 — `robco spawn`'s own path (`spawn_in_repo_with_mode`, the third
+/// of the three creation paths) still gets report hooks after hook
+/// installation moved out of this file's own `prepare_worktree` closure and
+/// into `create_agent_with_launch`. Run with `autonomous: false` on purpose:
+/// hook installation is no longer gated on the autonomous flag (see the
+/// dropr:532 decision scribble), only env-var blocklisting still is.
+#[test]
+fn spawn_in_repo_installs_report_hooks_even_when_not_autonomous() {
+    use crate::registry::Registry;
+
+    if !crate::tmux::is_installed() {
+        eprintln!("skipping: no tmux binary on this runner (GitHub's macos-latest lacks one)");
+        return;
+    }
+
+    let fixture = TestRepo::new();
+    let worktree_root = tempfile::tempdir().unwrap();
+    let config = Config {
+        worktree_root: worktree_root.path().to_path_buf(),
+        default_program: "claude".into(),
+        profiles: vec![crate::config::Profile {
+            name: "claude".into(),
+            program: "/nonexistent/claude".into(),
+            autonomous_args: Vec::new(),
+            model: None,
+            backend: None,
+        }],
+        ..Config::default()
+    };
+    // A name distinctive to this test, not `resolve_repo`'s exact-match
+    // fixture name ("myapp") elsewhere in this file: `spawn_in_repo_with_mode`
+    // reads the real (sandboxed, per-test-binary) `Registry::load()`, which is
+    // shared with every other test in this process, so an unremarkable name
+    // risks colliding with a row another concurrent test pushed.
+    let repo_name = "dropr532-spawn-hook-check";
+    // Additive, like `ui::actions::rename_tests`: the shared sandboxed
+    // state.json may already carry rows from other tests running
+    // concurrently in this process, so push rather than replace.
+    Registry::locked_update(|registry| {
+        registry.repos.push(repo(fixture.path(), repo_name));
+    })
+    .unwrap();
+
+    let outcome = spawn_in_repo_with_mode(
+        repo_name,
+        "spawn hook check",
+        None,
+        None,
+        None,
+        &[],
+        false,
+        &config,
+    )
+    .unwrap();
+    let _ = crate::tmux::kill_session(&outcome.tmux_session);
+
+    let settings: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(outcome.worktree_path.join(".claude/settings.local.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        settings["hooks"]["Stop"][0]["hooks"][0]["command"],
+        "robco report --kind turn-done"
+    );
+    assert_eq!(
+        settings["hooks"]["Notification"][0]["hooks"][0]["command"],
+        "robco report --kind waiting"
+    );
+}
+
 #[test]
 fn outcome_copies_agent_shape() {
     let outcome = SpawnOutcome {

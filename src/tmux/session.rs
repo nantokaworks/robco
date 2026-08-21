@@ -111,6 +111,15 @@ pub(super) fn has_server() -> Result<bool> {
     Ok(output.status.success())
 }
 
+/// Whether a `tmux` binary can be run at all, for tests that need a real
+/// session and would rather skip than fail on a runner that has none —
+/// GitHub's hosted `macos-latest` image does not ship tmux, unlike its
+/// `ubuntu-latest` image.
+#[cfg(test)]
+pub(crate) fn is_installed() -> bool {
+    Command::new("tmux").arg("-V").output().is_ok()
+}
+
 /// Build a detached tmux session command with session-scoped environment.
 ///
 /// Environment injection uses `new-session -e`, which requires tmux >= 3.2.

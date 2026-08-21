@@ -1,8 +1,5 @@
 use std::path::{Path, PathBuf};
 
-#[path = "spawn/hooks.rs"]
-mod hooks;
-
 use serde::Serialize;
 
 use crate::{
@@ -62,7 +59,6 @@ pub(crate) fn spawn_in_repo_with_mode(
         Vec::new()
     };
     let launch_env = worker_env(blocked_env, &SessionEnv::resolve(config));
-    let program = config.default_program_command();
     let child = agent::create_agent_with_launch(
         &repo,
         title,
@@ -72,12 +68,6 @@ pub(crate) fn spawn_in_repo_with_mode(
         parent_agent_id,
         extra_args,
         &launch_env,
-        |worktree| {
-            if autonomous {
-                hooks::write_autonomous_hooks(worktree, &program)?;
-            }
-            Ok(())
-        },
     )?;
     let outcome = SpawnOutcome::from(&child);
     persist_child(&repo.path, child, &outcome)?;

@@ -196,6 +196,56 @@ fn create_agent_with_overseer_as_supplied_parent_is_kept() {
     );
 }
 
+/// End-to-end proof that a worker created through the public `create_agent`
+/// wrapper — the function both `src/ui/input.rs` (the `n` key) and
+/// `src/ui/actions/dropr_task_worker.rs` (the dropr-task `n` key) call — gets
+/// its report hooks written into the new worktree. Before dropr:532 these two
+/// paths installed nothing at all, because hook installation lived behind a
+/// per-caller closure only `spawn.rs` supplied; `create_agent_with_launch`
+/// now installs them itself, so this single test covers both TUI paths at
+/// once (they are, after this change, the exact same code).
+#[test]
+fn create_agent_installs_report_hooks_in_the_new_worktree() {
+    if !crate::tmux::is_installed() {
+        eprintln!("skipping: no tmux binary on this runner (GitHub's macos-latest lacks one)");
+        return;
+    }
+    let repo_fixture = TestRepo::new();
+    let worktree_root = tempfile::tempdir().unwrap();
+    let config = Config {
+        worktree_root: worktree_root.path().to_path_buf(),
+        default_program: "claude".into(),
+        profiles: vec![crate::config::Profile {
+            name: "claude".into(),
+            // A path that does not resolve to a real binary: tmux still
+            // creates the (detached) session and reports it running, so the
+            // assertions below never touch the real `claude` CLI.
+            program: "/nonexistent/claude".into(),
+            autonomous_args: Vec::new(),
+            model: None,
+            backend: None,
+        }],
+        ..Config::default()
+    };
+    let repo = repo_at(&repo_fixture, "myapp");
+
+    let agent = create_agent(&repo, "hook install check", None, &config, None).unwrap();
+    let _ = crate::tmux::kill_session(&agent.tmux_session);
+
+    let settings: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(agent.worktree_path.join(".claude/settings.local.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        settings["hooks"]["Stop"][0]["hooks"][0]["command"],
+        "robco report --kind turn-done"
+    );
+    assert_eq!(
+        settings["hooks"]["Notification"][0]["hooks"][0]["command"],
+        "robco report --kind waiting"
+    );
+}
+
 /// A worker enrolled with the Overseer can resolve a report target.
 ///
 /// `create_agent_with_launch` feeds `enroll_with_overseer`'s output straight
