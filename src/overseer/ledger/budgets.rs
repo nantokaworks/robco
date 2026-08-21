@@ -50,6 +50,33 @@ pub struct MergeRecovery {
     /// Head sha the undelivered counter above is tracking. A new head resets
     /// it, the same way a new head resets `charged`'s deduplication.
     pub undelivered_head: Option<String>,
+    /// A handback withheld because the worker's session was mid-turn when a
+    /// recovery pass tried to deliver it — see
+    /// `daemon::merge_recovery_pending`. Persisted so a daemon restart does
+    /// not lose the fact that a worker is still owed a handback. `None` once
+    /// delivered, abandoned past its retry bound, or discarded because the
+    /// entry no longer needs it (the pull request merged, or escalated
+    /// through an unrelated path).
+    pub pending: Option<PendingHandback>,
+}
+
+/// One merge-recovery handback a worker's session was too busy to receive,
+/// kept so a later daemon pass can retry it instead of the notice quietly
+/// never arriving (dropr:530).
+///
+/// Holds at most one instruction: a fresh `reason`/`head`/`base` replaces
+/// whatever was recorded before rather than queueing behind it, because the
+/// worker needs the current failure, not a history of every one that came
+/// before it. `attempts` counts passes charged against the *same*
+/// (reason, head, base) — a changed one is a genuinely different
+/// instruction and starts its own count, the same way `undelivered_head`
+/// resets on a new head.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PendingHandback {
+    pub reason: String,
+    pub head: String,
+    pub base: String,
+    pub attempts: u32,
 }
 
 /// What the merge gate remembers about holding this pull request back.

@@ -36,6 +36,15 @@
 //! (no quiet window): a dropped approval means the key the operator pressed
 //! stopped counting, and burying that behind `checks_waiting`'s noise
 //! filter would recreate the exact silence dropr:534 exists to end.
+//!
+//! dropr:530 adds a third source: `entry.merge_recovery.pending`, set by
+//! `daemon::merge_recovery_pending::hold` when the worker's session was too
+//! busy to receive a handback. This complements, rather than substitutes
+//! for, `daemon::merge_recovery`'s own handback into the worker's session —
+//! the row tells the operator, the handback tells the worker. Checked ahead
+//! of `merge_hold.reason` and its quiet window for the same reason
+//! `approval_dropped` is: a queued-but-undelivered instruction is new,
+//! specific information the underlying hold reason alone does not carry.
 
 use crate::overseer::discord::humanize;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
@@ -73,6 +82,12 @@ pub(super) fn held_reason(ledger: &Ledger, agent_id: &str) -> Option<String> {
     }
     if let Some(reason) = entry.approval_dropped.as_deref() {
         return Some(sentence(reason));
+    }
+    if let Some(pending) = entry.merge_recovery.pending.as_ref() {
+        return Some(sentence(&format!(
+            "merge_recovery_pending:{}",
+            pending.reason
+        )));
     }
     let reason = entry.merge_hold.reason.as_deref()?;
     if reason == CHECKS_WAITING && entry.merge_hold.passes < QUIET_HOLD_PASSES {

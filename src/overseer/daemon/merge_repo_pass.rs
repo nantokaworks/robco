@@ -159,6 +159,11 @@ pub(super) fn run(
                 merge_hold::cleared(entry);
                 merge_hold_recheck::settle(entry);
                 merge_settle::begin(&mut work.settling);
+                // Whatever handback this entry was withholding for a busy
+                // worker no longer describes anything: the pull request it
+                // was about is merged, so delivering it now would hand the
+                // worker a stale instruction (dropr:530).
+                merge_recovery::discard_pending(entry);
             }
             // The one outcome the recheck budget is for: this pass re-read the
             // gate and the gate still holds, so the look it was granted is spent.
@@ -235,6 +240,10 @@ fn hold(
             entry.phase = LedgerPhase::Escalated;
             entry.worker_escalated = false;
             merge_hold_recheck::escalated(entry, &halt.reason, head);
+            // The entry left `PrOpened` through the hold budget rather than
+            // through `merge_recovery` itself, so nothing else clears a
+            // handback this entry might still have been withholding.
+            merge_recovery::discard_pending(entry);
             log(
                 entry,
                 DecisionKind::Escalate,

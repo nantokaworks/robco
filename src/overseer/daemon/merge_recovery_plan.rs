@@ -73,20 +73,6 @@ pub fn plan(
     RecoveryPlan::Dispatch
 }
 
-/// Whether `plan` just charged this dispatch for the same head its previous
-/// attempt could not confirm delivery for, rather than a genuinely new
-/// failure. `plan` sets `merge_recovery.head` to the head this poll is
-/// dispatching for right before calling `dispatch`; `undelivered_head` is
-/// the head `merge_recovery::undelivered_cap_reached` last recorded a failed
-/// confirm against, and `merge_recovery::refund` clears `merge_recovery.head`
-/// on every failed confirm without touching it — so the two matching means
-/// this exact (head, base) pair is being retried, not seen for the first
-/// time.
-pub(super) fn is_retry_of_undelivered(entry: &LedgerEntry) -> bool {
-    entry.merge_recovery.head.is_some()
-        && entry.merge_recovery.head == entry.merge_recovery.undelivered_head
-}
-
 /// Counts one failure the disabled setting left unhanded, at most once per
 /// revision.
 ///
