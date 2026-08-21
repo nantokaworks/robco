@@ -7,7 +7,7 @@ use super::respond::{bounded_rows, code_block};
 use crate::{
     overseer::{
         config::OverseerConfig,
-        is_overseer_child,
+        is_worker_subagent,
         ledger::{Ledger, LedgerPhase},
         logging,
     },
@@ -42,7 +42,7 @@ pub(crate) fn workers() -> crate::Result<String> {
         .repos
         .iter()
         .flat_map(|repo| &repo.agents)
-        .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()))
+        .filter(|agent| !is_worker_subagent(agent.parent_agent_id.as_deref(), &registry))
         .map(|agent| format!("`{}` {}", agent.id, agent.status.badge()))
         .collect();
     Ok(if rows.is_empty() {

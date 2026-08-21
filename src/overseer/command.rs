@@ -2,7 +2,7 @@ use std::{collections::HashSet, fs, process::Command, thread, time::Duration};
 
 use super::{
     exec::{process_alive, run_timeout},
-    is_overseer_child,
+    is_worker_subagent,
     logging::{self, DecisionEntry, DecisionKind},
     pidfile_path,
     runtime_request::{self, RuntimeRequest},
@@ -239,7 +239,7 @@ pub(crate) fn panic_stop_attributed(source: &str, user_id: Option<&str>) -> Resu
         .repos
         .iter()
         .flat_map(|repo| &repo.agents)
-        .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()))
+        .filter(|agent| !is_worker_subagent(agent.parent_agent_id.as_deref(), &registry))
     {
         let mut command = Command::new("tmux");
         command.args(["kill-session", "-t", &format!("={}", agent.tmux_session)]);

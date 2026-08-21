@@ -25,6 +25,17 @@ fn registry_with(parent: Option<&str>) -> Registry {
     .unwrap()
 }
 
+/// A registry with a top-level worker plus a subagent whose
+/// `parent_agent_id` names that worker instead of the Overseer.
+fn registry_with_subagent() -> Registry {
+    let mut registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
+    let mut child = registry.repos[0].agents[0].clone();
+    child.id = "subagent-worker".into();
+    child.parent_agent_id = Some("manual-worker".into());
+    registry.repos[0].agents.push(child);
+    registry
+}
+
 fn ledger_for(agent_id: &str) -> Ledger {
     Ledger {
         entries: vec![LedgerEntry {
@@ -58,16 +69,16 @@ fn ledger_for(agent_id: &str) -> Ledger {
     }
 }
 
-/// A worker whose registry row survives with a parent that is not the
-/// Overseer's own id is reported detached — including a row with no parent
-/// at all.
+/// A ledger entry whose registry row has since become a subagent of another
+/// registered worker is reported detached: its own worktree belongs to that
+/// worker now, not to a ledger entry of its own.
 #[test]
-fn detached_worker_is_reported_detached() {
-    let registry = registry_with(None);
+fn worker_that_became_a_subagent_is_reported_detached() {
+    let registry = registry_with_subagent();
 
     assert_eq!(
-        detached_agents(&ledger_for("manual-worker"), &registry),
-        vec!["manual-worker".to_string()]
+        detached_agents(&ledger_for("subagent-worker"), &registry),
+        vec!["subagent-worker".to_string()]
     );
 }
 
@@ -81,18 +92,32 @@ fn overseer_children_and_unregistered_agents_are_not_detached() {
     assert!(detached_agents(&ledger_for("gone-worker"), &registry).is_empty());
 }
 
-/// A worker with no parent at all is not the Overseer's to adopt. Every
-/// creation path (`agent::creation::enroll_with_overseer`, `adopt_worktree`)
-/// sets `parent_agent_id` to the Overseer's own id up front, so a `None`
-/// parent here means the worker genuinely belongs to nobody.
+/// A worker with no parent at all is still adopted (dropr:521): ownership no
+/// longer gates the ledger, so a worker created by a pre-enrolment robco
+/// binary is not left stranded. Every creation path still sets
+/// `parent_agent_id`, so `None` here stands in for exactly that case.
 #[test]
-fn agent_with_no_parent_is_not_adopted() {
+fn agent_with_no_parent_is_adopted() {
     let registry = registry_with(None);
     let mut ledger = Ledger::default();
 
     adopt_registry_children_from(&mut ledger, &registry);
 
-    assert!(ledger.entries.is_empty());
+    assert_eq!(ledger.entries.len(), 1);
+    assert_eq!(ledger.entries[0].agent_id, "manual-worker");
+}
+
+/// A worker's own subagent does not become a ledger entry in its own right:
+/// only the top-level worker in the registry is adopted.
+#[test]
+fn a_subagent_of_another_worker_is_not_adopted() {
+    let registry = registry_with_subagent();
+    let mut ledger = Ledger::default();
+
+    adopt_registry_children_from(&mut ledger, &registry);
+
+    assert_eq!(ledger.entries.len(), 1);
+    assert_eq!(ledger.entries[0].agent_id, "manual-worker");
 }
 
 /// Pins dropr:489: adoption used to run once at daemon startup, so a worker

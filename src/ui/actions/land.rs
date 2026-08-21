@@ -176,6 +176,54 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        config::Config,
+        overseer::ledger::{LedgerEntry, LedgerPhase},
+        registry::Registry,
+    };
+
+    /// dropr:521: `overseer_can_land` never read `is_overseer_child` in the
+    /// first place — it only asks whether the ledger already carries a
+    /// non-terminal entry for the target. That entry now appears for any
+    /// registry worker adoption picks up, no matter which binary created it
+    /// or whether it ever set `parent_agent_id`. So `m` stops being refused
+    /// for a worker like dropr:874's the moment the ledger has adopted it.
+    #[test]
+    fn overseer_can_land_needs_only_a_live_ledger_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        assert!(!app.overseer_can_land("legacy-worker"));
+
+        app.overseer_snapshot.ledger.entries.push(LedgerEntry {
+            task_id: "task-1".into(),
+            display_id: "#1".into(),
+            repo: "/repo".into(),
+            agent_id: "legacy-worker".into(),
+            branch: "feature/one".into(),
+            phase: LedgerPhase::Working,
+            dispatched_at: Utc::now(),
+            settled_at: None,
+            retries: 0,
+            pr_url: None,
+            branch_updates: 0,
+            merge_recovery: Default::default(),
+            merge_hold: Default::default(),
+            merge_hold_cap_escalated: false,
+            merge_hold_rechecks: 0,
+            merge_hold_recheck_reason: None,
+            merge_hold_recheck_head: None,
+            prerequisite_wait: None,
+            merge_hold_stuck_notified: false,
+            escalation_notified_reason: None,
+            escalation_notified_head: None,
+            worker_escalated: false,
+            operator_override: None,
+            merge_approval: None,
+            pr_facts: None,
+        });
+
+        assert!(app.overseer_can_land("legacy-worker"));
+    }
 
     #[test]
     fn every_pull_request_state_maps_to_the_promised_land_action() {
