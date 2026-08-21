@@ -18,7 +18,18 @@
 //! What this file keeps is the half that must answer within one frame: the
 //! refusals, and handing the slow steps to [`super::dropr_task_worker`]
 //! (dropr:508). The claim, the prompt and the agent creation all run on that
-//! worker thread; [`App::drain_task_launch_events`] takes the result back.
+//! worker thread; `dropr_task_finish` (split out to keep this file under the
+//! line-count limit too) drains the result and registers or reverts.
+//!
+//! dropr:517 changed what happens once the refusals are past: the operator
+//! can now fire several launches in a row without the cursor moving off the
+//! task list (`n` no longer clears `dropr_task_focus`, and a finished launch
+//! no longer re-points the outer selection at the new agent — see
+//! `dropr_task_finish`), and the row flips to `in_progress` at the keypress
+//! instead of at completion, because that is the whole reason the operator
+//! wants to see it flip. [`App::begin_launch`] is where the flip and the
+//! per-task tracking happen, kept as its own step so a test can drive it with
+//! a fake job instead of a real one.
 
 use crate::{
     agent, git,
@@ -28,7 +39,7 @@ use crate::{
 
 use super::super::{App, DroprTaskFocus, Mode, summary::dropr_tasks};
 use super::dropr_task_launch::mark_task_in_progress;
-use super::dropr_task_worker::{TaskLaunchFailure, TaskLaunchJob, TaskLaunchTarget, spawn};
+use super::dropr_task_worker::{TaskLaunchJob, TaskLaunchTarget, spawn};
 
 impl App {
     /// The launch key from the task-body reading dialog (`Mode::TaskBody`,
@@ -54,21 +65,6 @@ impl App {
     /// Shared by both entry points above: refuse what can be refused here and
     /// now, then hand the rest to the launch worker.
     fn launch_dropr_task(&mut self, task: usize) {
-        // One launch at a time. A second press while one is in flight would
-        // otherwise start a duplicate worker for the same task, or race two
-        // `git worktree add` runs and two registry writes against each other.
-        if let Some(running) = self
-            .task_launch_job
-            .as_ref()
-            .map(|job| job.display_id.clone())
-        {
-            self.show_message(fmt(
-                self.locale,
-                "a launch is already in progress: {}",
-                &[&running],
-            ));
-            return;
-        }
         let Some(Selection::Repo(repo)) = self.selected_item() else {
             self.dropr_task_focus = None;
             self.mode = Mode::Normal;
@@ -95,6 +91,20 @@ impl App {
         };
         if candidate.id.is_empty() {
             self.show_message(t(self.locale, "task is missing its dropr id"));
+            return;
+        }
+        // This task, specifically. A second `n` on the *same* row while it is
+        // still launching would start a duplicate worker, or race two `git
+        // worktree add` runs and two registry writes against each other — but
+        // a different row's `n` is a different task and must go straight
+        // through (dropr:517 replaced the old single global slot with this
+        // per-task one).
+        if self.task_launch_jobs.contains_key(&candidate.id) {
+            self.show_message(fmt(
+                self.locale,
+                "a launch is already in progress: {}",
+                &[&candidate.display_id],
+            ));
             return;
         }
 
@@ -133,137 +143,34 @@ impl App {
         }
 
         let display_id = candidate.display_id.clone();
-        self.task_launch_job = Some(spawn(TaskLaunchTarget {
+        let job = spawn(TaskLaunchTarget {
             repo: repo_node.clone(),
             config: self.config.clone(),
             workspace_id,
             candidate,
             title,
-        }));
-        self.dropr_task_focus = None;
-        // Closes the reading dialog too when the launch key was `s`; a no-op
-        // when it was already `n` from the list, where the mode is Normal
-        // already.
+        });
+        self.begin_launch(repo, job);
+        // Closes the reading dialog when the launch key was `s`; a no-op when
+        // it was already `n` from the list, where the mode is Normal already.
+        // `dropr_task_focus` is deliberately left alone either way (dropr:517):
+        // the operator stays on the task list, ready to fire the next one.
         self.mode = Mode::Normal;
         self.show_message(fmt(self.locale, "launching {}…", &[&display_id]));
     }
 
-    /// The task a launch is currently working on, for the quit guard. The
-    /// launch now outlives the key press, so quitting in the middle of one
-    /// would leave a claim taken in dropr with nothing behind it — the same
-    /// reason an in-flight merge holds the quit key.
-    pub(in crate::ui) fn launching_task(&self) -> Option<String> {
-        self.task_launch_job
-            .as_ref()
-            .map(|job| job.display_id.clone())
-    }
-
-    /// Takes one finished launch back onto the UI thread. Called every tick
-    /// from the event loop, next to the merge and pre-check drains.
-    pub(in crate::ui) fn drain_task_launch_events(&mut self) {
-        use std::sync::mpsc::TryRecvError;
-
-        let received = match self.task_launch_job.as_ref().map(|job| job.try_recv()) {
-            Some(Ok(result)) => Some(result),
-            Some(Err(TryRecvError::Disconnected)) => Some(Err(TaskLaunchFailure::WorkerTerminated)),
-            Some(Err(TryRecvError::Empty)) | None => None,
-        };
-        let Some(result) = received else {
-            return;
-        };
-        let Some(job) = self.task_launch_job.take() else {
-            return;
-        };
-        match result {
-            Ok(new_agent) => self.finish_task_launch(&job, new_agent),
-            // Every message names the task: by the time one of these lands the
-            // operator has moved on, and a bare error names nothing.
-            Err(failure) => {
-                let message = match failure {
-                    TaskLaunchFailure::SubtasksUnconfirmed => fmt(
-                        self.locale,
-                        "could not confirm {}'s subtasks — refresh the task list and try again",
-                        &[&job.display_id],
-                    ),
-                    TaskLaunchFailure::ClaimRefused(reason) => fmt(
-                        self.locale,
-                        "could not claim {}: {}",
-                        &[&job.display_id, &reason],
-                    ),
-                    TaskLaunchFailure::DroprUnreachable => fmt(
-                        self.locale,
-                        "could not reach dropr to claim {}",
-                        &[&job.display_id],
-                    ),
-                    TaskLaunchFailure::Spawn(detail) => fmt(
-                        self.locale,
-                        "could not launch {}: {}",
-                        &[&job.display_id, &detail],
-                    ),
-                    TaskLaunchFailure::WorkerTerminated => fmt(
-                        self.locale,
-                        "launch worker for {} terminated unexpectedly",
-                        &[&job.display_id],
-                    ),
-                };
-                self.show_message(message);
-            }
+    /// The point a launch stops being a refusal candidate and starts being
+    /// tracked: marks the row `in_progress` right away (dropr:517, so the
+    /// operator sees it flip before the claim round trip even starts) and
+    /// files the job under its task id so a second press on the same row is
+    /// refused. Split out of [`Self::launch_dropr_task`] so a test can drive
+    /// it with [`super::dropr_task_worker::test_job`] instead of a real,
+    /// network-touching launch.
+    fn begin_launch(&mut self, repo: usize, job: TaskLaunchJob) {
+        if let Some(repo_node) = self.registry.repos.get_mut(repo) {
+            mark_task_in_progress(&mut repo_node.dropr_tasks, &job.task_id);
         }
-    }
-
-    /// Registers an agent the worker created: on disk, in the task-row cache,
-    /// and as the new selection.
-    fn finish_task_launch(&mut self, job: &TaskLaunchJob, new_agent: crate::model::AgentNode) {
-        let new_agent_id = new_agent.id.clone();
-        let repo_path = job.repo_path.clone();
-        let mut registered = false;
-        let result = self.locked_registry_update(|registry| {
-            if let Some(repo) = registry
-                .repos
-                .iter_mut()
-                .find(|repo| repo.path == repo_path)
-            {
-                repo.agents.push(new_agent);
-                registered = true;
-            }
-        });
-        // `dropr_tasks` is runtime-only (`#[serde(skip)]`);
-        // `locked_registry_update` above only ever carries the pre-launch
-        // value back over a disk reload (see `registry_write::carry_repo`), so
-        // the claim this launch just took has to land here — directly on the
-        // in-memory cache, the same way a background fetch updates it.
-        if let Some(repo) = self
-            .registry
-            .repos
-            .iter_mut()
-            .find(|repo| repo.path == job.repo_path)
-        {
-            mark_task_in_progress(&mut repo.dropr_tasks, &job.task_id);
-        }
-        match result {
-            Ok(()) if registered => {
-                self.restore_selection(Some(format!("agent:{new_agent_id}")));
-                self.show_message(fmt(
-                    self.locale,
-                    "launched {} for {}",
-                    &[&job.title, &job.display_id],
-                ));
-            }
-            Ok(()) => {
-                self.show_message(fmt(
-                    self.locale,
-                    "launched {}, but its repository is no longer registered",
-                    &[&job.title],
-                ));
-            }
-            Err(err) => {
-                self.show_message(fmt(
-                    self.locale,
-                    "launched {}, but could not save the registry: {}",
-                    &[&job.display_id, &err.to_string()],
-                ));
-            }
-        }
+        self.task_launch_jobs.insert(job.task_id.clone(), job);
     }
 }
 

@@ -253,8 +253,24 @@ fn list_focus_a_live_worker_for_the_task_refuses_naming_it() {
     assert!(message.is_some_and(|message| message.contains("existing worker")));
 }
 
-/// Installs an in-flight launch for `#7` and hands back the sender that
-/// stands in for its worker thread (dropr:508).
+#[test]
+fn a_refused_launch_leaves_the_cursor_on_the_task_list() {
+    // Acceptance criterion (dropr:517): pressing `n` never moves the
+    // operator off the task list, refused or not.
+    let mut app = test_app();
+    let mut repo = repo_node("/repo".into(), vec![task("#1")]);
+    repo.agents
+        .push(agent_node("existing-worker", "existing worker", Some("1")));
+    focused_at_list(&mut app, repo, 0);
+
+    app.launch_dropr_task_from_list();
+
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 0 }));
+}
+
+/// Installs an in-flight launch for one task and hands back the sender that
+/// stands in for its worker thread (dropr:508), keyed the way `begin_launch`
+/// keys it — by dropr task id, not display id (dropr:517).
 fn in_flight(
     app: &mut App,
     display_id: &str,
@@ -264,8 +280,9 @@ fn in_flight(
         &format!("{display_id} Task {display_id}"),
         "/repo".into(),
         &format!("id-{display_id}"),
+        "open",
     );
-    app.task_launch_job = Some(job);
+    app.task_launch_jobs.insert(format!("id-{display_id}"), job);
     sender
 }
 
@@ -274,101 +291,79 @@ fn message(app: &App) -> Option<&str> {
 }
 
 #[test]
-fn a_second_press_while_a_launch_is_in_flight_is_refused_naming_the_running_task() {
+fn a_second_press_on_the_same_task_is_refused_naming_it() {
     // The whole launch runs off the UI thread now, so the operator can press
-    // `n` again while one is still going. That press must not start a second
-    // worker, and must say which task is already launching rather than
-    // looking like a dropped key.
+    // `n` again while one is still going. A press on the *same* row must not
+    // start a second worker, and must say which task is already launching
+    // rather than looking like a dropped key.
     let mut app = test_app();
     focused_at_list(&mut app, repo_node("/repo".into(), vec![task("#1")]), 0);
-    let _sender = in_flight(&mut app, "#7");
+    let _sender = in_flight(&mut app, "#1");
 
     app.launch_dropr_task_from_list();
 
-    assert_eq!(message(&app), Some("a launch is already in progress: #7"));
+    assert_eq!(message(&app), Some("a launch is already in progress: #1"));
     // The running job is still the one that was there; nothing replaced it.
-    assert_eq!(
-        app.task_launch_job
-            .as_ref()
-            .map(|job| job.display_id.clone()),
-        Some("#7".to_string())
-    );
+    assert_eq!(app.task_launch_jobs.len(), 1);
 }
 
 #[test]
 fn the_reading_dialog_press_is_refused_the_same_way() {
     let mut app = test_app();
     reading(&mut app, repo_node("/repo".into(), vec![task("#1")]), 0);
-    let _sender = in_flight(&mut app, "#7");
+    let _sender = in_flight(&mut app, "#1");
 
     app.launch_dropr_task_from_reading(0);
 
-    assert_eq!(message(&app), Some("a launch is already in progress: #7"));
+    assert_eq!(message(&app), Some("a launch is already in progress: #1"));
 }
 
 #[test]
-fn a_background_claim_refusal_names_the_task_it_was_about() {
-    // By the time this lands the operator has moved on, so the message has to
-    // carry the task with it.
+fn a_different_task_is_not_blocked_by_another_in_flight_launch() {
+    // dropr:517: the per-task guard replaces the old single global slot, so
+    // firing several *different* tasks in a row must not queue behind one
+    // another. Proven here without a real launch (which would touch the
+    // network): task "#7" is already launching, and task "#1" is made to
+    // refuse for an unrelated, deterministic reason (a live worker) before
+    // ever reaching the network — if the in-flight guard wrongly matched
+    // across tasks, the message below would read "already in progress"
+    // instead.
     let mut app = test_app();
-    let sender = in_flight(&mut app, "#7");
-    sender
-        .send(Err(TaskLaunchFailure::ClaimRefused(
-            "already_claimed".into(),
-        )))
-        .unwrap();
-
-    app.drain_task_launch_events();
-
-    assert_eq!(message(&app), Some("could not claim #7: already_claimed"));
-    assert!(app.task_launch_job.is_none());
-}
-
-#[test]
-fn a_background_spawn_failure_names_the_task_it_was_about() {
-    // This one used to be a bare error string. Off-thread that names nothing.
-    let mut app = test_app();
-    let sender = in_flight(&mut app, "#7");
-    sender
-        .send(Err(TaskLaunchFailure::Spawn(
-            "tmux is not installed".into(),
-        )))
-        .unwrap();
-
-    app.drain_task_launch_events();
-
-    assert_eq!(
-        message(&app),
-        Some("could not launch #7: tmux is not installed")
-    );
-    assert!(app.task_launch_job.is_none());
-}
-
-#[test]
-fn a_launch_worker_that_dies_without_answering_is_reported_against_its_task() {
-    let mut app = test_app();
-    let sender = in_flight(&mut app, "#7");
-    drop(sender);
-
-    app.drain_task_launch_events();
-
-    assert_eq!(
-        message(&app),
-        Some("launch worker for #7 terminated unexpectedly")
-    );
-    // The slot is freed, so the operator can try the launch again.
-    assert!(app.task_launch_job.is_none());
-}
-
-#[test]
-fn a_launch_still_running_leaves_the_slot_and_says_nothing() {
-    let mut app = test_app();
+    let mut repo = repo_node("/repo".into(), vec![task("#1"), task("#7")]);
+    repo.agents
+        .push(agent_node("existing-worker", "existing worker", Some("1")));
+    focused_at_list(&mut app, repo, 0);
     let _sender = in_flight(&mut app, "#7");
 
-    app.drain_task_launch_events();
+    app.launch_dropr_task_from_list();
 
-    assert_eq!(message(&app), None);
-    assert!(app.task_launch_job.is_some());
+    let message = message(&app);
+    assert!(message.is_some_and(|message| message.contains("existing worker")));
+}
+
+#[test]
+fn beginning_a_launch_marks_the_row_and_tracks_the_job_without_moving_focus() {
+    // `begin_launch` is the exact step `launch_dropr_task` takes once every
+    // refusal has passed (dropr:517) — exercised directly with a fake job so
+    // this never touches the network the real `spawn()` would.
+    let mut app = test_app();
+    focused_at_list(&mut app, repo_node("/repo".into(), vec![task("#1")]), 0);
+    let (job, _sender) = super::super::dropr_task_worker::test_job(
+        "#1",
+        "#1 Task #1",
+        "/repo".into(),
+        "id-#1",
+        "open",
+    );
+
+    app.begin_launch(0, job);
+
+    assert_eq!(
+        app.registry.repos[0].dropr_tasks.tasks[0].status,
+        "in_progress"
+    );
+    assert_eq!(app.dropr_task_focus, Some(DroprTaskFocus { task: 0 }));
+    assert!(app.task_launch_jobs.contains_key("id-#1"));
 }
 
 #[test]

@@ -316,10 +316,13 @@ pub struct App {
     /// Keyed the same way so one repository's result cannot overwrite another's.
     merge_outcomes: HashMap<PathBuf, actions::merge::MergeOutcome>,
     pr_precheck_job: Option<actions::pr_precheck::PrPrecheckJob>,
-    /// The dropr task launch currently in flight, if any. One at a time: the
-    /// slot is the guard that stops a second `n` from starting a duplicate
-    /// worker (dropr:508).
-    task_launch_job: Option<actions::dropr_task_worker::TaskLaunchJob>,
+    /// dropr task launches currently in flight, keyed by the dropr task id
+    /// (dropr:517). Several can run at once — the operator firing `n` down a
+    /// list is the whole point — but the key is what stops a second `n` on
+    /// the *same* row from starting a duplicate worker; a different row's
+    /// `n` is never blocked by this map (dropr:508 kept a single global
+    /// slot, which this now replaces).
+    task_launch_jobs: HashMap<String, actions::dropr_task_worker::TaskLaunchJob>,
     clone_job: Option<actions::clone::CloneJob>,
     dropr_task_refresh: DroprTaskRefresh,
     /// Workspaces whose dropr task list a merge robco just finished has
@@ -414,7 +417,7 @@ impl App {
             merge_jobs: HashMap::new(),
             merge_outcomes: HashMap::new(),
             pr_precheck_job: None,
-            task_launch_job: None,
+            task_launch_jobs: HashMap::new(),
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
             dropr_task_settle: Vec::new(),

@@ -15,6 +15,7 @@ mod footer;
 mod hints;
 pub(in crate::ui) mod indicator;
 mod label;
+mod launch_row;
 pub(in crate::ui) mod overseer_frame;
 mod repo_row;
 
@@ -53,6 +54,18 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     style,
                     projects_width,
                 ));
+                // Launches in flight for this repo (dropr:517) show right
+                // under its own row, gated on expansion the same way its real
+                // agent rows are.
+                if app.expanded.get(repo_idx).copied().unwrap_or(true) {
+                    let repo = &app.registry.repos[repo_idx];
+                    lines.extend(launch_row::build(
+                        app,
+                        &repo.path,
+                        !repo.agents.is_empty(),
+                        projects_width,
+                    ));
+                }
             }
             Selection::Agent {
                 repo: repo_idx,

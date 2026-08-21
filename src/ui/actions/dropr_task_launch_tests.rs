@@ -167,3 +167,28 @@ fn marking_a_task_id_the_cache_does_not_carry_is_a_no_op() {
 
     assert_eq!(fetch.tasks[0].status, cached.status);
 }
+
+#[test]
+fn reverting_puts_back_exactly_what_marking_flipped() {
+    let launched = task("#1");
+    let mut fetch = repo_node(vec![launched.clone()]).dropr_tasks;
+    mark_task_in_progress(&mut fetch, &launched.id);
+
+    revert_task_in_progress(&mut fetch, &launched.id, "blocked");
+
+    assert_eq!(fetch.tasks[0].status, "blocked");
+}
+
+#[test]
+fn reverting_a_row_a_fresher_fetch_already_moved_on_is_a_no_op() {
+    // A real background fetch can land between the optimistic mark and a
+    // launch failure and already show this row's current, real status — that
+    // must win over a revert to a stale guess about what it used to say.
+    let mut candidate = task("#1");
+    candidate.status = "blocked".to_string();
+    let mut fetch = repo_node(vec![candidate.clone()]).dropr_tasks;
+
+    revert_task_in_progress(&mut fetch, &candidate.id, "open");
+
+    assert_eq!(fetch.tasks[0].status, "blocked");
+}

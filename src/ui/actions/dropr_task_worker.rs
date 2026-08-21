@@ -31,8 +31,10 @@ const DIRECT_LAUNCH_AGENT_ID: &str = "robco-ui";
 
 /// Why a launch stopped, in the terms the UI needs to name the task it was
 /// about. Each variant maps to one message template in
-/// [`super::dropr_task_drill`].
-pub(super) enum TaskLaunchFailure {
+/// [`super::dropr_task_finish`]. `pub(in crate::ui)`, not `pub(super)`: the
+/// placeholder tree row's tests (dropr:517, `ui::tree::launch_row`) build
+/// fake jobs through `test_job`, whose signature carries this type.
+pub(in crate::ui) enum TaskLaunchFailure {
     /// `child_count > 0` but the subtask list could not be confirmed, so the
     /// prompt's `Close Dropr:` lines would be wrong (dropr:479).
     SubtasksUnconfirmed,
@@ -48,7 +50,7 @@ pub(super) enum TaskLaunchFailure {
     WorkerTerminated,
 }
 
-pub(super) type TaskLaunchResult = std::result::Result<AgentNode, TaskLaunchFailure>;
+pub(in crate::ui) type TaskLaunchResult = std::result::Result<AgentNode, TaskLaunchFailure>;
 
 /// Everything the launch needs that only the UI thread can read. `repo` is a
 /// clone rather than a borrow: it feeds both the cached-subtask lookup (which
@@ -64,19 +66,27 @@ pub(super) struct TaskLaunchTarget {
     pub title: String,
 }
 
-/// One launch in flight. The UI keeps exactly one of these at a time (see
-/// `App::task_launch_job`), which is what stops a second `n` from starting a
-/// duplicate worker.
+/// One launch in flight. Several can exist at once, keyed by `task_id` in
+/// `App::task_launch_jobs` (dropr:517) — that key, not this type, is what
+/// stops a second `n` on the *same* row from starting a duplicate worker.
 pub(in crate::ui) struct TaskLaunchJob {
     /// Names the task in every message the drain renders, including the ones
     /// that arrive long after the operator moved on.
     pub display_id: String,
-    /// The agent title, for the success message.
+    /// The agent title, for the success message and for the placeholder tree
+    /// row shown while this is still running (dropr:517) — the same text the
+    /// row reads once it becomes a real agent, so nothing visibly changes at
+    /// the hand-off.
     pub title: String,
     /// Where the new agent belongs in the registry.
     pub repo_path: std::path::PathBuf,
-    /// The row whose cached status flips once the launch lands.
+    /// The row whose cached status flips once the launch starts, and flips
+    /// back if it fails.
     pub task_id: String,
+    /// The row's own status before this launch's optimistic flip
+    /// (dropr:517), so a failure can undo exactly that flip rather than
+    /// guessing what the row used to say.
+    pub original_status: String,
     receiver: Receiver<TaskLaunchResult>,
 }
 
@@ -93,6 +103,7 @@ pub(super) fn spawn(target: TaskLaunchTarget) -> TaskLaunchJob {
     let title = target.title.clone();
     let repo_path = target.repo.path.clone();
     let task_id = target.candidate.id.clone();
+    let original_status = target.candidate.status.clone();
     // A thread that never started drops the closure, and with it the sender,
     // so the drain's disconnect arm reports the dead launch — the same way it
     // reports a worker that died mid-launch. Nothing is left waiting forever.
@@ -106,6 +117,7 @@ pub(super) fn spawn(target: TaskLaunchTarget) -> TaskLaunchJob {
         title,
         repo_path,
         task_id,
+        original_status,
         receiver,
     }
 }
@@ -173,13 +185,16 @@ fn run_launch(target: &TaskLaunchTarget) -> TaskLaunchResult {
 }
 
 /// A job whose worker is this sender, so the drain can be exercised without a
-/// real claim or a real `git worktree add` behind it.
+/// real claim or a real `git worktree add` behind it. `pub(in crate::ui)`
+/// rather than `pub(super)`: the placeholder tree row (dropr:517,
+/// `ui::tree::launch_row`) needs the same fake jobs to test what it draws.
 #[cfg(test)]
-pub(super) fn test_job(
+pub(in crate::ui) fn test_job(
     display_id: &str,
     title: &str,
     repo_path: std::path::PathBuf,
     task_id: &str,
+    original_status: &str,
 ) -> (TaskLaunchJob, mpsc::Sender<TaskLaunchResult>) {
     let (sender, receiver) = mpsc::channel();
     (
@@ -188,6 +203,7 @@ pub(super) fn test_job(
             title: title.to_string(),
             repo_path,
             task_id: task_id.to_string(),
+            original_status: original_status.to_string(),
             receiver,
         },
         sender,

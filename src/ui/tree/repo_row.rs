@@ -68,7 +68,14 @@ pub(super) fn build(
         app.started.elapsed(),
         right,
     )];
-    if expanded && repo.agents.is_empty() {
+    // A launch in flight (dropr:517) is about to become this repo's first
+    // agent, so "(no agents)" would misdescribe what the placeholder row
+    // right below it is showing.
+    let launching = app
+        .task_launch_jobs
+        .values()
+        .any(|job| job.repo_path == repo.path);
+    if expanded && repo.agents.is_empty() && !launching {
         // Six columns: where an agent row's own title would start (cursor +
         // separator + connector + separator), so the filler text sits where
         // an actual agent title would.
