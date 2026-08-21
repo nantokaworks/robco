@@ -152,6 +152,10 @@ pub(crate) fn record_approval(
         head,
         granted_at: Utc::now(),
     });
+    // A fresh approval supersedes any earlier drop (dropr:534) — the row's
+    // "approval dropped" line exists to get the operator to look again, and
+    // they just did.
+    entry.approval_dropped = None;
     entry.grant_merge_reconsideration(OPERATOR_APPROVAL);
     let mut decision = DecisionEntry::new(
         DecisionKind::Merge,

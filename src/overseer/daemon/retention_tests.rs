@@ -41,6 +41,7 @@ fn entry(task: &str, repo: &str, phase: LedgerPhase, minute: i64) -> LedgerEntry
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     }
 }
 

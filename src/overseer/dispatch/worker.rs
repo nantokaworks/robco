@@ -154,6 +154,7 @@ pub(super) fn spawn_candidate(
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     });
     ledger.counters.dispatched_today = ledger.counters.dispatched_today.saturating_add(1);
     super::decision_log::log_candidate(

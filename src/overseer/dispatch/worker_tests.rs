@@ -28,6 +28,7 @@ fn entry(task_id: &str, retries: u32) -> LedgerEntry {
         merge_approval: None,
         pr_facts: None,
         worker_finished_at: None,
+        approval_dropped: None,
     }
 }
 
