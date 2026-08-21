@@ -28,6 +28,7 @@ fn entry(task_id: &str, display_id: &str, pr_url: Option<&str>) -> LedgerEntry {
         operator_override: None,
         merge_approval: None,
         pr_facts: None,
+        worker_finished_at: None,
     }
 }
 

@@ -64,6 +64,7 @@ fn ledger_for(agent_id: &str) -> Ledger {
             operator_override: None,
             merge_approval: None,
             pr_facts: None,
+            worker_finished_at: None,
         }],
         ..Ledger::default()
     }

@@ -30,6 +30,10 @@ pub(in crate::ui) struct IndicatorState {
     /// the Overseer's own triage has not since closed the loop on its own.
     /// See [`crate::ui::overseer::OverseerSnapshot::blocked_reason`].
     pub needs_decision: bool,
+    /// The worker reported itself finished (`robco report --kind done`) and
+    /// its ledger entry has not since settled. See
+    /// [`crate::ui::overseer::OverseerSnapshot::worker_finished`].
+    pub worker_finished: bool,
     pub mcp_active: bool,
     pub shell_active: bool,
     pub subagents_active: usize,
@@ -52,6 +56,7 @@ impl IndicatorState {
             worktree_missing: false,
             merge_failed: false,
             needs_decision: false,
+            worker_finished: false,
             mcp_active: false,
             shell_active: false,
             subagents_active: 0,
@@ -101,6 +106,7 @@ pub(in crate::ui) struct SupplementaryIndicators {
     pub worktree_missing: bool,
     pub merge_failed: bool,
     pub needs_decision: bool,
+    pub worker_finished: bool,
 }
 
 pub(in crate::ui) fn select_supplementary(state: IndicatorState) -> SupplementaryIndicators {
@@ -108,6 +114,7 @@ pub(in crate::ui) fn select_supplementary(state: IndicatorState) -> Supplementar
         worktree_missing: state.worktree_missing,
         merge_failed: state.merge_failed,
         needs_decision: state.needs_decision,
+        worker_finished: state.worker_finished,
     }
 }
 

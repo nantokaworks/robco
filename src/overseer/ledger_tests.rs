@@ -31,6 +31,7 @@ fn save_load_round_trip() {
             operator_override: None,
             merge_approval: None,
             pr_facts: None,
+            worker_finished_at: None,
         }],
         skip_list: vec!["task-2".into()],
         counters: LedgerCounters {
@@ -112,6 +113,7 @@ fn active_workers_counts_every_non_terminal_entry() {
         operator_override: None,
         merge_approval: None,
         pr_facts: None,
+        worker_finished_at: None,
     };
     let ledger = Ledger {
         entries: vec![
@@ -193,6 +195,7 @@ fn queued_merge_approvals_count_only_non_terminal_entries_with_a_live_approval()
             granted_at: Utc::now(),
         }),
         pr_facts: None,
+        worker_finished_at: None,
     };
     let ledger = Ledger {
         entries: vec![
@@ -258,6 +261,7 @@ fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
         operator_override: None,
         merge_approval: None,
         pr_facts: None,
+        worker_finished_at: None,
     };
 
     entry.grant_merge_reconsideration("killed_session");

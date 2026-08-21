@@ -81,8 +81,16 @@ pub(super) fn apply_inbox(
             "unblocked" if entry.phase == LedgerPhase::Escalated && entry.worker_escalated => {
                 resolve(entry, "explicit_report", actions)
             }
-            "claimed" | "turn-done" | "waiting" | "done" | "waiting-prerequisite" | "unblocked" => {
+            // The worker's own claim that its work is finished — a report,
+            // not proof. `Merged` / `Failed` / `Escalated` stay derived from
+            // what is observed (PR state, session state) elsewhere in this
+            // pass; this only marks the entry so the row can show "worker
+            // says done" apart from "worker still working" while everything
+            // still waits on those observed signals.
+            "done" => {
+                entry.worker_finished_at = Some(report.at);
             }
+            "claimed" | "turn-done" | "waiting" | "waiting-prerequisite" | "unblocked" => {}
             kind => actions.push(Action::LogDecision {
                 task_id: Some(entry.task_id.clone()),
                 message: format!("ignored unknown inbox observation kind {kind:?}"),

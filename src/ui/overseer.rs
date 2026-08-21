@@ -142,6 +142,12 @@ impl OverseerSnapshot {
     ) -> Option<String> {
         decisions::merge_hold_detail(locale, &self.ledger, agent_id)
     }
+
+    /// Whether `agent_id`'s worker has reported itself finished while its
+    /// entry is still live. See [`decisions::worker_finished`].
+    pub(in crate::ui) fn worker_finished(&self, agent_id: &str) -> bool {
+        decisions::worker_finished(&self.ledger, agent_id)
+    }
 }
 
 pub(super) fn category_preview(app: &App, category: OverseerCategory) -> (String, Text<'static>) {

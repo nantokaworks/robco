@@ -28,6 +28,7 @@ pub(super) fn ledger() -> Ledger {
             operator_override: None,
             merge_approval: None,
             pr_facts: None,
+            worker_finished_at: None,
         }],
         ..Ledger::default()
     }
@@ -60,12 +61,14 @@ fn replays_claimed_working_and_pr_opened_transitions() {
     );
 }
 
-/// Pins the "Remove" side of the unreachable-arm decision (see dropr task
-/// #315): a `done` inbox report never carries a PR url from its only
-/// producer, so it is a no-op on the ledger — PR discovery happens
-/// exclusively through the PR observation stream (see the test above).
+/// A `done` inbox report never carries a PR url from its only producer, so
+/// phase and PR discovery are untouched — PR discovery happens exclusively
+/// through the PR observation stream (see the test above). What it does do
+/// is record the worker's own claim on the entry (dropr:527), so the row can
+/// tell "still working" from "says it is finished" without that claim ever
+/// becoming a terminal phase on its own.
 #[test]
-fn done_report_alone_does_not_advance_phase() {
+fn done_report_records_worker_finished_without_advancing_phase() {
     let observations: Observations = serde_json::from_str(
         r#"{"inbox":[{"at":"2026-07-16T00:01:00Z","agent_id":"worker-1","kind":"done"}]}"#,
     )
@@ -74,6 +77,10 @@ fn done_report_alone_does_not_advance_phase() {
     let (result, actions) = reconcile(&ledger(), &observations, now, 30, 72);
     assert_eq!(result.entries[0].phase, LedgerPhase::Dispatched);
     assert!(result.entries[0].pr_url.is_none());
+    assert_eq!(
+        result.entries[0].worker_finished_at,
+        Some(Utc.with_ymd_and_hms(2026, 7, 16, 0, 1, 0).unwrap())
+    );
     assert!(actions.is_empty());
 }
 #[test]

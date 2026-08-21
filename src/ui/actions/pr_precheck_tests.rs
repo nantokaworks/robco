@@ -95,6 +95,7 @@ fn precheck_created_with_approval_head_queues_the_merge_approval() {
         operator_override: None,
         merge_approval: None,
         pr_facts: None,
+        worker_finished_at: None,
     });
     let (sender, receiver) = mpsc::channel();
     sender
