@@ -21,6 +21,7 @@ use super::App;
 mod categories;
 mod decisions;
 mod discord_agents;
+mod hold_reason;
 mod inbox_rows;
 mod render;
 mod render_format;
@@ -147,6 +148,13 @@ impl OverseerSnapshot {
     /// did not ask for. See [`decisions::terminal_reason`].
     pub(in crate::ui) fn terminal_reason(&self, agent_id: &str) -> Option<String> {
         decisions::terminal_reason(&self.ledger, &self.decisions, agent_id)
+    }
+
+    /// Why `agent_id`'s pull request is being held, worth a line on its own
+    /// row, or `None` when the hold is quiet. See
+    /// [`hold_reason::held_reason`].
+    pub(in crate::ui) fn held_reason(&self, agent_id: &str) -> Option<String> {
+        hold_reason::held_reason(&self.ledger, agent_id)
     }
 
     /// Whether `agent_id`'s worker has reported itself finished while its

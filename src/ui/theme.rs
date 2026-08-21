@@ -177,6 +177,22 @@ impl Theme {
         }
     }
 
+    /// Style for the live-hold reason line under a row still waiting on the
+    /// merge gate (dropr:529). Shares `waiting`'s colour with
+    /// `merge_lifecycle_style`'s hold branches — "nothing is wrong, something
+    /// else has to happen first" — rather than `merge_failed_style`'s red, so
+    /// a live hold never reads as the stopped row dropr:524 introduced, even
+    /// when the reason itself (e.g. `checks_not_green`) also drives the row's
+    /// own badge to a failing colour.
+    pub fn merge_hold_style(self, selected: bool) -> Style {
+        let style = Style::default().fg(self.waiting);
+        if selected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
+        }
+    }
+
     /// Style for the "needs a human decision" badge. See
     /// [`Theme::needs_decision`] for why it is its own colour.
     pub fn needs_decision_style(self, selected: bool) -> Style {

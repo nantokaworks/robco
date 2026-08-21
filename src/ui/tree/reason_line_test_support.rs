@@ -1,12 +1,13 @@
-//! Fixtures shared by the reason line's two test modules — the `merge_error`
-//! coverage in `reason_line_tests.rs` and the terminal-ledger-phase coverage
-//! in `reason_line_phase_tests.rs`. Split out so neither test file has to
-//! carry the whole harness and cross the source-size limit.
+//! Fixtures shared by the reason line's test modules — the `merge_error`
+//! coverage in `reason_line_tests.rs`, the terminal-ledger-phase coverage in
+//! `reason_line_phase_tests.rs`, and the live-hold coverage in
+//! `reason_line_hold_tests.rs`. Split out so no test file has to carry the
+//! whole harness and cross the source-size limit.
 
 use chrono::Utc;
 
 use crate::config::Config;
-use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
+use crate::overseer::ledger::{LedgerEntry, LedgerPhase, MergeHold};
 use crate::overseer::logging::{DecisionEntry, DecisionKind};
 use crate::registry::Registry;
 use crate::ui::App;
@@ -67,10 +68,19 @@ pub(super) fn set_error(app: &mut App, name: &str, error: Option<&str>) {
     agent.merge_error = error.map(str::to_string);
 }
 
-/// The rendered reason line, trailing blanks trimmed.
+/// The rendered reason line for a stopped agent (`merge_error` or a terminal
+/// ledger phase), trailing blanks trimmed.
 pub(super) fn reason_row(rows: &[String]) -> Option<String> {
     rows.iter()
         .find(|row| row.contains('⚠'))
+        .map(|row| row.trim_end().to_string())
+}
+
+/// The rendered reason line for a live merge hold, trailing blanks trimmed.
+/// Its own glyph (`⏸`), never `⚠`, is what tells the two apart on screen.
+pub(super) fn held_row(rows: &[String]) -> Option<String> {
+    rows.iter()
+        .find(|row| row.contains('⏸'))
         .map(|row| row.trim_end().to_string())
 }
 
@@ -85,6 +95,32 @@ pub(super) fn set_phase(app: &mut App, name: &str, task_id: &str, phase: LedgerP
         .ledger
         .entries
         .push(ledger_entry(name, task_id, phase));
+}
+
+/// Park `name`'s ledger entry `PrOpened` and held on `reason`, charged for
+/// `passes` consecutive polls — the same field `merge_hold::charge` writes.
+pub(super) fn set_hold(app: &mut App, name: &str, task_id: &str, reason: &str, passes: u32) {
+    let mut entry = ledger_entry(name, task_id, LedgerPhase::PrOpened);
+    entry.merge_hold = MergeHold {
+        reason: Some(reason.into()),
+        head: Some("f002d389".into()),
+        passes,
+        escalated: false,
+    };
+    app.overseer_snapshot.ledger.entries.push(entry);
+}
+
+/// Lifts whatever hold `set_hold` recorded for `name`, the way the ledger
+/// itself clears it once the next auto-merge pass gets past the gate.
+pub(super) fn clear_hold(app: &mut App, name: &str) {
+    let entry = app
+        .overseer_snapshot
+        .ledger
+        .entries
+        .iter_mut()
+        .find(|entry| entry.agent_id == name)
+        .expect("held entry in fixture");
+    entry.merge_hold = MergeHold::default();
 }
 
 /// Append one decision for `task_id`, in the order a real log would hold it —

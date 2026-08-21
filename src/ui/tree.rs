@@ -153,18 +153,24 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     right,
                 ));
                 // The failure's own text, under the row that only badged it
-                // (dropr:518) or, for a ledger entry parked in a terminal
-                // phase, did not mark at all (dropr:524). Nothing when the
-                // agent has neither, so a healthy tree keeps its height.
-                // Gated the same way the ledger-sourced badges above are: a
-                // worker that has resumed real work has moved past whatever
-                // the ledger still records for it.
+                // (dropr:518); for a ledger entry parked in a terminal phase,
+                // did not mark at all (dropr:524); or for one still open but
+                // held on something that will not clear on its own
+                // (dropr:529). Nothing when the agent has none of the three,
+                // so a healthy tree keeps its height. Gated the same way the
+                // ledger-sourced badges above are: a worker that has resumed
+                // real work has moved past whatever the ledger still records
+                // for it.
                 let stopped = (agent.status != Status::Running)
                     .then(|| app.overseer_snapshot.terminal_reason(&agent.id))
+                    .flatten();
+                let held = (agent.status != Status::Running)
+                    .then(|| app.overseer_snapshot.held_reason(&agent.id))
                     .flatten();
                 lines.extend(reason_line::build(
                     agent,
                     stopped.as_deref(),
+                    held.as_deref(),
                     &row,
                     projects_width,
                 ));
