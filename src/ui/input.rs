@@ -204,17 +204,18 @@ impl App {
                 code if dropr_task_drill::handle_normal(self, code) => {}
                 KeyCode::Char('q') | KeyCode::Esc => {
                     let merging = self.merging_branches();
+                    let launching = self.launching_tasks();
                     if !merging.is_empty() {
                         self.show_message(fmt(
                             self.locale,
                             "merge in progress: {} — wait or ctrl-c to force quit",
                             &[&merging.join(", ")],
                         ));
-                    } else if let Some(launching) = self.launching_task() {
+                    } else if !launching.is_empty() {
                         self.show_message(fmt(
                             self.locale,
                             "launch in progress: {} — wait or ctrl-c to force quit",
-                            &[&launching],
+                            &[&launching.join(", ")],
                         ));
                     } else if matches!(key.code, KeyCode::Esc) && self.dismiss_merge_outcome() {
                         self.show_message(t(self.locale, "dismissed merge notice"));

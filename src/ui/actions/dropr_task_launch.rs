@@ -1,11 +1,14 @@
 //! The subtask lookup a launch needs for its `Close Dropr:` lines
-//! (dropr:479), and the cached-row status flip that follows a launch that
-//! landed (dropr:482).
+//! (dropr:479), and the cached-row status flip a launch makes — optimistic
+//! at the keypress (dropr:482, moved earlier by dropr:517), undone if the
+//! launch then fails (dropr:517).
 //!
 //! Split out of `dropr_task_drill.rs` to keep that file under the 300-line
 //! limit. `resolve_launch_subtasks` runs on the launch worker thread
-//! (`dropr_task_worker`, dropr:508); `mark_task_in_progress` runs on the UI
-//! thread when the result comes back. Neither has any other caller.
+//! (`dropr_task_worker`, dropr:508); `mark_task_in_progress` and
+//! `revert_task_in_progress` both run on the UI thread — the first at the
+//! keypress, the second from the drain on a failure. Neither has any other
+//! caller.
 
 use std::time::Duration;
 
@@ -64,8 +67,10 @@ where
 }
 
 /// Marks one task's row as claimed and running, in the repository's cached
-/// `DroprTaskFetch`, right after a launch that just claimed it in dropr
-/// (dropr:482). The panel renders from this cache between background
+/// `DroprTaskFetch`, the moment the operator commits to launching it
+/// (dropr:482) — before the claim is actually taken, so the row shows what
+/// robco is about to do rather than waiting for the round trip to confirm it
+/// (dropr:517). The panel renders from this cache between background
 /// refreshes, so without this the row would keep showing the state the last
 /// fetch saw — inviting a second launch attempt the collision checks above
 /// would then have to refuse.
@@ -78,6 +83,28 @@ where
 pub(super) fn mark_task_in_progress(fetch: &mut DroprTaskFetch, task_id: &str) {
     if let Some(task) = fetch.tasks.iter_mut().find(|task| task.id == task_id) {
         task.status = "in_progress".to_string();
+    }
+}
+
+/// Undoes `mark_task_in_progress` after a launch that failed (dropr:517): an
+/// optimistic mark that is never corrected is worse than no mark at all,
+/// because the operator sees a task that looks already handled and never
+/// fires it again.
+///
+/// Only reverts a row that still reads exactly the optimistic value this
+/// launch wrote. A background fetch can land between the keypress and the
+/// failure and already show this row's real, current state — that answer is
+/// always fresher than a guess about what the row said before the keypress,
+/// so it wins rather than being overwritten by this revert.
+pub(super) fn revert_task_in_progress(
+    fetch: &mut DroprTaskFetch,
+    task_id: &str,
+    original_status: &str,
+) {
+    if let Some(task) = fetch.tasks.iter_mut().find(|task| task.id == task_id)
+        && task.status == "in_progress"
+    {
+        task.status = original_status.to_string();
     }
 }
 
