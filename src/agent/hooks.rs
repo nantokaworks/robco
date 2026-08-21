@@ -163,13 +163,11 @@ mod tests {
         let value: serde_json::Value =
             serde_json::from_slice(&fs::read(dir.join("settings.local.json")).unwrap()).unwrap();
         assert_eq!(
-            value["permissions"]["allow"][0],
-            "Bash(git status)",
+            value["permissions"]["allow"][0], "Bash(git status)",
             "operator's own settings must survive the merge"
         );
         assert_eq!(
-            value["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
-            "operator-hook",
+            value["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "operator-hook",
             "a pre-existing hook for a different event must survive the merge"
         );
         assert_eq!(
