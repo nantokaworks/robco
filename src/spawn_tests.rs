@@ -144,6 +144,11 @@ fn interactive_spawns_still_receive_the_session_channel() {
 fn spawn_in_repo_installs_report_hooks_even_when_not_autonomous() {
     use crate::registry::Registry;
 
+    if !crate::tmux::is_installed() {
+        eprintln!("skipping: no tmux binary on this runner (GitHub's macos-latest lacks one)");
+        return;
+    }
+
     let fixture = TestRepo::new();
     let worktree_root = tempfile::tempdir().unwrap();
     let config = Config {

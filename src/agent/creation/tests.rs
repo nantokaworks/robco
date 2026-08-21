@@ -206,6 +206,10 @@ fn create_agent_with_overseer_as_supplied_parent_is_kept() {
 /// once (they are, after this change, the exact same code).
 #[test]
 fn create_agent_installs_report_hooks_in_the_new_worktree() {
+    if !crate::tmux::is_installed() {
+        eprintln!("skipping: no tmux binary on this runner (GitHub's macos-latest lacks one)");
+        return;
+    }
     let repo_fixture = TestRepo::new();
     let worktree_root = tempfile::tempdir().unwrap();
     let config = Config {
