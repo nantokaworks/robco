@@ -9,6 +9,7 @@ use crate::Result;
 mod budgets;
 pub use budgets::{
     LedgerCounters, MergeApproval, MergeHold, MergeRecovery, MergeSettling, OperatorOverride,
+    PendingHandback,
 };
 mod landable;
 pub(crate) use landable::{ensure_landable, new_entry};

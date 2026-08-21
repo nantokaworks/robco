@@ -19,7 +19,6 @@ use super::merge_delivery::{DeliveryConfirmation, confirm_delivered, is_busy, se
 use crate::{
     Result,
     overseer::{
-        exec::COMMAND_TIMEOUT,
         ledger::{LedgerEntry, LedgerPhase},
         logging::{self, DecisionEntry, DecisionKind},
         templates,
@@ -30,8 +29,16 @@ use crate::{
 
 #[path = "merge_recovery_plan.rs"]
 mod plan;
+use plan::disabled;
 pub(super) use plan::{CAP_REACHED, RecoveryPlan, plan};
-use plan::{disabled, is_retry_of_undelivered};
+
+#[path = "merge_recovery_pending.rs"]
+mod pending;
+pub(super) use pending::discard as discard_pending;
+
+#[path = "merge_recovery_note.rs"]
+mod note;
+use note::note_on_task;
 
 /// Reason recorded when a failure was handed back, carrying the failure verbatim
 /// so the decision log says what the worker was asked to fix.
@@ -152,23 +159,36 @@ fn dispatch(
         // A worker whose session is gone cannot be handed anything. Naming the
         // session keeps the escalation actionable rather than reading as a
         // recovery that silently did nothing.
+        pending::discard(entry);
         entry.phase = LedgerPhase::Escalated;
         entry.worker_escalated = false;
         let reason = skipped(&format!("missing_session:{}", entry.agent_id));
         return log(entry, DecisionKind::Escalate, &reason, "");
     };
-    if is_retry_of_undelivered(entry) && is_busy(&session) {
-        // The previous attempt's send may already be running as a real turn —
-        // task #457's evidence shows a `NotConfirmed` probe false-negatives on
-        // deliveries that did land. Retyping the prompt now would duplicate
-        // that handback instead of confirming it, so this poll is un-charged
-        // and left for the next pass rather than counted toward either
-        // budget: `charged` because nothing was sent, and `undelivered_charged`
-        // because this poll neither confirms nor disproves the earlier send.
-        refund(entry);
-        let reason = skipped(&format!("session_busy:{reason}"));
-        return log(entry, DecisionKind::Hold, &reason, "");
+    if is_busy(&session) {
+        // Typing over a live turn corrupts whatever the worker is composing —
+        // refusing the send is correct, the same call
+        // `mcp::tools::report::guard_delivery` makes for a `robco report`
+        // into a busy session. `pending::withhold` remembers the failed
+        // attempt on the entry so a later pass, once the worker frees up,
+        // retries it instead of the daemon silently giving up (dropr:530),
+        // and refunds the charge `plan` took on the way in — the same as any
+        // other attempt that could not send anything.
+        return match pending::withhold(entry, reason, max_recoveries) {
+            pending::Outcome::Abandoned { reason, head } => {
+                // A worker that is never idle must not be retried forever.
+                entry.phase = LedgerPhase::Escalated;
+                entry.worker_escalated = false;
+                log(entry, DecisionKind::Escalate, &reason, &head)
+            }
+            pending::Outcome::Held(reason) => log(entry, DecisionKind::Hold, &reason, ""),
+        };
     }
+    // The session is idle, so this pass either delivers the current failure
+    // or records why it could not — either way, whatever this entry was
+    // withholding from an earlier busy pass is superseded rather than left
+    // to look pending after the fact.
+    pending::discard(entry);
     let prompt = templates::merge_recovery_prompt(
         &entry.display_id,
         &entry.task_id,
@@ -258,34 +278,6 @@ fn live_session(agent_id: &str, registry: &Registry) -> Option<String> {
     tmux::has_session(&session).ok()?.then_some(session)
 }
 
-/// Records the handback on the dropr task, which is the source of truth for what
-/// happened to the work.
-///
-/// A scribble that does not land must not abort the merge pass: the prompt has
-/// already been delivered, and failing here would leave the worker working on a
-/// failure Overseer then forgot it had charged.
-fn note_on_task(entry: &mut LedgerEntry, reason: &str) {
-    let content = format!(
-        "Overseer could not merge {} and handed the failure back to worker `{}` (handback {}): {reason}",
-        entry.pr_url.as_deref().unwrap_or("the pull request"),
-        entry.agent_id,
-        entry.merge_recovery.charged
-    );
-    if let Err(error) =
-        crate::dropr::scribble_create_timeout(&entry.task_id, &content, COMMAND_TIMEOUT)
-    {
-        // A note that did not land leaves the handback recorded nowhere an
-        // operator looks, so it escalates on its own instead of riding inside
-        // another decision's reason where the alert digest never reads it.
-        let _ = log(
-            entry,
-            DecisionKind::Escalate,
-            &format!("handback note not recorded in dropr: {error}"),
-            "",
-        );
-    }
-}
-
 fn log(entry: &mut LedgerEntry, kind: DecisionKind, reason: &str, head: &str) -> Result<()> {
     let mut decision = DecisionEntry::new(kind, reason);
     decision.task = Some(entry.task_id.clone());
@@ -296,6 +288,9 @@ fn log(entry: &mut LedgerEntry, kind: DecisionKind, reason: &str, head: &str) ->
     logging::append(&decision)
 }
 
+#[cfg(test)]
+#[path = "merge_recovery_dispatch_tests.rs"]
+mod dispatch_tests;
 #[cfg(test)]
 #[path = "merge_recovery_tests.rs"]
 mod tests;

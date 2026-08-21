@@ -181,126 +181,22 @@ fn a_confirmed_delivery_clears_the_undelivered_bound() {
     assert_eq!(entry.merge_recovery.undelivered_head, None);
 }
 
+/// A pending handback whose entry left `PrOpened` — merged, or escalated
+/// through an unrelated path — is discarded rather than delivered on a later
+/// pass: the reason it was queued for no longer holds.
 #[test]
-fn a_dispatch_is_a_retry_of_undelivered_only_when_the_charged_head_matches_it() {
+fn discard_pending_forgets_a_withheld_handback_the_entry_no_longer_needs() {
     let mut entry = entry();
-    // Nothing charged yet, nothing undelivered yet.
-    assert!(!is_retry_of_undelivered(&entry));
-
-    // A genuinely new charge, no prior undelivered failure on record.
-    entry.merge_recovery.head = Some("sha-1".into());
-    assert!(!is_retry_of_undelivered(&entry));
-
-    // The charged head matches the head a previous confirm failed against —
-    // this is the exact case `dispatch` must not blindly retype into.
-    entry.merge_recovery.undelivered_head = Some("sha-1".into());
-    assert!(is_retry_of_undelivered(&entry));
-
-    // A worker that pushed presents a new head: no longer a retry of the old
-    // failure, even though an undelivered record still exists for it.
-    entry.merge_recovery.head = Some("sha-2".into());
-    assert!(!is_retry_of_undelivered(&entry));
-}
-
-/// The exact bug #457 exists to stop: a retry for a (head, base) pair whose
-/// previous attempt could not be confirmed must not retype the prompt into a
-/// session that already looks busy — the session may already be running that
-/// earlier, genuinely-delivered attempt, and typing over it would duplicate
-/// the handback instead of confirming it.
-#[test]
-fn a_busy_retry_of_an_unconfirmed_delivery_is_refunded_without_resending() {
-    let session = format!("robco-test-dispatch-busy-{}", std::process::id());
-    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
-        // No usable tmux in this environment — the pure-logic tests above
-        // already cover the branches this test would exercise.
-        return;
-    }
-    let _ = crate::tmux::send_literal_text(&session, "esc to interrupt");
-
-    let mut entry = entry();
-    // The state right after `plan` charged this poll's attempt for a head
-    // that a previous attempt already failed to confirm.
-    entry.merge_recovery.charged = 1;
     entry.merge_recovery.head = Some("sha-1".into());
     entry.merge_recovery.base = Some("base-1".into());
-    entry.merge_recovery.undelivered_head = Some("sha-1".into());
-    entry.merge_recovery.undelivered_charged = 1;
+    let _ = pending::withhold(&mut entry, "checks_not_green", 5);
+    assert!(entry.merge_recovery.pending.is_some());
 
-    let registry = registry_with_session(&session);
-    dispatch(&mut entry, "merge_state:dirty", &registry, None, 2).unwrap();
-
-    // Un-charged like any other refund, and the undelivered bound this poll
-    // neither confirmed nor disproved is left exactly where it was — a busy
-    // read must not spend either budget.
-    assert_eq!(entry.merge_recovery.charged, 0);
-    assert_eq!(entry.merge_recovery.head, None);
-    assert_eq!(entry.merge_recovery.base, None);
-    assert_eq!(entry.merge_recovery.undelivered_charged, 1);
-    // A hold, not an escalation or a dispatched handback: the entry stays
-    // exactly where it started.
-    assert_eq!(entry.phase, LedgerPhase::PrOpened);
-
-    let _ = crate::tmux::kill_session(&session);
+    discard_pending(&mut entry);
+    assert!(entry.merge_recovery.pending.is_none());
 }
 
-// A first attempt for a head that has never failed confirmation is not a
-// retry (see `a_dispatch_is_a_retry_of_undelivered_only_when_the_charged_head_matches_it`
-// above), so an incidentally busy session never reaches the short-circuit
-// added for #457 — `dispatch` falls through to its normal send/confirm path,
-// which is not re-tested here since it calls out to the dropr task API on a
-// confirmed delivery.
-
-fn registry_with_session(session: &str) -> Registry {
-    let now = chrono::Local::now();
-    let agent = crate::model::AgentNode {
-        id: "agent".into(),
-        parent_agent_id: Some(crate::overseer::OVERSEER_AGENT_ID.into()),
-        title: "worker".into(),
-        task_number: None,
-        worktree_path: "/tmp/agent".into(),
-        branch: "branch".into(),
-        base_commit: String::new(),
-        program: "claude".into(),
-        claude_session_id: None,
-        profile: None,
-        tmux_session: session.into(),
-        created_at: now,
-        updated_at: now,
-        status: crate::model::Status::Running,
-        worktree_missing: false,
-        merge_error: None,
-        last_capture: None,
-        last_spinner: None,
-        last_change_at: None,
-        last_auto_accept_at: None,
-        shell_working: false,
-        mcp_active: false,
-        pane_pid: None,
-        tracked_command: None,
-        subagents: Vec::new(),
-        children: Vec::new(),
-    };
-    Registry {
-        version: 1,
-        repos: vec![crate::model::RepoNode {
-            path: "/repo".into(),
-            name: "repo".into(),
-            remote_url: None,
-            pinned: false,
-            agents: vec![agent],
-            dropr: None,
-            dropr_tasks: crate::dropr::DroprTaskFetch::default(),
-            main_status: None,
-            main_last_capture: None,
-            main_last_spinner: None,
-            main_last_change_at: None,
-            main_shell_working: false,
-            main_mcp_active: false,
-            main_pane_pid: None,
-            main_tracked_command: None,
-            main_subagents_active: 0,
-            main_behind_origin: None,
-            checkout_state: None,
-        }],
-    }
-}
+// `dispatch`'s own busy-session behaviour — withholding instead of sending,
+// and escalating once the retry bound is spent — is covered by
+// `merge_recovery_dispatch_tests.rs`, split out to keep this file under this
+// project's source file size limit.

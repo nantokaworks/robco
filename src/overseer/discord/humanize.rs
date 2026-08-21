@@ -134,6 +134,14 @@ const PREFIX: &[(&str, &str)] = &[
         "merge_recovery_undelivered:",
         "The handback message did not reach the worker.",
     ),
+    (
+        "merge_recovery_pending:",
+        "A recovery handback is waiting for the worker to be idle.",
+    ),
+    (
+        "merge_recovery_pending_abandoned:",
+        "The worker never freed up to receive the handback.",
+    ),
     ("session_auth_failed:", "The session could not sign in."),
     (
         "merge_approval_carried:",

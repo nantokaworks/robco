@@ -148,3 +148,50 @@ fn a_dropped_merge_approval_says_nothing_once_the_entry_leaves_pr_opened() {
     ledger.entries[0].approval_dropped = Some("merge_approval_dropped:stale_head:abc..def".into());
     assert_eq!(held_reason(&ledger, "worker-1"), None);
 }
+
+/// dropr:530: a handback withheld because the worker's session is busy earns
+/// a line — the row is the operator's only way to see it, since the worker
+/// itself was never told.
+#[test]
+fn a_pending_handback_earns_a_line() {
+    let mut ledger = ledger(LedgerPhase::PrOpened, None, 0);
+    ledger.entries[0].merge_recovery.pending = Some(crate::overseer::ledger::PendingHandback {
+        reason: "checks_not_green".into(),
+        head: "f002d389".into(),
+        base: "base".into(),
+        attempts: 1,
+    });
+    assert_eq!(
+        held_reason(&ledger, "worker-1"),
+        Some("A recovery handback is waiting for the worker to be idle.".into())
+    );
+}
+
+/// A pending handback outranks a stale `merge_hold.reason`, the same way a
+/// dropped approval does: it is newer, more specific information.
+#[test]
+fn a_pending_handback_outranks_a_stale_hold_reason() {
+    let mut ledger = ledger(LedgerPhase::PrOpened, Some("checks_waiting"), 11);
+    ledger.entries[0].merge_recovery.pending = Some(crate::overseer::ledger::PendingHandback {
+        reason: "checks_not_green".into(),
+        head: "f002d389".into(),
+        base: "base".into(),
+        attempts: 1,
+    });
+    assert_eq!(
+        held_reason(&ledger, "worker-1"),
+        Some("A recovery handback is waiting for the worker to be idle.".into())
+    );
+}
+
+#[test]
+fn a_pending_handback_says_nothing_once_the_entry_leaves_pr_opened() {
+    let mut ledger = ledger(LedgerPhase::Escalated, None, 0);
+    ledger.entries[0].merge_recovery.pending = Some(crate::overseer::ledger::PendingHandback {
+        reason: "checks_not_green".into(),
+        head: "f002d389".into(),
+        base: "base".into(),
+        attempts: 1,
+    });
+    assert_eq!(held_reason(&ledger, "worker-1"), None);
+}
