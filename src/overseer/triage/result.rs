@@ -85,7 +85,7 @@ pub enum ParseError {
 
 pub fn parse(
     raw: &[u8],
-    own_task: &str,
+    own_task: Option<&str>,
     worker_id: &str,
     worker_alive: &dyn Fn(&str) -> bool,
 ) -> Result<TriageResult, ParseError> {
@@ -111,7 +111,11 @@ pub fn parse(
         }
     });
     if let Some(TriageAction::DroprTaskStatusUpdate { task_id, status }) = &action {
-        if task_id != own_task || !matches!(status.as_str(), "open" | "ready") {
+        // `own_task` is `None` when the case has no known dropr task at all
+        // (see `ExceptionCase::dropr_task_id`) — there is then no task lock
+        // for the model to legitimately release, so the comparison below
+        // rejects every `task_id` it could name (dropr:535).
+        if own_task != Some(task_id.as_str()) || !matches!(status.as_str(), "open" | "ready") {
             return Err(ParseError::RejectedAction(
                 "task_status_update may only release this worker's task lock".into(),
             ));

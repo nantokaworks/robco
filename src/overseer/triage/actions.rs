@@ -13,14 +13,14 @@ use std::process::Command;
 
 pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Result<()> {
     match action {
-        TriageAction::DroprScribbleCreate { task_id, content } => {
+        TriageAction::DroprScribbleCreate { task_id, content } => dropr_write(case, || {
             crate::dropr::scribble_create_timeout(task_id, content, COMMAND_TIMEOUT)
                 .map_err(|error| write_failed("dropr scribble_create", &error))
-        }
-        TriageAction::DroprTaskStatusUpdate { task_id, status } => {
+        }),
+        TriageAction::DroprTaskStatusUpdate { task_id, status } => dropr_write(case, || {
             crate::dropr::task_status_update_timeout(task_id, status, COMMAND_TIMEOUT)
                 .map_err(|error| write_failed("dropr task_status_update", &error))
-        }
+        }),
         TriageAction::RobcoAnswer { agent_id, text } => {
             tmux_send(agent_id, text, true)?;
             tmux_send(agent_id, "Enter", false)
@@ -68,6 +68,22 @@ pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Res
         );
         error
     })
+}
+
+/// Runs `call` only when `case` has a known dropr task; skips it silently —
+/// no call, no failure logged — otherwise.
+///
+/// `case.dropr_task_id` is `None` for an entry adopted from a live agent
+/// rather than dispatched through dropr (see `ExceptionCase::dropr_task_id`).
+/// Calling dropr in that situation would target a task id that may not
+/// exist, the same defect class `merge_recovery_note::note_on_task` and
+/// `completion.rs`'s escalation-note path already guard against (dropr:531,
+/// dropr:535).
+fn dropr_write(case: &ExceptionCase, call: impl FnOnce() -> Result<()>) -> Result<()> {
+    if case.dropr_task_id.is_none() {
+        return Ok(());
+    }
+    call()
 }
 
 /// A dropr write that did not land, as the error the action list returns.
@@ -174,3 +190,7 @@ fn data(label: &str, value: &str) -> String {
     let escaped = value.replace("<<<END_EXTERNAL_DATA>>>", "<<<END_EXTERNAL_DATA_ESCAPED>>>");
     format!("<<<EXTERNAL_DATA {label}>>>\n{escaped}\n<<<END_EXTERNAL_DATA>>>\n\n")
 }
+
+#[cfg(test)]
+#[path = "actions_tests.rs"]
+mod tests;

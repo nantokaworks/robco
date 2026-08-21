@@ -14,7 +14,8 @@ fn missing_content_field_names_the_action_in_the_warning_not_the_rejection() {
         "action":{"name":"dropr_scribble_create","task_id":"task-1"},
         "reason":"note the block"
     }"#;
-    let parsed = parse(raw, "task-1", "worker-1", &|_| false).expect("recovers, not rejected");
+    let parsed =
+        parse(raw, Some("task-1"), "worker-1", &|_| false).expect("recovers, not rejected");
     assert_eq!(parsed.action, None);
     let warning = parsed.action_error.expect("names the schema mismatch");
     assert!(warning.contains("dropr_scribble_create") && warning.contains("content"));
@@ -27,7 +28,8 @@ fn missing_task_id_field_names_the_action_in_the_warning_not_the_rejection() {
         "action":{"name":"dropr_task_status_update","status":"open"},
         "reason":"release lock"
     }"#;
-    let parsed = parse(raw, "task-1", "worker-1", &|_| false).expect("recovers, not rejected");
+    let parsed =
+        parse(raw, Some("task-1"), "worker-1", &|_| false).expect("recovers, not rejected");
     assert_eq!(parsed.action, None);
     let warning = parsed.action_error.expect("names the schema mismatch");
     assert!(warning.contains("dropr_task_status_update") && warning.contains("task_id"));
@@ -40,9 +42,26 @@ fn live_worker_prevents_task_lock_release() {
         "action":{"name":"dropr_task_status_update","task_id":"task-1","status":"ready"},
         "reason":"release"
     }"#;
-    let rejected = parse(raw, "task-1", "worker-1", &|_| true);
+    let rejected = parse(raw, Some("task-1"), "worker-1", &|_| true);
     assert!(
         matches!(rejected, Err(ParseError::RejectedAction(message)) if message.contains("alive"))
     );
-    assert!(parse(raw, "task-1", "worker-1", &|_| false).is_ok());
+    assert!(parse(raw, Some("task-1"), "worker-1", &|_| false).is_ok());
+}
+
+/// A case with no known dropr task (`own_task: None` — see
+/// `ExceptionCase::dropr_task_id`) has no task lock to release, so a model
+/// naming any `task_id` for `dropr_task_status_update` must be rejected
+/// outright, not compared against a fabricated identity (dropr:535).
+#[test]
+fn no_dropr_task_rejects_task_status_update() {
+    let raw = br#"{
+        "outcome":"resolved",
+        "action":{"name":"dropr_task_status_update","task_id":"task-1","status":"ready"},
+        "reason":"release"
+    }"#;
+    let rejected = parse(raw, None, "worker-1", &|_| false);
+    assert!(
+        matches!(rejected, Err(ParseError::RejectedAction(message)) if message.contains("task lock"))
+    );
 }

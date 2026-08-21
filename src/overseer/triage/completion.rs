@@ -109,7 +109,12 @@ pub(super) fn apply_session_result_with(
 fn normalize(result: SessionResult, case: &ExceptionCase) -> Completion {
     match result {
         SessionResult::Result(raw) => {
-            match result::parse(&raw, &case.task_id, &case.worker_id, &worker_session_alive) {
+            match result::parse(
+                &raw,
+                case.dropr_task_id.as_deref(),
+                &case.worker_id,
+                &worker_session_alive,
+            ) {
                 Ok(value) => Completion {
                     outcome: value.outcome,
                     action: value.action,
