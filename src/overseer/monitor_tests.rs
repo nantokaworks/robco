@@ -389,3 +389,40 @@ fn a_prerequisite_wait_within_its_bound_is_silent() {
     assert_eq!(still_waiting.entries[0].phase, LedgerPhase::Dispatched);
     assert!(actions.is_empty());
 }
+
+/// dropr:874's shape: adoption ran late, so the only tmux activity reading on
+/// record already looks stale relative to `now` — but the entry was only
+/// just adopted (`dispatched_at` is fresh). The stuck-timeout floor at
+/// `dispatched_at` means it is not failed on this, its first, pass.
+#[test]
+fn a_freshly_adopted_entry_is_not_stuck_from_activity_that_predates_it() {
+    let mut fresh = ledger();
+    fresh.entries[0].dispatched_at = Utc.with_ymd_and_hms(2026, 7, 16, 4, 0, 0).unwrap();
+    let observations: Observations = serde_json::from_str(
+        r#"{"sessions":[{"agent_id":"worker-1","status":"running","last_activity_at":"2026-07-16T00:40:00Z"}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 4, 0, 5).unwrap();
+    let (reconciled, actions) = reconcile(&fresh, &observations, now, 90, 72);
+    assert_eq!(reconciled.entries[0].phase, LedgerPhase::Dispatched);
+    assert!(actions.is_empty());
+}
+
+/// The same worker, still quiet well past its own dispatch: the floor only
+/// covers the gap before observation began, not a genuine stall afterward.
+#[test]
+fn a_worker_whose_activity_stays_stale_past_its_own_dispatch_is_still_caught() {
+    let old = ledger(); // dispatched_at: 2026-07-16T00:00:00Z
+    let observations: Observations = serde_json::from_str(
+        r#"{"sessions":[{"agent_id":"worker-1","status":"running","last_activity_at":"2026-07-16T00:00:00Z"}]}"#,
+    )
+    .unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 7, 16, 1, 31, 0).unwrap();
+    let (reconciled, actions) = reconcile(&old, &observations, now, 90, 72);
+    assert_eq!(reconciled.entries[0].phase, LedgerPhase::Failed);
+    assert!(
+        actions
+            .iter()
+            .any(|action| matches!(action, Action::MarkFailed { .. }))
+    );
+}

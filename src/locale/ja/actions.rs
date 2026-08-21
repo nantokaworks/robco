@@ -176,9 +176,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "PRをリクエストし、承認をキューに追加しました。チェック通過後にmergeします"
         }
         "approval queued; waiting for the merge gate" => "承認済みです。mergeゲートを待っています",
-        "This agent is not one the Overseer daemon can land; merge it directly instead" => {
-            "このエージェントはOverseerデーモンではlandできません。代わりに直接mergeしてください"
-        }
 
         // actions/merge.rs
         "closed dialog because its agent was merged" => {

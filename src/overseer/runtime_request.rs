@@ -13,10 +13,10 @@ use super::{
     command::escalate_workers,
     daemon::pull_request,
     discord::ledger_requests::record_runtime_approval,
-    ledger::{Ledger, OperatorOverride},
+    ledger::{self, Ledger, OperatorOverride},
     ledger_path, runtime_requests_dir,
 };
-use crate::Result;
+use crate::{Result, registry::Registry};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -105,14 +105,15 @@ pub(crate) fn enqueue_in(dir: &Path, request: RuntimeRequest) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn drain(ledger: &mut Ledger) -> Result<Vec<PendingRun>> {
-    drain_in(&runtime_requests_dir()?, &ledger_path()?, ledger)
+pub(crate) fn drain(ledger: &mut Ledger, registry: Option<&Registry>) -> Result<Vec<PendingRun>> {
+    drain_in(&runtime_requests_dir()?, &ledger_path()?, ledger, registry)
 }
 
 pub(crate) fn drain_in(
     dir: &Path,
     ledger_path: &Path,
     ledger: &mut Ledger,
+    registry: Option<&Registry>,
 ) -> Result<Vec<PendingRun>> {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -163,7 +164,7 @@ pub(crate) fn drain_in(
                 pending_runs.push(PendingRun { task, source });
             }
             request => {
-                apply(ledger, request);
+                apply(ledger, request, registry);
                 // `apply` only changed `ledger` in memory, and this file is
                 // about to be acked (deleted). Checkpoint the mutation now,
                 // before the ack, so a daemon death before the pass's own
@@ -189,7 +190,7 @@ pub(crate) fn drain_in(
     Ok(pending_runs)
 }
 
-pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest) {
+pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest, registry: Option<&Registry>) {
     match request {
         RuntimeRequest::PanicEscalate { agent_ids, .. } => {
             escalate_workers(ledger, &agent_ids.into_iter().collect::<HashSet<_>>());
@@ -198,7 +199,7 @@ pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest) {
         // observe the merge for itself, which is the whole point of waking it.
         RuntimeRequest::MergeCompleted { .. } => {}
         RuntimeRequest::OperatorMergeOverride { target, .. } => {
-            grant_operator_override(ledger, &target);
+            grant_operator_override(ledger, &target, registry);
         }
         RuntimeRequest::MergeApproval {
             source,
@@ -206,7 +207,7 @@ pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest) {
             head,
             ..
         } => {
-            record_runtime_approval(ledger, &target, &head, &source);
+            record_runtime_approval(ledger, &target, &head, &source, registry);
         }
         // `drain_in` pulls this variant out before calling `apply` — see the
         // variant's own doc comment. Kept as an explicit no-op arm, not a
@@ -216,20 +217,32 @@ pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest) {
     }
 }
 
-/// Finds the ledger entry `target` names (by `agent_id` or `display_id`) and
-/// records a merge request scoped to its pull request's current head.
+/// Finds the ledger entry `target` names and records an operator override
+/// scoped to its pull request's current head.
 ///
-/// Silently a no-op when the entry is gone, carries no pull request yet, or
-/// GitHub cannot be read right now — an operator override that missed its
-/// moment is not a failure this drain should abort or retry over, the same
-/// way [`apply`] already treats a `PanicEscalate` naming a since-vanished
-/// agent id. The operator can simply approve again.
-fn grant_operator_override(ledger: &mut Ledger, target: &str) {
-    let Some(entry) = ledger
+/// An already-existing entry with no pull request recorded yet is left
+/// untouched rather than run through `ledger::ensure_landable`: there is
+/// nothing an override can grant against it, so reviving a `Failed` or
+/// `Escalated` settlement here would only discard that state for no gain.
+/// `ensure_landable` still adopts or revives once a pull request is known —
+/// or the entry does not exist at all yet, which `robco_approve` already
+/// validates against before this request is ever enqueued (dropr:523).
+///
+/// Silently a no-op when there is truly nothing to adopt, or GitHub cannot be
+/// read right now — an operator override that missed its moment is not a
+/// failure this drain should abort or retry over, the same way [`apply`]
+/// already treats a `PanicEscalate` naming a since-vanished agent id. The
+/// operator can simply approve again.
+fn grant_operator_override(ledger: &mut Ledger, target: &str, registry: Option<&Registry>) {
+    let already_known_without_a_pr = ledger
         .entries
-        .iter_mut()
+        .iter()
         .find(|entry| entry.agent_id == target || entry.display_id == target)
-    else {
+        .is_some_and(|entry| entry.pr_url.is_none());
+    if already_known_without_a_pr {
+        return;
+    }
+    let Some(entry) = ledger::ensure_landable(ledger, target, registry, Utc::now()) else {
         return;
     };
     let Some(url) = entry.pr_url.clone() else {

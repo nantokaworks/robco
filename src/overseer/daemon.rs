@@ -49,7 +49,7 @@ use super::{
     triage::ExceptionQueue,
     wake::{self, Signals},
 };
-use crate::{Result, config::Config};
+use crate::{Result, config::Config, registry::Registry};
 use chrono::{DateTime, Utc};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -144,7 +144,13 @@ pub async fn run_daemon() -> Result<()> {
         );
         let mut pending_runs =
             discord_sync::apply_ledger_requests(&mut ledger, &ledger_request_rx)?;
-        match runtime_request::drain(&mut ledger) {
+        // Read fresh so an `OperatorMergeOverride` / `MergeApproval` request
+        // naming an agent the ledger has not adopted yet can still be
+        // adopted on the spot — see `ledger::ensure_landable` (dropr:523). A
+        // failed read just means neither request kind can adopt this pass;
+        // every other request still applies normally.
+        let registry_for_requests = Registry::load().ok();
+        match runtime_request::drain(&mut ledger, registry_for_requests.as_ref()) {
             Ok(runtime_runs) => {
                 // Same dispatch loop as Discord's `!run`, just a different
                 // transport — see `RuntimeRequest::RunTask`'s doc comment.
