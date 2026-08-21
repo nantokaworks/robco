@@ -12,6 +12,7 @@ use ratatui::text::{Line, Span};
 
 use crate::locale::{Locale, t};
 use crate::model::MergeLifecycle;
+use crate::overseer::discord::humanize;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
 use crate::overseer::logging::{DecisionEntry, DecisionKind};
 use crate::ui::theme::DEFAULT as THEME;
@@ -171,6 +172,73 @@ pub(super) fn merge_hold_detail(locale: Locale, ledger: &Ledger, agent_id: &str)
     )
 }
 
+/// Source stamped on the decision `daemon::discord_events` writes to mirror a
+/// phase change into Discord. Its reason is the phase's own name
+/// (`task_failed`, `task_escalated`), never why the entry stopped, and it is
+/// appended *after* the pass that recorded the real reason — so a newest-wins
+/// read has to skip it, or every reason ends up hidden behind its own label.
+const PHASE_MIRROR_SOURCE: &str = "daemon_event";
+
+/// Why `agent_id`'s ledger entry stopped in a terminal phase the operator did
+/// not ask for — `Failed` or `Escalated` — as one short English sentence for
+/// the agent's own tree row (dropr:524). `None` for an agent with no entry,
+/// for one still live, and for one that merged: `Merged` is terminal too, but
+/// it is the phase the work was dispatched to reach, so it has nothing to
+/// explain.
+///
+/// The phase itself carries no reason — `LedgerEntry` has no such field — so
+/// the text comes from the decision log, where the pass that moved the entry
+/// wrote one: `monitor::apply::escalate` through `Action::Escalate`, and
+/// `monitor::apply::fail` through `Action::LogDecision`, which
+/// `logging::log_message` records as a `Hold`. Each phase therefore reads its
+/// own decision kind, and the newest one wins — the same walk over this
+/// oldest-first log that [`standoffs`] and [`blocked_reason`] already do.
+///
+/// Unlike [`blocked_reason`], a later `Hold` does not clear the answer. That
+/// function asks whether a person is still needed, which the Overseer can
+/// answer for itself; this asks where the entry ended up, and a terminal
+/// phase never reverts (`overseer::ledger::terminal`).
+///
+/// The reason is humanized through the same table the Inbox row uses
+/// (`ui::overseer::inbox_rows::row_reason`), so one condition reads the same
+/// wherever it is shown. It stays English, like every other row-level string
+/// — see the workspace localization policy.
+pub(super) fn terminal_reason(
+    ledger: &Ledger,
+    decisions: &[DecisionEntry],
+    agent_id: &str,
+) -> Option<String> {
+    let entry = ledger
+        .entries
+        .iter()
+        .find(|entry| entry.agent_id == agent_id)?;
+    let (kind, fallback) = match entry.phase {
+        LedgerPhase::Failed => (DecisionKind::Hold, "task_failed"),
+        LedgerPhase::Escalated => (DecisionKind::Escalate, "task_escalated"),
+        _ => return None,
+    };
+    let logged = decisions
+        .iter()
+        .filter(|decision| {
+            decision.task.as_deref() == Some(entry.task_id.as_str())
+                && decision.kind == kind
+                && decision.source.as_deref() != Some(PHASE_MIRROR_SOURCE)
+        })
+        .map(|decision| decision.reason.trim())
+        .rfind(|reason| !reason.is_empty());
+    // The snapshot holds only a tail of the log (`DECISION_SNAPSHOT_LIMIT`),
+    // so an old enough entry has no decision of its own left in it. The
+    // fallback is the phase's own event code, which the same table turns into
+    // a sentence: it says less than the reason would, but it still says the
+    // row stopped.
+    let reason = logged.unwrap_or(fallback);
+    Some(
+        humanize::static_sentence(reason)
+            .unwrap_or(reason)
+            .to_string(),
+    )
+}
+
 pub(super) fn append_decisions(
     lines: &mut Vec<Line<'static>>,
     decisions: &[DecisionEntry],
@@ -217,3 +285,9 @@ pub(super) fn append_decisions(
 #[cfg(test)]
 #[path = "decisions_tests.rs"]
 mod tests;
+
+// `terminal_reason`'s own file: `decisions_tests.rs` is already at the source
+// size limit, the same reason `decisions_standoffs_tests.rs` was split out.
+#[cfg(test)]
+#[path = "decisions_terminal_tests.rs"]
+mod terminal_tests;
