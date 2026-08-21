@@ -40,6 +40,7 @@ fn ledger_for(agent_id: &str) -> Ledger {
     Ledger {
         entries: vec![LedgerEntry {
             task_id: "task-154".into(),
+            dropr_task_id: None,
             display_id: "#154".into(),
             repo: "/repo".into(),
             agent_id: agent_id.into(),

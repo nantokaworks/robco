@@ -15,6 +15,7 @@ fn now() -> DateTime<Utc> {
 fn entry(task: &str, repo: &str, phase: LedgerPhase, minute: i64) -> LedgerEntry {
     LedgerEntry {
         task_id: task.into(),
+        dropr_task_id: None,
         display_id: format!("#{task}"),
         repo: repo.into(),
         agent_id: format!("worker-{task}"),

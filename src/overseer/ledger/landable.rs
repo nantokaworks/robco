@@ -20,6 +20,19 @@ use super::{Ledger, LedgerEntry, LedgerPhase};
 pub(crate) fn new_entry(agent: &AgentNode, repo: &str, now: DateTime<Utc>) -> LedgerEntry {
     LedgerEntry {
         task_id: agent.id.clone(),
+        // `agent.id` above is an agent id, not a dropr task id — this entry
+        // was never dispatched through `dispatch::worker::spawn_candidate`,
+        // so there is no dropr-fed task id to carry. `agent.task_number` is
+        // the one dropr-derived fact an adopted agent still carries — the
+        // bare number a dispatch-built name slug led with — so a worker
+        // Overseer itself spawned still resolves to its real dropr task
+        // here, formatted the way dropr's own tools accept a display id
+        // (`#N`). A manually-created or truly foreign agent has no task
+        // number at all, and gets no dropr id here either (dropr:531).
+        dropr_task_id: agent
+            .task_number
+            .as_deref()
+            .map(|number| format!("#{number}")),
         display_id: agent.title.clone(),
         repo: repo.to_string(),
         agent_id: agent.id.clone(),

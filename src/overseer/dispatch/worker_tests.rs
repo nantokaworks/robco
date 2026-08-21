@@ -3,6 +3,7 @@ use super::*;
 fn entry(task_id: &str, retries: u32) -> LedgerEntry {
     LedgerEntry {
         task_id: task_id.into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/repo".into(),
         agent_id: "auto-agent".into(),

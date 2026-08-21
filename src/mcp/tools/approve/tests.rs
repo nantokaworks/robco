@@ -8,6 +8,7 @@ fn ledger_with_entry(agent_id: &str, display_id: &str) -> Ledger {
     Ledger {
         entries: vec![crate::overseer::ledger::LedgerEntry {
             task_id: "task".into(),
+            dropr_task_id: None,
             display_id: display_id.into(),
             repo: "/repo".into(),
             agent_id: agent_id.into(),

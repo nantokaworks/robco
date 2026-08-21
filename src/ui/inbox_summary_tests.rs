@@ -21,6 +21,7 @@ fn escalated_ledger() -> Ledger {
     Ledger {
         entries: vec![LedgerEntry {
             task_id: "task-1".into(),
+            dropr_task_id: None,
             display_id: "#159".into(),
             repo: "robco".into(),
             agent_id: "agent-1".into(),

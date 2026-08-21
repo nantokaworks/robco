@@ -5,6 +5,7 @@ use super::*;
 fn entry(display_id: &str, repo: &str, phase: LedgerPhase, settled_minute: u32) -> LedgerEntry {
     LedgerEntry {
         task_id: format!("task-{display_id}"),
+        dropr_task_id: None,
         display_id: display_id.into(),
         repo: repo.into(),
         agent_id: "worker".into(),

@@ -143,6 +143,7 @@ pub(super) fn log_phase_mirror(app: &mut App, kind: DecisionKind, task_id: &str,
 fn ledger_entry(agent_id: &str, task_id: &str, phase: LedgerPhase) -> LedgerEntry {
     LedgerEntry {
         task_id: task_id.into(),
+        dropr_task_id: None,
         display_id: task_id.into(),
         repo: "nantokaworks/robco".into(),
         agent_id: agent_id.into(),

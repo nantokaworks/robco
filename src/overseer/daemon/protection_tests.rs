@@ -250,6 +250,7 @@ fn http_status_is_none_for_output_with_no_status_marker() {
 fn off_mode_skips_the_probe_entirely() {
     let entry = crate::overseer::ledger::LedgerEntry {
         task_id: "task".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         // A path no registry knows, so any probe attempt would fail with `unknown_remote`.
         repo: "/nonexistent".into(),

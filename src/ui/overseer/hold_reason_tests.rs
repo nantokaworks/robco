@@ -10,6 +10,7 @@ fn ledger(phase: LedgerPhase, reason: Option<&str>, passes: u32) -> Ledger {
     let mut ledger = Ledger::default();
     ledger.entries.push(LedgerEntry {
         task_id: "#529".into(),
+        dropr_task_id: None,
         display_id: "#529".into(),
         repo: "nantokaworks/robco".into(),
         agent_id: "worker-1".into(),

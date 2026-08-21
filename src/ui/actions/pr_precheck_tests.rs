@@ -71,6 +71,7 @@ fn precheck_created_with_approval_head_queues_the_merge_approval() {
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.overseer_snapshot.ledger.entries.push(LedgerEntry {
         task_id: "task-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/repo".into(),
         agent_id: "one".into(),

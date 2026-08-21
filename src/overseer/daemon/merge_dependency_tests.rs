@@ -4,6 +4,7 @@ use crate::overseer::ledger::LedgerPhase;
 fn entry() -> LedgerEntry {
     LedgerEntry {
         task_id: "task".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/repo".into(),
         agent_id: "agent".into(),
@@ -76,14 +77,11 @@ fn a_failed_probe_does_not_disturb_an_existing_wait_timestamp() {
 
 #[test]
 fn an_entry_with_no_known_dropr_task_is_clear_without_asking_dropr() {
-    // dropr:496 — registry adoption fills a ledger entry from the agent
-    // record alone, and its AgentNode::task_number is None for exactly that
-    // case. Such an entry has no dependency edges by construction, so the
-    // probe must not shell out at all; it must answer Clear right away,
-    // instead of asking dropr about a task id that is really just an agent
-    // id and letting that fail.
-    assert!(matches!(
-        probe("agent-id-used-as-task-id", false),
-        Probe::Clear
-    ));
+    // dropr:496, dropr:531 — an entry with no `dropr_task_id` (registry
+    // adoption fills a ledger entry from the agent record alone, with no
+    // real dropr task behind it) has no dependency edges by construction, so
+    // the probe must not shell out at all; it must answer Clear right away,
+    // instead of asking dropr about a task id that does not exist and
+    // letting that fail.
+    assert!(matches!(probe(None), Probe::Clear));
 }

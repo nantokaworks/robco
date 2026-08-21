@@ -27,6 +27,13 @@ pub struct ExceptionCase {
     pub id: String,
     pub kind: String,
     pub task_id: String,
+    /// The entry's `LedgerEntry::dropr_task_id`, carried over verbatim:
+    /// `Some` only when the case's entry is known to belong to a real dropr
+    /// task, `None` when it does not, or that is not known. `task_id` above
+    /// stays whatever identity `LedgerEntry::task_id` carries — for an
+    /// adopted entry, an agent id, not a dropr id — so a caller that means
+    /// to write back to dropr must read this field instead (dropr:531).
+    pub dropr_task_id: Option<String>,
     pub display_id: String,
     pub worker_id: String,
     pub repo: String,
@@ -50,6 +57,7 @@ pub(super) fn case_from(
         id: format!("{}-{}", Utc::now().format("%Y%m%d%H%M%S"), nanoid!(8)),
         kind: kind.into(),
         task_id: entry.task_id.clone(),
+        dropr_task_id: entry.dropr_task_id.clone(),
         display_id: entry.display_id.clone(),
         worker_id: entry.agent_id.clone(),
         repo: entry.repo.clone(),
@@ -139,6 +147,10 @@ pub(crate) fn recent_worker_capture(worker_id: &str) -> String {
 #[cfg(test)]
 #[path = "triage/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "triage/session_queue_tests.rs"]
+mod session_queue_tests;
 
 #[cfg(test)]
 #[path = "triage/briefing_tests.rs"]

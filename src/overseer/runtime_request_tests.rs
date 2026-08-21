@@ -411,6 +411,7 @@ fn merge_approval_replay_after_branch_moves_keeps_the_observed_head() {
 fn ledger_entry(agent_id: &str, phase: LedgerPhase) -> LedgerEntry {
     LedgerEntry {
         task_id: format!("task-{agent_id}"),
+        dropr_task_id: None,
         display_id: "#202".into(),
         repo: "nantokaworks/robco".into(),
         agent_id: agent_id.into(),

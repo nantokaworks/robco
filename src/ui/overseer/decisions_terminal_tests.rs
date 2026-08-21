@@ -26,6 +26,7 @@ fn ledger(phase: LedgerPhase) -> Ledger {
     let mut ledger = Ledger::default();
     ledger.entries.push(LedgerEntry {
         task_id: TASK.into(),
+        dropr_task_id: None,
         display_id: TASK.into(),
         repo: "nantokaworks/robco".into(),
         agent_id: "worker-1".into(),

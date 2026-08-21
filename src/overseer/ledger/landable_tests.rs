@@ -87,7 +87,31 @@ fn a_target_with_no_entry_but_a_registry_match_is_adopted_on_the_spot() {
     assert_eq!(entry.phase, LedgerPhase::Dispatched);
     assert_eq!(entry.dispatched_at, now);
     assert_eq!(entry.repo, "/repo");
+    // `agent("worker-1")` carries no `task_number` — a manually-created or
+    // truly foreign agent — so the adopted entry must not be handed a dropr
+    // task id made up from its own agent id (dropr:531).
+    assert_eq!(entry.dropr_task_id, None);
     assert_eq!(ledger.entries.len(), 1);
+}
+
+/// An agent Overseer itself dispatched still carries its `task_number` even
+/// when the daemon lost track of it and has to adopt it fresh from the
+/// registry — so the adopted entry recovers its real dropr task rather than
+/// losing it the way `agent.id` alone would (dropr:531).
+#[test]
+fn an_adopted_agent_with_a_task_number_keeps_its_dropr_task() {
+    let mut ledger = Ledger::default();
+    let mut numbered = agent("worker-1");
+    numbered.task_number = Some("333".into());
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo("/repo", vec![numbered])],
+    };
+    let now = Utc::now();
+
+    let entry = ensure_landable(&mut ledger, "worker-1", Some(&registry), now)
+        .expect("agent exists in the registry");
+    assert_eq!(entry.dropr_task_id.as_deref(), Some("#333"));
 }
 
 /// dropr:874's other half: the ledger already carries an entry, but it
@@ -147,6 +171,7 @@ fn a_merged_entry_is_left_untouched() {
 fn blank_entry() -> LedgerEntry {
     LedgerEntry {
         task_id: "worker-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/repo".into(),
         agent_id: "worker-1".into(),

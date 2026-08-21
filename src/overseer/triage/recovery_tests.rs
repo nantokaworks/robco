@@ -20,6 +20,7 @@ fn recovery_case() -> ExceptionCase {
         id: "recovery-case".into(),
         kind: "worker_failed".into(),
         task_id: "task-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         worker_id: "worker-1".into(),
         repo: "/repo".into(),

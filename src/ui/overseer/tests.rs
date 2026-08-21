@@ -309,6 +309,7 @@ fn active_phases_excludes_terminal_entries() {
         entries: vec![
             LedgerEntry {
                 task_id: "active".into(),
+                dropr_task_id: None,
                 display_id: "#1".into(),
                 repo: "repo".into(),
                 agent_id: "agent".into(),
@@ -338,6 +339,7 @@ fn active_phases_excludes_terminal_entries() {
             },
             LedgerEntry {
                 task_id: "terminal".into(),
+                dropr_task_id: None,
                 display_id: "#2".into(),
                 repo: "repo".into(),
                 agent_id: "agent".into(),
@@ -386,6 +388,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
     let ledger = Ledger {
         entries: vec![LedgerEntry {
             task_id: "task".into(),
+            dropr_task_id: None,
             display_id: "#1".into(),
             repo: "/Users/operator/repos/robco".into(),
             agent_id: "agent".into(),
@@ -439,6 +442,7 @@ fn primary_holder_names_the_repo_and_the_task() {
     let ledger = Ledger {
         entries: vec![LedgerEntry {
             task_id: "task".into(),
+            dropr_task_id: None,
             display_id: "#452".into(),
             repo: "/Users/operator/repos/robco".into(),
             agent_id: "agent".into(),

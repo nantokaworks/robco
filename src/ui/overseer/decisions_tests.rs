@@ -1,6 +1,7 @@
 use chrono::Utc;
 
 use super::*;
+use crate::overseer::ledger::LedgerEntry;
 
 fn decision(kind: DecisionKind, task: &str, reason: &str) -> DecisionEntry {
     let mut entry = DecisionEntry::new(kind, reason);
@@ -8,13 +9,10 @@ fn decision(kind: DecisionKind, task: &str, reason: &str) -> DecisionEntry {
     entry
 }
 
-fn ledger_entry(
-    agent_id: &str,
-    task_id: &str,
-    phase: LedgerPhase,
-) -> crate::overseer::ledger::LedgerEntry {
-    crate::overseer::ledger::LedgerEntry {
+fn ledger_entry(agent_id: &str, task_id: &str, phase: LedgerPhase) -> LedgerEntry {
+    LedgerEntry {
         task_id: task_id.into(),
+        dropr_task_id: None,
         display_id: task_id.into(),
         repo: "nantokaworks/robco".into(),
         agent_id: agent_id.into(),
