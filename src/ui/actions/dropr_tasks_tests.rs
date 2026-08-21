@@ -1,5 +1,20 @@
 use super::*;
-use crate::dropr::DroprTaskCandidate;
+use crate::dropr::{DroprTaskCandidate, DroprWorkspace};
+
+fn linked_repo(dropr: Option<DroprWorkspace>) -> RepoNode {
+    let mut repo = crate::discover::repo_node("/tmp/robco-dropr-tasks-test".into(), false);
+    repo.dropr = dropr;
+    repo
+}
+
+fn workspace_of_kind(kind: &str) -> DroprWorkspace {
+    DroprWorkspace {
+        kind: kind.into(),
+        id: format!("{kind}-workspace"),
+        name: "repo".into(),
+        repo_url: "https://github.com/owner/repo".into(),
+    }
+}
 
 fn task(display_id: &str) -> DroprTaskCandidate {
     DroprTaskCandidate {
@@ -48,6 +63,40 @@ fn loaded_overlay_with_no_match_reports_missing_linkage() {
         no_workspace_reason(true, OverlayStatus::Loaded),
         DroprTaskReload::NoLinkedWorkspaces
     );
+}
+
+/// The defect this task fixes: a virtual workspace has no board behind it, so
+/// asking dropr for its tasks can only ever come back "not found". Only
+/// materialised links belong in the fetch list.
+#[test]
+fn materialised_workspace_ids_skips_virtual_workspaces() {
+    let repos = vec![
+        linked_repo(Some(workspace_of_kind("virtual"))),
+        linked_repo(Some(workspace_of_kind("materialised"))),
+        linked_repo(None),
+    ];
+
+    assert_eq!(
+        materialised_workspace_ids(&repos),
+        vec!["materialised-workspace".to_string()]
+    );
+}
+
+/// "No workspace linked" and "linked, but no board yet" are different states:
+/// only the first means the repo has nothing to do with dropr at all.
+#[test]
+fn any_workspace_linked_is_true_even_when_every_link_is_virtual() {
+    let repos = vec![linked_repo(Some(workspace_of_kind("virtual")))];
+
+    assert!(any_workspace_linked(&repos));
+    assert!(materialised_workspace_ids(&repos).is_empty());
+}
+
+#[test]
+fn no_workspace_linked_when_nothing_resolved() {
+    let repos = vec![linked_repo(None)];
+
+    assert!(!any_workspace_linked(&repos));
 }
 
 #[test]
