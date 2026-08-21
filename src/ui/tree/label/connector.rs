@@ -76,6 +76,30 @@ pub(super) fn tree_prefix(
     )
 }
 
+/// The guide-only prefix for a line that continues the row above it rather
+/// than hanging below it: an agent's reason line (dropr:518). It draws no
+/// branch glyph of its own, because it is not a row — it is the tail of one.
+///
+/// The columns it does draw are the ones a *child* of that agent would draw:
+/// every ancestor guide, then one more column for the agent itself, which
+/// continues when the agent still has a later sibling. That is the same
+/// `deeper.push(!is_last)` step [`crate::model::agent_rows`] takes for real
+/// children, so the vertical run down to the next sibling is never broken,
+/// and the line sits flush against whatever child row follows it.
+pub(in crate::ui::tree) fn continuation_prefix(
+    ancestor_continues: &[bool],
+    is_last: bool,
+) -> String {
+    let guides: String = ancestor_continues
+        .iter()
+        .copied()
+        .map(guide_column)
+        .collect();
+    // Two leading columns for the cursor the continuation never has, matching
+    // `tree_prefix`'s own `"{cursor} "`.
+    format!("  {AGENT_INDENT}{guides}{}", guide_column(!is_last))
+}
+
 /// The plain connector prefix for a row that carries no management marker of
 /// its own — currently only child-worktree rows, which hang directly off an
 /// agent rather than being agents themselves.

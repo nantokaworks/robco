@@ -17,6 +17,7 @@ pub(in crate::ui) mod indicator;
 mod label;
 mod launch_row;
 pub(in crate::ui) mod overseer_frame;
+mod reason_line;
 mod repo_row;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
@@ -147,6 +148,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     app.started.elapsed(),
                     right,
                 ));
+                // The failure's own text, under the row that only badged it
+                // (dropr:518). Nothing when the agent has none, so a healthy
+                // tree keeps its height.
+                lines.extend(reason_line::build(agent, &row, projects_width));
             }
             Selection::ChildWorktree {
                 repo,
