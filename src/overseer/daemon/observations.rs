@@ -3,7 +3,7 @@ use crate::{
     overseer::{
         exec::run_timeout,
         inbox::InboxReader,
-        is_overseer_child,
+        is_worker_subagent,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
         monitor::{ObservationError, Observations, SessionObservation},
     },
@@ -140,12 +140,12 @@ pub(super) fn gather(
     observations
 }
 
-/// Ledger entries whose worker is still registered but is not (or is no
-/// longer) an Overseer child — a worker whose `parent_agent_id` changed
-/// underneath it, or an entry left over from a registry written before the
-/// worker was enrolled. An entry whose agent has left the registry entirely
-/// is not detached; that is the dead-session path, which [`gather`] still
-/// reports.
+/// Ledger entries whose worker is still registered but has since become a
+/// subagent of another worker — its `parent_agent_id` now names a worker the
+/// registry still lists, so it belongs to that worker's own worktree, not to
+/// a ledger entry of its own (dropr:521). An entry whose agent has left the
+/// registry entirely is not detached; that is the dead-session path, which
+/// [`gather`] still reports.
 fn detached_agents(ledger: &Ledger, registry: &Registry) -> Vec<String> {
     ledger
         .entries
@@ -157,7 +157,7 @@ fn detached_agents(ledger: &Ledger, registry: &Registry) -> Vec<String> {
                 .flat_map(|repo| &repo.agents)
                 .any(|agent| {
                     agent.id == entry.agent_id
-                        && !is_overseer_child(agent.parent_agent_id.as_deref())
+                        && is_worker_subagent(agent.parent_agent_id.as_deref(), registry)
                 })
         })
         .map(|entry| entry.agent_id.clone())
@@ -203,21 +203,21 @@ fn tmux_activity(session: &str) -> std::result::Result<DateTime<Utc>, String> {
         .ok_or_else(|| format!("session_activity epoch {epoch} out of range"))
 }
 
-/// Adopts every registry agent that belongs to the Overseer
-/// (`is_overseer_child(agent.parent_agent_id)`) and has no ledger entry yet.
+/// Adopts every registry agent that is not another worker's subagent
+/// (`is_worker_subagent`) and has no ledger entry yet.
 ///
-/// Ownership is the only signal left once `ManagementMode` is gone: since
-/// `agent::creation::enroll_with_overseer` and `adopt_worktree` both set
-/// `parent_agent_id` to the Overseer's id up front for every worker they
-/// create or recover, there is no separate "owned but opted out" state left
-/// to filter on. A worker with a different (or no) parent stays out, exactly
-/// as it does today.
+/// dropr:521: there is no such thing as a worktree the Overseer owns any
+/// more. Every worker the registry lists is one the daemon can act on —
+/// pressing `m` is what decides it acts, not which binary or path created
+/// the worker. The one exclusion left is a worker's own child: a subagent
+/// `robco new` spawned from inside a running worker session belongs to that
+/// worker's own worktree, not to a ledger entry of its own.
 fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
     for repo in &registry.repos {
         for agent in repo
             .agents
             .iter()
-            .filter(|agent| is_overseer_child(agent.parent_agent_id.as_deref()))
+            .filter(|agent| !is_worker_subagent(agent.parent_agent_id.as_deref(), registry))
         {
             if ledger
                 .entries

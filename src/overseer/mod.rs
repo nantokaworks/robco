@@ -100,11 +100,35 @@ pub fn is_overseer_child(parent_agent_id: Option<&str>) -> bool {
     )
 }
 
+/// True when `parent_agent_id` names another worker in the registry — a
+/// subagent `robco new` spawned from inside a running worker session,
+/// instead of a top-level worker enrolled with the Overseer at creation.
+///
+/// dropr:521 dropped ownership (`is_overseer_child`) as the gate on which
+/// worktrees the Overseer daemon will land, list, or kill: every worker in
+/// the registry counts now, no matter how or when it was created. The one
+/// worker that still must not count on its own is a worker's own child —
+/// its parent worker is already the thing whose pull request matters, so
+/// the subagent's worktree stays out of the ledger and every report.
+pub fn is_worker_subagent(
+    parent_agent_id: Option<&str>,
+    registry: &crate::registry::Registry,
+) -> bool {
+    let Some(parent) = parent_agent_id else {
+        return false;
+    };
+    registry
+        .repos
+        .iter()
+        .flat_map(|repo| &repo.agents)
+        .any(|agent| agent.id == parent)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        control_session_name, discord_channel_session_name, is_overseer_child,
-        migrate_overseer_home,
+        OVERSEER_AGENT_ID, control_session_name, discord_channel_session_name, is_overseer_child,
+        is_worker_subagent, migrate_overseer_home,
     };
     use crate::tmux;
 
@@ -155,6 +179,60 @@ mod tests {
         assert!(is_overseer_child(Some("chief")));
         assert!(!is_overseer_child(Some("worker")));
         assert!(!is_overseer_child(None));
+    }
+
+    fn registry_with_worker(id: &str, parent: Option<&str>) -> crate::registry::Registry {
+        serde_json::from_value(serde_json::json!({
+            "version": 1,
+            "repos": [{
+                "path": "/repo",
+                "name": "repo",
+                "remote_url": null,
+                "agents": [{
+                    "id": id,
+                    "parent_agent_id": parent,
+                    "title": "#1",
+                    "worktree_path": "/repo/worker",
+                    "branch": "task-1",
+                    "base_commit": "",
+                    "program": "codex",
+                    "tmux_session": "robco_repo_task-1",
+                    "created_at": "2026-07-18T00:00:00+09:00",
+                    "updated_at": "2026-07-18T00:00:00+09:00"
+                }]
+            }]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_worker_whose_parent_is_the_overseer_is_not_a_subagent() {
+        let registry = registry_with_worker("worker", Some(OVERSEER_AGENT_ID));
+        assert!(!is_worker_subagent(Some(OVERSEER_AGENT_ID), &registry));
+    }
+
+    #[test]
+    fn a_worker_with_no_parent_is_not_a_subagent() {
+        let registry = registry_with_worker("worker", None);
+        assert!(!is_worker_subagent(None, &registry));
+    }
+
+    #[test]
+    fn a_worker_whose_parent_is_a_stranger_id_is_not_a_subagent() {
+        // The parent string does not name any agent the registry still
+        // lists — a foreign or stale id, not a live worker to nest under.
+        let registry = registry_with_worker("worker", Some("some-other-id"));
+        assert!(!is_worker_subagent(Some("gone"), &registry));
+    }
+
+    #[test]
+    fn a_worker_whose_parent_is_another_registry_worker_is_a_subagent() {
+        let mut registry = registry_with_worker("parent-worker", Some(OVERSEER_AGENT_ID));
+        let mut child = registry.repos[0].agents[0].clone();
+        child.id = "child-worker".into();
+        child.parent_agent_id = Some("parent-worker".into());
+        registry.repos[0].agents.push(child);
+        assert!(is_worker_subagent(Some("parent-worker"), &registry));
     }
 
     #[test]
