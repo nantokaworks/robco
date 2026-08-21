@@ -10,6 +10,7 @@ fn at(minute: u32) -> DateTime<Utc> {
 fn escalated(settled_at: Option<DateTime<Utc>>, worker_escalated: bool) -> LedgerEntry {
     LedgerEntry {
         task_id: "task-131".into(),
+        dropr_task_id: None,
         display_id: "#131".into(),
         repo: "/repo".into(),
         agent_id: "worker-1".into(),

@@ -22,6 +22,18 @@ pub use slots::ActiveWorkers;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LedgerEntry {
+    /// `task_id`'s own historical role is identity — matching this entry
+    /// against a dispatch candidate, an operator's typed target, or another
+    /// entry for the same task — not a promise that the value is a dropr
+    /// task dropr itself would recognise. An entry adopted from a live agent
+    /// (`ledger::new_entry`) carries the agent id here, not a dropr id.
+    /// `dropr_task_id` is the field a caller hands to a `crate::dropr::*`
+    /// call: `Some` only when the entry is known to belong to a real dropr
+    /// task, `None` when it does not or that is not known. `#[serde(default)]`
+    /// so a ledger written before this field existed loads as `None` rather
+    /// than failing to parse (dropr:531).
+    #[serde(default)]
+    pub dropr_task_id: Option<String>,
     pub task_id: String,
     pub display_id: String,
     pub repo: String,
@@ -257,3 +269,7 @@ impl Ledger {
 #[cfg(test)]
 #[path = "ledger_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ledger_backcompat_tests.rs"]
+mod backcompat_tests;

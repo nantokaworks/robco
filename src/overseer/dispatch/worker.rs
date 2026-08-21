@@ -129,6 +129,10 @@ pub(super) fn spawn_candidate(
     };
     ledger.entries.push(LedgerEntry {
         task_id: task.task_id.clone(),
+        // `task.task_id` came straight off dropr's own ready-task feed
+        // (`dispatch::resolve`/`gather_candidates`), so it is a real dropr
+        // task id, not a stand-in — see `LedgerEntry::dropr_task_id`.
+        dropr_task_id: Some(task.task_id.clone()),
         display_id: task.display_id.clone(),
         repo: task.repo.clone(),
         agent_id: outcome.id,

@@ -7,6 +7,7 @@ fn save_load_round_trip() {
     let ledger = Ledger {
         entries: vec![LedgerEntry {
             task_id: "task-1".into(),
+            dropr_task_id: None,
             display_id: "#128".into(),
             repo: "nantokaworks/robco".into(),
             agent_id: "worker-1".into(),
@@ -55,17 +56,6 @@ fn save_load_round_trip() {
     assert_eq!(Ledger::load_from(&path).unwrap(), ledger);
 }
 
-/// A ledger written before the barrier existed still loads: the merge that was
-/// in flight when the daemon was upgraded must not be turned into a corrupt
-/// ledger and a lost board.
-#[test]
-fn a_ledger_without_the_settling_field_loads() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("ledger.json");
-    fs::write(&path, r#"{"entries":[],"skip_list":[]}"#).unwrap();
-    assert_eq!(Ledger::load_from(&path).unwrap(), Ledger::default());
-}
-
 #[test]
 fn phases_serialize_to_required_strings() {
     let phases = [
@@ -90,6 +80,7 @@ fn phases_serialize_to_required_strings() {
 fn active_workers_counts_every_non_terminal_entry() {
     let entry = |repo: &str, phase| LedgerEntry {
         task_id: "task-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: repo.into(),
         agent_id: "agent".into(),
@@ -141,35 +132,10 @@ fn active_workers_counts_every_non_terminal_entry() {
 }
 
 #[test]
-fn a_ledger_written_before_merge_recovery_still_loads() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("ledger.json");
-    fs::write(
-        &path,
-        r##"{"entries":[{"task_id":"t","display_id":"#1","repo":"/repo","agent_id":"a",
-            "branch":"b","phase":"pr_opened","dispatched_at":"2026-07-01T00:00:00Z",
-            "retries":0,"pr_url":null}],"skip_list":[],"counters":{}}"##,
-    )
-    .unwrap();
-    let ledger = Ledger::load_from(&path).unwrap();
-    let entry = &ledger.entries[0];
-    assert_eq!(entry.branch_updates, 0);
-    assert_eq!(entry.merge_recovery, MergeRecovery::default());
-    // Nothing recorded when this entry settled, and nothing may be invented:
-    // the history view reads the absence as "unknown", not as "just now".
-    assert_eq!(entry.settled_at, None);
-    // The merge in flight when the daemon was upgraded starts from a full hold
-    // budget rather than from a ledger the new field cannot be read out of.
-    assert_eq!(entry.merge_hold, MergeHold::default());
-    // The file is intact, so the load was a genuine default rather than the
-    // corrupt-ledger fallback.
-    assert!(path.exists());
-}
-
-#[test]
 fn queued_merge_approvals_count_only_non_terminal_entries_with_a_live_approval() {
     let entry = |phase, approved: bool| LedgerEntry {
         task_id: "task-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/one".into(),
         agent_id: "agent".into(),
@@ -215,29 +181,10 @@ fn queued_merge_approvals_count_only_non_terminal_entries_with_a_live_approval()
 }
 
 #[test]
-fn missing_ledger_defaults() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("ledger.json");
-    assert_eq!(Ledger::load_from(&path).unwrap(), Ledger::default());
-}
-
-#[test]
-fn corrupt_ledger_is_preserved_aside() {
-    let temp = tempfile::tempdir().unwrap();
-    let path = temp.path().join("ledger.json");
-    fs::write(&path, "not json").unwrap();
-    assert_eq!(Ledger::load_from(&path).unwrap(), Ledger::default());
-    assert!(!path.exists());
-    assert_eq!(
-        fs::read_to_string(path.with_extension("json.corrupt")).unwrap(),
-        "not json"
-    );
-}
-
-#[test]
 fn grant_merge_reconsideration_seeds_a_fresh_recheck_budget() {
     let mut entry = LedgerEntry {
         task_id: "task-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/one".into(),
         agent_id: "agent".into(),

@@ -217,7 +217,16 @@ fn apply_completion(
             // escalation is there with no explanation attached. So its loss
             // escalates in its own right rather than riding along as a `Hold`
             // that the alert digest and the inbox both filter out.
-            if !replay && let Err(error) = scribble(&case.task_id, &completion.reason) {
+            //
+            // `case.task_id` is not necessarily a dropr task — for an entry
+            // adopted from a live agent it is the agent id — so the write
+            // targets `case.dropr_task_id` instead, and is skipped entirely
+            // when the case has no known dropr task: there is nothing to
+            // record it against, and nothing failed either (dropr:531).
+            if !replay
+                && let Some(task_id) = &case.dropr_task_id
+                && let Err(error) = scribble(task_id, &completion.reason)
+            {
                 log(
                     log_path,
                     DecisionKind::Escalate,

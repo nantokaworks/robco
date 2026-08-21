@@ -57,7 +57,7 @@ pub(super) fn evaluate(
     if let Some(conclusion) = pull_request::conclusion(&value) {
         return Ok(merge_decision::concluded(entry, conclusion).on(&head, &base));
     }
-    let dependency = merge_dependency::probe(&entry.task_id, has_known_dropr_task(entry, registry));
+    let dependency = merge_dependency::probe(entry.dropr_task_id.as_deref());
     if let Some(halt) = merge_gate::gate(
         entry, url, &value, config, cache, registry, heads, dependency,
     ) {
@@ -85,21 +85,4 @@ pub(super) fn evaluate(
             Err(halt) => halt.on(&head, &base),
         },
     )
-}
-
-/// Whether `entry`'s still-registered agent carries a dropr task number.
-///
-/// `model::AgentNode::task_number` is `None` for a manually-created or
-/// registry-adopted agent (see that field's own doc) — the case
-/// `observations::adopt_registry_children_from` fills a ledger entry for
-/// with no real dropr task behind it. An agent no longer in the registry
-/// tells us nothing either way, so the probe still runs as it always has;
-/// only a *known* absence of a task number skips it (dropr:496).
-fn has_known_dropr_task(entry: &LedgerEntry, registry: &Registry) -> bool {
-    registry
-        .repos
-        .iter()
-        .flat_map(|repo| &repo.agents)
-        .find(|agent| agent.id == entry.agent_id)
-        .is_none_or(|agent| agent.task_number.is_some())
 }

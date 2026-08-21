@@ -119,6 +119,7 @@ fn a_repo_summary_lists_the_overseer_entries_that_repo_settled() {
     let settled = crate::overseer::ledger::Ledger {
         entries: vec![crate::overseer::ledger::LedgerEntry {
             task_id: "task-263".into(),
+            dropr_task_id: None,
             display_id: "#263".into(),
             repo: "/repo".into(),
             agent_id: "worker".into(),

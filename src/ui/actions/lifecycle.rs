@@ -248,6 +248,7 @@ mod tests {
 
         app.overseer_snapshot.ledger.entries.push(LedgerEntry {
             task_id: "task-1".into(),
+            dropr_task_id: None,
             display_id: "#477".into(),
             repo: "/repo".into(),
             agent_id: "ledgered".into(),

@@ -8,6 +8,7 @@ fn now() -> DateTime<Utc> {
 fn entry(repo: &str, branch: &str) -> LedgerEntry {
     LedgerEntry {
         task_id: "task".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: repo.into(),
         agent_id: "agent".into(),

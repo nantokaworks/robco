@@ -4,6 +4,7 @@ use crate::overseer::ledger::LedgerPhase;
 fn entry(task_id: &str, display_id: &str, pr_url: Option<&str>) -> LedgerEntry {
     LedgerEntry {
         task_id: task_id.into(),
+        dropr_task_id: None,
         display_id: display_id.into(),
         repo: "/no/such/repo".into(),
         agent_id: "agent-1".into(),

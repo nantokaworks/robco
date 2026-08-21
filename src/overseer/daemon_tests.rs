@@ -57,6 +57,7 @@ fn mixed_failures_count_only_worker_origin() {
 fn newly_merged_task_resets_failure_counter() {
     let entry = |phase| LedgerEntry {
         task_id: "task-1".into(),
+        dropr_task_id: None,
         display_id: "#1".into(),
         repo: "/repo".into(),
         agent_id: "worker-1".into(),

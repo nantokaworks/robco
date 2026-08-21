@@ -50,6 +50,7 @@ mod tests {
     ) -> LedgerEntry {
         LedgerEntry {
             task_id: format!("task-{agent_id}"),
+            dropr_task_id: None,
             display_id: "#177".into(),
             repo: "nantokaworks/robco".into(),
             agent_id: agent_id.into(),
