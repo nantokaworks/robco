@@ -18,7 +18,6 @@ pub mod logging;
 pub mod monitor;
 pub mod other_prs;
 pub(crate) mod paths;
-pub(crate) mod release_pipeline;
 pub(crate) mod remedy;
 pub(crate) mod repo_watch;
 pub mod review;

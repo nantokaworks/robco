@@ -107,30 +107,8 @@ fn global_and_stale_escalations_are_display_only() {
     assert_eq!(global[0].target_id, "overseer");
 }
 
-/// dropr:444 — a release-pipeline skip (`DecisionKind::Skip`, not
-/// `Escalate`) must still surface as an Inbox row: it never had a worker or
-/// a live session, so it takes the same global/display-only shape a
-/// task-less escalation does.
-#[test]
-fn a_release_pipeline_skip_is_a_display_only_escalation() {
-    let skip = DecisionEntry::new(
-        DecisionKind::Skip,
-        "release_pipeline_skipped:checkout_not_on_main:operator-wip",
-    );
-    let rows = items(&Ledger::default(), &[skip], &[]);
-
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].kind, InboxKind::Escalation);
-    assert_eq!(rows[0].target_session, None);
-    assert!(
-        rows[0]
-            .detail
-            .contains("release_pipeline_skipped:checkout_not_on_main:operator-wip")
-    );
-}
-
-/// A plain `daemon`-sourced skip (any other than the release pipeline's) is
-/// still not an Inbox concern — only the release-pipeline prefix qualifies.
+/// A `DecisionKind::Skip` decision is never an Inbox concern — only
+/// `Escalate` decisions surface as rows.
 #[test]
 fn an_unrelated_skip_produces_no_inbox_row() {
     let skip = DecisionEntry::new(DecisionKind::Skip, "candidate_circuit_open");

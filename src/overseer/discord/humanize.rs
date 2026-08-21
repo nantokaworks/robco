@@ -4,9 +4,6 @@
 //! Only reasons in the known vocabulary are mapped; everything else returns
 //! `None` and the caller keeps the raw text verbatim, so a reason this table
 //! has never heard of renders exactly as it did before this module existed.
-//! Free-form prose wrapped in a known code prefix (see
-//! [`VERBATIM_PREFIXES`]) has the wrapper stripped and the prose itself
-//! becomes the sentence.
 
 /// Reasons matched whole, each mapped to one short sentence.
 const EXACT: &[(&str, &str)] = &[
@@ -73,41 +70,11 @@ const EXACT: &[(&str, &str)] = &[
         "merge_recovery_cap_reached",
         "The automated handback gave up after repeated attempts.",
     ),
-    // Release pipeline skip reasons (`overseer::release_pipeline::ready`).
-    (
-        "release_pipeline_skipped:working_tree_dirty",
-        "The release checkout has uncommitted changes, so the release did not run.",
-    ),
-    (
-        "release_pipeline_skipped:working_tree_check_failed",
-        "The release checkout could not be checked for uncommitted changes.",
-    ),
-    (
-        "release_pipeline_skipped:checkout_not_on_merged_commit",
-        "The release checkout is not on the merged commit, so the release did not run.",
-    ),
-    (
-        "release_pipeline_skipped:checkout_detached",
-        "The release checkout has a detached HEAD, so the release did not run.",
-    ),
-    (
-        "release_pipeline_skipped:checkout_branch_check_failed",
-        "The release checkout's branch could not be checked.",
-    ),
 ];
 
 /// Reasons matched by prefix. The text after the prefix carries detail that
 /// stays available in the raw code the caller shows next to the sentence.
 const PREFIX: &[(&str, &str)] = &[
-    // The branch name rides along after this prefix (`overseer::release_
-    // pipeline::readiness::ready`), so the sentence itself names the fix
-    // rather than the branch — the raw code shown next to it names the
-    // branch.
-    (
-        "release_pipeline_skipped:checkout_not_on_main:",
-        "The release checkout is on another branch, not main, so the release did not run. \
-         Move the checkout back to main to unblock the release.",
-    ),
     (
         "merge_hold_cap_reached:",
         "The pull request was held on the same condition too many times.",
@@ -170,12 +137,6 @@ const PREFIX: &[(&str, &str)] = &[
     ("session_auth_failed:", "The session could not sign in."),
 ];
 
-/// Wrappers around text that is already a sentence in its own right — the
-/// release pipeline's own outcome (`overseer::release_pipeline`). The inner
-/// text becomes the description verbatim and the wrapped raw code stays
-/// secondary.
-const VERBATIM_PREFIXES: &[&str] = &["release_published:", "release_failed:"];
-
 /// The vocabulary-table half of [`sentence`]: `EXACT` / `PREFIX` only, no
 /// verbatim-prefix stripping. Unlike `sentence`'s owned `String` — which
 /// mixes static vocabulary with runtime prose — this returns the table's own
@@ -197,19 +158,7 @@ pub(crate) fn static_sentence(reason: &str) -> Option<&'static str> {
 /// One readable sentence for a known code-shaped reason, or `None` when the
 /// reason is unknown and the caller should keep it verbatim.
 pub(super) fn sentence(reason: &str) -> Option<String> {
-    let trimmed = reason.trim();
-    if let Some(known) = static_sentence(trimmed) {
-        return Some(known.into());
-    }
-    for prefix in VERBATIM_PREFIXES {
-        if let Some(inner) = trimmed.strip_prefix(prefix) {
-            let inner = inner.trim();
-            if !inner.is_empty() {
-                return Some(inner.into());
-            }
-        }
-    }
-    None
+    static_sentence(reason.trim()).map(str::to_owned)
 }
 
 #[cfg(test)]

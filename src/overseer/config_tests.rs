@@ -50,6 +50,21 @@ fn a_config_still_carrying_the_retired_autonomy_level_key_loads_and_drops_it() {
     );
 }
 
+/// dropr:526 — the local release pipeline is a pure deletion, the same way
+/// `autonomy_level` was above: a config file still carrying the flag loads
+/// without error, and the next save drops it rather than round-tripping it
+/// forever.
+#[test]
+fn a_config_still_carrying_the_retired_release_pipeline_enabled_key_loads_and_drops_it() {
+    let raw = r#"{"release_pipeline_enabled": true}"#;
+    let config: OverseerConfig = serde_json::from_str(raw).unwrap();
+    let serialized = serde_json::to_value(&config).unwrap();
+    assert!(
+        serialized.get("release_pipeline_enabled").is_none(),
+        "release_pipeline_enabled must not round-trip"
+    );
+}
+
 #[test]
 fn a_config_written_before_retention_existed_loads_with_a_bounded_window() {
     let raw = r#"{"max_workers": 5}"#;
