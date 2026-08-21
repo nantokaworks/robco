@@ -1,7 +1,10 @@
-use crate::overseer::{
-    daemon::pull_request,
-    ledger::{Ledger, LedgerEntry, MergeApproval},
-    logging::{self, DecisionEntry, DecisionKind},
+use crate::{
+    overseer::{
+        daemon::pull_request,
+        ledger::{self, Ledger, LedgerEntry, MergeApproval},
+        logging::{self, DecisionEntry, DecisionKind},
+    },
+    registry::Registry,
 };
 use chrono::Utc;
 
@@ -162,23 +165,28 @@ pub(crate) fn record_approval(
     logging::append(&decision).map_err(|error| error.to_string())
 }
 
-pub(crate) fn record_runtime_approval(ledger: &mut Ledger, target: &str, head: &str, source: &str) {
-    let Some(entry) = ledger
-        .entries
-        .iter_mut()
-        .find(|entry| entry.agent_id == target || entry.display_id == target)
-    else {
-        eprintln!(
-            "warning: overseer runtime merge approval for {target} dropped: no matching ledger entry"
-        );
-        return;
-    };
+pub(crate) fn record_runtime_approval(
+    ledger: &mut Ledger,
+    target: &str,
+    head: &str,
+    source: &str,
+    registry: Option<&Registry>,
+) {
     if head.is_empty() {
         eprintln!(
             "warning: overseer runtime merge approval for {target} dropped: request head is empty"
         );
         return;
     }
+    // Adopts an entry robco never saw yet, and revives one that settled
+    // `Failed` or `Escalated` — an explicit merge request must not be
+    // refused for the ledger's own bookkeeping (dropr:523).
+    let Some(entry) = ledger::ensure_landable(ledger, target, registry, Utc::now()) else {
+        eprintln!(
+            "warning: overseer runtime merge approval for {target} dropped: no matching ledger entry and nothing to adopt"
+        );
+        return;
+    };
     let repo = entry.repo.clone();
     let url = entry.pr_url.clone();
     if let Err(error) =

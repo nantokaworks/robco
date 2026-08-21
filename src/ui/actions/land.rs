@@ -87,10 +87,6 @@ impl App {
             LandPlan::QueueApproval => {
                 let target = self.registry.repos[repo].agents[agent].id.clone();
                 self.mode = Mode::Normal;
-                if !self.overseer_can_land(&target) {
-                    self.show_not_overseer_managed();
-                    return;
-                }
                 let Some(head) = head else {
                     self.show_message("pull request head is empty");
                     return;
@@ -101,11 +97,6 @@ impl App {
                 let repo_node = &self.registry.repos[repo];
                 let selected = &repo_node.agents[agent];
                 let target = selected.id.clone();
-                if !self.overseer_can_land(&target) {
-                    self.mode = Mode::Normal;
-                    self.show_not_overseer_managed();
-                    return;
-                }
                 let approval_head =
                     match crate::git::local_branch_commit(&repo_node.path, &selected.branch) {
                         Ok(head) => head,
@@ -130,29 +121,12 @@ impl App {
         }
     }
 
-    fn overseer_can_land(&self, target: &str) -> bool {
-        self.overseer_snapshot.ledger.entries.iter().any(|entry| {
-            entry.agent_id == target && !crate::overseer::ledger::terminal(entry.phase)
-        })
-    }
-
-    fn show_not_overseer_managed(&mut self) {
-        self.show_message(t(
-            self.locale,
-            "This agent is not one the Overseer daemon can land; merge it directly instead",
-        ));
-    }
-
     pub(in crate::ui) fn queue_merge_approval(
         &mut self,
         target: &str,
         head: String,
         after_pr_prompt: bool,
     ) {
-        if !self.overseer_can_land(target) {
-            self.show_not_overseer_managed();
-            return;
-        }
         let request = RuntimeRequest::MergeApproval {
             source: "tui".into(),
             target: target.into(),
@@ -176,53 +150,27 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        config::Config,
-        overseer::ledger::{LedgerEntry, LedgerPhase},
-        registry::Registry,
-    };
+    use crate::{config::Config, registry::Registry};
 
-    /// dropr:521: `overseer_can_land` never read `is_overseer_child` in the
-    /// first place — it only asks whether the ledger already carries a
-    /// non-terminal entry for the target. That entry now appears for any
-    /// registry worker adoption picks up, no matter which binary created it
-    /// or whether it ever set `parent_agent_id`. So `m` stops being refused
-    /// for a worker like dropr:874's the moment the ledger has adopted it.
+    /// dropr:523: `m` must never answer "the Overseer cannot land this" —
+    /// `queue_merge_approval` no longer checks the ledger at all before
+    /// enqueueing. A worker the ledger has never adopted (dropr:874's shape:
+    /// the daemon has not run adoption for it yet) still gets its approval
+    /// queued; the daemon side (`ledger::ensure_landable`) is what adopts or
+    /// revives the entry when the request drains.
     #[test]
-    fn overseer_can_land_needs_only_a_live_ledger_entry() {
+    fn queue_merge_approval_never_refuses_regardless_of_the_ledger() {
         let temp = tempfile::tempdir().unwrap();
         let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-        assert!(!app.overseer_can_land("legacy-worker"));
+        assert!(app.overseer_snapshot.ledger.entries.is_empty());
 
-        app.overseer_snapshot.ledger.entries.push(LedgerEntry {
-            task_id: "task-1".into(),
-            display_id: "#1".into(),
-            repo: "/repo".into(),
-            agent_id: "legacy-worker".into(),
-            branch: "feature/one".into(),
-            phase: LedgerPhase::Working,
-            dispatched_at: Utc::now(),
-            settled_at: None,
-            retries: 0,
-            pr_url: None,
-            branch_updates: 0,
-            merge_recovery: Default::default(),
-            merge_hold: Default::default(),
-            merge_hold_cap_escalated: false,
-            merge_hold_rechecks: 0,
-            merge_hold_recheck_reason: None,
-            merge_hold_recheck_head: None,
-            prerequisite_wait: None,
-            merge_hold_stuck_notified: false,
-            escalation_notified_reason: None,
-            escalation_notified_head: None,
-            worker_escalated: false,
-            operator_override: None,
-            merge_approval: None,
-            pr_facts: None,
-        });
+        app.queue_merge_approval("legacy-worker", "deadbeef".into(), false);
 
-        assert!(app.overseer_can_land("legacy-worker"));
+        let message = app.message.as_ref().map(|(message, _)| message.clone());
+        assert_eq!(
+            message.as_deref(),
+            Some("Approval queued; it will merge once the checks pass")
+        );
     }
 
     #[test]

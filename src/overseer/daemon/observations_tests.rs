@@ -1,5 +1,5 @@
 use super::*;
-use crate::overseer::ledger::LedgerEntry;
+use crate::overseer::ledger::{LedgerEntry, LedgerPhase};
 
 fn registry_with(parent: Option<&str>) -> Registry {
     serde_json::from_value(serde_json::json!({
@@ -101,10 +101,31 @@ fn agent_with_no_parent_is_adopted() {
     let registry = registry_with(None);
     let mut ledger = Ledger::default();
 
-    adopt_registry_children_from(&mut ledger, &registry);
+    adopt_registry_children_from(&mut ledger, &registry, Utc::now());
 
     assert_eq!(ledger.entries.len(), 1);
     assert_eq!(ledger.entries[0].agent_id, "manual-worker");
+}
+
+/// dropr:523: a worker adopted long after it was created must not inherit
+/// its `created_at` as `dispatched_at` — that reading already predates
+/// `stuck_after_mins` before the daemon ever watched it. `registry_with`'s
+/// fixture agent carries a fixed `created_at` of 2026-07-18; adopting it "now"
+/// (long after) must stamp `dispatched_at` from the adoption pass's own
+/// clock, not from that old fixture value.
+#[test]
+fn a_first_adoption_stamps_dispatched_at_from_the_pass_not_from_creation() {
+    let registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
+    let mut ledger = Ledger::default();
+    let now = Utc::now();
+
+    adopt_registry_children_from(&mut ledger, &registry, now);
+
+    assert_eq!(ledger.entries[0].dispatched_at, now);
+    assert_ne!(
+        ledger.entries[0].dispatched_at,
+        registry.repos[0].agents[0].created_at.with_timezone(&Utc)
+    );
 }
 
 /// A worker's own subagent does not become a ledger entry in its own right:
@@ -114,7 +135,7 @@ fn a_subagent_of_another_worker_is_not_adopted() {
     let registry = registry_with_subagent();
     let mut ledger = Ledger::default();
 
-    adopt_registry_children_from(&mut ledger, &registry);
+    adopt_registry_children_from(&mut ledger, &registry, Utc::now());
 
     assert_eq!(ledger.entries.len(), 1);
     assert_eq!(ledger.entries[0].agent_id, "manual-worker");
@@ -132,13 +153,13 @@ fn worker_started_after_the_daemon_booted_is_adopted_on_a_later_pass() {
     };
     let mut ledger = Ledger::default();
     // First pass: the worker has not started yet, so the registry has no repos.
-    adopt_registry_children_from(&mut ledger, &empty_registry);
+    adopt_registry_children_from(&mut ledger, &empty_registry, Utc::now());
     assert!(ledger.entries.is_empty());
 
     // The worker starts while the daemon keeps running. A later pass reads
     // the registry again and must still find it, with no restart in between.
     let registry_with_worker = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
-    adopt_registry_children_from(&mut ledger, &registry_with_worker);
+    adopt_registry_children_from(&mut ledger, &registry_with_worker, Utc::now());
 
     assert_eq!(ledger.entries.len(), 1);
     assert_eq!(ledger.entries[0].agent_id, "manual-worker");
@@ -149,9 +170,9 @@ fn an_agent_already_in_the_ledger_is_not_adopted_twice() {
     let registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
     let mut ledger = Ledger::default();
 
-    adopt_registry_children_from(&mut ledger, &registry);
+    adopt_registry_children_from(&mut ledger, &registry, Utc::now());
     // A repeat call, as every later pass makes, must not duplicate the entry.
-    adopt_registry_children_from(&mut ledger, &registry);
+    adopt_registry_children_from(&mut ledger, &registry, Utc::now());
 
     assert_eq!(ledger.entries.len(), 1);
 }
@@ -168,7 +189,7 @@ fn a_settled_entry_retention_pruned_does_not_come_back_next_pass() {
 
     let empty_registry = registry_with(Some(crate::overseer::OVERSEER_AGENT_ID));
     let mut ledger = Ledger::default();
-    adopt_registry_children_from(&mut ledger, &empty_registry);
+    adopt_registry_children_from(&mut ledger, &empty_registry, Utc::now());
     ledger.entries[0].phase = LedgerPhase::Escalated;
     ledger.entries[0].task_id = "task-154".into();
 
@@ -191,7 +212,7 @@ fn a_settled_entry_retention_pruned_does_not_come_back_next_pass() {
 
     // Next pass: adoption reads the same, now-agent-less registry. There is
     // nothing left to resurrect.
-    adopt_registry_children_from(&mut ledger, &registry_without_worker);
+    adopt_registry_children_from(&mut ledger, &registry_without_worker, Utc::now());
     assert!(ledger.entries.is_empty());
 }
 

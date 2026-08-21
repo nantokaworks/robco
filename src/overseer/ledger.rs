@@ -10,6 +10,8 @@ mod budgets;
 pub use budgets::{
     LedgerCounters, MergeApproval, MergeHold, MergeRecovery, MergeSettling, OperatorOverride,
 };
+mod landable;
+pub(crate) use landable::{ensure_landable, new_entry};
 mod phase;
 pub use phase::{LedgerPhase, holds_capacity, terminal, waiting_on_prerequisite};
 mod pr_facts;

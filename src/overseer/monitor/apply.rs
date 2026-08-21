@@ -214,17 +214,27 @@ pub(super) fn apply_session(entry: &mut LedgerEntry, observations: &Observations
         });
         return;
     }
-    // `last_activity_at` now carries a real tmux `#{session_activity}` reading
-    // for any live session, in every phase — not just `Dispatched` — so a
-    // `dispatched_at` fallback is no longer needed to catch a worker that
-    // never sends its first report. A `None` reading here means this tick's
-    // probe faulted (already logged as an `ObservationError` in
+    // `last_activity_at` carries a real tmux `#{session_activity}` reading for
+    // any live session, in every phase. A `None` reading here means this
+    // tick's probe faulted (already logged as an `ObservationError` in
     // `daemon::observations::gather`), not that the session sat idle since
     // dispatch; judging it against `dispatched_at` would fail an actively
     // working session on a single transient probe miss. Leave it unjudged
     // this tick instead — the next successful probe carries a real value.
+    //
+    // The staleness clock floors at `dispatched_at`, not `last_activity_at`
+    // alone (dropr:523): `daemon::observations::adopt_registry_children_from`
+    // stamps `dispatched_at` from the pass that first watches the entry, so a
+    // worker whose last real tmux activity predates that pass — because
+    // adoption itself ran late, or the daemon was down — gets a full
+    // `stuck_after_mins` window from the moment anyone actually started
+    // watching it, instead of being failed on the very first pass for a gap
+    // nobody was measuring. A worker that goes quiet after that is still
+    // caught: once `dispatched_at` is further in the past than
+    // `last_activity_at`, only `last_activity_at` matters, exactly as before.
     if session.last_activity_at.is_some_and(|last| {
-        now.signed_duration_since(last) > Duration::minutes(stuck_after_mins as i64)
+        let baseline = entry.dispatched_at.max(last);
+        now.signed_duration_since(baseline) > Duration::minutes(stuck_after_mins as i64)
     }) {
         fail(entry, "worker exceeded stuck timeout", FailureOrigin::Worker, actions);
     }

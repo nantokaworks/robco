@@ -27,7 +27,7 @@ fn applied_request_is_checkpointed_to_disk_before_its_file_is_acked() {
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -63,7 +63,7 @@ fn checkpoint_failure_leaves_the_request_file_for_retry() {
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -93,7 +93,7 @@ fn panic_escalate_marks_workers_including_pr_opened() {
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -121,7 +121,7 @@ fn merge_completed_wakes_the_daemon_without_touching_state() {
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -139,9 +139,14 @@ fn drain_missing_dir_is_noop() {
     let mut ledger = Ledger::default();
 
     assert!(
-        drain_in(&temp.path().join("missing"), &ledger_path, &mut ledger)
-            .unwrap()
-            .is_empty()
+        drain_in(
+            &temp.path().join("missing"),
+            &ledger_path,
+            &mut ledger,
+            None
+        )
+        .unwrap()
+        .is_empty()
     );
 }
 
@@ -155,7 +160,7 @@ fn corrupt_file_is_skipped() {
     let mut ledger = Ledger::default();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -192,7 +197,7 @@ fn drain_applies_and_acks_all_pending_requests() {
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -220,7 +225,7 @@ fn operator_merge_override_is_a_noop_when_no_entry_matches_the_target() {
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -249,7 +254,7 @@ fn operator_merge_override_is_a_noop_when_the_matched_entry_has_no_pull_request_
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -282,7 +287,7 @@ fn operator_merge_override_matches_by_display_id_but_leaves_no_override_when_the
     .unwrap();
 
     assert!(
-        drain_in(&dir, &ledger_path, &mut ledger)
+        drain_in(&dir, &ledger_path, &mut ledger, None)
             .unwrap()
             .is_empty()
     );
@@ -310,7 +315,7 @@ fn run_task_is_handed_back_instead_of_applied_and_still_acked() {
     )
     .unwrap();
 
-    let pending_runs = drain_in(&dir, &ledger_path, &mut ledger).unwrap();
+    let pending_runs = drain_in(&dir, &ledger_path, &mut ledger, None).unwrap();
     assert_eq!(pending_runs.len(), 1);
     assert_eq!(pending_runs[0].task, "#470");
     assert_eq!(pending_runs[0].source, "tui");
@@ -396,10 +401,10 @@ fn merge_approval_replay_after_branch_moves_keeps_the_observed_head() {
         approved_head
     );
 
-    apply(&mut ledger, request.clone());
+    apply(&mut ledger, request.clone(), None);
     let first = ledger.entries[0].merge_approval.clone().unwrap();
     assert_eq!(first.head, approved_head);
-    apply(&mut ledger, request);
+    apply(&mut ledger, request, None);
     assert_eq!(ledger.entries[0].merge_approval.as_ref(), Some(&first));
 }
 

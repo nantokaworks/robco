@@ -4,7 +4,7 @@ use crate::{
         exec::run_timeout,
         inbox::InboxReader,
         is_worker_subagent,
-        ledger::{Ledger, LedgerEntry, LedgerPhase},
+        ledger::Ledger,
         monitor::{ObservationError, Observations, SessionObservation},
     },
     registry::Registry,
@@ -47,7 +47,7 @@ pub(super) fn gather(
     // reuses the registry load just above instead of reading it twice, and
     // runs before the loop below so this same pass's session/PR probes and
     // `registered_agents` list already cover the newly adopted entry.
-    adopt_registry_children_from(ledger, &registry);
+    adopt_registry_children_from(ledger, &registry, now);
     observations.detached_agents = detached_agents(ledger, &registry);
     for entry in &ledger.entries {
         // A detached worker is not ours to probe: `monitor::reconcile` drops its
@@ -212,7 +212,15 @@ fn tmux_activity(session: &str) -> std::result::Result<DateTime<Utc>, String> {
 /// the worker. The one exclusion left is a worker's own child: a subagent
 /// `robco new` spawned from inside a running worker session belongs to that
 /// worker's own worktree, not to a ledger entry of its own.
-fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
+///
+/// `dispatched_at` is stamped from `now` — this pass's own clock, not
+/// `agent.created_at` (dropr:523). Adoption can run long after an agent was
+/// actually created (the daemon was down, or the agent came from a stale
+/// binary that only just started reaching the ledger); stamping the older
+/// timestamp would make the entry look stuck against `stuck_after_mins`
+/// before the daemon ever watched it for a single minute. See
+/// `monitor::apply::apply_session`'s `dispatched_at` floor.
+fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry, now: DateTime<Utc>) {
     for repo in &registry.repos {
         for agent in repo
             .agents
@@ -226,33 +234,11 @@ fn adopt_registry_children_from(ledger: &mut Ledger, registry: &Registry) {
             {
                 continue;
             }
-            ledger.entries.push(LedgerEntry {
-                task_id: agent.id.clone(),
-                display_id: agent.title.clone(),
-                repo: repo.path.to_string_lossy().into_owned(),
-                agent_id: agent.id.clone(),
-                branch: agent.branch.clone(),
-                phase: LedgerPhase::Dispatched,
-                dispatched_at: agent.created_at.with_timezone(&Utc),
-                settled_at: None,
-                retries: 0,
-                pr_url: None,
-                branch_updates: 0,
-                merge_recovery: Default::default(),
-                merge_hold: Default::default(),
-                merge_hold_cap_escalated: false,
-                merge_hold_rechecks: 0,
-                merge_hold_recheck_reason: None,
-                merge_hold_recheck_head: None,
-                prerequisite_wait: None,
-                merge_hold_stuck_notified: false,
-                escalation_notified_reason: None,
-                escalation_notified_head: None,
-                worker_escalated: false,
-                operator_override: None,
-                merge_approval: None,
-                pr_facts: None,
-            });
+            ledger.entries.push(crate::overseer::ledger::new_entry(
+                agent,
+                &repo.path.to_string_lossy(),
+                now,
+            ));
         }
     }
 }

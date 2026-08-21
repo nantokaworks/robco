@@ -207,24 +207,47 @@ fn a_failed_check_refuses_to_open_a_dialog_and_names_the_check() {
     }));
 }
 
+/// dropr:523: `m` must never answer "the Overseer cannot land this" — an
+/// empty ledger no longer blocks `QueueApproval` before it enqueues the
+/// request. The daemon side (`ledger::ensure_landable`) is what adopts or
+/// revives the ledger entry once the request drains.
 #[test]
-fn queued_land_plans_refuse_agents_the_overseer_cannot_land() {
-    for (plan, head) in [
-        (crate::ui::LandPlan::QueueApproval, Some("deadbeef".into())),
-        (crate::ui::LandPlan::OpenPrThenQueue, None),
-    ] {
-        let mut app = test_app();
-        app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+fn queue_approval_proceeds_without_checking_the_ledger() {
+    let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
 
-        app.confirm_land(0, 0, plan, head);
+    app.confirm_land(
+        0,
+        0,
+        crate::ui::LandPlan::QueueApproval,
+        Some("deadbeef".into()),
+    );
 
-        assert!(matches!(app.mode, Mode::Normal));
-        assert!(app.pr_precheck_job.is_none());
-        assert!(app.message.as_ref().is_some_and(|(message, _)| {
-            message.contains("not one the Overseer daemon can land")
-                && message.contains("merge it directly")
-        }));
-    }
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(
+        app.message
+            .as_ref()
+            .is_some_and(|(message, _)| message.contains("Approval queued"))
+    );
+}
+
+/// Same rule for `OpenPrThenQueue`: `/repo` is not a real git repository
+/// here, so reading the local branch still fails — but on a git error, never
+/// on the removed "Overseer cannot land this" refusal.
+#[test]
+fn open_pr_then_queue_never_refuses_for_the_ledger_either() {
+    let mut app = test_app();
+    app.registry.repos = vec![repo("/repo", vec![agent("wanted")])];
+
+    app.confirm_land(0, 0, crate::ui::LandPlan::OpenPrThenQueue, None);
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert!(app.pr_precheck_job.is_none());
+    assert!(
+        app.message
+            .as_ref()
+            .is_some_and(|(message, _)| !message.contains("Overseer"))
+    );
 }
 
 #[test]
