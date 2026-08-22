@@ -43,6 +43,24 @@ fn enroll_with_overseer(parent_agent_id: Option<&str>) -> Option<String> {
     }
 }
 
+/// The permission flag and the env-blocklist a TUI-started worker launches
+/// with, resolved together so neither can reach [`create_agent_with_launch`]
+/// without the other. The operator's call (dropr:538): a worker started from
+/// the TUI is always launched the same way `robco spawn --autonomous` is —
+/// this is not a config switch. A profile with no configured
+/// `autonomous_args` (`~/.robco/config.json` has carried one before) resolves
+/// to an empty pair, which `create_agent_with_launch` already treats as a
+/// normal, non-autonomous launch rather than an error.
+fn autonomous_launch(config: &Config) -> (Vec<String>, Vec<(String, String)>) {
+    let args = config.default_program_autonomous_args();
+    let env = if args.is_empty() {
+        Vec::new()
+    } else {
+        super::env::autonomous_env(&config.overseer.worker_env_blocklist)
+    };
+    (args, env)
+}
+
 pub fn create_agent(
     repo: &RepoNode,
     title: &str,
@@ -50,6 +68,7 @@ pub fn create_agent(
     config: &Config,
     parent_agent_id: Option<&str>,
 ) -> Result<AgentNode> {
+    let (autonomous_args, extra_env) = autonomous_launch(config);
     create_agent_with_launch(
         repo,
         title,
@@ -57,8 +76,8 @@ pub fn create_agent(
         initial_prompt,
         config,
         parent_agent_id,
-        &[],
-        &[],
+        &autonomous_args,
+        &extra_env,
     )
 }
 
@@ -253,5 +272,7 @@ pub fn normalize_adopted_titles(repos: &mut [RepoNode], config: &Config) -> bool
     changed
 }
 
+#[cfg(test)]
+mod autonomous_launch_tests;
 #[cfg(test)]
 mod tests;
