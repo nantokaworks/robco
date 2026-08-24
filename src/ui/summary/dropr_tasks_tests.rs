@@ -40,7 +40,11 @@ fn complete(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
 }
 
 fn rendered(fetch: &DroprTaskFetch) -> Vec<String> {
-    let text: Text<'static> = dropr_task_lines(fetch, Locale::En, None).into();
+    rendered_with_in_flight(fetch, false)
+}
+
+fn rendered_with_in_flight(fetch: &DroprTaskFetch, fetch_in_flight: bool) -> Vec<String> {
+    let text: Text<'static> = dropr_task_lines(fetch, Locale::En, None, fetch_in_flight).into();
     text.lines
         .iter()
         .map(|line| {
@@ -187,6 +191,38 @@ fn a_failed_fetch_says_so_instead_of_showing_an_empty_list() {
             .iter()
             .any(|line| line == "no open, in-progress, or blocked tasks")
     );
+}
+
+/// Case 1 of dropr:543's table: a fetch is outstanding, so nothing has
+/// failed — the answer just has not arrived yet.
+#[test]
+fn a_fetch_in_flight_says_fetching_not_unavailable() {
+    let lines = rendered_with_in_flight(&DroprTaskFetch::default(), true);
+
+    assert!(lines.iter().any(|line| line == "fetching tasks…"));
+    assert!(!lines.iter().any(|line| line == "tasks unavailable"));
+}
+
+/// Case 3 of dropr:543's table: no fetch has ever run for this workspace and
+/// none is running now. That is "never queried", a different claim from
+/// "unavailable" — which says a query ran and came back empty-handed.
+#[test]
+fn a_never_queried_workspace_says_so_without_alarm() {
+    let lines = rendered_with_in_flight(&DroprTaskFetch::default(), false);
+
+    assert!(lines.iter().any(|line| line == "tasks not checked yet"));
+    assert!(!lines.iter().any(|line| line == "tasks unavailable"));
+    assert!(!lines.iter().any(|line| line == "fetching tasks…"));
+}
+
+/// Case 4 of dropr:543's table: a background refresh over rows already on
+/// screen is not worth a line — the rows shown are already correct.
+#[test]
+fn an_answered_fetch_with_a_refresh_running_adds_no_extra_line() {
+    let with_refresh = rendered_with_in_flight(&complete(vec![task("#1", "open")]), true);
+    let without_refresh = rendered_with_in_flight(&complete(vec![task("#1", "open")]), false);
+
+    assert_eq!(with_refresh, without_refresh);
 }
 
 #[test]

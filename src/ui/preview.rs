@@ -114,15 +114,23 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         // place (Level 2/3). The snapshot the OVERSEER frame already
         // refreshes: one ledger (and one other-PR cache) for the whole TUI,
         // no disk read here.
-        (_, Some(Selection::Repo(repo_idx))) => dropr_task_preview::render(
-            &registry.repos[repo_idx],
-            &app.config.repos_root,
-            &app.overseer_snapshot.ledger,
-            &app.overseer_snapshot.other_prs,
-            panes.preview.width.saturating_sub(4),
-            app.locale,
-            app.dropr_task_focus,
-        ),
+        (_, Some(Selection::Repo(repo_idx))) => {
+            let repo = &registry.repos[repo_idx];
+            let dropr_fetch_in_flight = repo
+                .dropr
+                .as_ref()
+                .is_some_and(|workspace| app.dropr_task_fetch_running(&workspace.id));
+            dropr_task_preview::render(
+                repo,
+                &app.config.repos_root,
+                &app.overseer_snapshot.ledger,
+                &app.overseer_snapshot.other_prs,
+                panes.preview.width.saturating_sub(4),
+                app.locale,
+                app.dropr_task_focus,
+                dropr_fetch_in_flight,
+            )
+        }
         // Rendered as a tab rather than an overlay so reading the failure never
         // costs the operator sight of the tab bar.
         (PreviewPane::Error, Some(Selection::Agent { repo, agent })) => {

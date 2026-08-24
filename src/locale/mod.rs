@@ -129,6 +129,8 @@ mod tests {
             "(no agents)",
             "(none active or recent)",
             "tasks unavailable",
+            "fetching tasks…",
+            "tasks not checked yet",
             "none",
             "worker blocked",
             "waiting on the merge gate",

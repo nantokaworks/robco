@@ -32,7 +32,7 @@ fn complete(tasks: Vec<DroprTaskCandidate>) -> DroprTaskFetch {
 
 /// True when the row whose text is `text` is styled as the current selection.
 fn is_selected(fetch: &DroprTaskFetch, selected_task: Option<usize>, text: &str) -> bool {
-    let lines: Vec<Line<'static>> = dropr_task_lines(fetch, Locale::En, selected_task);
+    let lines: Vec<Line<'static>> = dropr_task_lines(fetch, Locale::En, selected_task, false);
     lines
         .iter()
         .find(|line| line.to_string() == text)

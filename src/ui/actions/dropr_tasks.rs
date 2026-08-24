@@ -140,13 +140,21 @@ fn track_refresh(refresh: &mut DroprTaskRefresh, workspace_id: &str, manual: boo
     is_current
 }
 
-fn refresh_visible(refresh: &DroprTaskRefresh, workspace_id: &str) -> bool {
+/// Whether a fetch for `workspace_id` is currently running, manual or not.
+/// Unlike [`refresh_visible`], this does not gate on `manual`: the summary
+/// panel's "fetching" message (dropr:543) has to cover the very first,
+/// background-triggered fetch a newly linked workspace gets, not just a
+/// reload the operator asked for.
+fn refresh_running(refresh: &DroprTaskRefresh, workspace_id: &str) -> bool {
     let now = Instant::now();
-    refresh.manual.contains(workspace_id)
-        && refresh
-            .in_flight
-            .get(workspace_id)
-            .is_some_and(|started| refresh_is_fresh(*started, now))
+    refresh
+        .in_flight
+        .get(workspace_id)
+        .is_some_and(|started| refresh_is_fresh(*started, now))
+}
+
+fn refresh_visible(refresh: &DroprTaskRefresh, workspace_id: &str) -> bool {
+    refresh.manual.contains(workspace_id) && refresh_running(refresh, workspace_id)
 }
 
 /// Installs a fetch result, failures included.
@@ -194,6 +202,14 @@ impl App {
 
     pub(in crate::ui) fn dropr_refresh_in_flight(&self, workspace_id: &str) -> bool {
         refresh_visible(&self.dropr_task_refresh, workspace_id)
+    }
+
+    /// Whether the INFO pane's task list for `workspace_id` is waiting on an
+    /// outstanding fetch — including the first, background-triggered one a
+    /// freshly linked workspace gets, which [`dropr_refresh_in_flight`]
+    /// (manual-only, used by the repo row's glyph) does not cover.
+    pub(in crate::ui) fn dropr_task_fetch_running(&self, workspace_id: &str) -> bool {
+        refresh_running(&self.dropr_task_refresh, workspace_id)
     }
 
     pub(super) fn schedule_dropr_tasks(&mut self, workspace_id: String, manual: bool) -> bool {
