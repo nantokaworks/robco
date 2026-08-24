@@ -5,6 +5,8 @@ mod clone;
 mod config;
 mod discover;
 mod dropr;
+mod dropr_task_spawn;
+mod error;
 mod exec;
 mod git;
 mod loading;
@@ -32,52 +34,8 @@ use clap::{Parser, error::ErrorKind};
 use cli::{Args, Command, ReportArgs};
 use config::Config;
 use registry::Registry;
-use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("json error: {0}")]
-    Json(#[from] serde_json::Error),
-    #[error("toml error: {0}")]
-    Toml(#[from] toml_edit::TomlError),
-    #[error("home directory could not be resolved")]
-    HomeDir,
-    #[error("setup wizard: {0}")]
-    Wizard(String),
-    #[error("{context} failed: {stderr}")]
-    Command {
-        context: &'static str,
-        stderr: String,
-    },
-    #[error("worktree has tracked changes: {0}")]
-    DirtyWorktree(PathBuf),
-    #[error(
-        "{0}: the repository's default branch could not be resolved; run `git remote set-head origin -a`"
-    )]
-    DefaultBranchUnresolved(PathBuf),
-    #[error("child worktrees remain under {0}; remove them first")]
-    ChildWorktreesPresent(PathBuf),
-    #[error("robco new must run inside a robco agent session (ROBCO_AGENT_ID is not set)")]
-    NewOutsideAgentSession,
-    #[error("parent robco agent not found in registry: {0}")]
-    ParentAgentNotFound(String),
-    #[error("registered repository not found: {0}")]
-    RepoSelectorNotFound(String),
-    #[error("repository name is ambiguous; use an absolute path: {0}")]
-    RepoSelectorAmbiguous(String),
-    #[error(
-        "child worktree {worktree_path} and tmux session {tmux_session} were created, but the \
-         repository disappeared from the registry; the TUI will adopt the child"
-    )]
-    CreatedChildRepoMissing {
-        worktree_path: PathBuf,
-        tmux_session: String,
-    },
-}
+pub use error::{Error, Result};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -203,27 +161,7 @@ fn run_command(
         Command::Restart => overseer::command::restart()?,
         Command::Service(args) => overseer::command::run_service(args.command)?,
         Command::Spawn(args) => {
-            let parent = args.parent.or_else(|| {
-                std::env::var(config::ENV_AGENT_ID)
-                    .ok()
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty())
-            });
-            let extra_args = if args.autonomous {
-                config.default_program_autonomous_args()
-            } else {
-                Vec::new()
-            };
-            let outcome = spawn::spawn_in_repo_with_mode(
-                &args.repo,
-                &args.title,
-                args.name_slug.as_deref(),
-                args.prompt.as_deref(),
-                parent.as_deref(),
-                &extra_args,
-                args.autonomous,
-                config,
-            )?;
+            let outcome = spawn::run_spawn_command(args, config)?;
             println!("id: {}", outcome.id);
             println!("branch: {}", outcome.branch);
             println!("worktree: {}", outcome.worktree_path.display());

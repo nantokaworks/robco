@@ -144,13 +144,17 @@ pub struct SpawnArgs {
     /// Registered repository name or absolute path.
     #[arg(long)]
     pub repo: String,
-    /// Title for the worker agent.
-    #[arg(long)]
-    pub title: String,
-    /// Explicit naming slug for branch/worktree/tmux; capped to 32 chars. Defaults to the sanitized title.
+    /// Title for the worker agent. Required unless --dropr-task is given,
+    /// which derives it (and conflicts with an explicit title).
+    #[arg(long, required_unless_present = "dropr_task")]
+    pub title: Option<String>,
+    /// Explicit naming slug for branch/worktree/tmux; capped to 32 chars.
+    /// Defaults to the sanitized title. Conflicts with --dropr-task, which
+    /// derives it.
     #[arg(long)]
     pub name_slug: Option<String>,
-    /// Initial prompt for the launched program.
+    /// Initial prompt for the launched program. Conflicts with --dropr-task,
+    /// which derives it.
     #[arg(long)]
     pub prompt: Option<String>,
     /// Parent identity; defaults to ROBCO_AGENT_ID.
@@ -159,6 +163,11 @@ pub struct SpawnArgs {
     /// Launch with the selected profile's autonomous settings.
     #[arg(long)]
     pub autonomous: bool,
+    /// Dropr task id (`538` or `#538`) to launch a worker for: claims the
+    /// task, and derives --title, --prompt and --name-slug from it. Cannot
+    /// be combined with an explicit --title, --prompt, or --name-slug.
+    #[arg(long, conflicts_with_all = ["title", "prompt", "name_slug"])]
+    pub dropr_task: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -245,5 +254,7 @@ pub(crate) fn rewrite_legacy_overseer(args: &[OsString]) -> Option<Vec<OsString>
 
 #[cfg(test)]
 mod legacy_tests;
+#[cfg(test)]
+mod spawn_tests;
 #[cfg(test)]
 mod tests;

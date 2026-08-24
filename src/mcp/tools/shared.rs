@@ -22,10 +22,11 @@ pub(crate) fn agent_create(
 ) -> ToolResult<Value> {
     spawn::spawn(spawn::SpawnArgs {
         repo: repo.to_string(),
-        title: title.to_string(),
+        title: Some(title.to_string()),
         prompt: prompt.map(String::from),
         parent_agent_id: parent_agent_id.map(String::from),
         autonomous,
+        dropr_task: None,
     })
 }
 

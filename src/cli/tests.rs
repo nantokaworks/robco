@@ -50,26 +50,6 @@ fn parses_rename_subcommand() {
 }
 
 #[test]
-fn parses_spawn_subcommand() {
-    let args = Args::try_parse_from([
-        "robco",
-        "spawn",
-        "--repo",
-        "repo",
-        "--title",
-        "task",
-        "--autonomous",
-    ])
-    .unwrap();
-    let Some(Command::Spawn(args)) = args.command else {
-        panic!("expected spawn command")
-    };
-    assert_eq!(args.repo, "repo");
-    assert_eq!(args.title, "task");
-    assert!(args.autonomous);
-}
-
-#[test]
 fn parses_daemon_subcommand() {
     let args = Args::try_parse_from(["robco", "daemon"]).unwrap();
     assert!(matches!(args.command, Some(Command::Daemon)));

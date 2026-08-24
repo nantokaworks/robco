@@ -4,8 +4,9 @@ use serde::Serialize;
 
 use crate::{
     Error, Result, agent,
-    config::Config,
-    git,
+    cli::SpawnArgs,
+    config::{self, Config},
+    dropr_task_spawn, git,
     model::{AgentNode, RepoNode},
     overseer::session::env::SessionEnv,
     registry::Registry,
@@ -17,6 +18,50 @@ pub struct SpawnOutcome {
     pub branch: String,
     pub worktree_path: PathBuf,
     pub tmux_session: String,
+}
+
+/// The CLI `spawn` subcommand's own dispatch: a bare `--title` launch, or —
+/// when `--dropr-task` is set — a launch derived from a dropr task
+/// (dropr:540). `clap`'s `required_unless_present` / `conflicts_with` on
+/// [`SpawnArgs`] already guarantee `title` is `Some` exactly when
+/// `dropr_task` is `None`.
+pub(crate) fn run_spawn_command(args: SpawnArgs, config: &Config) -> Result<SpawnOutcome> {
+    let parent = args.parent.or_else(|| {
+        std::env::var(config::ENV_AGENT_ID)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    });
+    let extra_args = if args.autonomous {
+        config.default_program_autonomous_args()
+    } else {
+        Vec::new()
+    };
+    match &args.dropr_task {
+        Some(task_ref) => dropr_task_spawn::spawn_dropr_task_in_repo(
+            &args.repo,
+            task_ref,
+            args.title.as_deref(),
+            args.prompt.as_deref(),
+            args.name_slug.as_deref(),
+            parent.as_deref(),
+            &extra_args,
+            args.autonomous,
+            config,
+        ),
+        None => spawn_in_repo_with_mode(
+            &args.repo,
+            args.title
+                .as_deref()
+                .expect("clap requires --title when --dropr-task is absent"),
+            args.name_slug.as_deref(),
+            args.prompt.as_deref(),
+            parent.as_deref(),
+            &extra_args,
+            args.autonomous,
+            config,
+        ),
+    }
 }
 
 pub fn spawn_in_repo(
@@ -91,7 +136,10 @@ pub(crate) fn spawn_in_repo_with_mode(
 /// credential the operator configured for it would leave the headless install
 /// half-working, and would do so silently. Names the channel does not carry are
 /// still blanked.
-fn worker_env(blocked: Vec<(String, String)>, session_env: &SessionEnv) -> Vec<(String, String)> {
+pub(crate) fn worker_env(
+    blocked: Vec<(String, String)>,
+    session_env: &SessionEnv,
+) -> Vec<(String, String)> {
     let exempt = session_env.names().collect::<Vec<_>>();
     let mut env = blocked
         .into_iter()
@@ -161,7 +209,11 @@ pub(crate) fn resolve_repo<'a>(registry: &'a Registry, selector: &str) -> Result
     Ok(repo)
 }
 
-fn persist_child(repo_path: &Path, child: AgentNode, outcome: &SpawnOutcome) -> Result<()> {
+pub(crate) fn persist_child(
+    repo_path: &Path,
+    child: AgentNode,
+    outcome: &SpawnOutcome,
+) -> Result<()> {
     let mut found = false;
     Registry::locked_update(|registry| {
         if let Some(repo) = registry
