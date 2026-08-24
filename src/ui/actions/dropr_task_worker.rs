@@ -15,11 +15,11 @@
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 use crate::{
-    agent,
+    agent::dropr_task::{DroprTaskLaunch, LaunchError, launch},
     config::Config,
     dropr::{self, DroprTaskCandidate},
     model::{AgentNode, RepoNode},
-    overseer::{exec::COMMAND_TIMEOUT, templates::worker_prompt},
+    overseer::exec::COMMAND_TIMEOUT,
 };
 
 use super::dropr_task_launch::resolve_launch_subtasks;
@@ -138,49 +138,27 @@ fn run_launch(target: &TaskLaunchTarget) -> TaskLaunchResult {
     )
     .map_err(|()| TaskLaunchFailure::SubtasksUnconfirmed)?;
 
-    match dropr::claim_task(
-        &target.workspace_id,
-        &target.candidate.id,
-        DIRECT_LAUNCH_AGENT_ID,
-        COMMAND_TIMEOUT,
-    ) {
-        dropr::ClaimAttempt::Claimed => {}
-        dropr::ClaimAttempt::Refused(reason) => {
-            return Err(TaskLaunchFailure::ClaimRefused(reason));
+    launch(DroprTaskLaunch {
+        repo: &target.repo,
+        config: &target.config,
+        workspace_id: &target.workspace_id,
+        candidate: &target.candidate,
+        subtasks: &subtasks,
+        claim_agent_id: DIRECT_LAUNCH_AGENT_ID,
+        parent_agent_id: None,
+        extra_args: &[],
+        extra_env: &[],
+    })
+    .map_err(|err| match err {
+        // "locked" is the one reason with a friendlier name available; every
+        // other reason (blocked, dependency_blocked, ...) already names
+        // itself well enough to show as-is.
+        LaunchError::ClaimRefused(reason) if reason == "locked" => {
+            TaskLaunchFailure::ClaimRefused("claimed by another agent".to_string())
         }
-        dropr::ClaimAttempt::Unavailable => return Err(TaskLaunchFailure::DroprUnreachable),
-    }
-
-    let prompt = worker_prompt(
-        &target.candidate.display_id,
-        &target.candidate.id,
-        &target.candidate.title,
-        &target.repo.name,
-        &subtasks,
-        target.config.language.as_deref(),
-        target.config.overseer.worker_prompt_template.as_deref(),
-    );
-
-    agent::create_agent(
-        &target.repo,
-        &target.title,
-        Some(&prompt),
-        &target.config,
-        None,
-    )
-    .map_err(|err| {
-        // The claim was taken for a worker that never started; holding it
-        // would park the task away from the next operator or dispatch pass.
-        // Same recovery `overseer::dispatch::worker::spawn_candidate` makes on
-        // its own spawn failure — best effort, so a dropr that is itself down
-        // leaves the claim held until its TTL expires.
-        let _ = dropr::release_claim(
-            &target.workspace_id,
-            &target.candidate.id,
-            DIRECT_LAUNCH_AGENT_ID,
-            COMMAND_TIMEOUT,
-        );
-        TaskLaunchFailure::Spawn(err.to_string())
+        LaunchError::ClaimRefused(reason) => TaskLaunchFailure::ClaimRefused(reason),
+        LaunchError::DroprUnreachable => TaskLaunchFailure::DroprUnreachable,
+        LaunchError::Spawn(err) => TaskLaunchFailure::Spawn(err.to_string()),
     })
 }
 

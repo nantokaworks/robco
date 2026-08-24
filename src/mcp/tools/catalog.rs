@@ -48,17 +48,61 @@ pub fn list_tools() -> Value {
         ),
         tool_with_output(
             "robco_agent_create",
-            "Create a worker agent in a registered repository.",
+            "Create a worker agent in a registered repository: a new git worktree, a branch, \
+             and a tmux session running the configured program. If the work belongs to a dropr \
+             task, prefer `dropr_task` over a hand-written `title` — it derives the name, claims \
+             the task in dropr, and builds the worker's initial prompt from the task body, so \
+             none of that has to be done by hand.",
             json!({
                 "type": "object",
                 "properties": {
-                    "repo": { "type": "string" },
-                    "title": { "type": "string" },
-                    "prompt": { "type": "string" },
-                    "parent_agent_id": { "type": "string" },
-                    "autonomous": { "type": "boolean", "default": false }
+                    "repo": {
+                        "type": "string",
+                        "description": "Registered repository name or absolute path."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Names the new branch, worktree, and tmux session — this \
+                             is the only source for all three, there is no separate naming \
+                             argument. If the work belongs to a dropr task, lead with the task \
+                             number: \"538 Launch workers autonomously\", not \"Launch workers \
+                             autonomously\" — a tree full of worktrees with no numbers is hard to \
+                             read against the task list. Required unless `dropr_task` is set, in \
+                             which case it is derived from the task and must be omitted."
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Initial prompt typed into the launched program. Ignored \
+                             (and must be omitted) when `dropr_task` is set, since the task's own \
+                             body and template build the prompt instead."
+                    },
+                    "parent_agent_id": {
+                        "type": "string",
+                        "description": "Id of the agent this worker reports to. Defaults to the \
+                             calling agent's own id, or to the Overseer daemon when unset."
+                    },
+                    "autonomous": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Launch with the selected profile's autonomous settings: \
+                             the profile's `autonomous_args` (e.g. a permission-bypass flag) are \
+                             passed to the launched program, AND the worker's tmux session has \
+                             `overseer.worker_env_blocklist` applied to its environment (ambient \
+                             credentials such as `*_TOKEN` / `*_API_KEY` are blanked, unless a \
+                             session credential channel explicitly names them). false launches an \
+                             interactive worker with neither of those."
+                    },
+                    "dropr_task": {
+                        "type": "string",
+                        "description": "A dropr task id or display id (`538` or `#538`) to \
+                             launch a worker for. Claims the task in dropr, derives `title` as \
+                             \"<display_id> <task title>\", and builds the initial prompt from \
+                             the task body and the configured worker prompt template. Cannot be \
+                             combined with an explicit `title` or `prompt` — the task supplies \
+                             both. A launch failure releases the claim."
+                    }
                 },
-                "required": ["repo", "title"],
+                "required": ["repo"],
                 "additionalProperties": false
             }),
             json!({

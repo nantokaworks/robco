@@ -154,7 +154,7 @@ fn catalog_includes_agent_create_and_every_tool() {
         .iter()
         .find(|tool| tool["name"] == "robco_agent_create")
         .unwrap();
-    assert_eq!(create["inputSchema"]["required"], json!(["repo", "title"]));
+    assert_eq!(create["inputSchema"]["required"], json!(["repo"]));
     assert!(
         create["outputSchema"]["properties"]
             .get("worktree_path")

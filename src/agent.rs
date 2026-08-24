@@ -1,4 +1,5 @@
 mod creation;
+pub(crate) mod dropr_task;
 pub mod env;
 mod hooks;
 mod naming;
