@@ -138,7 +138,12 @@ fn reserves_indicator_column_when_primary_is_present() {
     );
 
     assert_eq!(row.spans[0].content.as_ref(), "> ");
-    assert_eq!(row.spans[1].content.as_ref(), "⇄ ");
+    // The glyph itself is the spinner's business (dropr:545); what this
+    // test pins is that it gets its own padded column.
+    assert_eq!(
+        row.spans[1].content.as_ref(),
+        format!("{} ", crate::ui::spinner::robco_frame(Duration::ZERO))
+    );
     assert_eq!(row.spans[2].content.as_ref(), "agent");
     assert_eq!(
         row.spans

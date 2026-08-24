@@ -193,6 +193,21 @@ impl Theme {
         }
     }
 
+    /// Style for the "merge-queued" badge — robco holds the operator's merge
+    /// approval and the daemon has not acted on it yet (dropr:545). Reuses
+    /// `accent`, the same colour `merge_lifecycle_style` gives
+    /// `MergeLifecycle::ApprovedWaiting`: the badge and that glyph are the
+    /// same state, so the row must not change colour at the hand-off from one
+    /// to the other.
+    pub fn merge_queued_style(self, selected: bool) -> Style {
+        let style = Style::default().fg(self.accent);
+        if selected {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
+        }
+    }
+
     /// Style for the "needs a human decision" badge. See
     /// [`Theme::needs_decision`] for why it is its own colour.
     pub fn needs_decision_style(self, selected: bool) -> Style {

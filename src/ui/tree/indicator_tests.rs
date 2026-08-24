@@ -9,6 +9,7 @@ fn assert_missing_pair(state: IndicatorState, primary: Option<Indicator>) {
     assert_eq!(
         select_supplementary(state),
         SupplementaryIndicators {
+            merge_queued: false,
             worktree_missing: true,
             merge_failed: false,
             needs_decision: false,
@@ -114,6 +115,7 @@ fn missing_worktree_is_the_only_indicator_without_a_primary() {
         (
             None,
             SupplementaryIndicators {
+                merge_queued: false,
                 worktree_missing: true,
                 merge_failed: false,
                 needs_decision: false,
@@ -132,6 +134,7 @@ fn row_without_missing_worktree_has_no_supplementary_indicator() {
         (
             Some(Indicator::ShellActivity),
             SupplementaryIndicators {
+                merge_queued: false,
                 worktree_missing: false,
                 merge_failed: false,
                 needs_decision: false,
@@ -148,6 +151,7 @@ fn merge_failure_is_supplementary() {
     assert_eq!(
         select_supplementary(state),
         SupplementaryIndicators {
+            merge_queued: false,
             worktree_missing: false,
             merge_failed: true,
             needs_decision: false,
@@ -163,6 +167,7 @@ fn needs_decision_is_supplementary() {
     assert_eq!(
         select_supplementary(state),
         SupplementaryIndicators {
+            merge_queued: false,
             worktree_missing: false,
             merge_failed: false,
             needs_decision: true,

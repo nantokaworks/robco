@@ -1,6 +1,9 @@
 use ratatui::text::Span;
 
-use crate::{model::Status, ui::theme::DEFAULT as THEME};
+use crate::{
+    model::{MergeLifecycle, Status},
+    ui::theme::DEFAULT as THEME,
+};
 
 use super::{Indicator, SupplementaryIndicators};
 use crate::ui::tree::label;
@@ -17,7 +20,13 @@ pub(in crate::ui) fn primary_span(
             crate::ui::spinner::frame(elapsed).to_string(),
             THEME.status_style(Status::Running),
         ),
-        Some(Indicator::Merging) => ("⇄".to_string(), THEME.hint_style()),
+        // Animated, not the static `⇄` it used to be (dropr:545): a robco
+        // thread really is running `git` and `gh` for as long as this shows,
+        // and a still glyph read as "nothing is happening".
+        Some(Indicator::Merging) => (
+            crate::ui::spinner::robco_frame(elapsed).to_string(),
+            THEME.hint_style(),
+        ),
         Some(Indicator::McpActivity) => (
             crate::ui::spinner::mcp_frame(elapsed).to_string(),
             THEME.mcp_style(),
@@ -65,6 +74,25 @@ pub(in crate::ui) fn supplementary_spans(
         };
         spans.push(Span::styled(format!("{gap}{active}"), style));
     }
+    // dropr:545. Static text, never a spinner: robco has accepted the merge
+    // but nothing is running this instant — the daemon may be a whole poll
+    // interval away. Suppressed when the primary glyph is already
+    // `ApprovedWaiting`, which says the same thing; the badge exists for the
+    // rows that glyph cannot reach. Drawn after the subagent count so that
+    // count stays next to the `✻` it belongs to.
+    let already_glyphed = matches!(
+        indicator,
+        Some(Indicator::MergeLifecycle(MergeLifecycle::ApprovedWaiting))
+    );
+    if supplementary.merge_queued && !already_glyphed {
+        let prefix = if spans.is_empty() { gap } else { " " };
+        let style = if selected {
+            sel
+        } else {
+            THEME.merge_queued_style(false)
+        };
+        spans.push(Span::styled(format!("{prefix}merge-queued"), style));
+    }
     if supplementary.worktree_missing {
         let prefix = if spans.is_empty() { gap } else { " " };
         let style = if selected {
@@ -106,8 +134,9 @@ pub(in crate::ui) fn supplementary_spans(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
-    use crate::model::MergeLifecycle;
 
     #[test]
     fn selected_empty_indicator_carries_selection_background() {
@@ -127,6 +156,7 @@ mod tests {
         let spans = supplementary_spans(
             None,
             SupplementaryIndicators {
+                merge_queued: false,
                 worktree_missing: true,
                 merge_failed: true,
                 needs_decision: true,
@@ -158,6 +188,7 @@ mod tests {
         let spans = supplementary_spans(
             None,
             SupplementaryIndicators {
+                merge_queued: false,
                 worktree_missing: false,
                 merge_failed: false,
                 needs_decision: true,
@@ -170,11 +201,85 @@ mod tests {
         assert_eq!(text, " blocked");
     }
 
+    /// dropr:545: robco accepted the merge, so the row says so — statically,
+    /// because nothing is running yet.
+    #[test]
+    fn merge_queued_renders_a_static_badge() {
+        let spans = supplementary_spans(
+            None,
+            SupplementaryIndicators {
+                merge_queued: true,
+                worktree_missing: false,
+                merge_failed: false,
+                needs_decision: false,
+                worker_finished: false,
+            },
+            false,
+            " ",
+        );
+        let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
+        assert_eq!(text, " merge-queued");
+    }
+
+    /// The primary glyph already says "approved, waiting". The badge must not
+    /// repeat it.
+    #[test]
+    fn merge_queued_is_suppressed_when_the_glyph_already_says_it() {
+        let spans = supplementary_spans(
+            Some(Indicator::MergeLifecycle(MergeLifecycle::ApprovedWaiting)),
+            SupplementaryIndicators {
+                merge_queued: true,
+                worktree_missing: false,
+                merge_failed: false,
+                needs_decision: false,
+                worker_finished: false,
+            },
+            false,
+            " ",
+        );
+        assert!(spans.is_empty());
+    }
+
+    /// Any other merge-lifecycle glyph means something different, so the
+    /// badge still has something of its own to say.
+    #[test]
+    fn merge_queued_still_shows_next_to_a_different_lifecycle_glyph() {
+        let spans = supplementary_spans(
+            Some(Indicator::MergeLifecycle(MergeLifecycle::ChecksRunning)),
+            SupplementaryIndicators {
+                merge_queued: true,
+                worktree_missing: false,
+                merge_failed: false,
+                needs_decision: false,
+                worker_finished: false,
+            },
+            false,
+            " ",
+        );
+        let text: String = spans.iter().map(|span| span.content.as_ref()).collect();
+        assert_eq!(text, " merge-queued");
+    }
+
+    /// A merge robco is running right now must read as motion, not as the
+    /// still `⇄` it used to be (dropr:545).
+    #[test]
+    fn a_running_merge_animates() {
+        let first = primary_span(Some(Indicator::Merging), false, Duration::ZERO, 2);
+        let second = primary_span(
+            Some(Indicator::Merging),
+            false,
+            crate::ui::spinner::FRAME_INTERVAL,
+            2,
+        );
+        assert_ne!(first.content, second.content);
+    }
+
     #[test]
     fn worker_finished_renders_a_worker_done_badge() {
         let spans = supplementary_spans(
             None,
             SupplementaryIndicators {
+                merge_queued: false,
                 worktree_missing: false,
                 merge_failed: false,
                 needs_decision: false,
