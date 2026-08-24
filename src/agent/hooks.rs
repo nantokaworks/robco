@@ -36,8 +36,22 @@ pub(super) fn write_report_hooks(worktree: &Path, program: &str) -> Result<bool>
         } else {
             json!({})
         };
-        add_claude_hook(&mut settings, "Stop", "robco report --kind turn-done");
-        add_claude_hook(&mut settings, "Notification", "robco report --kind waiting");
+        add_claude_hook(&mut settings, "Stop", None, "robco report --kind turn-done");
+        add_claude_hook(
+            &mut settings,
+            "Notification",
+            None,
+            "robco report --kind waiting",
+        );
+        // Every worker shares one tmux server with the operator's own chat,
+        // so one shell command can end all of them (dropr:552). The worker
+        // cannot know that, so the guard is installed rather than explained.
+        add_claude_hook(
+            &mut settings,
+            "PreToolUse",
+            Some("Bash"),
+            "robco guard tmux",
+        );
         fs::write(path, serde_json::to_string_pretty(&settings)?)?;
         Ok(true)
     } else if executable == Some("codex") {
@@ -58,7 +72,15 @@ pub(super) fn write_report_hooks(worktree: &Path, program: &str) -> Result<bool>
     }
 }
 
-fn add_claude_hook(settings: &mut serde_json::Value, event: &str, command: &str) {
+/// Appends one hook entry for `event`. `matcher` names the tool the entry
+/// applies to; the lifecycle events robco reports on take `None`, because a
+/// matcher there would only narrow an event that has no tool to match.
+fn add_claude_hook(
+    settings: &mut serde_json::Value,
+    event: &str,
+    matcher: Option<&str>,
+    command: &str,
+) {
     if !settings.is_object() {
         *settings = json!({});
     }
@@ -78,9 +100,16 @@ fn add_claude_hook(settings: &mut serde_json::Value, event: &str, command: &str)
     if !event_hooks.is_array() {
         *event_hooks = json!([]);
     }
-    event_hooks.as_array_mut().unwrap().push(json!({
+    let mut entry = json!({
         "hooks": [{"type": "command", "command": command}]
-    }));
+    });
+    if let Some(matcher) = matcher {
+        entry
+            .as_object_mut()
+            .unwrap()
+            .insert("matcher".into(), json!(matcher));
+    }
+    event_hooks.as_array_mut().unwrap().push(entry);
 }
 
 #[cfg(test)]
@@ -103,6 +132,29 @@ mod tests {
         assert_eq!(
             value["hooks"]["Notification"][0]["hooks"][0]["command"],
             "robco report --kind waiting"
+        );
+    }
+
+    /// The guard a worker cannot install for itself: without it, one shell
+    /// command from one worker ends every robco session (dropr:552). The
+    /// matcher must be there too — an entry with no matcher would run the
+    /// guard for every tool, not only for shell commands.
+    #[test]
+    fn claude_hook_file_installs_the_shell_guard() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(write_report_hooks(temp.path(), "claude").unwrap());
+        let value: serde_json::Value = serde_json::from_slice(
+            &fs::read(temp.path().join(".claude/settings.local.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["hooks"]["PreToolUse"][0]["matcher"], "Bash");
+        assert_eq!(
+            value["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+            "robco guard tmux"
+        );
+        assert!(
+            value["hooks"]["Stop"][0].get("matcher").is_none(),
+            "a lifecycle event has no tool to match"
         );
     }
 
