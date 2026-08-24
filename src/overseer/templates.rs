@@ -89,7 +89,11 @@ The current report CLI carries lifecycle kind only; Overseer discovers the PR UR
 repository under `~/.robco/repos/` — not with `git checkout`, not with `gh pr checkout`. To
 inspect another PR, make a throwaway worktree outside that managed tree (for example under
 the system temp directory) and remove it when you are done — that is the one worktree this
-rule allows; do not create any other extra worktree."#
+rule allows; do not create any other extra worktree.
+Never end the tmux server. You are inside a tmux session that robco shares with every other
+worker and with the operator's own chat, and `TMUX_TMPDIR` does not isolate you: tmux takes the
+socket path from `$TMUX` and ignores it. If you need a throwaway tmux server, unset `TMUX` and
+name a short socket path of your own, for example `env -u TMUX tmux -S /tmp/probe.sock ...`."#
     )
 }
 
@@ -150,6 +154,10 @@ repository under `~/.robco/repos/` — not with `git checkout`, not with `gh pr 
 inspect another PR, make a throwaway worktree outside that managed tree (for example under
 the system temp directory) and remove it when you are done — that is the one worktree this
 rule allows; do not create any other extra worktree.
+Never end the tmux server. You are inside a tmux session that robco shares with every other
+worker and with the operator's own chat, and `TMUX_TMPDIR` does not isolate you: tmux takes the
+socket path from `$TMUX` and ignores it. If you need a throwaway tmux server, unset `TMUX` and
+name a short socket path of your own, for example `env -u TMUX tmux -S /tmp/probe.sock ...`.
 You fix the branch; Overseer merges it."#
     )
 }

@@ -9,6 +9,7 @@ mod dropr_task_spawn;
 mod error;
 mod exec;
 mod git;
+mod guard;
 mod loading;
 mod locale;
 mod mcp;
@@ -72,6 +73,12 @@ async fn main() -> ExitCode {
     }
     if let Some(Command::Report(report_args)) = &args.command {
         return run_report(report_args);
+    }
+    // Handled here, before the config load, for the same reason `report` is:
+    // it runs on every shell command a worker issues, so it must stay fast,
+    // and a config robco cannot read must not turn the guard off.
+    if let Some(Command::Guard(guard_args)) = &args.command {
+        return guard::run(guard_args.kind);
     }
 
     match run(args).await {
@@ -147,6 +154,7 @@ fn run_command(
             println!("auto_accept: {}", config.auto_accept);
         }
         Command::Decisions(args) => overseer::command::run_decisions(args.command)?,
+        Command::Guard(_) => unreachable!("guard is handled before config loading"),
         Command::Inbox(args) => overseer::command::run_inbox(args.command)?,
         Command::Install(args) => setup::install_command(&args)?,
         Command::List(args) => {

@@ -48,6 +48,9 @@ pub enum Command {
     Debug,
     /// Manage the decision log.
     Decisions(DecisionsArgs),
+    /// Answer whether a worker's shell command is allowed to run. Called by
+    /// the agent-client hook robco installs in every worker worktree.
+    Guard(GuardArgs),
     /// Manage the Overseer inbox.
     Inbox(InboxArgs),
     /// Register RobCo's MCP server in supported client configs.
@@ -122,6 +125,19 @@ pub struct RenameArgs {
     pub repo: String,
     /// New directory name for the repository.
     pub name: String,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct GuardArgs {
+    /// Which guard to apply to the hook payload on stdin.
+    #[arg(value_enum)]
+    pub kind: GuardKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GuardKind {
+    /// Refuse a command that would end the shared tmux server.
+    Tmux,
 }
 
 #[derive(Debug, ClapArgs)]
