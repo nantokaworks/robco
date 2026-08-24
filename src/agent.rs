@@ -7,8 +7,8 @@ mod session;
 #[cfg(test)]
 mod test_support;
 
-pub(crate) use creation::create_agent_with_launch;
 pub use creation::{adopt_worktree, create_agent, normalize_adopted_titles};
+pub(crate) use creation::{create_agent_with_launch, tui_launch_env};
 pub use env::RecoveredIdentity;
 pub(crate) use naming::worker_branch_name;
 pub use session::{

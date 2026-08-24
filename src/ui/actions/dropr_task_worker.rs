@@ -12,10 +12,16 @@
 //! message, so the locale tables keep doing their work on the UI thread where
 //! `App::locale` lives.
 
-use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::{
+    sync::mpsc::{self, Receiver, TryRecvError},
+    time::Duration,
+};
 
 use crate::{
-    agent::dropr_task::{DroprTaskLaunch, LaunchError, launch},
+    agent::{
+        dropr_task::{DroprTaskLaunch, LaunchError, launch},
+        tui_launch_env,
+    },
     config::Config,
     dropr::{self, DroprTaskCandidate},
     model::{AgentNode, RepoNode},
@@ -123,6 +129,20 @@ pub(super) fn spawn(target: TaskLaunchTarget) -> TaskLaunchJob {
 }
 
 fn run_launch(target: &TaskLaunchTarget) -> TaskLaunchResult {
+    run_launch_with(target, dropr::fetch_subtasks, launch)
+}
+
+/// The generic core `run_launch` wraps with the real subtask fetch and the
+/// real `agent::dropr_task::launch` — parameterized the same way
+/// `agent::dropr_task::launch_with` is over `claim` / `release`, so a test
+/// can check exactly what this call site hands to `launch` (including
+/// `extra_args` / `extra_env`, dropr:546) without a live dropr claim or a
+/// real `git worktree add` / `tmux new-session` behind it.
+fn run_launch_with<F, L>(target: &TaskLaunchTarget, fetch: F, launch: L) -> TaskLaunchResult
+where
+    F: FnOnce(&str, &str, Duration) -> Vec<dropr::Subtask>,
+    L: FnOnce(DroprTaskLaunch) -> Result<AgentNode, LaunchError>,
+{
     // Reuses the subtree this repo's own INFO pane already fetched
     // (dropr:475) whenever that fetch actually answered for this parent
     // (`subtrees_known`). When the fetch's own `SUBTREE_QUERY_LIMIT` (8
@@ -134,9 +154,17 @@ fn run_launch(target: &TaskLaunchTarget) -> TaskLaunchResult {
         &target.candidate,
         &target.workspace_id,
         COMMAND_TIMEOUT,
-        dropr::fetch_subtasks,
+        fetch,
     )
     .map_err(|()| TaskLaunchFailure::SubtasksUnconfirmed)?;
+
+    // The same environment `create_agent` resolves for the TUI's plain
+    // agent creation (`ui/input.rs`) — a worker started from the `n` key is
+    // still a TUI launch, so it gets the profile's `autonomous_args`, the
+    // paired env blocklist, and `SessionEnv` exactly the same way (dropr:538,
+    // widened by dropr:546). Passing `&[]` / `&[]` here — as this call site
+    // did before dropr:546 — silently drops all three.
+    let (extra_args, extra_env) = tui_launch_env(&target.config);
 
     launch(DroprTaskLaunch {
         repo: &target.repo,
@@ -146,8 +174,8 @@ fn run_launch(target: &TaskLaunchTarget) -> TaskLaunchResult {
         subtasks: &subtasks,
         claim_agent_id: DIRECT_LAUNCH_AGENT_ID,
         parent_agent_id: None,
-        extra_args: &[],
-        extra_env: &[],
+        extra_args: &extra_args,
+        extra_env: &extra_env,
     })
     .map_err(|err| match err {
         // "locked" is the one reason with a friendlier name available; every
@@ -187,3 +215,7 @@ pub(in crate::ui) fn test_job(
         sender,
     )
 }
+
+#[cfg(test)]
+#[path = "dropr_task_worker_tests.rs"]
+mod tests;
