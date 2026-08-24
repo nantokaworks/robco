@@ -7,7 +7,9 @@
 //! content (sentences, messages, hints) is translated (dropr:377).
 //! Row-level strings are chrome too and stay English: list placeholders like
 //! `(none active or recent)` and short status headings like
-//! `tasks unavailable` belong there, not here (dropr:388).
+//! `tasks unavailable` belong there, not here (dropr:388). `fetching tasks…`
+//! and `tasks not checked yet` are the same kind of row-level status heading
+//! as `tasks unavailable` and stay English for the same reason (dropr:543).
 
 pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {

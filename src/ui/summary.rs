@@ -34,6 +34,7 @@ pub(in crate::ui) fn dropr_task_body(
     dropr_tasks::body::render(repo, task_index, locale)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in crate::ui) fn repo_summary(
     repo: &RepoNode,
     repos_root: &std::path::Path,
@@ -42,6 +43,7 @@ pub(in crate::ui) fn repo_summary(
     width: u16,
     locale: Locale,
     selected_task: Option<usize>,
+    dropr_fetch_in_flight: bool,
 ) -> (String, Text<'static>) {
     let rendered_name = blockfont::render_fitting(&repo.name, usize::from(width));
     let name_style = if rendered_name.is_some() {
@@ -85,7 +87,13 @@ pub(in crate::ui) fn repo_summary(
     lines.extend(checkout_branch_warning(repo, locale));
     lines.extend(main_drift_warning(repo, locale));
 
-    lines.extend(dropr_section(repo, width, locale, selected_task));
+    lines.extend(dropr_section(
+        repo,
+        width,
+        locale,
+        selected_task,
+        dropr_fetch_in_flight,
+    ));
     lines.extend(history_section(ledger, &repo.path, width, locale));
     lines.extend(other_prs_section(other_prs, &repo.path, width, locale));
 

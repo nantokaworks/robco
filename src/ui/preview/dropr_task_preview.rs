@@ -29,6 +29,7 @@ pub(super) fn render(
     width: u16,
     locale: Locale,
     focus: Option<DroprTaskFocus>,
+    dropr_fetch_in_flight: bool,
 ) -> (String, Text<'static>) {
     repo_summary(
         repo,
@@ -38,5 +39,6 @@ pub(super) fn render(
         width,
         locale,
         focus.map(|focus| focus.task),
+        dropr_fetch_in_flight,
     )
 }

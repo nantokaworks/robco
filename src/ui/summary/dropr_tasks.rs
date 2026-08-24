@@ -18,7 +18,9 @@ use crate::{
 
 pub(super) mod body;
 mod nesting;
+mod status;
 use nesting::{children_by_parent, is_root, nested_lines};
+use status::{problem_lines, unanswered_lines};
 
 /// Task rows either list gets before the rest are counted instead of listed.
 ///
@@ -88,11 +90,10 @@ pub(super) fn dropr_task_lines(
     fetch: &DroprTaskFetch,
     locale: Locale,
     selected_task: Option<usize>,
+    fetch_in_flight: bool,
 ) -> Vec<Line<'static>> {
     if !fetch.answered {
-        // No query answered, so there are no rows to qualify — showing an empty
-        // list here would read as "this workspace has no tasks".
-        return problem_lines(t(locale, "tasks unavailable"), &fetch.problems);
+        return unanswered_lines(fetch, locale, fetch_in_flight);
     }
 
     let (blocked, in_progress, next) = partition_tasks(&fetch.tasks);
@@ -215,20 +216,6 @@ pub(super) fn squash_reason(reason: &str) -> String {
         .chars()
         .take(REASON_DISPLAY_LIMIT)
         .collect()
-}
-
-/// The block that keeps a short list from reading as a whole one.
-fn problem_lines(heading: &str, problems: &[String]) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        Line::from(""),
-        Line::from(Span::styled(heading.to_string(), THEME.failure_style())),
-    ];
-    lines.extend(
-        problems
-            .iter()
-            .map(|problem| Line::from(Span::styled(format!("! {problem}"), THEME.failure_style()))),
-    );
-    lines
 }
 
 /// `base_index` is this section's offset into the flat selectable-task order

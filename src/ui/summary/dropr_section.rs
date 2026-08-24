@@ -21,6 +21,7 @@ pub(super) fn dropr_section(
     width: u16,
     locale: Locale,
     selected_task: Option<usize>,
+    fetch_in_flight: bool,
 ) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::from(""),
@@ -80,6 +81,11 @@ pub(super) fn dropr_section(
         )));
         return lines;
     }
-    lines.extend(dropr_task_lines(&repo.dropr_tasks, locale, selected_task));
+    lines.extend(dropr_task_lines(
+        &repo.dropr_tasks,
+        locale,
+        selected_task,
+        fetch_in_flight,
+    ));
     lines
 }

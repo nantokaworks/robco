@@ -55,6 +55,7 @@ fn rendered_with(repo: &RepoNode, ledger: &Ledger) -> Vec<String> {
         40,
         crate::locale::Locale::En,
         None,
+        false,
     );
     text.lines
         .iter()
