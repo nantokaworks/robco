@@ -89,6 +89,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     .count();
                 let mut indicator_state = IndicatorState::with_status(Some(agent.status));
                 indicator_state.merging = app.is_merging_agent(&repo.path, &agent.id);
+                // Not gated on the agent being quiet, unlike the ledger-sourced
+                // badges below: this is robco's own state, not a report the
+                // worker left behind. The `OpenPrThenQueue` path in fact leaves
+                // the worker running — it is writing the pull request body —
+                // and that is exactly when the operator needs to see that the
+                // merge half of the keypress was accepted too (dropr:545).
+                indicator_state.merge_queued = app.merge_approval_queued(&agent.id);
                 indicator_state.worktree_missing = agent.worktree_missing;
                 indicator_state.merge_failed = agent.merge_error.is_some();
                 // Gated on the agent not actually running: a worker that has
@@ -277,6 +284,8 @@ fn short_path(path: &std::path::Path) -> String {
     }
 }
 
+#[cfg(test)]
+mod merge_queued_row_tests;
 #[cfg(test)]
 mod render_test_support;
 #[cfg(test)]

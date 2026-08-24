@@ -692,6 +692,9 @@ fn disconnected_worker_uses_merge_error_path() {
     );
 }
 
+#[path = "merge_indicator_tests.rs"]
+mod indicator;
+
 #[path = "merge_scope_tests.rs"]
 mod scope;
 

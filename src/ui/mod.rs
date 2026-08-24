@@ -312,6 +312,11 @@ pub struct App {
     /// a repository but not across repositories, so several entries at once is
     /// the normal case when the operator manages more than one repository.
     merge_jobs: HashMap<PathBuf, actions::merge::MergeJob>,
+    /// Merge approvals robco has queued to the daemon and the ledger has not
+    /// confirmed yet, keyed by agent id (dropr:545). Only ever the hand-off
+    /// window: `merge_queued` reads the ledger once the daemon has the
+    /// approval. See `actions::merge_queued`.
+    queued_merge_approvals: HashMap<String, actions::merge_queued::QueuedApproval>,
     /// Last merge result per repository, held until the operator dismisses it.
     /// Keyed the same way so one repository's result cannot overwrite another's.
     merge_outcomes: HashMap<PathBuf, actions::merge::MergeOutcome>,
@@ -415,6 +420,7 @@ impl App {
             mode: Mode::Normal,
             message: None,
             merge_jobs: HashMap::new(),
+            queued_merge_approvals: HashMap::new(),
             merge_outcomes: HashMap::new(),
             pr_precheck_job: None,
             task_launch_jobs: HashMap::new(),

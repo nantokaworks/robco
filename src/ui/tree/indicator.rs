@@ -22,6 +22,11 @@ pub(in crate::ui) enum Indicator {
 pub(in crate::ui) struct IndicatorState {
     pub dead: bool,
     pub merging: bool,
+    /// robco is holding a merge approval for this row and the daemon has not
+    /// acted on it yet (dropr:545). Supplementary, and static: queued is not
+    /// running, so it never animates. See
+    /// [`crate::ui::actions::merge_queued`].
+    pub merge_queued: bool,
     pub running: bool,
     pub waiting: bool,
     pub worktree_missing: bool,
@@ -51,6 +56,7 @@ impl IndicatorState {
         Self {
             dead: status == Some(Status::Dead),
             merging: false,
+            merge_queued: false,
             running: status == Some(Status::Running),
             waiting: status == Some(Status::Waiting),
             worktree_missing: false,
@@ -76,7 +82,9 @@ impl IndicatorState {
 /// with an open, unmerged pull request shows its merge-lifecycle glyph
 /// instead, so a session gone quiet is never indistinguishable from one
 /// that actually merged. Worktree-missing state is supplementary and is
-/// selected separately by [`select_supplementary`].
+/// selected separately by [`select_supplementary`], as is the `merge-queued`
+/// badge — robco holding a queued merge approval says nothing about what the
+/// agent itself is doing, so the two never compete for the one glyph column.
 pub(in crate::ui) fn select(state: IndicatorState) -> Option<Indicator> {
     if state.dead {
         Some(Indicator::Status(Status::Dead))
@@ -103,6 +111,7 @@ pub(in crate::ui) fn select(state: IndicatorState) -> Option<Indicator> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ui) struct SupplementaryIndicators {
+    pub merge_queued: bool,
     pub worktree_missing: bool,
     pub merge_failed: bool,
     pub needs_decision: bool,
@@ -111,6 +120,7 @@ pub(in crate::ui) struct SupplementaryIndicators {
 
 pub(in crate::ui) fn select_supplementary(state: IndicatorState) -> SupplementaryIndicators {
     SupplementaryIndicators {
+        merge_queued: state.merge_queued,
         worktree_missing: state.worktree_missing,
         merge_failed: state.merge_failed,
         needs_decision: state.needs_decision,

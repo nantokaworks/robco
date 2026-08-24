@@ -115,6 +115,7 @@ fn run_loop<B: ratatui::backend::Backend>(
         app.drain_task_launch_events();
         app.drain_clone_events();
         app.drain_dropr_task_settle();
+        app.prune_queued_merge_approvals();
 
         if app
             .message

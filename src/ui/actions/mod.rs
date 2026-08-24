@@ -20,6 +20,7 @@ mod kill;
 mod land;
 mod lifecycle;
 pub(super) mod merge;
+pub(super) mod merge_queued;
 mod merge_worker;
 mod orphans;
 pub(super) mod overseer_refresh;

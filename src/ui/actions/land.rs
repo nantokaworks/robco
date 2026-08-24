@@ -134,14 +134,20 @@ impl App {
             at: Utc::now(),
         };
         match runtime_request::enqueue(request) {
-            Ok(()) if after_pr_prompt => self.show_message(t(
-                self.locale,
-                "PR requested and approval queued; it will merge once the checks pass",
-            )),
-            Ok(()) => self.show_message(t(
-                self.locale,
-                "Approval queued; it will merge once the checks pass",
-            )),
+            // The toast lasts four seconds; the daemon may take a whole poll
+            // interval. Record the approval so the agent's own row keeps
+            // saying robco has it, long after the message is gone
+            // (dropr:545). Only on success — a request that never reached
+            // the queue must not claim robco is acting on it.
+            Ok(()) => {
+                self.note_merge_approval_queued(target);
+                let message = if after_pr_prompt {
+                    "PR requested and approval queued; it will merge once the checks pass"
+                } else {
+                    "Approval queued; it will merge once the checks pass"
+                };
+                self.show_message(t(self.locale, message));
+            }
             Err(err) => self.show_message(err.to_string()),
         }
     }
@@ -171,6 +177,20 @@ mod tests {
             message.as_deref(),
             Some("Approval queued; it will merge once the checks pass")
         );
+    }
+
+    /// dropr:545: the toast is gone in four seconds, so the row has to carry
+    /// the same fact. A queued approval is recorded the moment the request
+    /// reaches the queue.
+    #[test]
+    fn a_queued_approval_is_recorded_for_the_agents_own_row() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+
+        app.queue_merge_approval("legacy-worker", "deadbeef".into(), false);
+
+        assert!(app.merge_approval_queued("legacy-worker"));
+        assert!(!app.merge_approval_queued("some-other-worker"));
     }
 
     #[test]
