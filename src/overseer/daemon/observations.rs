@@ -131,9 +131,10 @@ pub(super) fn gather(
         }
     }
     let mut owned_ledger = ledger.clone();
-    owned_ledger
-        .entries
-        .retain(|entry| !observations.detached_agents.contains(&entry.agent_id));
+    owned_ledger.entries.retain(|entry| {
+        !observations.detached_agents.contains(&entry.agent_id)
+            && registry.contains_repo_path(&entry.repo)
+    });
     gather_task_states(&owned_ledger, &mut observations, now);
     gather_pr_states(&owned_ledger, &mut observations, now);
     gather_branch_activity(&owned_ledger, &mut observations, now);
