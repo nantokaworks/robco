@@ -171,10 +171,9 @@ free-form prose and carries no such contract, which is why the boundary sits the
 ## overseer.worker_prompt_template
 
 Task-specific text inserted into the prompt every dispatched worker receives — whether
-dispatched by the Overseer's automatic poll, by `!run <task>` from Discord or MCP, or by
-launching a dropr task row from the repository INFO pane in the TUI. All three paths share
-one dispatch gate and one prompt template; this key only ever changes the task-specific
-part of it.
+dispatched by `!run <task>` from Discord or MCP, or by launching a dropr task row from the
+repository INFO pane in the TUI. Both paths share one dispatch gate and one prompt
+template; this key only ever changes the task-specific part of it.
 
 ```json
 {
