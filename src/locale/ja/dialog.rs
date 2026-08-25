@@ -35,13 +35,13 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "enter add   esc cancel" => "enterで追加   escでキャンセル",
         "enter rename   esc cancel" => "enterで名前変更   escでキャンセル",
         "enter send   esc cancel" => "enterで送信   escでキャンセル",
-        "y delete   n/esc cancel" => "yで削除   n/escでキャンセル",
+        "enter delete   esc cancel" => "enterで削除   escでキャンセル",
         "ends the running session now and removes the worktree" => {
             "実行中のセッションを直ちに終了し、worktreeを削除します"
         }
         "{} worker(s) {}" => "{} 個のworkerが{}",
         "y apply   n/esc cancel" => "yで適用   n/escでキャンセル",
-        "y remove   n/esc cancel" => "yで削除   n/escでキャンセル",
+        "enter remove   esc cancel" => "enterで削除   escでキャンセル",
         "It will merge now" => "今すぐmergeします",
         "Approval is queued; it will merge once the checks pass" => {
             "承認はキューに追加済みです。チェック通過後にmergeします"
@@ -49,7 +49,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "It will open a pull request and queue approval; it will merge once the checks pass" => {
             "PRを作成して承認をキューに追加します。チェック通過後にmergeします"
         }
-        "y land   n/esc cancel" => "yでland   n/escでキャンセル",
+        "enter land   esc cancel" => "enterでland   escでキャンセル",
         "already merged" => "merge済みです",
         "pulls main, removes the worktree, deletes the branch here and \
      on GitHub, and ends the running session — anything left uncommitted in \
@@ -58,24 +58,24 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
              実行中のセッションを終了します。worktreeにコミットされていない変更が残っていれば、\
              それも破棄されます"
         }
-        "y clean up   n/esc cancel" => "yでクリーンアップ   n/escでキャンセル",
+        "enter clean up   esc cancel" => "enterでクリーンアップ   escでキャンセル",
         "checking session/PR… {}" => "セッション/PR確認中… {}",
         "esc cancel" => "escでキャンセル",
         "enter send   ctrl-s save only   esc cancel" => {
             "enterで送信   ctrl-sで保存のみ   escでキャンセル"
         }
-        "y delete   n/esc keep" => "yで削除   n/escで維持",
+        "enter delete   esc keep" => "enterで削除   escで維持",
         "force delete: any commits not merged elsewhere are lost" => {
             "強制削除：他にmergeされていないコミットは失われます"
         }
-        "y kill   n/esc cancel" => "yで終了   n/escでキャンセル",
+        "enter kill   esc cancel" => "enterで終了   escでキャンセル",
         "disable dispatch + kill all overseer workers" => {
             "dispatchを無効化し全overseer workerを終了"
         }
         "daemon stays alive; press S again to turn dispatch back on" => {
             "daemonは稼働継続。Sを再度押すとdispatchを再開"
         }
-        "y stop   n/esc cancel" => "yで停止   n/escでキャンセル",
+        "enter stop   esc cancel" => "enterで停止   escでキャンセル",
         "re-enable dispatch and clear the failure counter" => {
             "dispatchを再有効化し失敗カウンタをクリア"
         }
@@ -95,7 +95,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "非表示にした項目は、同じ対象が再度エスカレーションした時だけ再表示されます。\
              対応が必要なままでも、それ以外は非表示のままです"
         }
-        "y clear   n/esc cancel" => "yで消去   n/escでキャンセル",
+        "enter clear   esc cancel" => "enterで消去   escでキャンセル",
         "deletes its whole record, history included — this cannot be undone" => {
             "履歴を含む記録全体を削除します。元に戻せません"
         }

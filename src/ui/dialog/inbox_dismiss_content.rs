@@ -34,7 +34,7 @@ pub(super) fn body(locale: Locale, count: usize, items: &[InboxItem]) -> Vec<Lin
             "a hidden item returns only if the same target escalates again; \
              otherwise it stays hidden even if it still needs you",
         )),
-        hint_line(locale, "y clear   n/esc cancel"),
+        hint_line(locale, "enter clear   esc cancel"),
     ]);
     lines
 }
