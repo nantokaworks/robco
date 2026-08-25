@@ -100,7 +100,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                     locale,
                     "ends the running session now and removes the worktree",
                 )),
-                hint_line(locale, "y delete   n/esc cancel"),
+                hint_line(locale, "enter delete   esc cancel"),
             ],
             None,
         ),
@@ -109,7 +109,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             confirm_lines(
                 locale,
                 path.display().to_string(),
-                "y remove   n/esc cancel",
+                "enter remove   esc cancel",
             ),
             None,
         ),
@@ -139,7 +139,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             if *plan == super::super::LandPlan::MergeNow {
                 lines.push(Line::from(t(locale, CLEANUP_FOLLOWS)));
             }
-            lines.push(hint_line(locale, "y land   n/esc cancel"));
+            lines.push(hint_line(locale, "enter land   esc cancel"));
             (t(locale, "land task?"), lines, None)
         }
         Mode::ConfirmCleanup { repo, agent } => (
@@ -148,7 +148,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                 Line::from(app.registry.repos[*repo].agents[*agent].branch.clone()),
                 Line::from(t(locale, "already merged")),
                 Line::from(t(locale, CLEANUP_FOLLOWS)),
-                hint_line(locale, "y clean up   n/esc cancel"),
+                hint_line(locale, "enter clean up   esc cancel"),
             ],
             None,
         ),
@@ -192,13 +192,13 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                     locale,
                     "force delete: any commits not merged elsewhere are lost",
                 )),
-                hint_line(locale, "y delete   n/esc keep"),
+                hint_line(locale, "enter delete   esc keep"),
             ],
             None,
         ),
         Mode::ConfirmKillOrphan { session } => (
             t(locale, "kill session?"),
-            confirm_lines(locale, session.clone(), "y kill   n/esc cancel"),
+            confirm_lines(locale, session.clone(), "enter kill   esc cancel"),
             None,
         ),
         Mode::ConfirmOverseerPanic => (
@@ -206,7 +206,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             vec![
                 Line::from(t(locale, "kill all overseer workers")),
                 Line::from(t(locale, "daemon stays alive")),
-                hint_line(locale, "y stop   n/esc cancel"),
+                hint_line(locale, "enter stop   esc cancel"),
             ],
             None,
         ),
@@ -221,7 +221,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                     locale,
                     "running workers are not touched; start it again with R",
                 )),
-                hint_line(locale, "y stop   n/esc cancel"),
+                hint_line(locale, "enter stop   esc cancel"),
             ],
             None,
         ),
@@ -238,7 +238,7 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                     locale,
                     "deletes its whole record, history included — this cannot be undone",
                 )),
-                hint_line(locale, "y remove   n/esc cancel"),
+                hint_line(locale, "enter remove   esc cancel"),
             ],
             None,
         ),

@@ -205,8 +205,8 @@ human or a dispatched worker still does the actual fix.
 
 See dropr task #430 for the feature's origin: eight Dependabot pull requests sat unmerged
 for four days after new advisories broke `nex`'s blocking CI gates, because nothing in the
-automation owned detection — Overseer only polls dropr's ready feed, and Dependabot pull
-requests never become tasks on their own.
+automation owned detection — Overseer only launches operator-named tasks, and Dependabot
+pull requests never become tasks on their own.
 
 ### Judgment plane
 

@@ -57,6 +57,7 @@ pub(super) fn agent_titled(title: &str, branch: &str) -> AgentNode {
         branch: branch.to_string(),
         base_commit: String::new(),
         program: "claude".to_string(),
+        spawned_by_version: None,
         claude_session_id: None,
         profile: None,
         tmux_session: "robco_dropr_t".to_string(),
