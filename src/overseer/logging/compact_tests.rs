@@ -78,6 +78,22 @@ fn compact_on_a_missing_log_reports_zero_and_creates_nothing() {
     assert!(!report.sidecar_path.exists());
 }
 
+/// The same guard `append_to` and `corrupt_line_count_at` carry, extended to
+/// the compaction rewrite: a future test that reaches `compact_at` with a
+/// path under the operator's real home must fail loudly instead of rewriting
+/// their live decision log.
+#[test]
+#[should_panic(expected = "refused to touch")]
+fn compact_at_panics_on_a_path_under_the_operators_real_home() {
+    let Some(real_home) = dirs::home_dir() else {
+        panic!("refused to touch: no real home dir resolved to test the guard against");
+    };
+    let path = real_home
+        .join(".robco-logging-guard-test")
+        .join("decisions.jsonl");
+    compact_at(&path, false).unwrap();
+}
+
 #[test]
 fn compact_loses_no_line_appended_concurrently_with_the_run() {
     let temp = tempfile::tempdir().unwrap();
