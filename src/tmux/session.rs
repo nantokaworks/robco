@@ -187,6 +187,15 @@ pub fn new_session(
 ) -> Result<()> {
     let output = new_session_command(session, cwd, program, envs).output()?;
     command_unit(output, "tmux new-session")?;
+    apply_cosmetic_options(session);
+    Ok(())
+}
+
+/// The preview-rendering window options every robco session gets, regardless
+/// of how it was created. Best-effort throughout: none of these affect
+/// whether the session itself works, only how its preview renders, so a
+/// failure here costs a cosmetic — never the session.
+pub(super) fn apply_cosmetic_options(session: &str) {
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -199,8 +208,7 @@ pub fn new_session(
     // Alternate-screen apps (Claude Code's TUI among them) keep their output
     // in the alt buffer, which has no scrollback — the preview could never
     // scroll them back. Denying the alt screen routes their output through the
-    // normal buffer, whose history `capture_scrollback` can walk. Best-effort
-    // like monitor-activity: failure costs scrollback, not the session.
+    // normal buffer, whose history `capture_scrollback` can walk.
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -214,7 +222,7 @@ pub fn new_session(
     // inside the window even for a single pane, so the pane runs one row
     // shorter than the size the preview asks for and its mirror shows a blank
     // bottom line. robco sessions are always single-pane, so the border line
-    // only costs a row — drop it. Best-effort like the options above.
+    // only costs a row — drop it.
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -224,7 +232,6 @@ pub fn new_session(
             "off",
         ])
         .output();
-    Ok(())
 }
 
 pub fn kill_session(session: &str) -> Result<()> {

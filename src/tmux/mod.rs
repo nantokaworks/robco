@@ -4,6 +4,7 @@ mod env;
 mod keys;
 mod launch;
 mod panes;
+mod probe;
 mod resize;
 mod session;
 
