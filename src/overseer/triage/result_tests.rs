@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn missing_content_field_names_the_action_in_the_warning_not_the_rejection() {
     // A missing field is a schema mismatch, not a policy rejection — see
-    // `ParseError`'s doc comment. `parse` recovers in place: `outcome` and
+    // `parse`'s doc comment. `parse` recovers in place: `outcome` and
     // `reason` still come through, and the unusable action surfaces as
     // `action_error` instead of failing the whole result. See dropr:401.
     let raw = br#"{
@@ -35,6 +35,9 @@ fn missing_task_id_field_names_the_action_in_the_warning_not_the_rejection() {
     assert!(warning.contains("dropr_task_status_update") && warning.contains("task_id"));
 }
 
+/// A policy rejection is recovered in place, the same as a schema mismatch —
+/// `outcome`/`reason` still parse, and the action is dropped with a reason
+/// in `action_error` rather than failing the whole result (dropr:556).
 #[test]
 fn live_worker_prevents_task_lock_release() {
     let raw = br#"{
@@ -42,11 +45,20 @@ fn live_worker_prevents_task_lock_release() {
         "action":{"name":"dropr_task_status_update","task_id":"task-1","status":"ready"},
         "reason":"release"
     }"#;
-    let rejected = parse(raw, Some("task-1"), "worker-1", &|_| true);
+    let rejected =
+        parse(raw, Some("task-1"), "worker-1", &|_| true).expect("recovers, not rejected");
+    assert_eq!(rejected.action, None);
     assert!(
-        matches!(rejected, Err(ParseError::RejectedAction(message)) if message.contains("alive"))
+        rejected
+            .action_error
+            .expect("names the rejection")
+            .contains("alive")
     );
-    assert!(parse(raw, Some("task-1"), "worker-1", &|_| false).is_ok());
+
+    let allowed =
+        parse(raw, Some("task-1"), "worker-1", &|_| false).expect("recovers, not rejected");
+    assert!(allowed.action.is_some());
+    assert_eq!(allowed.action_error, None);
 }
 
 /// A case with no known dropr task (`own_task: None` — see
@@ -60,8 +72,12 @@ fn no_dropr_task_rejects_task_status_update() {
         "action":{"name":"dropr_task_status_update","task_id":"task-1","status":"ready"},
         "reason":"release"
     }"#;
-    let rejected = parse(raw, None, "worker-1", &|_| false);
+    let rejected = parse(raw, None, "worker-1", &|_| false).expect("recovers, not rejected");
+    assert_eq!(rejected.action, None);
     assert!(
-        matches!(rejected, Err(ParseError::RejectedAction(message)) if message.contains("task lock"))
+        rejected
+            .action_error
+            .expect("names the rejection")
+            .contains("task lock")
     );
 }
