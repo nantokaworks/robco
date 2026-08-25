@@ -72,6 +72,10 @@ pub fn adopt_worktree(
         branch: branch.unwrap_or_else(|| "(detached)".to_string()),
         base_commit: head.unwrap_or_default(),
         program: config.default_program_command(),
+        // Adoption never spawned this worker itself — nothing here says
+        // which robco version created it, so there is nothing honest to
+        // record (dropr:559).
+        spawned_by_version: None,
         claude_session_id: None,
         profile: profile_name(config),
         tmux_session,

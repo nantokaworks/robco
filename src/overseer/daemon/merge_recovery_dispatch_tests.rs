@@ -145,6 +145,7 @@ fn registry_with_session(session: &str) -> Registry {
         branch: "branch".into(),
         base_commit: String::new(),
         program: "claude".into(),
+        spawned_by_version: None,
         claude_session_id: None,
         profile: None,
         tmux_session: session.into(),
