@@ -242,6 +242,26 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             ],
             None,
         ),
+        Mode::ConfirmClearChat { path } => {
+            let name = app
+                .registry
+                .repos
+                .iter()
+                .find(|repo| &repo.path == path)
+                .map_or_else(|| path.display().to_string(), |repo| repo.name.clone());
+            (
+                t(locale, "clear chat session?"),
+                vec![
+                    Line::from(name),
+                    Line::from(t(
+                        locale,
+                        "discards the conversation — this cannot be undone",
+                    )),
+                    hint_line(locale, "enter clear   esc cancel"),
+                ],
+                None,
+            )
+        }
         Mode::ErrorDialog {
             title,
             lines,

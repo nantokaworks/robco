@@ -184,6 +184,7 @@ fn briefing_collection_does_not_block_spawn_caller() {
         autonomous_args: Vec::new(),
         model: None,
         backend: None,
+        clear_command: None,
     };
     let start = Instant::now();
     let handle = spawn_session(

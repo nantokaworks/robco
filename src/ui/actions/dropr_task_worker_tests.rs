@@ -54,6 +54,7 @@ fn n_key_launch_supplies_the_resolved_autonomous_args_and_env() {
             autonomous_args: vec!["--dangerously-skip-permissions".into()],
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

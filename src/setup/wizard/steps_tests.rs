@@ -65,6 +65,7 @@ fn ensure_agent_profiles_skips_custom_profile_with_same_program() {
         autonomous_args: Vec::new(),
         model: None,
         backend: None,
+        clear_command: None,
     });
     let before = config.profiles.clone();
     steps::ensure_agent_profiles_with(&mut config, |_| true);

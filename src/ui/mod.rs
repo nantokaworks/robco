@@ -134,6 +134,16 @@ enum Mode {
         repo: usize,
         agent: usize,
     },
+    /// `C` on a repo row: send the configured clear command to that repo's
+    /// own main-worktree chat session. Confirmed like `ConfirmKill` — the
+    /// conversation it discards cannot be recovered (dropr:550). Holds the
+    /// repo's `path`, not its index — the same reason `ConfirmRemoveRepo`
+    /// does: the row order is not stable across a background discovery
+    /// refresh, and there is no per-agent identity here to re-point through
+    /// like `registry_sync::dialog_agent` gives the `(repo, agent)` dialogs.
+    ConfirmClearChat {
+        path: PathBuf,
+    },
     ErrorDialog {
         title: String,
         lines: Vec<String>,

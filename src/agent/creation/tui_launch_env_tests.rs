@@ -21,6 +21,7 @@ fn tui_launch_env_applies_the_blocklist_when_the_profile_has_args() {
             autonomous_args: vec!["--dangerously-skip-permissions".into()],
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };
@@ -48,6 +49,7 @@ fn tui_launch_env_skips_the_blocklist_when_the_profile_has_no_args() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

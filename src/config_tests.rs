@@ -10,6 +10,7 @@ fn resolves_default_program_through_profiles() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

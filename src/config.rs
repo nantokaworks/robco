@@ -148,6 +148,13 @@ pub struct Profile {
     pub model: Option<String>,
     #[serde(default)]
     pub backend: Option<String>,
+    /// Slash command this profile's program understands as "wipe the chat
+    /// history and start over" — Claude's `/clear`, or whatever the profile's
+    /// own `program` calls the same action. `None` means the profile never
+    /// declared one, so the `C` key on a repo row refuses rather than send a
+    /// guessed string (dropr:550).
+    #[serde(default)]
+    pub clear_command: Option<String>,
 }
 
 pub(crate) fn default_profiles() -> Vec<Profile> {
@@ -158,6 +165,7 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
             autonomous_args: vec!["--dangerously-skip-permissions".to_string()],
             model: None,
             backend: None,
+            clear_command: Some("/clear".to_string()),
         },
         Profile {
             name: "codex".to_string(),
@@ -165,6 +173,10 @@ pub(crate) fn default_profiles() -> Vec<Profile> {
             autonomous_args: vec!["--dangerously-bypass-approvals-and-sandbox".to_string()],
             model: None,
             backend: None,
+            // Confirmed against the installed `codex` CLI (v0.144.1): typing
+            // `/clear` in its TUI resets the session back to the welcome
+            // banner, the same effect Claude's `/clear` has.
+            clear_command: Some("/clear".to_string()),
         },
     ]
 }
@@ -280,6 +292,16 @@ impl Config {
             .find(|profile| profile.name == self.default_program)
             .map(|profile| profile.autonomous_args.clone())
             .unwrap_or_default()
+    }
+
+    /// The clear command configured for the profile a repo's main-worktree
+    /// session launches with, or `None` when that profile has not set one —
+    /// see `Profile::clear_command`.
+    pub fn default_program_clear_command(&self) -> Option<String> {
+        self.profiles
+            .iter()
+            .find(|profile| profile.name == self.default_program)
+            .and_then(|profile| profile.clear_command.clone())
     }
 }
 

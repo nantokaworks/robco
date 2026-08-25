@@ -106,6 +106,21 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "default branchを特定できませんでした — git remote set-head origin -aを実行してください"
         }
 
+        // actions/clear_chat.rs
+        "C: select a repo to clear its chat session" => {
+            "C: チャットセッションをクリアするリポジトリを選択してください"
+        }
+        "no clear command configured for {}" => "{}向けのclearコマンドが未設定です",
+        "no live chat session to clear" => "クリア対象の稼働中チャットセッションがありません",
+        "tmux is not installed, or not on PATH" => {
+            "tmuxがインストールされていないか、PATHに存在しません"
+        }
+        "chat session is busy — wait for it to finish before clearing" => {
+            "チャットセッションはbusyです。クリアする前に完了を待ってください"
+        }
+        "cleared chat session for {}" => "{}のチャットセッションをクリアしました",
+        "repository changed, not cleared" => "リポジトリが変更されたためクリアしませんでした",
+
         // input/overseer.rs
         "circuit is closed; nothing to reset" => "回路はclosedです。リセットの必要はありません",
         "display-only inbox item: no live session to answer" => {
