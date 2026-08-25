@@ -5,6 +5,9 @@ use crate::{Result, locale::t};
 use super::{App, Mode};
 
 pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>> {
+    // `y`/`n` still work here on purpose (dropr:551) — dropping them costs
+    // muscle memory for nothing gained — but every dialog hint now advertises
+    // only enter/esc, so do not "fix" the hint text back to naming y/n.
     let confirmed = matches!(
         key.code,
         KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter
