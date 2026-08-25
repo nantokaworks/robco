@@ -3,8 +3,9 @@ use ratatui::layout::Rect;
 use super::*;
 use crate::{
     config::Config,
+    locale::Locale,
     registry::Registry,
-    ui::{LandPlan, inbox::InboxItem, inbox::InboxKind, test_support},
+    ui::{LandPlan, inbox::InboxItem, inbox::InboxKind, test_support, text_input::TextInput},
 };
 
 fn item(target_id: &str, repo: Option<&str>, detail: &str) -> InboxItem {
@@ -211,4 +212,43 @@ fn the_remove_channel_dialog_says_the_history_is_gone_for_good() {
         text.contains("deletes its whole record, history included — this cannot be undone"),
         "{text}"
     );
+}
+
+/// dropr:551 — every confirmation dialog advertises `enter <verb>   esc
+/// cancel`, the same shape an input dialog already used, in both locales.
+#[test]
+fn a_confirmation_dialog_hint_matches_the_input_dialog_shape() {
+    for (locale, expected) in [
+        (Locale::En, "enter delete   esc cancel"),
+        (Locale::Ja, "enterで削除   escでキャンセル"),
+    ] {
+        let mut app = agent_app(Mode::ConfirmKill { repo: 0, agent: 0 });
+        app.locale = locale;
+
+        let text = body(&app);
+
+        assert!(text.contains(expected), "{locale:?}: {text}");
+    }
+}
+
+/// The input-dialog shape this task matched everything else to — still holds
+/// after the confirmation hints changed, in both locales.
+#[test]
+fn an_input_dialog_hint_says_enter_and_esc() {
+    for (locale, expected) in [
+        (Locale::En, "enter add   esc cancel"),
+        (Locale::Ja, "enterで追加   escでキャンセル"),
+    ] {
+        let mut app = dialog_app(
+            Mode::PromptRepo {
+                input: TextInput::new(),
+            },
+            Vec::new(),
+        );
+        app.locale = locale;
+
+        let text = body(&app);
+
+        assert!(text.contains(expected), "{locale:?}: {text}");
+    }
 }
