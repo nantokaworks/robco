@@ -5,6 +5,7 @@ use crate::{
     model::{RepoNode, Selection, Status},
     registry::Registry,
     tmux,
+    tmux::TmuxServer,
 };
 
 fn repo_node(name: &str) -> RepoNode {
@@ -95,7 +96,15 @@ fn refuses_when_no_clear_command_is_configured() {
 
 #[test]
 fn refuses_when_there_is_no_live_session() {
-    let mut app = test_app(Config::default());
+    if !tmux::is_installed() {
+        eprintln!("skipping: no tmux binary on this runner (GitHub's macos-latest lacks one)");
+        return;
+    }
+    let config = Config {
+        tmux_server: TmuxServer::for_tests(),
+        ..Config::default()
+    };
+    let mut app = test_app(config);
     app.registry.repos = vec![repo_node(&unique_name("no-session"))];
     select_repo(&mut app);
 
@@ -110,21 +119,33 @@ fn refuses_when_there_is_no_live_session() {
 
 #[test]
 fn refuses_when_the_session_is_busy() {
-    let config = Config::default();
+    let config = Config {
+        tmux_server: TmuxServer::for_tests(),
+        ..Config::default()
+    };
     let name = unique_name("busy");
     let mut node = repo_node(&name);
     let session = agent::repo_claude_session_name(&config.tmux_session_prefix, &node);
-    if tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if tmux::new_session(
+        &config.tmux_server,
+        &session,
+        &std::env::temp_dir(),
+        "sh",
+        &[],
+    )
+    .is_err()
+    {
         eprintln!("skipping: no usable tmux in this environment");
         return;
     }
     node.main_status = Some(Status::Running);
+    let server = config.tmux_server.clone();
     let mut app = test_app(config);
     app.registry.repos = vec![node];
     select_repo(&mut app);
 
     app.clear_chat_selected();
-    let _ = tmux::kill_session(&session);
+    let _ = tmux::kill_session(&server, &session);
 
     assert!(
         app.message
@@ -136,16 +157,28 @@ fn refuses_when_the_session_is_busy() {
 
 #[test]
 fn idle_session_opens_confirmation_and_sends_the_clear_command_once_confirmed() {
-    let config = Config::default();
+    let config = Config {
+        tmux_server: TmuxServer::for_tests(),
+        ..Config::default()
+    };
     let name = unique_name("idle");
     let mut node = repo_node(&name);
     let session = agent::repo_claude_session_name(&config.tmux_session_prefix, &node);
-    if tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if tmux::new_session(
+        &config.tmux_server,
+        &session,
+        &std::env::temp_dir(),
+        "sh",
+        &[],
+    )
+    .is_err()
+    {
         eprintln!("skipping: no usable tmux in this environment");
         return;
     }
     node.main_status = Some(Status::Idle);
     let path = node.path.clone();
+    let server = config.tmux_server.clone();
     let mut app = test_app(config);
     app.registry.repos = vec![node];
     select_repo(&mut app);
@@ -157,8 +190,8 @@ fn idle_session_opens_confirmation_and_sends_the_clear_command_once_confirmed() 
     ));
 
     app.clear_chat_confirmed(&path);
-    let capture = tmux::capture_text(&session);
-    let _ = tmux::kill_session(&session);
+    let capture = tmux::capture_text(&server, &session);
+    let _ = tmux::kill_session(&server, &session);
 
     assert_eq!(
         app.message.as_ref().map(|(message, _)| message.as_str()),
@@ -168,6 +201,18 @@ fn idle_session_opens_confirmation_and_sends_the_clear_command_once_confirmed() 
         capture.is_ok_and(|text| text.contains("/clear")),
         "expected /clear to reach the session"
     );
+}
+
+#[test]
+fn a_missing_tmux_binary_is_recognized_by_kind_not_message_text() {
+    let missing = crate::Error::Io(std::io::Error::from(std::io::ErrorKind::NotFound));
+    assert!(tmux_binary_missing(&missing));
+}
+
+#[test]
+fn an_ordinary_io_error_is_not_mistaken_for_a_missing_tmux_binary() {
+    let denied = crate::Error::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+    assert!(!tmux_binary_missing(&denied));
 }
 
 #[test]

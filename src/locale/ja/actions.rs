@@ -112,6 +112,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "no clear command configured for {}" => "{}向けのclearコマンドが未設定です",
         "no live chat session to clear" => "クリア対象の稼働中チャットセッションがありません",
+        "tmux is not installed, or not on PATH" => {
+            "tmuxがインストールされていないか、PATHに存在しません"
+        }
         "chat session is busy — wait for it to finish before clearing" => {
             "チャットセッションはbusyです。クリアする前に完了を待ってください"
         }

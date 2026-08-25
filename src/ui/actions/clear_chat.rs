@@ -57,8 +57,8 @@ impl App {
             .default_program_clear_command()
             .expect("clear_chat_blocker already confirmed a command is configured");
         let session = agent::repo_claude_session_name(&self.config.tmux_session_prefix, &repo_node);
-        let result = tmux::send_literal_text(&session, &clear_command)
-            .and_then(|()| tmux::send_keys(&session, &["Enter"]));
+        let result = tmux::send_literal_text(&self.config.tmux_server, &session, &clear_command)
+            .and_then(|()| tmux::send_keys(&self.config.tmux_server, &session, &["Enter"]));
         match result {
             Ok(()) => self.show_message(fmt(
                 self.locale,
@@ -85,9 +85,12 @@ impl App {
             ));
         };
         let session = agent::repo_claude_session_name(&self.config.tmux_session_prefix, repo_node);
-        match tmux::has_session(&session) {
+        match tmux::has_session(&self.config.tmux_server, &session) {
             Ok(true) => {}
             Ok(false) => return Some(t(self.locale, "no live chat session to clear").to_string()),
+            Err(err) if tmux_binary_missing(&err) => {
+                return Some(t(self.locale, "tmux is not installed, or not on PATH").to_string());
+            }
             Err(err) => return Some(err.to_string()),
         }
         if !matches!(
@@ -104,6 +107,18 @@ impl App {
         }
         None
     }
+}
+
+/// Whether `error` is a raw `ErrorKind::NotFound` from spawning `tmux`
+/// itself, rather than a normal tmux failure. Uncaught, that error reads as
+/// "io error: No such file or directory (os error 2)" to an operator —
+/// meaningless unless they already know that's what a missing binary looks
+/// like on this platform (GitHub's `macos-latest` runner has no `tmux`, per
+/// dropr:550's CI failure). Named the real cause instead, the same way
+/// `repo_watch_advisory::probe` distinguishes a missing tool from one that
+/// ran and failed.
+fn tmux_binary_missing(error: &crate::Error) -> bool {
+    matches!(error, crate::Error::Io(io_err) if io_err.kind() == std::io::ErrorKind::NotFound)
 }
 
 #[cfg(test)]
