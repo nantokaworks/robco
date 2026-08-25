@@ -24,6 +24,7 @@ pub(crate) fn session_profile(config: &Config, selected: Option<&String>) -> Opt
                 autonomous_args: Vec::new(),
                 model: None,
                 backend: None,
+                clear_command: None,
             })
         })
         .map(|mut profile| {

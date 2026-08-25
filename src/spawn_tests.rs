@@ -167,6 +167,7 @@ fn spawn_in_repo_installs_report_hooks_even_when_not_autonomous() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

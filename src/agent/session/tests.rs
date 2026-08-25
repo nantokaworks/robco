@@ -20,6 +20,7 @@ fn repo_claude_command_is_bare_program_without_autonomous_args() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

@@ -29,6 +29,7 @@ fn timeout_escalates() {
         autonomous_args: Vec::new(),
         model: None,
         backend: None,
+        clear_command: None,
     };
     let result = EphemeralSession {
         profile: &profile,
@@ -64,6 +65,7 @@ fn partial_result_write_is_polled_until_json_is_complete() {
         autonomous_args: Vec::new(),
         model: None,
         backend: None,
+        clear_command: None,
     };
     let result = EphemeralSession {
         profile: &profile,
@@ -113,6 +115,7 @@ fn queue_tick_starts_session_without_blocking_daemon() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Default::default()
     };

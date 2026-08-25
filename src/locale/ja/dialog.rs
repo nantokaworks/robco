@@ -24,6 +24,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "stop the overseer daemon?" => "overseerデーモンを停止しますか？",
         "clear the overseer inbox?" => "overseer受信箱を消去しますか？",
         "remove channel?" => "チャンネルを削除しますか？",
+        "clear chat session?" => "チャットセッションをクリアしますか？",
 
         // Body / hint text
         "Create a new agent with an optional | initial prompt." => {
@@ -99,6 +100,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "deletes its whole record, history included — this cannot be undone" => {
             "履歴を含む記録全体を削除します。元に戻せません"
         }
+        "discards the conversation — this cannot be undone" => "会話を破棄します。元に戻せません",
         _ => return None,
     })
 }

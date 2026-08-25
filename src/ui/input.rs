@@ -286,6 +286,7 @@ impl App {
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('c') => self.checkout_main_selected(),
+                KeyCode::Char('C') => self.clear_chat_selected(),
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char('g') => self.open_rename_prompt(),
@@ -304,7 +305,8 @@ impl App {
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
-            | Mode::ConfirmRemoveDiscordChannel { .. } => unreachable!("handled above"),
+            | Mode::ConfirmRemoveDiscordChannel { .. }
+            | Mode::ConfirmClearChat { .. } => unreachable!("handled above"),
         }
 
         self.clamp_selection();

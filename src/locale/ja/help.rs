@@ -115,6 +115,12 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "  c              primary checkoutを既定ブランチへ切替"
         }
         "                 (clean tree only)" => "                 （作業ツリーがclean時のみ）",
+        "  C              clear the repo's own chat session (confirms)" => {
+            "  C              リポジトリ自身のチャットセッションをクリア（確認あり）"
+        }
+        "                 idle/done only; refuses on a busy session or none live" => {
+            "                 idle/done時のみ；稼働中またはセッション未起動時は拒否"
+        }
         "  enter          on a repo row (INFO showing): open its dropr task list" => {
             "  enter          リポジトリ行（INFO表示中）：droprタスク一覧を開く"
         }

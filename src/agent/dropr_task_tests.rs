@@ -62,6 +62,7 @@ fn launches_from_a_task_and_titles_with_the_number_first() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

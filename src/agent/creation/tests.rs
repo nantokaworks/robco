@@ -99,6 +99,7 @@ fn create_agent_installs_report_hooks_in_the_new_worktree() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Config::default()
     };

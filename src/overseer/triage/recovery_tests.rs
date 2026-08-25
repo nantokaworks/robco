@@ -79,6 +79,7 @@ fn dropping_session_handle_kills_worker_and_removes_pidfile() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         ..Default::default()
     };

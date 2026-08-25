@@ -27,7 +27,8 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmDaemonStop
             | Mode::ConfirmInboxDismissAll { .. }
-            | Mode::ConfirmRemoveDiscordChannel { .. } => Some(Ok(())),
+            | Mode::ConfirmRemoveDiscordChannel { .. }
+            | Mode::ConfirmClearChat { .. } => Some(Ok(())),
             _ => None,
         };
     }
@@ -118,6 +119,14 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             app.mode = Mode::Normal;
             if confirmed {
                 app.remove_discord_channel(&channel_id, &label);
+            }
+            Some(Ok(()))
+        }
+        Mode::ConfirmClearChat { path } => {
+            let path = path.clone();
+            app.mode = Mode::Normal;
+            if confirmed {
+                app.clear_chat_confirmed(&path);
             }
             Some(Ok(()))
         }
