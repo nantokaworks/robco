@@ -19,10 +19,7 @@ use std::{
 
 use crate::{Error, Result};
 
-use super::{
-    history_size,
-    session::{self, exact, kill_session},
-};
+use super::session::{self, exact, kill_session};
 
 /// Session-identity variables set by whichever AI agent process happens to
 /// be running when a new session inherits the tmux server's global
@@ -98,38 +95,73 @@ fn probe_pane(session: &str) -> PaneProbe {
     }
 }
 
-/// Reads a dead pane's own output, not just its final on-screen state.
+/// Where [`start_output_tap`] mirrors a session's raw output for
+/// [`read_tapped_output`] to read back. Built from the session name alone
+/// (already filesystem-safe — see [`session::sanitize_target_part`]), so no
+/// state needs to be threaded from the caller.
+fn output_tap_path(session: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("robco-launch-{session}.log"))
+}
+
+/// Starts mirroring a pane's raw output to a file, independent of anything
+/// tmux itself later renders or scrolls away.
 ///
-/// A dead pane's visible screen is mostly blank padding plus tmux's own
-/// "Pane is dead (status N, ...)" notice pinned at the bottom — the
-/// program's actual last output has already scrolled into history by the
-/// time this runs. Capturing from the top of that history (`-S -<history>`)
-/// forward pulls it back in, so a crash the caller cares about (`ENOENT`, a
-/// stack trace, whatever the program printed on its way out) is not silently
-/// replaced by tmux's own bookkeeping message.
-fn capture_dead_pane_text(session: &str) -> Option<String> {
-    let history = history_size(session).unwrap_or(0);
-    let output = Command::new("tmux")
+/// `capture-pane` was tried first and dropped: a dead pane's *visible
+/// screen* is mostly blank padding plus tmux's own "Pane is dead (status N,
+/// ...)" notice, and how much of the program's actual last output survives
+/// in scrollback for `capture-pane -S` to reach depends on the pane's
+/// terminal size and the tmux build's own screen-clear behavior — both of
+/// which differ enough across platforms that CI caught real output going
+/// missing in a way a local run never did. `pipe-pane` instead taps the raw
+/// byte stream as it is written, so what lands in the file does not depend
+/// on rendering at all.
+///
+/// Started as the very first thing after the pane exists, before
+/// `remain-on-exit` is even set: `pipe-pane`'s own attach only needs the
+/// pty to still be open, not the higher-level session bookkeeping
+/// `remain-on-exit` depends on, so it wins even part of the race
+/// `remain-on-exit` itself can lose against a program that exits within
+/// milliseconds of the fork.
+fn start_output_tap(session: &str) -> PathBuf {
+    let log_path = output_tap_path(session);
+    let _ = std::fs::remove_file(&log_path);
+    let _ = Command::new("tmux")
         .args([
-            "capture-pane",
-            "-p",
-            "-S",
-            &format!("-{history}"),
+            "pipe-pane",
             "-t",
             &exact(session),
+            "-o",
+            &format!("cat >> {}", shell_quote(&log_path.display().to_string())),
         ])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
+        .output();
+    log_path
+}
+
+/// Stops the tap started by [`start_output_tap`] and removes its file.
+/// Best-effort either way: a session already killed for having crashed has
+/// nothing left to stop piping from, and the file is still removed.
+fn stop_output_tap(session: &str, log_path: &Path) {
+    let _ = Command::new("tmux")
+        .args(["pipe-pane", "-t", &exact(session)])
+        .output();
+    let _ = std::fs::remove_file(log_path);
+}
+
+fn read_tapped_output(log_path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(log_path).ok()?;
     let lines: Vec<&str> = text
         .lines()
         .map(str::trim_end)
         .filter(|line| !line.is_empty())
         .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+/// Quotes one shell word for the `pipe-pane -o` command line, the same way
+/// `overseer::discord::ops_session_tmux`'s own log-path quoting does: single
+/// quoted, with embedded single quotes escaped.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 /// Creates a session the same way [`session::new_session`] does, then holds
@@ -154,20 +186,21 @@ pub fn new_worker_session(
 /// registered, regardless of what the program inside it does next:
 ///
 /// - The program exits right away (a missing binary, or a crash at its own
-///   start-up). `remain-on-exit` is turned on first so the dead pane's
-///   screen survives long enough to read with [`capture_dead_pane_text`],
-///   then the broken session is killed rather than left behind.
+///   start-up). [`start_output_tap`] is running from the first moment the
+///   pane exists, so its own output survives even if the pane (and
+///   `remain-on-exit`, turned on right after) loses the race against how
+///   fast it exits; the broken session is killed once that is confirmed.
 /// - The program is running, but not where it was told to: `-c cwd` was
 ///   passed to `new-session`, yet the pane's actual working directory
 ///   disagrees. This is the dropr:554 root cause — a tmux *server* whose own
 ///   working directory had been deleted handed every new pane that same dead
 ///   directory, even panes explicitly given `-c`.
 ///
-/// `remain-on-exit` is restored to its default (off) once the pane is
-/// confirmed alive and correctly placed, so a session that later exits
-/// normally still tears itself down the way every other part of robco
-/// already assumes.
+/// The tap and `remain-on-exit` are both undone once the pane is confirmed
+/// alive and correctly placed, so a session that later exits normally still
+/// tears itself down the way every other part of robco already assumes.
 fn verify_launch(session: &str, cwd: &Path) -> Result<()> {
+    let log_path = start_output_tap(session);
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -179,49 +212,59 @@ fn verify_launch(session: &str, cwd: &Path) -> Result<()> {
         .output();
 
     let expected = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
+    let mut outcome = Ok(());
 
     for _ in 0..LAUNCH_CHECK_ATTEMPTS {
         match probe_pane(session) {
             PaneProbe::Dead => {
-                let detail = capture_dead_pane_text(session)
+                let detail = read_tapped_output(&log_path)
                     .unwrap_or_else(|| "(no output captured)".to_string());
                 let _ = kill_session(session);
-                return Err(Error::WorkerLaunchCrashed {
+                outcome = Err(Error::WorkerLaunchCrashed {
                     session: session.to_string(),
                     detail,
                 });
+                break;
             }
             PaneProbe::Gone => {
-                return Err(Error::WorkerLaunchCrashed {
-                    session: session.to_string(),
-                    detail: "session ended before its output could be captured".to_string(),
+                let detail = read_tapped_output(&log_path).unwrap_or_else(|| {
+                    "session ended before its output could be captured".to_string()
                 });
+                outcome = Err(Error::WorkerLaunchCrashed {
+                    session: session.to_string(),
+                    detail,
+                });
+                break;
             }
             PaneProbe::Alive(actual) => {
                 let actual_canon = actual.canonicalize().unwrap_or_else(|_| actual.clone());
                 if actual_canon != expected {
                     let _ = kill_session(session);
-                    return Err(Error::WorkerLaunchWrongCwd {
+                    outcome = Err(Error::WorkerLaunchWrongCwd {
                         session: session.to_string(),
                         expected: cwd.to_path_buf(),
                         actual,
                     });
+                    break;
                 }
             }
         }
         std::thread::sleep(LAUNCH_CHECK_INTERVAL);
     }
 
-    let _ = Command::new("tmux")
-        .args([
-            "set-window-option",
-            "-t",
-            &exact(session),
-            "remain-on-exit",
-            "off",
-        ])
-        .output();
-    Ok(())
+    stop_output_tap(session, &log_path);
+    if outcome.is_ok() {
+        let _ = Command::new("tmux")
+            .args([
+                "set-window-option",
+                "-t",
+                &exact(session),
+                "remain-on-exit",
+                "off",
+            ])
+            .output();
+    }
+    outcome
 }
 
 #[cfg(test)]
