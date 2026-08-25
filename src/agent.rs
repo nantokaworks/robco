@@ -1,3 +1,4 @@
+mod adoption;
 mod creation;
 pub(crate) mod dropr_task;
 pub mod env;
@@ -5,9 +6,10 @@ mod hooks;
 mod naming;
 mod session;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 
-pub use creation::{adopt_worktree, create_agent, normalize_adopted_titles};
+pub use adoption::{adopt_worktree, normalize_adopted_titles};
+pub use creation::create_agent;
 pub(crate) use creation::{create_agent_with_launch, tui_launch_env};
 pub use env::RecoveredIdentity;
 pub(crate) use naming::worker_branch_name;

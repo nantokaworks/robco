@@ -1,6 +1,27 @@
-use std::process::Command;
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::model::{AgentNode, RepoNode};
+
+/// Writes a throwaway executable named `claude` into `dir` that just sleeps,
+/// and returns its path. Launch tests need a program whose basename resolves
+/// to `claude` — so hook installation (`agent::hooks::write_report_hooks`)
+/// and `--session-id` injection still trigger — but that never touches the
+/// real CLI and stays alive long enough to pass `tmux::new_worker_session`'s
+/// post-launch liveness check (dropr:554); a merely nonexistent path no
+/// longer works for this once that check exists, since the pane now dies (and
+/// is caught) instead of lingering unobserved.
+pub(crate) fn fake_claude_binary(dir: &Path) -> PathBuf {
+    let path = dir.join("claude");
+    std::fs::write(&path, "#!/bin/sh\nsleep 5\n").unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&path, perms).unwrap();
+    path
+}
 
 pub(super) fn repo_named(name: &str) -> RepoNode {
     RepoNode {

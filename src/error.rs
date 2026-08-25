@@ -67,4 +67,15 @@ pub enum Error {
     DroprUnavailable,
     #[error("could not confirm {0}'s subtasks; try again")]
     DroprSubtasksUnconfirmed(String),
+    #[error("worker session {session} exited right after launch: {detail}")]
+    WorkerLaunchCrashed { session: String, detail: String },
+    #[error(
+        "worker session {session} started in {actual}, not {expected}; the tmux server's own \
+         working directory is gone and the server needs a restart"
+    )]
+    WorkerLaunchWrongCwd {
+        session: String,
+        expected: PathBuf,
+        actual: PathBuf,
+    },
 }

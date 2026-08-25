@@ -2,6 +2,7 @@ mod attach;
 mod capture;
 mod env;
 mod keys;
+mod launch;
 mod panes;
 mod resize;
 mod session;
@@ -9,6 +10,7 @@ mod session;
 pub use attach::{attach, send_keys, send_literal_text, single_line};
 pub use capture::{capture_plain, capture_scrollback, capture_text, history_size, pane_pid};
 pub use env::session_env;
+pub use launch::new_worker_session;
 pub use panes::{PaneSnapshot, capture_panes};
 pub use resize::resize_session;
 #[cfg(test)]
