@@ -102,7 +102,17 @@ pub(super) fn refresh_pass(ledger: &Ledger, now: DateTime<Utc>) -> Result<()> {
             )?,
         }
     }
+    prune_unregistered(&mut state, &registry);
     state.save()
+}
+
+/// Drops every key the registry no longer lists — a rename only updates the
+/// registry row (`apply_rename`), so nothing else ever revisits this map to
+/// clear the old key on its own (dropr task #557).
+fn prune_unregistered(state: &mut OtherPrs, registry: &Registry) {
+    state
+        .repos
+        .retain(|path, _| registry.contains_repo_path(path));
 }
 
 /// Whether a repository's cached pull-request list is old enough to re-ask

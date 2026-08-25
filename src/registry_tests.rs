@@ -338,3 +338,21 @@ fn repo_label_falls_back_to_the_last_path_component_never_the_full_path() {
     assert_eq!(label, "orphaned-entry");
     assert!(!label.contains('/'));
 }
+
+#[test]
+fn contains_repo_path_matches_a_registered_repo() {
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo("/Users/operator/repos/robco", Vec::new())],
+    };
+    assert!(registry.contains_repo_path("/Users/operator/repos/robco"));
+}
+
+#[test]
+fn contains_repo_path_is_false_for_a_repo_that_left_the_registry() {
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo("/Users/operator/repos/robco", Vec::new())],
+    };
+    assert!(!registry.contains_repo_path("/Users/operator/repos/renamed-away"));
+}

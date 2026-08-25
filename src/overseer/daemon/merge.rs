@@ -70,6 +70,13 @@ pub(super) fn auto_merge_pass(
     // entry is its head of queue this pass.
     let mut groups: HashMap<String, Vec<&mut LedgerEntry>> = HashMap::new();
     for entry in entries.iter_mut() {
+        // A repository the registry no longer lists — renamed or removed —
+        // has nothing this pass can act on: no working directory to run `gh`
+        // against, and no reason to name it in `merge_pass.json` as if it
+        // were evaluated (dropr task #557).
+        if !registry.contains_repo_path(&entry.repo) {
+            continue;
+        }
         groups.entry(entry.repo.clone()).or_default().push(entry);
     }
     // Each repository's settling state is extracted into its own owned value

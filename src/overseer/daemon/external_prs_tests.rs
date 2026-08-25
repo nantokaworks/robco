@@ -137,6 +137,43 @@ fn closes_task_is_none_when_no_number_follows() {
     assert_eq!(closes_task("Close Dropr: nothing here"), None);
 }
 
+fn registry_with(path: &str) -> Registry {
+    Registry {
+        version: 1,
+        repos: vec![crate::discover::repo_node(path.into(), false)],
+    }
+}
+
+fn other_prs_entry() -> RepoOtherPrs {
+    RepoOtherPrs {
+        polled_at: now(),
+        prs: Vec::new(),
+    }
+}
+
+#[test]
+fn prune_unregistered_drops_a_path_the_registry_no_longer_lists() {
+    let mut state = OtherPrs::default();
+    state
+        .repos
+        .insert("/repos/renamed-away".into(), other_prs_entry());
+    state.repos.insert("/repos/robco".into(), other_prs_entry());
+
+    prune_unregistered(&mut state, &registry_with("/repos/robco"));
+
+    assert_eq!(state.repos.keys().collect::<Vec<_>>(), vec!["/repos/robco"]);
+}
+
+#[test]
+fn prune_unregistered_keeps_every_registered_path() {
+    let mut state = OtherPrs::default();
+    state.repos.insert("/repos/robco".into(), other_prs_entry());
+
+    prune_unregistered(&mut state, &registry_with("/repos/robco"));
+
+    assert_eq!(state.repos.len(), 1);
+}
+
 #[test]
 fn closes_task_does_not_panic_on_multibyte_text_before_the_directive() {
     // A body with non-ASCII text ahead of the marker must not shift the byte
