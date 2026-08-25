@@ -13,6 +13,7 @@ impl App {
     /// keeps the previous list rather than flickering the section away.
     pub(in crate::ui) fn refresh_orphans(&mut self) {
         let Some(orphans) = discover_orphans(
+            &self.config.tmux_server,
             &self.registry.repos,
             &self.config.tmux_session_prefix,
             &self.config.worktree_root,
@@ -36,7 +37,7 @@ impl App {
     /// on every discovery tick, so this always targets exactly the session the
     /// confirm dialog displayed.
     pub(in crate::ui) fn kill_orphan(&mut self, session: &str) {
-        match tmux::kill_session(session) {
+        match tmux::kill_session(&self.config.tmux_server, session) {
             Ok(()) => {
                 self.orphans.retain(|orphan| orphan.name != session);
                 self.show_message(fmt(self.locale, "killed {}", &[session]));
@@ -48,12 +49,13 @@ impl App {
 }
 
 pub(super) fn discover_orphans(
+    server: &tmux::TmuxServer,
     repos: &[crate::model::RepoNode],
     prefix: &str,
     worktree_root: &std::path::Path,
     discord_channels: &crate::overseer::discord_channels::DiscordChannels,
 ) -> Option<Vec<OrphanSession>> {
-    let sessions = tmux::list_sessions_with_cwd().ok()?;
+    let sessions = tmux::list_sessions_with_cwd(server).ok()?;
     let mut known: HashSet<String> = HashSet::new();
     known.insert(overseer::control_session_name(prefix));
     // A channel's tmux session exists only while a turn is running, but its

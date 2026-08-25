@@ -19,7 +19,13 @@ pub(super) fn maybe_auto_accept(
         return;
     }
 
-    if tmux::send_keys(&agent.tmux_session, &["y", "Enter"]).is_ok() {
+    if tmux::send_keys(
+        &tmux::TmuxServer::default_server(),
+        &agent.tmux_session,
+        &["y", "Enter"],
+    )
+    .is_ok()
+    {
         agent.last_auto_accept_at = Some(now);
     }
 }

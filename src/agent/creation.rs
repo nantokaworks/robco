@@ -138,9 +138,13 @@ pub(crate) fn create_agent_with_launch(
         .iter()
         .map(|(key, value)| (key.as_str(), value.clone()))
         .collect::<Vec<_>>();
-    if let Err(error) =
-        tmux::new_worker_session(&tmux_session, &worktree_path, &command, &launch_env)
-    {
+    if let Err(error) = tmux::new_worker_session(
+        &config.tmux_server,
+        &tmux_session,
+        &worktree_path,
+        &command,
+        &launch_env,
+    ) {
         // These two kinds are the whole point of dropr:554: a launch that
         // failed *this* way used to report nothing beyond a bare "session is
         // dead" once the daemon noticed, minutes later, with the pane's own

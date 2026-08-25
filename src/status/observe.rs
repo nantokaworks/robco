@@ -31,7 +31,8 @@ pub fn classify_agent_status(
         Some(true) => {
             // A transient capture failure should not corrupt the signal; keep
             // the previous status until the next successful capture.
-            let capture = tmux::capture_text(tmux_session).ok()?;
+            let capture =
+                tmux::capture_text(&tmux::TmuxServer::default_server(), tmux_session).ok()?;
             let report = classify_agent_observation(
                 true,
                 Some(&capture),
@@ -74,9 +75,10 @@ pub fn classify_session_status(
     previous: Option<Status>,
     state: &mut WatchStatusState,
 ) -> Option<Status> {
-    match tmux::has_session(session) {
+    let server = tmux::TmuxServer::default_server();
+    match tmux::has_session(&server, session) {
         Ok(true) => {
-            let Ok(capture) = tmux::capture_text(session) else {
+            let Ok(capture) = tmux::capture_text(&server, session) else {
                 return previous;
             };
             classify_session_observation(Some(&capture), state, Local::now())

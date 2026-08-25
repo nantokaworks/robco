@@ -231,9 +231,12 @@ fn hold(
                 &halt.reason,
                 head,
                 base,
-                overseer,
-                registry,
-                language,
+                &merge_recovery::RecoveryEnv {
+                    config: overseer,
+                    server: &config.tmux_server,
+                    registry,
+                    language,
+                },
             )
         }
         HoldPlan::CapReached => {

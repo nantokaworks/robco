@@ -5,7 +5,7 @@ use crate::{
     config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
 };
 
-use super::{command_unit, env::color_env_mirror, launch::INHERITED_IDENTITY_KEYS};
+use super::{TmuxServer, command_unit, env::color_env_mirror, launch::INHERITED_IDENTITY_KEYS};
 
 pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
     format!(
@@ -53,8 +53,9 @@ pub fn sanitize_target_part(value: &str) -> String {
 
 /// Every live tmux session paired with the cwd of its first listed pane.
 /// A missing tmux server is an empty list, not an error.
-pub fn list_sessions_with_cwd() -> Result<Vec<(String, std::path::PathBuf)>> {
-    let output = Command::new("tmux")
+pub fn list_sessions_with_cwd(server: &TmuxServer) -> Result<Vec<(String, std::path::PathBuf)>> {
+    let output = server
+        .command()
         .args([
             "list-panes",
             "-a",
@@ -83,9 +84,9 @@ pub fn list_sessions_with_cwd() -> Result<Vec<(String, std::path::PathBuf)>> {
 /// A live AI session (prefix-matching, not a `-shell` companion) whose pane
 /// cwd is `cwd`. Lets adoption rebind to a surviving session even when its
 /// name does not match the derived one.
-pub fn find_session_by_cwd(prefix: &str, cwd: &Path) -> Option<String> {
+pub fn find_session_by_cwd(server: &TmuxServer, prefix: &str, cwd: &Path) -> Option<String> {
     let target = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
-    list_sessions_with_cwd()
+    list_sessions_with_cwd(server)
         .ok()?
         .into_iter()
         .find(|(name, path)| {
@@ -99,15 +100,16 @@ pub fn find_session_by_cwd(prefix: &str, cwd: &Path) -> Option<String> {
         .map(|(name, _)| name)
 }
 
-pub fn has_session(session: &str) -> Result<bool> {
-    let output = Command::new("tmux")
+pub fn has_session(server: &TmuxServer, session: &str) -> Result<bool> {
+    let output = server
+        .command()
         .args(["has-session", "-t", &exact(session)])
         .output()?;
     Ok(output.status.success())
 }
 
-pub(super) fn has_server() -> Result<bool> {
-    let output = Command::new("tmux").arg("list-sessions").output()?;
+pub(super) fn has_server(server: &TmuxServer) -> Result<bool> {
+    let output = server.command().arg("list-sessions").output()?;
     Ok(output.status.success())
 }
 
@@ -128,24 +130,26 @@ pub(crate) fn is_installed() -> bool {
 /// Missing color keys are unset in the command shell rather than with `env -u`
 /// so shell builtins and every command in a compound program see the change.
 pub fn new_session_command(
+    server: &TmuxServer,
     session: &str,
     cwd: &Path,
     program: &str,
     envs: &[(&str, String)],
 ) -> Command {
-    new_session_command_with_lookup(session, cwd, program, envs, |key| {
+    new_session_command_with_lookup(server, session, cwd, program, envs, |key| {
         std::env::var_os(key).map(|value| value.to_string_lossy().into_owned())
     })
 }
 
 pub(super) fn new_session_command_with_lookup(
+    server: &TmuxServer,
     session: &str,
     cwd: &Path,
     program: &str,
     envs: &[(&str, String)],
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Command {
-    let mut command = Command::new("tmux");
+    let mut command = server.command();
     command
         .args(["new-session", "-d", "-s", session, "-c"])
         .arg(cwd);
@@ -180,14 +184,15 @@ pub(super) fn new_session_command_with_lookup(
 }
 
 pub fn new_session(
+    server: &TmuxServer,
     session: &str,
     cwd: &Path,
     program: &str,
     envs: &[(&str, String)],
 ) -> Result<()> {
-    let output = new_session_command(session, cwd, program, envs).output()?;
+    let output = new_session_command(server, session, cwd, program, envs).output()?;
     command_unit(output, "tmux new-session")?;
-    apply_cosmetic_options(session);
+    apply_cosmetic_options(server, session);
     Ok(())
 }
 
@@ -195,8 +200,9 @@ pub fn new_session(
 /// of how it was created. Best-effort throughout: none of these affect
 /// whether the session itself works, only how its preview renders, so a
 /// failure here costs a cosmetic — never the session.
-pub(super) fn apply_cosmetic_options(session: &str) {
-    let _ = Command::new("tmux")
+pub(super) fn apply_cosmetic_options(server: &TmuxServer, session: &str) {
+    let _ = server
+        .command()
         .args([
             "set-window-option",
             "-t",
@@ -209,7 +215,8 @@ pub(super) fn apply_cosmetic_options(session: &str) {
     // in the alt buffer, which has no scrollback — the preview could never
     // scroll them back. Denying the alt screen routes their output through the
     // normal buffer, whose history `capture_scrollback` can walk.
-    let _ = Command::new("tmux")
+    let _ = server
+        .command()
         .args([
             "set-window-option",
             "-t",
@@ -223,7 +230,8 @@ pub(super) fn apply_cosmetic_options(session: &str) {
     // shorter than the size the preview asks for and its mirror shows a blank
     // bottom line. robco sessions are always single-pane, so the border line
     // only costs a row — drop it.
-    let _ = Command::new("tmux")
+    let _ = server
+        .command()
         .args([
             "set-window-option",
             "-t",
@@ -234,8 +242,9 @@ pub(super) fn apply_cosmetic_options(session: &str) {
         .output();
 }
 
-pub fn kill_session(session: &str) -> Result<()> {
-    let output = Command::new("tmux")
+pub fn kill_session(server: &TmuxServer, session: &str) -> Result<()> {
+    let output = server
+        .command()
         .args(["kill-session", "-t", &exact(session)])
         .output()?;
     command_unit(output, "tmux kill-session")

@@ -8,9 +8,11 @@ use crate::{
 };
 
 pub fn restart_agent(agent: &AgentNode) -> Result<()> {
-    let _ = tmux::kill_session(&agent.tmux_session);
+    let server = tmux::TmuxServer::default_server();
+    let _ = tmux::kill_session(&server, &agent.tmux_session);
     let command = relaunch_command(agent);
     tmux::new_session(
+        &server,
         &agent.tmux_session,
         &agent.worktree_path,
         &command,
@@ -19,12 +21,14 @@ pub fn restart_agent(agent: &AgentNode) -> Result<()> {
 }
 
 pub fn ensure_agent_session(agent: &AgentNode) -> Result<()> {
-    if tmux::has_session(&agent.tmux_session)? {
+    let server = tmux::TmuxServer::default_server();
+    if tmux::has_session(&server, &agent.tmux_session)? {
         return Ok(());
     }
 
     let command = relaunch_command(agent);
     tmux::new_session(
+        &server,
         &agent.tmux_session,
         &agent.worktree_path,
         &command,
@@ -45,12 +49,19 @@ pub fn shell_session_name(agent: &AgentNode) -> String {
 }
 
 pub fn ensure_shell_session(agent: &AgentNode) -> Result<()> {
+    let server = tmux::TmuxServer::default_server();
     let session = shell_session_name(agent);
-    if tmux::has_session(&session)? {
+    if tmux::has_session(&server, &session)? {
         return Ok(());
     }
 
-    tmux::new_session(&session, &agent.worktree_path, &shell_program(), &[])
+    tmux::new_session(
+        &server,
+        &session,
+        &agent.worktree_path,
+        &shell_program(),
+        &[],
+    )
 }
 
 pub fn repo_shell_session_name(prefix: &str, repo: &RepoNode) -> String {
@@ -62,21 +73,29 @@ pub fn repo_claude_session_name(prefix: &str, repo: &RepoNode) -> String {
 }
 
 pub fn ensure_repo_shell_session(prefix: &str, repo: &RepoNode) -> Result<()> {
+    let server = tmux::TmuxServer::default_server();
     let session = repo_shell_session_name(prefix, repo);
-    if tmux::has_session(&session)? {
+    if tmux::has_session(&server, &session)? {
         return Ok(());
     }
 
-    tmux::new_session(&session, &repo.path, &shell_program(), &[])
+    tmux::new_session(&server, &session, &repo.path, &shell_program(), &[])
 }
 
 pub fn ensure_repo_claude_session(config: &Config, prefix: &str, repo: &RepoNode) -> Result<()> {
+    let server = tmux::TmuxServer::default_server();
     let session = repo_claude_session_name(prefix, repo);
-    if tmux::has_session(&session)? {
+    if tmux::has_session(&server, &session)? {
         return Ok(());
     }
 
-    tmux::new_session(&session, &repo.path, &repo_claude_command(config), &[])
+    tmux::new_session(
+        &server,
+        &session,
+        &repo.path,
+        &repo_claude_command(config),
+        &[],
+    )
 }
 
 fn repo_claude_command(config: &Config) -> String {
@@ -108,8 +127,9 @@ pub fn kill_agent(repo: &RepoNode, agent: &AgentNode, force: bool) -> Result<()>
         return Err(crate::Error::DirtyWorktree(agent.worktree_path.clone()));
     }
 
-    let _ = tmux::kill_session(&agent.tmux_session);
-    let _ = tmux::kill_session(&shell_session_name(agent));
+    let server = tmux::TmuxServer::default_server();
+    let _ = tmux::kill_session(&server, &agent.tmux_session);
+    let _ = tmux::kill_session(&server, &shell_session_name(agent));
 
     if worktree_exists {
         git::remove_worktree(&repo.path, &agent.worktree_path, force)

@@ -18,7 +18,8 @@ impl App {
     /// over ssh drops the whole connection.
     fn attach_session(&mut self, session: &str) {
         self.force_redraw = true;
-        if let Err(err) = suspend_terminal(|| tmux::attach(session)) {
+        let server = &self.config.tmux_server;
+        if let Err(err) = suspend_terminal(|| tmux::attach(server, session)) {
             self.show_message(err.to_string());
         }
     }
@@ -140,8 +141,8 @@ impl App {
             .clone()
             .unwrap_or_else(|| self.config.repos_root.clone());
         let result = overseer::ensure_control_session(&self.config, &cwd).and_then(|session| {
-            tmux::send_literal_text(&session, instruction)?;
-            tmux::send_keys(&session, &["Enter"])
+            tmux::send_literal_text(&self.config.tmux_server, &session, instruction)?;
+            tmux::send_keys(&self.config.tmux_server, &session, &["Enter"])
         });
         match result {
             Ok(()) => self.show_message(t(self.locale, "instruction sent to overseer control")),
@@ -167,7 +168,7 @@ impl App {
         };
         let session =
             overseer::discord_channel_session_name(&self.config.tmux_session_prefix, channel_id);
-        match tmux::has_session(&session) {
+        match tmux::has_session(&self.config.tmux_server, &session) {
             Ok(true) => self.attach_session(&session),
             Ok(false) => {
                 self.show_message(t(

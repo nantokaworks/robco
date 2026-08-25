@@ -21,6 +21,7 @@ fn exact_target_anchors_session_and_default_pane() {
 #[test]
 fn new_session_command_includes_environment_pairs() {
     let command = new_session_command_with_lookup(
+        &TmuxServer::default_server(),
         "robco_repo_agent",
         Path::new("/repo"),
         "codex",
@@ -42,10 +43,14 @@ fn new_session_command_includes_environment_pairs() {
 
 #[test]
 fn new_session_command_neutralizes_missing_identity() {
-    let command =
-        new_session_command_with_lookup("robco_repo_shell", Path::new("/repo"), "zsh", &[], |_| {
-            None
-        });
+    let command = new_session_command_with_lookup(
+        &TmuxServer::default_server(),
+        "robco_repo_shell",
+        Path::new("/repo"),
+        "zsh",
+        &[],
+        |_| None,
+    );
     let args = command
         .get_args()
         .map(|arg| arg.to_string_lossy().into_owned())
@@ -64,6 +69,7 @@ fn new_session_command_neutralizes_missing_identity() {
 #[test]
 fn new_session_command_neutralizes_inherited_ai_identity() {
     let command = new_session_command_with_lookup(
+        &TmuxServer::default_server(),
         "robco_repo_agent",
         Path::new("/repo"),
         "claude",
@@ -90,6 +96,7 @@ fn new_session_command_keeps_caller_supplied_inherited_identity() {
     // subagent that should keep its parent's Codex transcript path) is not
     // second-guessed — the same override rule `ENV_AGENT_ID` already gets.
     let command = new_session_command_with_lookup(
+        &TmuxServer::default_server(),
         "robco_repo_agent",
         Path::new("/repo"),
         "claude",

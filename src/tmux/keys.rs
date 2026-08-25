@@ -1,18 +1,17 @@
-use std::{
-    io::Write,
-    process::{Command, Stdio},
-    thread,
-    time::Duration,
-};
+use std::{io::Write, process::Stdio, thread, time::Duration};
 
 use crate::{Error, Result};
 
 use super::{
-    command_output, command_unit,
-    session::{exact, has_server, has_session, sanitize_target_part},
+    TmuxServer, command_output, command_unit,
+    session::{has_server, has_session, sanitize_target_part},
+    session_option::{
+        capture_session_option, restore_session_option_if_present, set_session_option,
+    },
 };
 
 pub(super) struct ReturnKeyBinding {
+    server: TmuxServer,
     session: String,
     previous: Option<String>,
     previous_status: Option<String>,
@@ -20,9 +19,9 @@ pub(super) struct ReturnKeyBinding {
 }
 
 impl ReturnKeyBinding {
-    pub(super) fn install(in_tmux: bool, session: &str) -> Result<Self> {
-        let previous = capture_key_binding("C-q")?;
-        let mut command = Command::new("tmux");
+    pub(super) fn install(server: &TmuxServer, in_tmux: bool, session: &str) -> Result<Self> {
+        let previous = capture_key_binding(server, "C-q")?;
+        let mut command = server.command();
         if in_tmux {
             // One idempotent root binding that works at any nesting depth. Both
             // the return target and the return signal are derived from the
@@ -61,27 +60,28 @@ impl ReturnKeyBinding {
             // TUI. Stored on the target session so the C-q binding above can
             // switch back exactly one level. Best-effort — on failure the
             // binding falls back to `switch-client -l`.
-            match current_client_session() {
+            match current_client_session(server) {
                 Ok(origin) if !origin.is_empty() => {
-                    let _ = set_session_option(session, "@robco_return", &origin);
+                    let _ = set_session_option(server, session, "@robco_return", &origin);
                 }
                 _ => {}
             }
         }
         let (previous_status, previous_status_right) = match (|| {
-            let previous_status = capture_session_option(session, "status")?;
-            let previous_status_right = capture_session_option(session, "status-right")?;
-            set_session_option(session, "status", "on")?;
-            set_session_option(session, "status-right", "C-q to return")?;
+            let previous_status = capture_session_option(server, session, "status")?;
+            let previous_status_right = capture_session_option(server, session, "status-right")?;
+            set_session_option(server, session, "status", "on")?;
+            set_session_option(server, session, "status-right", "C-q to return")?;
             Ok((previous_status, previous_status_right))
         })() {
             Ok(previous) => previous,
             Err(err) => {
-                let _ = restore_key_binding(previous.as_deref());
+                let _ = restore_key_binding(server, previous.as_deref());
                 return Err(err);
             }
         };
         Ok(Self {
+            server: server.clone(),
             session: session.to_string(),
             previous,
             previous_status,
@@ -90,17 +90,19 @@ impl ReturnKeyBinding {
     }
 
     pub(super) fn restore(self) -> Result<()> {
-        let key_result = if has_server()? {
-            restore_key_binding(self.previous.as_deref())
+        let key_result = if has_server(&self.server)? {
+            restore_key_binding(&self.server, self.previous.as_deref())
         } else {
             Ok(())
         };
         let status_result = restore_session_option_if_present(
+            &self.server,
             &self.session,
             "status",
             self.previous_status.as_deref(),
         );
         let status_right_result = restore_session_option_if_present(
+            &self.server,
             &self.session,
             "status-right",
             self.previous_status_right.as_deref(),
@@ -109,15 +111,16 @@ impl ReturnKeyBinding {
     }
 }
 
-fn current_client_session() -> Result<String> {
-    let output = Command::new("tmux")
+fn current_client_session(server: &TmuxServer) -> Result<String> {
+    let output = server
+        .command()
         .args(["display-message", "-p", "#{client_session}"])
         .output()?;
     let value = command_output(output, "tmux display-message")?;
     Ok(value.trim().to_string())
 }
 
-fn capture_key_binding(key: &str) -> Result<Option<String>> {
+fn capture_key_binding(server: &TmuxServer, key: &str) -> Result<Option<String>> {
     // The key-filtered form `list-keys -T root <key>` prints nothing on some
     // tmux builds (observed on 3.7), which would make this always report "no
     // previous binding". Restore would then unbind C-q even when a parent robco
@@ -125,7 +128,8 @@ fn capture_key_binding(key: &str) -> Result<Option<String>> {
     // root table and find the key ourselves so save/restore works across
     // versions. Each line is a re-sourceable `bind-key -T root <key> ...`
     // command, so the matched line can be replayed verbatim by `source-file`.
-    let output = Command::new("tmux")
+    let output = server
+        .command()
         .args(["list-keys", "-T", "root"])
         .output()?;
     let listing = command_output(output, "tmux list-keys")?;
@@ -153,10 +157,11 @@ fn root_binding_key(line: &str) -> Option<&str> {
     None
 }
 
-fn restore_key_binding(previous: Option<&str>) -> Result<()> {
+fn restore_key_binding(server: &TmuxServer, previous: Option<&str>) -> Result<()> {
     match previous {
         Some(previous) => {
-            let mut child = Command::new("tmux")
+            let mut child = server
+                .command()
                 .args(["source-file", "-"])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -170,7 +175,8 @@ fn restore_key_binding(previous: Option<&str>) -> Result<()> {
             command_unit(output, "tmux restore key binding")
         }
         None => {
-            let output = Command::new("tmux")
+            let output = server
+                .command()
                 .args(["unbind-key", "-T", "root", "C-q"])
                 .output()?;
             command_unit(output, "tmux unbind-key")
@@ -178,59 +184,9 @@ fn restore_key_binding(previous: Option<&str>) -> Result<()> {
     }
 }
 
-fn capture_session_option(session: &str, option: &str) -> Result<Option<String>> {
-    let session = exact(session);
-    let output = Command::new("tmux")
-        .args(["show-options", "-t", &session, "-q", option])
-        .output()?;
-    let presence = command_output(output, "tmux show-options")?;
-    if presence.is_empty() {
-        return Ok(None);
-    }
-
-    let output = Command::new("tmux")
-        .args(["show-options", "-t", &session, "-q", "-v", option])
-        .output()?;
-    let value = command_output(output, "tmux show-options")?;
-    let value = value.trim_end_matches(['\r', '\n']).to_string();
-    Ok(Some(value))
-}
-
-pub(super) fn set_session_option(session: &str, option: &str, value: &str) -> Result<()> {
-    let output = Command::new("tmux")
-        .args(["set-option", "-t", &exact(session), option, value])
-        .output()?;
-    command_unit(output, "tmux set-option")
-}
-
-fn unset_session_option(session: &str, option: &str) -> Result<()> {
-    let output = Command::new("tmux")
-        .args(["set-option", "-u", "-t", &exact(session), option])
-        .output()?;
-    command_unit(output, "tmux set-option -u")
-}
-
-fn restore_session_option(session: &str, option: &str, previous: Option<&str>) -> Result<()> {
-    match previous {
-        Some(value) => set_session_option(session, option, value),
-        None => unset_session_option(session, option),
-    }
-}
-
-fn restore_session_option_if_present(
-    session: &str,
-    option: &str,
-    previous: Option<&str>,
-) -> Result<()> {
-    if !has_session(session)? {
-        return Ok(());
-    }
-    restore_session_option(session, option, previous)
-}
-
-pub(super) fn wait_for_return_key(session: &str) -> Result<()> {
+pub(super) fn wait_for_return_key(server: &TmuxServer, session: &str) -> Result<()> {
     let signal = return_signal_name(session);
-    let mut child = Command::new("tmux").args(["wait-for", &signal]).spawn()?;
+    let mut child = server.command().args(["wait-for", &signal]).spawn()?;
     loop {
         if let Some(status) = child.try_wait()? {
             if status.success() {
@@ -241,7 +197,7 @@ pub(super) fn wait_for_return_key(session: &str) -> Result<()> {
                 stderr: format!("tmux exited with {status}"),
             });
         }
-        if !has_session(session)? {
+        if !has_session(server, session)? {
             let _ = child.kill();
             let _ = child.wait();
             return Ok(());

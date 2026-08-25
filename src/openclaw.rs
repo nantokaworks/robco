@@ -134,8 +134,9 @@ fn curl_config_escape(value: &str) -> String {
 }
 
 fn prompt_tail(session: &str) -> String {
-    tmux::capture_plain(session)
-        .or_else(|_| tmux::capture_text(session))
+    let server = tmux::TmuxServer::default_server();
+    tmux::capture_plain(&server, session)
+        .or_else(|_| tmux::capture_text(&server, session))
         .map(|capture| tail_non_empty_lines(&capture, PROMPT_LINES))
         .unwrap_or_default()
 }

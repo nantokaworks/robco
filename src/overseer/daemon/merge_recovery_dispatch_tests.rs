@@ -46,14 +46,15 @@ fn entry() -> LedgerEntry {
 /// earlier unconfirmed send.
 #[test]
 fn a_busy_session_withholds_the_handback_instead_of_sending_into_it() {
+    let server = crate::tmux::TmuxServer::for_tests();
     let session = format!("robco-test-dispatch-busy-{}", std::process::id());
-    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if crate::tmux::new_session(&server, &session, &std::env::temp_dir(), "sh", &[]).is_err() {
         // No usable tmux in this environment — the pure-logic tests in
         // `merge_recovery_pending_tests.rs` already cover the branches this
         // test would exercise.
         return;
     }
-    let _ = crate::tmux::send_literal_text(&session, "esc to interrupt");
+    let _ = crate::tmux::send_literal_text(&server, &session, "esc to interrupt");
 
     let mut entry = entry();
     // The state right after `plan` charged this poll's attempt. Nothing has
@@ -63,7 +64,7 @@ fn a_busy_session_withholds_the_handback_instead_of_sending_into_it() {
     entry.merge_recovery.base = Some("base-1".into());
 
     let registry = registry_with_session(&session);
-    dispatch(&mut entry, "merge_state:dirty", &registry, None, 2).unwrap();
+    dispatch(&mut entry, "merge_state:dirty", &server, &registry, None, 2).unwrap();
 
     // Un-charged, same as any other attempt that could not send anything.
     assert_eq!(entry.merge_recovery.charged, 0);
@@ -79,7 +80,7 @@ fn a_busy_session_withholds_the_handback_instead_of_sending_into_it() {
     // exactly where it started.
     assert_eq!(entry.phase, LedgerPhase::PrOpened);
 
-    let _ = crate::tmux::kill_session(&session);
+    let _ = crate::tmux::kill_session(&server, &session);
 }
 
 /// A worker that is never idle must not be retried forever: once the busy
@@ -87,11 +88,12 @@ fn a_busy_session_withholds_the_handback_instead_of_sending_into_it() {
 /// instead of holding a fourth time.
 #[test]
 fn a_session_that_never_frees_up_escalates_once_the_bound_is_spent() {
+    let server = crate::tmux::TmuxServer::for_tests();
     let session = format!("robco-test-dispatch-busy-cap-{}", std::process::id());
-    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if crate::tmux::new_session(&server, &session, &std::env::temp_dir(), "sh", &[]).is_err() {
         return;
     }
-    let _ = crate::tmux::send_literal_text(&session, "esc to interrupt");
+    let _ = crate::tmux::send_literal_text(&server, &session, "esc to interrupt");
 
     let mut entry = entry();
     let registry = registry_with_session(&session);
@@ -107,6 +109,7 @@ fn a_session_that_never_frees_up_escalates_once_the_bound_is_spent() {
         dispatch(
             &mut entry,
             "merge_state:dirty",
+            &server,
             &registry,
             None,
             max_recoveries,
@@ -120,6 +123,7 @@ fn a_session_that_never_frees_up_escalates_once_the_bound_is_spent() {
     dispatch(
         &mut entry,
         "merge_state:dirty",
+        &server,
         &registry,
         None,
         max_recoveries,
@@ -131,7 +135,7 @@ fn a_session_that_never_frees_up_escalates_once_the_bound_is_spent() {
     // same bug in a slower form.
     assert!(entry.merge_recovery.pending.is_none());
 
-    let _ = crate::tmux::kill_session(&session);
+    let _ = crate::tmux::kill_session(&server, &session);
 }
 
 fn registry_with_session(session: &str) -> Registry {
