@@ -1,7 +1,7 @@
 use std::{cell::RefCell, time::Duration};
 
 use super::*;
-use crate::agent::test_support::repo_named;
+use crate::agent::test_support::{fake_claude_binary, repo_named};
 use crate::git::test_repo::TestRepo;
 
 fn candidate(display_id: &str, id: &str, title: &str) -> DroprTaskCandidate {
@@ -47,12 +47,18 @@ fn launches_from_a_task_and_titles_with_the_number_first() {
     }
     let repo_fixture = TestRepo::new();
     let worktree_root = tempfile::tempdir().unwrap();
+    let bin_dir = tempfile::tempdir().unwrap();
     let config = Config {
         worktree_root: worktree_root.path().to_path_buf(),
         default_program: "claude".into(),
         profiles: vec![crate::config::Profile {
             name: "claude".into(),
-            program: "/nonexistent/claude".into(),
+            // A throwaway binary that just sleeps, so the launch verification
+            // (dropr:554) sees a pane that actually stays up — it never
+            // touches the real `claude` CLI either way.
+            program: fake_claude_binary(bin_dir.path())
+                .to_string_lossy()
+                .into_owned(),
             autonomous_args: Vec::new(),
             model: None,
             backend: None,

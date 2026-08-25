@@ -5,7 +5,7 @@ use crate::{
     config::{ENV_AGENT_ID, ENV_PARENT_AGENT_ID},
 };
 
-use super::{command_unit, env::color_env_mirror};
+use super::{command_unit, env::color_env_mirror, launch::INHERITED_IDENTITY_KEYS};
 
 pub fn session_name(prefix: &str, repo: &str, agent: &str) -> String {
     format!(
@@ -149,7 +149,10 @@ pub(super) fn new_session_command_with_lookup(
     command
         .args(["new-session", "-d", "-s", session, "-c"])
         .arg(cwd);
-    for key in [ENV_AGENT_ID, ENV_PARENT_AGENT_ID] {
+    for key in [ENV_AGENT_ID, ENV_PARENT_AGENT_ID]
+        .into_iter()
+        .chain(INHERITED_IDENTITY_KEYS)
+    {
         if !envs.iter().any(|(candidate, _)| *candidate == key) {
             command.arg("-e").arg(format!("{key}="));
         }
@@ -184,6 +187,15 @@ pub fn new_session(
 ) -> Result<()> {
     let output = new_session_command(session, cwd, program, envs).output()?;
     command_unit(output, "tmux new-session")?;
+    apply_cosmetic_options(session);
+    Ok(())
+}
+
+/// The preview-rendering window options every robco session gets, regardless
+/// of how it was created. Best-effort throughout: none of these affect
+/// whether the session itself works, only how its preview renders, so a
+/// failure here costs a cosmetic — never the session.
+pub(super) fn apply_cosmetic_options(session: &str) {
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -196,8 +208,7 @@ pub fn new_session(
     // Alternate-screen apps (Claude Code's TUI among them) keep their output
     // in the alt buffer, which has no scrollback — the preview could never
     // scroll them back. Denying the alt screen routes their output through the
-    // normal buffer, whose history `capture_scrollback` can walk. Best-effort
-    // like monitor-activity: failure costs scrollback, not the session.
+    // normal buffer, whose history `capture_scrollback` can walk.
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -211,7 +222,7 @@ pub fn new_session(
     // inside the window even for a single pane, so the pane runs one row
     // shorter than the size the preview asks for and its mirror shows a blank
     // bottom line. robco sessions are always single-pane, so the border line
-    // only costs a row — drop it. Best-effort like the options above.
+    // only costs a row — drop it.
     let _ = Command::new("tmux")
         .args([
             "set-window-option",
@@ -221,7 +232,6 @@ pub fn new_session(
             "off",
         ])
         .output();
-    Ok(())
 }
 
 pub fn kill_session(session: &str) -> Result<()> {
@@ -232,70 +242,5 @@ pub fn kill_session(session: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanitizes_tmux_target_parts() {
-        assert_eq!(sanitize_target_part("foo.bar:baz"), "foo-bar-baz");
-        assert_eq!(
-            session_name("robco_", "my.repo", "fix/thing"),
-            "robco_my-repo_fix-thing"
-        );
-    }
-
-    #[test]
-    fn exact_target_anchors_session_and_default_pane() {
-        // `=` forces an exact session match (no prefix bleed into `<name>-shell`)
-        // and the trailing `:` selects the default window/pane so the target
-        // resolves for pane/window commands too (capture-pane, send-keys,
-        // set-option window-size) — not just session-only commands.
-        assert_eq!(exact("robco_repo_agent"), "=robco_repo_agent:");
-    }
-
-    #[test]
-    fn new_session_command_includes_environment_pairs() {
-        let command = new_session_command_with_lookup(
-            "robco_repo_agent",
-            Path::new("/repo"),
-            "codex",
-            &[("FIRST", "one".to_string()), ("SECOND", "two".to_string())],
-            |_| None,
-        );
-        let args = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
-
-        assert!(args.windows(2).any(|args| args == ["-e", "FIRST=one"]));
-        assert!(args.windows(2).any(|args| args == ["-e", "SECOND=two"]));
-        assert_eq!(
-            args.last().map(String::as_str),
-            Some("unset NO_COLOR FORCE_COLOR COLORTERM CLICOLOR CLICOLOR_FORCE; codex")
-        );
-    }
-
-    #[test]
-    fn new_session_command_neutralizes_missing_identity() {
-        let command = new_session_command_with_lookup(
-            "robco_repo_shell",
-            Path::new("/repo"),
-            "zsh",
-            &[],
-            |_| None,
-        );
-        let args = command
-            .get_args()
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
-
-        assert!(
-            args.windows(2)
-                .any(|args| args == ["-e", "ROBCO_AGENT_ID="])
-        );
-        assert!(
-            args.windows(2)
-                .any(|args| args == ["-e", "ROBCO_PARENT_AGENT_ID="])
-        );
-    }
-}
+#[path = "session_tests.rs"]
+mod tests;
