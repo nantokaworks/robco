@@ -81,16 +81,6 @@ pub(super) const PREFIX: &[(&str, Remedy)] = &[
         },
     ),
     (
-        // `triage::completion::normalize` (`ParseError::RejectedAction`) — the
-        // triage action itself was rejected before it could run.
-        "rejected triage action:",
-        Remedy {
-            step: Move::Review,
-            means: "a triage action was rejected before it could run",
-            next: "check the triage action against the task's current state",
-        },
-    ),
-    (
         // `triage::completion::apply_completion` — the parsed action ran and
         // itself returned an error.
         "triage action failed:",
@@ -111,7 +101,7 @@ pub(super) const PREFIX: &[(&str, Remedy)] = &[
         },
     ),
     (
-        // `triage::completion::normalize` (`ParseError::Malformed`) — the
+        // `triage::completion::normalize` (`result::parse`'s error) — the
         // session ran but its `result.json` did not parse.
         "malformed result.json:",
         Remedy {

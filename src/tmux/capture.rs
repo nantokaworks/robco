@@ -1,11 +1,10 @@
-use std::process::Command;
-
 use crate::Result;
 
-use super::{command_output, session::exact};
+use super::{TmuxServer, command_output, session::exact};
 
-pub fn capture_plain(session: &str) -> Result<String> {
-    let output = Command::new("tmux")
+pub fn capture_plain(server: &TmuxServer, session: &str) -> Result<String> {
+    let output = server
+        .command()
         .args(["capture-pane", "-e", "-p", "-t", &exact(session)])
         .output()?;
     command_output(output, "tmux capture-pane")
@@ -13,13 +12,19 @@ pub fn capture_plain(session: &str) -> Result<String> {
 
 /// Capture one screenful (`height` rows) of the pane, starting `offset` lines
 /// back into scrollback history. `offset == 0` is the live screen.
-pub fn capture_scrollback(session: &str, offset: u16, height: u16) -> Result<String> {
+pub fn capture_scrollback(
+    server: &TmuxServer,
+    session: &str,
+    offset: u16,
+    height: u16,
+) -> Result<String> {
     if offset == 0 {
-        return capture_plain(session);
+        return capture_plain(server, session);
     }
     let start = -i64::from(offset);
     let end = start + i64::from(height.saturating_sub(1));
-    let output = Command::new("tmux")
+    let output = server
+        .command()
         .args([
             "capture-pane",
             "-e",
@@ -36,8 +41,9 @@ pub fn capture_scrollback(session: &str, offset: u16, height: u16) -> Result<Str
 }
 
 /// Lines of scrollback history the pane currently holds (`#{history_size}`).
-pub fn history_size(session: &str) -> Result<u16> {
-    let output = Command::new("tmux")
+pub fn history_size(server: &TmuxServer, session: &str) -> Result<u16> {
+    let output = server
+        .command()
         .args([
             "display-message",
             "-p",
@@ -51,16 +57,18 @@ pub fn history_size(session: &str) -> Result<u16> {
     Ok(size.min(u32::from(u16::MAX)) as u16)
 }
 
-pub fn capture_text(session: &str) -> Result<String> {
-    let output = Command::new("tmux")
+pub fn capture_text(server: &TmuxServer, session: &str) -> Result<String> {
+    let output = server
+        .command()
         .args(["capture-pane", "-p", "-t", &exact(session)])
         .output()?;
     command_output(output, "tmux capture-pane")
 }
 
 /// PID of the process tmux started for the session's active pane.
-pub fn pane_pid(session: &str) -> Result<Option<u32>> {
-    let output = Command::new("tmux")
+pub fn pane_pid(server: &TmuxServer, session: &str) -> Result<Option<u32>> {
+    let output = server
+        .command()
         .args([
             "display-message",
             "-p",

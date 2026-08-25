@@ -26,9 +26,10 @@ mod tree_nav;
 
 impl App {
     pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Result<bool> {
+        let server = self.config.tmux_server.clone();
         self.handle_key_with_pr_sender(key, |session, prompt| {
-            crate::tmux::send_literal_text(session, prompt)
-                .and_then(|()| crate::tmux::send_keys(session, &["Enter"]))
+            crate::tmux::send_literal_text(&server, session, prompt)
+                .and_then(|()| crate::tmux::send_keys(&server, session, &["Enter"]))
         })
     }
     pub(in crate::ui) fn handle_key_with_pr_sender(

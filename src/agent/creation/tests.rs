@@ -101,12 +101,13 @@ fn create_agent_installs_report_hooks_in_the_new_worktree() {
             backend: None,
             clear_command: None,
         }],
+        tmux_server: crate::tmux::TmuxServer::for_tests(),
         ..Config::default()
     };
     let repo = repo_at(&repo_fixture, "myapp");
 
     let agent = create_agent(&repo, "hook install check", None, &config, None).unwrap();
-    let _ = crate::tmux::kill_session(&agent.tmux_session);
+    let _ = crate::tmux::kill_session(&config.tmux_server, &agent.tmux_session);
 
     let settings: serde_json::Value = serde_json::from_slice(
         &std::fs::read(agent.worktree_path.join(".claude/settings.local.json")).unwrap(),

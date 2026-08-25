@@ -70,8 +70,9 @@ pub(in crate::ui) fn capture_inner(
     if width == 0 || height == 0 {
         return None;
     }
-    let _ = tmux::resize_session(session, width, height);
-    tmux::capture_scrollback(session, offset, height)
+    let server = tmux::TmuxServer::default_server();
+    let _ = tmux::resize_session(&server, session, width, height);
+    tmux::capture_scrollback(&server, session, offset, height)
         .ok()?
         .into_text()
         .ok()
@@ -85,7 +86,8 @@ impl App {
     pub(in crate::ui) fn scroll_preview(&mut self, up: bool, step: u16) {
         self.preview_scroll = match (live_session(self), up) {
             (Some(session), true) => {
-                let limit = tmux::history_size(&session).unwrap_or(0);
+                let limit =
+                    tmux::history_size(&tmux::TmuxServer::default_server(), &session).unwrap_or(0);
                 self.preview_scroll.saturating_add(step).min(limit)
             }
             (Some(_), false) => self.preview_scroll.saturating_sub(step),

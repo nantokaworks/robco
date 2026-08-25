@@ -165,7 +165,7 @@ pub async fn run_daemon() -> Result<()> {
             )?,
         }
         let now = Utc::now();
-        let mut observed = observations::gather(&mut ledger, &mut inbox, now);
+        let mut observed = observations::gather(&config.tmux_server, &mut ledger, &mut inbox, now);
         if let Err(error) = append_jsonl(
             &snapshots_path()?,
             &ObservationSnapshot {

@@ -1,25 +1,24 @@
-use std::process::Command;
-
 use crate::Result;
 
 use super::{
-    command_output, command_unit,
+    TmuxServer, command_output, command_unit,
     session::{exact, has_session},
 };
 
-pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
+pub fn resize_session(server: &TmuxServer, session: &str, width: u16, height: u16) -> Result<()> {
     // A missing target must be a no-op, not an error. `display-message` below
     // exits 0 and prints an empty `x` for a nonexistent session (observed on
     // tmux 3.7), so the `current == target` short-circuit never fires and the
     // `set-option window-size` call fails with `no such window`. That Err used
     // to bubble out of `attach` and terminate robco (dropping the ssh session)
     // whenever the user attached to a worktree whose AI session had exited.
-    if !has_session(session)? {
+    if !has_session(server, session)? {
         return Ok(());
     }
     let session = exact(session);
     let target = format!("{width}x{height}");
-    let output = Command::new("tmux")
+    let output = server
+        .command()
         .args([
             "display-message",
             "-p",
@@ -39,7 +38,8 @@ pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
         // it and the pane expands to fill the window. Best-effort: sessions
         // robco created already have it off, this heals adopted, orphan, and
         // pre-fix sessions.
-        let _ = Command::new("tmux")
+        let _ = server
+            .command()
             .args([
                 "set-window-option",
                 "-t",
@@ -53,14 +53,16 @@ pub fn resize_session(session: &str, width: u16, height: u16) -> Result<()> {
         return Ok(());
     }
 
-    let output = Command::new("tmux")
+    let output = server
+        .command()
         .args(["set-option", "-t", &session, "window-size", "manual"])
         .output()?;
     command_unit(output, "tmux set-option window-size")?;
 
     let width = width.to_string();
     let height = height.to_string();
-    let output = Command::new("tmux")
+    let output = server
+        .command()
         .args(["resize-window", "-t", &session, "-x", &width, "-y", &height])
         .output()?;
     command_unit(output, "tmux resize-window")

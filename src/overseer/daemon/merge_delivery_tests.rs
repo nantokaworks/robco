@@ -39,24 +39,28 @@ fn a_clean_read_with_no_marker_at_the_deadline_is_not_confirmed() {
 /// widened `CONFIRM_TIMEOUT`.
 #[test]
 fn confirm_delivered_recognizes_a_real_sessions_marker_text() {
+    let server = crate::tmux::TmuxServer::for_tests();
     let session = format!("robco-test-confirm-delivered-{}", std::process::id());
-    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if crate::tmux::new_session(&server, &session, &std::env::temp_dir(), "sh", &[]).is_err() {
         // No usable tmux in this environment — the pure-logic tests above
         // already cover the branch this test would exercise.
         return;
     }
-    let _ = crate::tmux::send_literal_text(&session, "esc to interrupt");
-    let result = confirm_delivered(&session);
-    let _ = crate::tmux::kill_session(&session);
+    let _ = crate::tmux::send_literal_text(&server, &session, "esc to interrupt");
+    let result = confirm_delivered(&server, &session);
+    let _ = crate::tmux::kill_session(&server, &session);
     assert_eq!(result, DeliveryConfirmation::Confirmed);
 }
 
 #[test]
 fn confirm_delivered_reports_a_capture_failure_for_a_session_that_does_not_exist() {
     let result = confirmation_at_deadline(
-        crate::tmux::capture_plain("robco-test-confirm-delivered-missing-session")
-            .err()
-            .map(|error| error.to_string()),
+        crate::tmux::capture_plain(
+            &crate::tmux::TmuxServer::for_tests(),
+            "robco-test-confirm-delivered-missing-session",
+        )
+        .err()
+        .map(|error| error.to_string()),
     );
     assert!(matches!(result, DeliveryConfirmation::CaptureFailed(_)));
 }
@@ -67,19 +71,23 @@ fn confirm_delivered_reports_a_capture_failure_for_a_session_that_does_not_exist
 /// stall a retry the undelivered/undeliverable bound is supposed to resolve.
 #[test]
 fn is_busy_is_false_for_a_session_that_does_not_exist() {
-    assert!(!is_busy("robco-test-is-busy-missing-session"));
+    assert!(!is_busy(
+        &crate::tmux::TmuxServer::for_tests(),
+        "robco-test-is-busy-missing-session"
+    ));
 }
 
 #[test]
 fn is_busy_reflects_the_sessions_working_marker() {
+    let server = crate::tmux::TmuxServer::for_tests();
     let session = format!("robco-test-is-busy-{}", std::process::id());
-    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if crate::tmux::new_session(&server, &session, &std::env::temp_dir(), "sh", &[]).is_err() {
         // No usable tmux in this environment — the pure-logic tests above
         // already cover the branch this test would exercise.
         return;
     }
-    assert!(!is_busy(&session));
-    let _ = crate::tmux::send_literal_text(&session, "esc to interrupt");
-    assert!(is_busy(&session));
-    let _ = crate::tmux::kill_session(&session);
+    assert!(!is_busy(&server, &session));
+    let _ = crate::tmux::send_literal_text(&server, &session, "esc to interrupt");
+    assert!(is_busy(&server, &session));
+    let _ = crate::tmux::kill_session(&server, &session);
 }

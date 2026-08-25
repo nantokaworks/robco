@@ -1,9 +1,9 @@
 //! Reading a just-launched pane's liveness and location back from tmux
 //! (dropr:554), for [`super::launch::verify_launch`] to act on.
 
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use super::session::exact;
+use super::{TmuxServer, session::exact};
 
 /// What a just-launched pane looked like on one probe.
 pub(super) enum PaneProbe {
@@ -31,8 +31,9 @@ pub(super) enum PaneProbe {
 /// printing, which silently corrupted the split this used to do on exactly
 /// the builds this whole check exists to support. A plain query has no
 /// separator to mangle.
-fn display_message(session: &str, format: &str) -> Option<String> {
-    let output = Command::new("tmux")
+fn display_message(server: &TmuxServer, session: &str, format: &str) -> Option<String> {
+    let output = server
+        .command()
         .args(["display-message", "-p", "-t", &exact(session), format])
         .output()
         .ok()?;
@@ -46,14 +47,14 @@ fn display_message(session: &str, format: &str) -> Option<String> {
     )
 }
 
-pub(super) fn probe_pane(session: &str) -> PaneProbe {
-    let Some(dead) = display_message(session, "#{pane_dead}") else {
+pub(super) fn probe_pane(server: &TmuxServer, session: &str) -> PaneProbe {
+    let Some(dead) = display_message(server, session, "#{pane_dead}") else {
         return PaneProbe::Gone;
     };
     if dead == "1" {
         return PaneProbe::Dead;
     }
-    match display_message(session, "#{pane_current_path}") {
+    match display_message(server, session, "#{pane_current_path}") {
         Some(path) if !path.is_empty() => PaneProbe::Alive(PathBuf::from(path)),
         // Either this second query failed outright, or came back empty: the
         // OS-level cwd lookup needs a live process to query, so a pane whose

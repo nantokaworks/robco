@@ -225,13 +225,14 @@ fn a_settled_entry_retention_pruned_does_not_come_back_next_pass() {
 /// probed. The anchored `={session}:` target must resolve a real timestamp.
 #[test]
 fn tmux_activity_reads_a_real_sessions_activity_time() {
+    let server = crate::tmux::TmuxServer::for_tests();
     let session = format!("robco-test-tmux-activity-{}", std::process::id());
-    if crate::tmux::new_session(&session, &std::env::temp_dir(), "sh", &[]).is_err() {
+    if crate::tmux::new_session(&server, &session, &std::env::temp_dir(), "sh", &[]).is_err() {
         // No usable tmux in this environment — nothing more to assert here.
         return;
     }
-    let result = tmux_activity(&session);
-    let _ = crate::tmux::kill_session(&session);
+    let result = tmux_activity(&server, &session);
+    let _ = crate::tmux::kill_session(&server, &session);
     assert!(
         result.is_ok(),
         "expected a real session_activity reading, got {result:?}"
@@ -240,7 +241,10 @@ fn tmux_activity_reads_a_real_sessions_activity_time() {
 
 #[test]
 fn tmux_activity_reports_a_fault_for_a_missing_session() {
-    let result = tmux_activity("robco-test-tmux-activity-missing-session");
+    let result = tmux_activity(
+        &crate::tmux::TmuxServer::for_tests(),
+        "robco-test-tmux-activity-missing-session",
+    );
 
     assert!(result.is_err());
 }

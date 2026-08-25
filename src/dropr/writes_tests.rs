@@ -6,13 +6,35 @@ use super::*;
 #[test]
 fn a_scribble_names_the_task_the_author_and_the_body() {
     assert_eq!(
-        scribble_arguments("wTRwfA2poXKH_qJX1IdvT", "handed the failure back"),
+        scribble_arguments("wTRwfA2poXKH_qJX1IdvT", None, "handed the failure back"),
         json!({
             "items": [{
                 "task_id": "wTRwfA2poXKH_qJX1IdvT",
                 "agent_id": "overseer",
                 "kind": "note",
                 "body": "handed the failure back",
+            }],
+        })
+    );
+}
+
+/// A `#N` display id needs a `repo_url` to scope the call, or dropr rejects
+/// it outright — see `scribble_create_timeout`'s doc comment (dropr:556).
+#[test]
+fn a_scribble_for_a_display_id_carries_the_repo_url() {
+    assert_eq!(
+        scribble_arguments(
+            "#556",
+            Some("https://github.com/nantokaworks/robco.git"),
+            "handed the failure back"
+        ),
+        json!({
+            "items": [{
+                "task_id": "#556",
+                "agent_id": "overseer",
+                "kind": "note",
+                "body": "handed the failure back",
+                "repo_url": "https://github.com/nantokaworks/robco.git",
             }],
         })
     );

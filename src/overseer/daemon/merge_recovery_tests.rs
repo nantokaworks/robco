@@ -36,7 +36,14 @@ fn entry() -> LedgerEntry {
 
 #[test]
 fn a_worker_with_no_registered_session_cannot_be_handed_anything() {
-    assert_eq!(live_session("agent", &Registry::default()), None);
+    assert_eq!(
+        live_session(
+            &crate::tmux::TmuxServer::for_tests(),
+            "agent",
+            &Registry::default()
+        ),
+        None
+    );
 }
 
 #[test]

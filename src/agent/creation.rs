@@ -13,7 +13,7 @@ use crate::{
     model::{AgentNode, RepoNode},
     overseer::{OVERSEER_AGENT_ID, logging, session::env::SessionEnv},
     spawn::worker_env,
-    tmux,
+    tmux, version,
 };
 
 /// The repository's own default branch — new work bases on it, never on a
@@ -22,6 +22,39 @@ use crate::{
 fn resolve_base_branch(repo: &RepoNode) -> Result<String> {
     git::default_branch(&repo.path)?
         .ok_or_else(|| Error::DefaultBranchUnresolved(repo.path.clone()))
+}
+
+/// Warns — but does not refuse the spawn — when this process is older than
+/// whatever `robco` is installed right now. The hooks `write_report_hooks`
+/// just wrote came from this process's compiled-in template; a newer
+/// installed binary may write a different set, and the gap between them is
+/// exactly what left a worker without its tmux guard hook in dropr:559.
+///
+/// A hard refusal was considered and rejected: staleness here can only be
+/// detected best-effort — [`version::installed`] returns `None` whenever
+/// `robco` is not on `PATH` at all, and a developer's own checkout is
+/// routinely behind whatever release `brew` last installed on their
+/// machine, which looks identical to the real failure mode this task
+/// exists to catch. Refusing a spawn on a heuristic that can misfire this
+/// easily would block a session that may be mid-flight, which is worse
+/// than a warning going unread — the operator-visible decision log
+/// (`logging::log_message`) and stderr both carry it so it does not depend
+/// on one channel being watched.
+fn warn_if_spawning_binary_outdated(tmux_session: &str) {
+    let Some(installed) = version::installed() else {
+        return;
+    };
+    if !version::is_outdated(version::RUNNING, &installed) {
+        return;
+    }
+    let message = format!(
+        "worker {tmux_session} was spawned by robco {}, but the installed robco is {installed}; \
+         its hook templates may be stale — restart the session that spawned it so it picks up \
+         the installed binary",
+        version::RUNNING,
+    );
+    eprintln!("▌ robco ▸ WARNING ·········· {message}");
+    let _ = logging::log_message(None, &message);
 }
 
 /// Decide a new worker's Overseer parentage.
@@ -124,6 +157,7 @@ pub(crate) fn create_agent_with_launch(
     // dropr-task `n` key) actually share — see the dropr:532 decision
     // scribble on this task for why a per-caller closure was the wrong place.
     write_report_hooks(&worktree_path, &program)?;
+    warn_if_spawning_binary_outdated(&tmux_session);
     let claude_session_id = claude_session_id(&program);
     let mut launch_args = session_id_args(claude_session_id.as_deref());
     launch_args.extend_from_slice(extra_args);
@@ -138,9 +172,13 @@ pub(crate) fn create_agent_with_launch(
         .iter()
         .map(|(key, value)| (key.as_str(), value.clone()))
         .collect::<Vec<_>>();
-    if let Err(error) =
-        tmux::new_worker_session(&tmux_session, &worktree_path, &command, &launch_env)
-    {
+    if let Err(error) = tmux::new_worker_session(
+        &config.tmux_server,
+        &tmux_session,
+        &worktree_path,
+        &command,
+        &launch_env,
+    ) {
         // These two kinds are the whole point of dropr:554: a launch that
         // failed *this* way used to report nothing beyond a bare "session is
         // dead" once the daemon noticed, minutes later, with the pane's own
@@ -165,6 +203,7 @@ pub(crate) fn create_agent_with_launch(
         branch,
         base_commit,
         program,
+        spawned_by_version: Some(version::RUNNING.to_string()),
         claude_session_id,
         profile: profile_name(config),
         tmux_session,

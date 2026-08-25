@@ -138,8 +138,8 @@ pub(crate) const LEDGER_PARKED: Remedy = Remedy {
 };
 
 /// The same bare-ledger shape as [`LEDGER_PARKED`], but for an entry that
-/// still has a pull request — a killed session or a rejected triage action,
-/// most often. `command::escalation::escalate_workers` and
+/// still has a pull request — a killed session, most often.
+/// `command::escalation::escalate_workers` and
 /// `triage::completion::apply_completion` grant these a merge-pass
 /// reconsideration look (`LedgerEntry::grant_merge_reconsideration`), so
 /// unlike `LEDGER_PARKED` the daemon *does* retry it on its own — this row

@@ -1,7 +1,7 @@
 use super::{
     ExceptionCase,
     actions::{execute_action, worker_session_alive},
-    result::{self, Outcome, ParseError, TriageAction},
+    result::{self, Outcome, TriageAction},
 };
 use crate::{
     Result,
@@ -28,11 +28,12 @@ struct Completion {
     outcome: Outcome,
     action: Option<TriageAction>,
     reason: String,
-    /// Carried from `result::ParseError`'s doc comment: a schema mismatch on
-    /// `action` that `result::parse` already recovered from, dropping the
-    /// action rather than the whole completion. `#[serde(default)]` so a
-    /// marker written before this field existed still replays. `None` on
-    /// every non-`Result` outcome — there is no action to have rejected.
+    /// Carried from `result::parse`'s doc comment: a schema mismatch or a
+    /// policy rejection on `action` that `result::parse` already recovered
+    /// from, dropping the action rather than the whole completion.
+    /// `#[serde(default)]` so a marker written before this field existed
+    /// still replays. `None` on every non-`Result` outcome — there is no
+    /// action to have rejected.
     #[serde(default)]
     action_warning: Option<String>,
 }
@@ -62,7 +63,7 @@ fn complete_session_result_with(
     case_dir: &Path,
     log_path: &Path,
     action: &dyn Fn(&TriageAction, &ExceptionCase) -> Result<()>,
-    scribble: &dyn Fn(&str, &str) -> crate::dropr::WriteResult,
+    scribble: &dyn Fn(&str, &str, &str) -> crate::dropr::WriteResult,
 ) -> Result<()> {
     let marker = case_dir.join("outcome.json");
     let (completion, replay) = match fs::read(&marker) {
@@ -92,7 +93,7 @@ pub(super) fn apply_session_result_with(
     ledger: &mut Ledger,
     case: &ExceptionCase,
     log_path: &Path,
-    scribble: &dyn Fn(&str, &str) -> crate::dropr::WriteResult,
+    scribble: &dyn Fn(&str, &str, &str) -> crate::dropr::WriteResult,
 ) -> Result<()> {
     apply_completion(
         normalize(result, case),
@@ -121,12 +122,7 @@ fn normalize(result: SessionResult, case: &ExceptionCase) -> Completion {
                     reason: value.reason,
                     action_warning: value.action_error,
                 },
-                Err(ParseError::Malformed(error)) => {
-                    escalation(format!("malformed result.json: {error}"))
-                }
-                Err(ParseError::RejectedAction(error)) => {
-                    escalation(format!("rejected triage action: {error}"))
-                }
+                Err(error) => escalation(format!("malformed result.json: {error}")),
             }
         }
         SessionResult::TimedOut => escalation("triage session timed out".into()),
@@ -157,7 +153,7 @@ fn apply_completion(
     case: &ExceptionCase,
     log_path: &Path,
     action: &dyn Fn(&TriageAction, &ExceptionCase) -> Result<()>,
-    scribble: &dyn Fn(&str, &str) -> crate::dropr::WriteResult,
+    scribble: &dyn Fn(&str, &str, &str) -> crate::dropr::WriteResult,
 ) -> Result<()> {
     if !replay
         && let Some(request) = &completion.action
@@ -219,27 +215,26 @@ fn apply_completion(
                 }
             }
             // The note is what an operator reading dropr sees; without it the
-            // escalation is there with no explanation attached. So its loss
-            // escalates in its own right rather than riding along as a `Hold`
-            // that the alert digest and the inbox both filter out.
+            // escalation is there with no explanation attached, so a lost
+            // note is folded into this same escalation's reason rather than
+            // logged as one of its own — a write robco failed at is robco's
+            // problem, not a second operator decision, and the worker
+            // failure this escalation is actually about must still notify
+            // exactly once (dropr:556).
             //
             // `case.task_id` is not necessarily a dropr task — for an entry
             // adopted from a live agent it is the agent id — so the write
             // targets `case.dropr_task_id` instead, and is skipped entirely
             // when the case has no known dropr task: there is nothing to
             // record it against, and nothing failed either (dropr:531).
+            let mut reason = completion.reason.clone();
             if !replay
                 && let Some(task_id) = &case.dropr_task_id
-                && let Err(error) = scribble(task_id, &completion.reason)
+                && let Err(error) = scribble(task_id, &case.repo, &completion.reason)
             {
-                log(
-                    log_path,
-                    DecisionKind::Escalate,
-                    case,
-                    &format!("escalation note not recorded in dropr: {error}"),
-                )?;
+                reason = format!("{reason} (escalation note not recorded in dropr: {error})");
             }
-            log(log_path, DecisionKind::Escalate, case, &completion.reason)
+            log(log_path, DecisionKind::Escalate, case, &reason)
         }
         Outcome::Resolved => log(log_path, DecisionKind::Hold, case, &completion.reason),
     }
@@ -259,8 +254,9 @@ fn write_marker(path: &Path, completion: &Completion) -> Result<()> {
     Ok(())
 }
 
-fn dropr_scribble(task_id: &str, reason: &str) -> crate::dropr::WriteResult {
-    crate::dropr::scribble_create_timeout(task_id, reason, COMMAND_TIMEOUT)
+fn dropr_scribble(task_id: &str, repo: &str, reason: &str) -> crate::dropr::WriteResult {
+    let repo_url = crate::overseer::repo_lookup::repo_url_for(repo);
+    crate::dropr::scribble_create_timeout(task_id, repo_url.as_deref(), reason, COMMAND_TIMEOUT)
 }
 
 fn log(path: &Path, kind: DecisionKind, case: &ExceptionCase, reason: &str) -> Result<()> {
@@ -280,7 +276,13 @@ pub(super) fn replay_test(
     log_path: &Path,
     action: &dyn Fn(&TriageAction, &ExceptionCase) -> Result<()>,
 ) -> Result<()> {
-    complete_session_result_with(result, ledger, case, case_dir, log_path, action, &|_, _| {
-        Ok(())
-    })
+    complete_session_result_with(
+        result,
+        ledger,
+        case,
+        case_dir,
+        log_path,
+        action,
+        &|_, _, _| Ok(()),
+    )
 }

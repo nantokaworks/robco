@@ -72,8 +72,9 @@ fn request_in(registry: &Registry, agent_id: &str, prompt: Option<&str>) -> Tool
     // arguments were fine, the worker's state is what says no.
     crate::pr::precheck(&repo.path, &agent.branch, &agent.tmux_session)
         .map_err(ToolError::Execution)?;
-    tmux::send_literal_text(&agent.tmux_session, &prompt).map_err(exec_err)?;
-    tmux::send_keys(&agent.tmux_session, &["Enter"]).map_err(exec_err)?;
+    let server = tmux::TmuxServer::default_server();
+    tmux::send_literal_text(&server, &agent.tmux_session, &prompt).map_err(exec_err)?;
+    tmux::send_keys(&server, &agent.tmux_session, &["Enter"]).map_err(exec_err)?;
     Ok(json!({
         "ok": true,
         "agent_id": agent.id,

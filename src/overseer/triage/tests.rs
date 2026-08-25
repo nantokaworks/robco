@@ -55,7 +55,7 @@ pub(super) fn ledger() -> Ledger {
     }
 }
 
-pub(super) fn no_scribble(_: &str, _: &str) -> crate::dropr::WriteResult {
+pub(super) fn no_scribble(_: &str, _: &str, _: &str) -> crate::dropr::WriteResult {
     Ok(())
 }
 
@@ -141,11 +141,12 @@ fn escalating_an_entry_without_a_pull_request_grants_no_reconsideration() {
 }
 
 /// The note is the only explanation an operator reading dropr gets for an
-/// escalation, so losing it has to reach the alert digest — and the digest
-/// reads `Escalate` while ignoring `Hold`. This failure used to be a `Hold`
-/// line phrased inside another decision's reason, which nothing surfaced.
+/// escalation, so losing it must still be visible in the decision log — but
+/// a write robco failed at is robco's own problem, not a second operator
+/// decision, so it folds into the one escalation instead of paging a
+/// second time (dropr:556).
 #[test]
-fn an_escalation_note_that_did_not_land_escalates_on_its_own() {
+fn an_escalation_note_that_did_not_land_folds_into_the_one_escalation() {
     let temp = tempfile::tempdir().unwrap();
     let log_path = temp.path().join("decisions.jsonl");
     let mut ledger = ledger();
@@ -154,7 +155,7 @@ fn an_escalation_note_that_did_not_land_escalates_on_its_own() {
         &mut ledger,
         &case(),
         &log_path,
-        &|_, _| Err(crate::dropr::WriteError::Refused("Method not found".into())),
+        &|_, _, _| Err(crate::dropr::WriteError::Refused("Method not found".into())),
     )
     .unwrap();
 
@@ -164,12 +165,15 @@ fn an_escalation_note_that_did_not_land_escalates_on_its_own() {
         .filter(|entry| entry.kind == DecisionKind::Escalate)
         .map(|entry| entry.reason)
         .collect::<Vec<_>>();
-    assert!(
-        escalations
-            .iter()
-            .any(|reason| reason
-                == "escalation note not recorded in dropr: refused: Method not found"),
-        "the lost note did not escalate: {escalations:?}"
+    assert_eq!(
+        escalations.len(),
+        1,
+        "a lost note must not page a second time: {escalations:?}"
+    );
+    assert_eq!(
+        escalations[0],
+        "triage session timed out (escalation note not recorded in dropr: \
+         refused: Method not found)"
     );
 }
 
@@ -193,7 +197,7 @@ fn a_case_with_no_dropr_task_does_not_call_dropr_and_logs_no_failure() {
         &mut ledger,
         &case,
         &log_path,
-        &|task_id, _| panic!("dropr must not be called with no known dropr task: {task_id}"),
+        &|task_id, _, _| panic!("dropr must not be called with no known dropr task: {task_id}"),
     )
     .unwrap();
 

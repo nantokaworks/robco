@@ -170,7 +170,9 @@ fn live_activity(agent: &AgentNode, status: Status) -> (Option<String>, usize) {
         .filter(|subagent| subagent.status == SubagentStatus::Running)
         .count();
     let tracked_command = agent.tracked_command.clone().or_else(|| {
-        let pane_pid = tmux::pane_pid(&agent.tmux_session).ok().flatten()?;
+        let pane_pid = tmux::pane_pid(&tmux::TmuxServer::default_server(), &agent.tmux_session)
+            .ok()
+            .flatten()?;
         status::proc::ProcSnapshot::capture()
             .ok()?
             .tracked_command(pane_pid)
@@ -180,14 +182,15 @@ fn live_activity(agent: &AgentNode, status: Status) -> (Option<String>, usize) {
 
 fn answer(registry: &Registry, agent_id: &str, text: &str) -> ToolResult<Value> {
     let (_, agent) = find_agent(registry, agent_id)?;
-    tmux::send_literal_text(&agent.tmux_session, text).map_err(exec_err)?;
-    tmux::send_keys(&agent.tmux_session, &["Enter"]).map_err(exec_err)?;
+    let server = tmux::TmuxServer::default_server();
+    tmux::send_literal_text(&server, &agent.tmux_session, text).map_err(exec_err)?;
+    tmux::send_keys(&server, &agent.tmux_session, &["Enter"]).map_err(exec_err)?;
     Ok(json!({ "ok": true }))
 }
 
 pub(super) fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
     let mut state = WatchStatusState::default();
-    let panes = tmux::capture_panes().ok();
+    let panes = tmux::capture_panes(&tmux::TmuxServer::default_server()).ok();
     status::classify_agent_status(
         &repo.path,
         &agent.worktree_path,
@@ -205,8 +208,9 @@ pub(super) fn live_status(repo: &RepoNode, agent: &AgentNode) -> StatusReport {
 }
 
 pub(super) fn prompt_tail(session: &str) -> String {
-    tmux::capture_plain(session)
-        .or_else(|_| tmux::capture_text(session))
+    let server = tmux::TmuxServer::default_server();
+    tmux::capture_plain(&server, session)
+        .or_else(|_| tmux::capture_text(&server, session))
         .map(|capture| tail_non_empty_lines(&capture, PROMPT_LINES))
         .unwrap_or_default()
 }

@@ -70,12 +70,13 @@ pub(super) fn run_in_tmux(
         .iter()
         .map(|(name, value)| (name.as_str(), value.clone()))
         .collect::<Vec<_>>();
-    if let Err(error) = tmux::new_session(session_name, case_dir, &command, &envs) {
+    let server = tmux::TmuxServer::default_server();
+    if let Err(error) = tmux::new_session(&server, session_name, case_dir, &command, &envs) {
         return SessionResult::LaunchFailed(error.to_string());
     }
-    control.set_pid(tmux::pane_pid(session_name).ok().flatten());
-    let result = poll_tmux(&result_path, session_name, timeout, control);
-    let _ = tmux::kill_session(session_name);
+    control.set_pid(tmux::pane_pid(&server, session_name).ok().flatten());
+    let result = poll_tmux(&server, &result_path, session_name, timeout, control);
+    let _ = tmux::kill_session(&server, session_name);
     control.set_pid(None);
     EphemeralSession {
         profile,
@@ -88,6 +89,7 @@ pub(super) fn run_in_tmux(
 }
 
 fn poll_tmux(
+    server: &tmux::TmuxServer,
     result_path: &Path,
     session_name: &str,
     timeout: Duration,
@@ -97,7 +99,7 @@ fn poll_tmux(
     let mut incomplete = None;
     loop {
         if control.is_cancelled() {
-            let _ = tmux::kill_session(session_name);
+            let _ = tmux::kill_session(server, session_name);
             return SessionResult::LaunchFailed("session cancelled".into());
         }
         if let Ok(raw) = fs::read(result_path) {
@@ -110,11 +112,11 @@ fn poll_tmux(
         // reporting the process exited: the launched command was the pane's
         // only process, so its exit (or an unreachable tmux server) already
         // ended the session.
-        if !tmux::has_session(session_name).unwrap_or(false) {
+        if !tmux::has_session(server, session_name).unwrap_or(false) {
             return incomplete.map_or(SessionResult::Missing, SessionResult::Result);
         }
         if Instant::now() >= deadline {
-            let _ = tmux::kill_session(session_name);
+            let _ = tmux::kill_session(server, session_name);
             return incomplete.map_or(SessionResult::TimedOut, SessionResult::Result);
         }
         thread::sleep(POLL_INTERVAL);

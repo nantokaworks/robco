@@ -169,6 +169,7 @@ fn spawn_in_repo_installs_report_hooks_even_when_not_autonomous() {
             backend: None,
             clear_command: None,
         }],
+        tmux_server: crate::tmux::TmuxServer::for_tests(),
         ..Config::default()
     };
     // A name distinctive to this test, not `resolve_repo`'s exact-match
@@ -196,7 +197,7 @@ fn spawn_in_repo_installs_report_hooks_even_when_not_autonomous() {
         &config,
     )
     .unwrap();
-    let _ = crate::tmux::kill_session(&outcome.tmux_session);
+    let _ = crate::tmux::kill_session(&config.tmux_server, &outcome.tmux_session);
 
     let settings: serde_json::Value = serde_json::from_slice(
         &std::fs::read(outcome.worktree_path.join(".claude/settings.local.json")).unwrap(),

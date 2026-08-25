@@ -60,12 +60,13 @@ pub(super) struct ApproveArgs {
 }
 
 pub(super) fn approve(registry: &Registry, args: &ApproveArgs) -> ToolResult<Value> {
+    let server = tmux::TmuxServer::default_server();
     approve_with(
         registry,
         args,
         |repo, agent| live_status(repo, agent).status,
-        |session| tmux::send_keys(session, &["y", "Enter"]),
-        tmux::has_session,
+        |session| tmux::send_keys(&server, session, &["y", "Enter"]),
+        |session| tmux::has_session(&server, session),
         || Ledger::load().map_err(exec_err),
         |request| runtime_request::enqueue(request).map_err(exec_err),
     )

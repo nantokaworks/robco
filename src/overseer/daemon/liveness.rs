@@ -1,11 +1,11 @@
 use super::super::COMMAND_TIMEOUT;
-use crate::overseer::exec::run_timeout;
-use std::{io, process::Command, thread, time::Duration};
+use crate::{overseer::exec::run_timeout, tmux::TmuxServer};
+use std::{io, thread, time::Duration};
 
 const TMUX_PROBE_ATTEMPTS: usize = 3;
 const TMUX_PROBE_RETRY_DELAY: Duration = Duration::from_millis(200);
 
-pub(super) fn probe_session_status(session: &str) -> io::Result<bool> {
+pub(super) fn probe_session_status(server: &TmuxServer, session: &str) -> io::Result<bool> {
     let mut attempt = 0;
     let mut probe_error = None;
     let dead = session_confirmed_dead(TMUX_PROBE_ATTEMPTS, || {
@@ -13,7 +13,7 @@ pub(super) fn probe_session_status(session: &str) -> io::Result<bool> {
             thread::sleep(TMUX_PROBE_RETRY_DELAY);
         }
         attempt += 1;
-        let mut command = Command::new("tmux");
+        let mut command = server.command();
         command.args(["has-session", "-t", &format!("={session}")]);
         match run_timeout(command, COMMAND_TIMEOUT) {
             Ok(output) => output.status.success(),

@@ -235,7 +235,7 @@ fn capture_status(
         .process_indicator
         .then(status::proc::ProcSnapshot::capture)
         .and_then(crate::Result::ok);
-    let panes = crate::tmux::capture_panes().ok();
+    let panes = crate::tmux::capture_panes(&config.tmux_server).ok();
     for repo in &mut registry.repos {
         let session = agent::repo_claude_session_name(&config.tmux_session_prefix, repo);
         status::refresh_repo_main(&session, repo, processes.as_ref(), panes.as_ref());
