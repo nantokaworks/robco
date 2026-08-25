@@ -161,8 +161,11 @@ fn route(running: bool, pr_open: bool) -> PrPrecheckRoute {
 }
 
 fn run_precheck(target: &PrPrecheckTarget) -> std::result::Result<PrPrecheckOutcome, String> {
-    let running =
-        crate::tmux::has_session(&target.tmux_session).map_err(|error| error.to_string())?;
+    let running = crate::tmux::has_session(
+        &crate::tmux::TmuxServer::default_server(),
+        &target.tmux_session,
+    )
+    .map_err(|error| error.to_string())?;
     let pr_open = crate::git::pr_exists(&target.repo_path, &target.branch)
         .map_err(|error| error.to_string())?;
     match route(running, pr_open) {

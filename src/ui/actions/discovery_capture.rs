@@ -105,6 +105,7 @@ pub(super) fn capture_discovery(
         .and_then(|dir| DiscordChannels::load(&dir.join("channels.json")).ok())
         .unwrap_or_default();
     let found_orphans = orphans::discover_orphans(
+        &config.tmux_server,
         &registry.repos,
         &config.tmux_session_prefix,
         &config.worktree_root,

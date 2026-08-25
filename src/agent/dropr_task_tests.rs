@@ -63,6 +63,7 @@ fn launches_from_a_task_and_titles_with_the_number_first() {
             model: None,
             backend: None,
         }],
+        tmux_server: crate::tmux::TmuxServer::for_tests(),
         ..Config::default()
     };
     let repo = repo_at(&repo_fixture, "myapp");
@@ -81,7 +82,7 @@ fn launches_from_a_task_and_titles_with_the_number_first() {
     };
 
     let agent = launch_with(request, claimed, never_released).unwrap();
-    let _ = crate::tmux::kill_session(&agent.tmux_session);
+    let _ = crate::tmux::kill_session(&config.tmux_server, &agent.tmux_session);
 
     assert_eq!(agent.title, "#538 Launch workers autonomously");
     assert!(agent.branch.contains("538"));

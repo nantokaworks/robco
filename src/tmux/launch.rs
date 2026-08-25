@@ -23,7 +23,7 @@ use std::{
 use crate::{Error, Result};
 
 use super::{
-    command_unit,
+    TmuxServer, command_unit,
     probe::{PaneProbe, probe_pane},
     session::{self, exact, kill_session},
 };
@@ -69,8 +69,9 @@ fn output_tap_path(session: &str) -> PathBuf {
 /// Stops the tap [`verified_new_session_command`] started and removes its file.
 /// Best-effort either way: a session already killed for having crashed has
 /// nothing left to stop piping from, and the file is still removed.
-fn stop_output_tap(session: &str, log_path: &Path) {
-    let _ = Command::new("tmux")
+fn stop_output_tap(server: &TmuxServer, session: &str, log_path: &Path) {
+    let _ = server
+        .command()
         .args(["pipe-pane", "-t", &exact(session)])
         .output();
     let _ = std::fs::remove_file(log_path);
@@ -118,6 +119,7 @@ fn shell_quote(value: &str) -> String {
 /// `set-window-option remain-on-exit on` sits between the two for the same
 /// reason: the pane must still exist for `pipe-pane` to target it at all.
 fn verified_new_session_command(
+    server: &TmuxServer,
     session: &str,
     cwd: &Path,
     program: &str,
@@ -126,7 +128,7 @@ fn verified_new_session_command(
 ) -> Command {
     let target = exact(session);
     let pipe_command = format!("cat >> {}", shell_quote(&log_path.display().to_string()));
-    let mut command = session::new_session_command(session, cwd, program, envs);
+    let mut command = session::new_session_command(server, session, cwd, program, envs);
     command.args([
         ";",
         "set-option",
@@ -156,6 +158,7 @@ fn verified_new_session_command(
 /// this is a separate entry point rather than a step inside `new_session`
 /// itself.
 pub fn new_worker_session(
+    server: &TmuxServer,
     session: &str,
     cwd: &Path,
     program: &str,
@@ -163,10 +166,11 @@ pub fn new_worker_session(
 ) -> Result<()> {
     let log_path = output_tap_path(session);
     let _ = std::fs::remove_file(&log_path);
-    let output = verified_new_session_command(session, cwd, program, envs, &log_path).output()?;
+    let output =
+        verified_new_session_command(server, session, cwd, program, envs, &log_path).output()?;
     command_unit(output, "tmux new-session")?;
-    session::apply_cosmetic_options(session);
-    verify_launch(session, cwd, &log_path)
+    session::apply_cosmetic_options(server, session);
+    verify_launch(server, session, cwd, &log_path)
 }
 
 /// Confirms a just-created session actually started running, before its
@@ -193,16 +197,16 @@ pub fn new_worker_session(
 /// `exit-empty` is deliberately left off: it is a server-wide option, not a
 /// per-session one, and turning it back on would just reopen the same race
 /// for the next launch this server ever sees.
-fn verify_launch(session: &str, cwd: &Path, log_path: &Path) -> Result<()> {
+fn verify_launch(server: &TmuxServer, session: &str, cwd: &Path, log_path: &Path) -> Result<()> {
     let expected = cwd.canonicalize().unwrap_or_else(|_| cwd.to_path_buf());
     let mut outcome = Ok(());
 
     for _ in 0..LAUNCH_CHECK_ATTEMPTS {
-        match probe_pane(session) {
+        match probe_pane(server, session) {
             PaneProbe::Dead => {
                 let detail = read_tapped_output(log_path)
                     .unwrap_or_else(|| "(no output captured)".to_string());
-                let _ = kill_session(session);
+                let _ = kill_session(server, session);
                 outcome = Err(Error::WorkerLaunchCrashed {
                     session: session.to_string(),
                     detail,
@@ -222,7 +226,7 @@ fn verify_launch(session: &str, cwd: &Path, log_path: &Path) -> Result<()> {
             PaneProbe::Alive(actual) => {
                 let actual_canon = actual.canonicalize().unwrap_or_else(|_| actual.clone());
                 if actual_canon != expected {
-                    let _ = kill_session(session);
+                    let _ = kill_session(server, session);
                     outcome = Err(Error::WorkerLaunchWrongCwd {
                         session: session.to_string(),
                         expected: cwd.to_path_buf(),
@@ -235,9 +239,10 @@ fn verify_launch(session: &str, cwd: &Path, log_path: &Path) -> Result<()> {
         std::thread::sleep(LAUNCH_CHECK_INTERVAL);
     }
 
-    stop_output_tap(session, log_path);
+    stop_output_tap(server, session, log_path);
     if outcome.is_ok() {
-        let _ = Command::new("tmux")
+        let _ = server
+            .command()
             .args([
                 "set-window-option",
                 "-t",

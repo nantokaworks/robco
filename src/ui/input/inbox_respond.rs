@@ -54,11 +54,12 @@ impl App {
     }
 
     pub(super) fn answer_inbox(&mut self, item: &InboxItem, answer: &str) {
+        let server = self.config.tmux_server.clone();
         self.answer_inbox_with(
             item,
             answer,
-            crate::tmux::send_literal_text,
-            crate::tmux::send_keys,
+            |session, text| crate::tmux::send_literal_text(&server, session, text),
+            |session, keys| crate::tmux::send_keys(&server, session, keys),
         );
     }
 
@@ -78,10 +79,11 @@ impl App {
     }
 
     pub(super) fn approve_inbox(&mut self, index: usize) {
+        let server = self.config.tmux_server.clone();
         self.approve_inbox_with(
             index,
-            crate::tmux::send_literal_text,
-            crate::tmux::send_keys,
+            |session, text| crate::tmux::send_literal_text(&server, session, text),
+            |session, keys| crate::tmux::send_keys(&server, session, keys),
         );
     }
 

@@ -109,23 +109,31 @@ fn clear_undelivered(entry: &mut LedgerEntry) {
     entry.merge_recovery.undelivered_charged = 0;
 }
 
+/// The daemon-wide context `consider` needs beyond the entry it is acting on:
+/// bundled into one struct purely to stay under clippy's argument-count limit,
+/// since these four always travel together from `merge_repo_pass::hold`.
+pub(super) struct RecoveryEnv<'a> {
+    pub(super) config: &'a crate::overseer::config::OverseerConfig,
+    pub(super) server: &'a tmux::TmuxServer,
+    pub(super) registry: &'a Registry,
+    pub(super) language: Option<&'a str>,
+}
+
 /// Acts on a recorded merge failure: hands it back, escalates it, or leaves it.
 pub(super) fn consider(
     entry: &mut LedgerEntry,
     reason: &str,
     head_sha: &str,
     base_sha: &str,
-    config: &crate::overseer::config::OverseerConfig,
-    registry: &Registry,
-    language: Option<&str>,
+    env: &RecoveryEnv,
 ) -> Result<()> {
     match plan(
         entry,
         reason,
         head_sha,
         base_sha,
-        config.merge_recovery_enabled,
-        config.max_merge_recoveries,
+        env.config.merge_recovery_enabled,
+        env.config.max_merge_recoveries,
     ) {
         RecoveryPlan::Idle => Ok(()),
         // Recorded, not acted on: the entry keeps its phase and its worker is
@@ -140,9 +148,10 @@ pub(super) fn consider(
         RecoveryPlan::Dispatch => dispatch(
             entry,
             reason,
-            registry,
-            language,
-            config.max_merge_recoveries,
+            env.server,
+            env.registry,
+            env.language,
+            env.config.max_merge_recoveries,
         ),
     }
 }
@@ -151,11 +160,12 @@ pub(super) fn consider(
 fn dispatch(
     entry: &mut LedgerEntry,
     reason: &str,
+    server: &tmux::TmuxServer,
     registry: &Registry,
     language: Option<&str>,
     max_recoveries: u32,
 ) -> Result<()> {
-    let Some(session) = live_session(&entry.agent_id, registry) else {
+    let Some(session) = live_session(server, &entry.agent_id, registry) else {
         // A worker whose session is gone cannot be handed anything. Naming the
         // session keeps the escalation actionable rather than reading as a
         // recovery that silently did nothing.
@@ -165,7 +175,7 @@ fn dispatch(
         let reason = skipped(&format!("missing_session:{}", entry.agent_id));
         return log(entry, DecisionKind::Escalate, &reason, "");
     };
-    if is_busy(&session) {
+    if is_busy(server, &session) {
         // Typing over a live turn corrupts whatever the worker is composing —
         // refusing the send is correct, the same call
         // `mcp::tools::report::guard_delivery` makes for a `robco report`
@@ -196,7 +206,7 @@ fn dispatch(
         reason,
         language,
     );
-    if let Err(error) = send(&session, &prompt) {
+    if let Err(error) = send(server, &session, &prompt) {
         // The budget was charged before the attempt ran, so a session that keeps
         // refusing input escalates through the cap instead of retrying forever.
         return log(
@@ -206,7 +216,7 @@ fn dispatch(
             "",
         );
     }
-    let hold_reason = match confirm_delivered(&session) {
+    let hold_reason = match confirm_delivered(server, &session) {
         DeliveryConfirmation::Confirmed => None,
         // A probe that could not read the pane at all proves nothing about
         // the session either way; a clean read that never showed the working
@@ -268,14 +278,14 @@ fn refund(entry: &mut LedgerEntry) {
 }
 
 /// The worker's tmux session, when it is both registered and still running.
-fn live_session(agent_id: &str, registry: &Registry) -> Option<String> {
+fn live_session(server: &tmux::TmuxServer, agent_id: &str, registry: &Registry) -> Option<String> {
     let session = registry
         .repos
         .iter()
         .flat_map(|repo| &repo.agents)
         .find(|agent| agent.id == agent_id)
         .map(|agent| agent.tmux_session.clone())?;
-    tmux::has_session(&session).ok()?.then_some(session)
+    tmux::has_session(server, &session).ok()?.then_some(session)
 }
 
 fn log(entry: &mut LedgerEntry, kind: DecisionKind, reason: &str, head: &str) -> Result<()> {

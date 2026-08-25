@@ -117,6 +117,15 @@ pub struct Config {
     pub project_icon: ProjectIcon,
     #[serde(default, alias = "chief")]
     pub overseer: OverseerConfig,
+    /// Which tmux server every worker launch this config drives talks to.
+    /// `TmuxServer::default_server()` in every real config file and every
+    /// default — a real spawn always reaches the operator's own tmux server.
+    /// Tests that need a launch off that server (dropr:555) build a `Config`
+    /// with this set to `TmuxServer::for_tests()` instead. Never part of the
+    /// saved file: nothing a human edits should be able to redirect a real
+    /// launch away from the default server.
+    #[serde(skip)]
+    pub tmux_server: crate::tmux::TmuxServer,
 }
 
 /// Presence probe for the top-level `merge_strategy`. [`Config`] deserializes
@@ -193,6 +202,7 @@ impl Default for Config {
             openclaw: OpenClawConfig::default(),
             project_icon: ProjectIcon::default(),
             overseer: OverseerConfig::default(),
+            tmux_server: crate::tmux::TmuxServer::default_server(),
         }
     }
 }

@@ -18,7 +18,9 @@ use std::path::Path;
 /// Refusals are plain strings because both callers show them to a reader
 /// verbatim: the TUI on its message line, the MCP tool as the error body.
 pub fn precheck(repo: &Path, branch: &str, tmux_session: &str) -> std::result::Result<(), String> {
-    let running = crate::tmux::has_session(tmux_session).map_err(|error| error.to_string())?;
+    let running =
+        crate::tmux::has_session(&crate::tmux::TmuxServer::default_server(), tmux_session)
+            .map_err(|error| error.to_string())?;
     require_running(running)?;
     let exists = crate::git::pr_exists(repo, branch).map_err(|error| error.to_string())?;
     require_no_open_pr(branch, exists)

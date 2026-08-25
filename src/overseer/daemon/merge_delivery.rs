@@ -27,7 +27,10 @@
 //! into a session that is already busy) rather than tuning these constants
 //! further.
 
-use crate::{Result, tmux};
+use crate::{
+    Result,
+    tmux::{self, TmuxServer},
+};
 
 /// Delay between the literal send and the submitting `Enter`.
 ///
@@ -46,10 +49,10 @@ const SUBMIT_SETTLE: std::time::Duration = std::time::Duration::from_millis(400)
 
 /// Types `prompt` into `session` and submits it, the way triage drives a live
 /// worker through `TriageAction::RobcoAnswer`.
-pub(super) fn send(session: &str, prompt: &str) -> Result<()> {
-    tmux::send_literal_text(session, &tmux::single_line(prompt))?;
+pub(super) fn send(server: &TmuxServer, session: &str, prompt: &str) -> Result<()> {
+    tmux::send_literal_text(server, session, &tmux::single_line(prompt))?;
     std::thread::sleep(SUBMIT_SETTLE);
-    tmux::send_keys(session, &["Enter"])
+    tmux::send_keys(server, session, &["Enter"])
 }
 
 /// How long to wait for a session to show it started a turn before treating a
@@ -80,11 +83,11 @@ pub(super) enum DeliveryConfirmation {
 
 /// Whether `session` shows it started a turn after a send, polling until
 /// `CONFIRM_TIMEOUT` elapses.
-pub(super) fn confirm_delivered(session: &str) -> DeliveryConfirmation {
+pub(super) fn confirm_delivered(server: &TmuxServer, session: &str) -> DeliveryConfirmation {
     let deadline = std::time::Instant::now() + CONFIRM_TIMEOUT;
     let mut last_capture_error: Option<String>;
     loop {
-        match tmux::capture_plain(session) {
+        match tmux::capture_plain(server, session) {
             Ok(capture) if looks_working(&capture) => return DeliveryConfirmation::Confirmed,
             Ok(_) => last_capture_error = None,
             Err(error) => last_capture_error = Some(error.to_string()),
@@ -125,8 +128,8 @@ fn looks_working(capture: &str) -> bool {
 /// session is working, and treating it as busy would let a session this
 /// probe can never read stall a retry forever instead of falling through to
 /// the existing undelivered/undeliverable bound.
-pub(super) fn is_busy(session: &str) -> bool {
-    tmux::capture_plain(session)
+pub(super) fn is_busy(server: &TmuxServer, session: &str) -> bool {
+    tmux::capture_plain(server, session)
         .map(|capture| looks_working(&capture))
         .unwrap_or(false)
 }

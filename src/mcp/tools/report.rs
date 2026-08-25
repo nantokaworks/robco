@@ -57,13 +57,14 @@ fn deliver_report_with_lookup_and_append(
     let registry = Registry::load().map_err(exec_err)?;
     let (repo, target) = find_agent(&registry, &identities.target_agent_id)?;
     let status = live_status(repo, target);
-    let session_exists = tmux::has_session(&target.tmux_session).map_err(exec_err)?;
+    let server = tmux::TmuxServer::default_server();
+    let session_exists = tmux::has_session(&server, &target.tmux_session).map_err(exec_err)?;
     guard_delivery(status, session_exists)?;
 
     let sender = sender_label(&registry, identities.sender_agent_id.as_deref());
     let line = format_report_line(&sender, &message);
-    tmux::send_literal_text(&target.tmux_session, &line).map_err(exec_err)?;
-    tmux::send_keys(&target.tmux_session, &["Enter"]).map_err(exec_err)?;
+    tmux::send_literal_text(&server, &target.tmux_session, &line).map_err(exec_err)?;
+    tmux::send_keys(&server, &target.tmux_session, &["Enter"]).map_err(exec_err)?;
     Ok(())
 }
 

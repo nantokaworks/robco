@@ -99,7 +99,7 @@ pub fn refresh_repo_main(
         }
     }
 
-    let Ok(capture) = tmux::capture_text(session) else {
+    let Ok(capture) = tmux::capture_text(&tmux::TmuxServer::default_server(), session) else {
         repo.main_pane_pid = None;
         return;
     };

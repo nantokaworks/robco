@@ -1,6 +1,8 @@
-use std::{collections::HashMap, process::Command};
+use std::collections::HashMap;
 
 use crate::Result;
+
+use super::TmuxServer;
 
 /// Active-pane pid and current foreground command for every live tmux
 /// session, keyed by session name.
@@ -47,8 +49,9 @@ impl PaneSnapshot {
 /// callers treat the same way as a per-session probe `Err(_)`: keep the
 /// previous status and retry next tick, rather than reading every session as
 /// gone.
-pub fn capture_panes() -> Result<PaneSnapshot> {
-    let output = Command::new("tmux")
+pub fn capture_panes(server: &TmuxServer) -> Result<PaneSnapshot> {
+    let output = server
+        .command()
         .args([
             "list-panes",
             "-a",

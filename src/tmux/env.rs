@@ -1,5 +1,3 @@
-use std::process::Command;
-
 pub(super) const COLOR_ENV_KEYS: [&str; 5] = [
     "NO_COLOR",
     "FORCE_COLOR",
@@ -28,8 +26,9 @@ pub(super) fn color_env_mirror(
     (mirror, unset)
 }
 
-pub fn session_env(session: &str, key: &str) -> Option<String> {
-    let output = Command::new("tmux")
+pub fn session_env(server: &super::TmuxServer, session: &str, key: &str) -> Option<String> {
+    let output = server
+        .command()
         .args(["show-environment", "-t", &format!("={session}:"), key])
         .output()
         .ok()?;
@@ -57,7 +56,7 @@ mod tests {
     use std::{path::Path, process::Command};
 
     use super::{COLOR_ENV_KEYS, color_env_mirror, parse_session_env};
-    use crate::tmux::session::new_session_command_with_lookup;
+    use crate::tmux::{TmuxServer, session::new_session_command_with_lookup};
 
     fn args(command: &Command) -> Vec<String> {
         command
@@ -116,6 +115,7 @@ mod tests {
     #[test]
     fn new_session_command_mirrors_present_and_unsets_absent_color_env() {
         let command = new_session_command_with_lookup(
+            &TmuxServer::default_server(),
             "robco_repo_agent",
             Path::new("/repo"),
             "setup && exec codex --flag",
@@ -170,6 +170,7 @@ mod tests {
     #[test]
     fn new_session_command_leaves_program_unwrapped_when_all_color_env_is_present() {
         let command = new_session_command_with_lookup(
+            &TmuxServer::default_server(),
             "robco_repo_agent",
             Path::new("/repo"),
             "codex --flag",
@@ -187,6 +188,7 @@ mod tests {
     #[test]
     fn caller_color_env_overrides_mirror_and_is_not_unset() {
         let command = new_session_command_with_lookup(
+            &TmuxServer::default_server(),
             "robco_repo_agent",
             Path::new("/repo"),
             "codex",

@@ -64,17 +64,21 @@ pub(super) fn reconcile(
         if !is_managed_worktree(&worktree.path, &config.worktree_root) {
             continue;
         }
-        let session = crate::tmux::find_session_by_cwd(&config.tmux_session_prefix, &worktree.path);
+        let session = crate::tmux::find_session_by_cwd(
+            &config.tmux_server,
+            &config.tmux_session_prefix,
+            &worktree.path,
+        );
         if session.is_none() && worktree_age(&worktree.path).is_some_and(should_skip_adoption) {
             continue;
         }
         known.insert(path_key(&worktree.path));
         let recovered_id = session
             .as_deref()
-            .and_then(|name| crate::tmux::session_env(name, ENV_AGENT_ID));
-        let recovered_parent = session
-            .as_deref()
-            .and_then(|name| crate::tmux::session_env(name, ENV_PARENT_AGENT_ID));
+            .and_then(|name| crate::tmux::session_env(&config.tmux_server, name, ENV_AGENT_ID));
+        let recovered_parent = session.as_deref().and_then(|name| {
+            crate::tmux::session_env(&config.tmux_server, name, ENV_PARENT_AGENT_ID)
+        });
         let recovered_identity = recovered_id.map(|id| agent::RecoveredIdentity {
             id,
             parent_agent_id: recovered_parent,
@@ -161,7 +165,11 @@ fn probe(repo: &RepoNode, parent: usize, worktree: Worktree, config: &Config) ->
         .map(DateTime::<Local>::from);
     ChildWorktree {
         clean: git::tracked_tree_is_clean(&worktree.path).ok(),
-        tmux_session: crate::tmux::find_session_by_cwd(&config.tmux_session_prefix, &worktree.path),
+        tmux_session: crate::tmux::find_session_by_cwd(
+            &config.tmux_server,
+            &config.tmux_session_prefix,
+            &worktree.path,
+        ),
         path: worktree.path,
         branch: worktree.branch,
         head: worktree.head,

@@ -1,4 +1,4 @@
-use std::{io, process::Command};
+use std::io;
 
 use crossterm::{
     cursor::{MoveToColumn, MoveUp},
@@ -9,18 +9,19 @@ use crossterm::{
 use crate::{Error, Result};
 
 use super::{
-    command_unit,
-    keys::{ReturnKeyBinding, set_session_option, wait_for_return_key},
+    TmuxServer, command_unit,
+    keys::{ReturnKeyBinding, wait_for_return_key},
     resize::resize_session,
     session::{exact, has_session},
+    session_option::set_session_option,
 };
 
-pub fn attach(session: &str) -> Result<()> {
+pub fn attach(server: &TmuxServer, session: &str) -> Result<()> {
     let in_tmux = std::env::var_os("TMUX").is_some();
     if !in_tmux {
         let (width, height) = terminal::size()?;
         if width != 0 && height != 0 {
-            resize_session(session, width, height)?;
+            resize_session(server, session, width, height)?;
         }
     }
     // Hand window sizing back to the attaching client. The preview path pins
@@ -31,10 +32,10 @@ pub fn attach(session: &str) -> Result<()> {
     // program's bottom row (e.g. Claude's mode indicator). Letting the client
     // drive the size (as ClaudeSquad does) makes tmux lay out `pane = client - 1`
     // status row on attach, so nothing overlaps and no filler rows appear.
-    let _ = set_session_option(session, "window-size", "latest");
+    let _ = set_session_option(server, session, "window-size", "latest");
 
-    let binding = ReturnKeyBinding::install(in_tmux, session)?;
-    let mut command = Command::new("tmux");
+    let binding = ReturnKeyBinding::install(server, in_tmux, session)?;
+    let mut command = server.command();
     if in_tmux {
         command.args(["switch-client", "-t", &exact(session)]);
     } else {
@@ -56,7 +57,7 @@ pub fn attach(session: &str) -> Result<()> {
     }
     let attach_result = if status.success() {
         if in_tmux {
-            wait_for_return_key(session)
+            wait_for_return_key(server, session)
         } else {
             Ok(())
         }
@@ -67,23 +68,25 @@ pub fn attach(session: &str) -> Result<()> {
         })
     };
     let restore_result = binding.restore();
-    if !has_session(session)? {
+    if !has_session(server, session)? {
         return restore_result.map(|_| ());
     }
     attach_result.and(restore_result)
 }
 
-pub fn send_keys(session: &str, keys: &[&str]) -> Result<()> {
-    let output = Command::new("tmux")
+pub fn send_keys(server: &TmuxServer, session: &str, keys: &[&str]) -> Result<()> {
+    let output = server
+        .command()
         .args(["send-keys", "-t", &exact(session)])
         .args(keys)
         .output()?;
     command_unit(output, "tmux send-keys")
 }
 
-pub fn send_literal_text(session: &str, text: &str) -> Result<()> {
+pub fn send_literal_text(server: &TmuxServer, session: &str, text: &str) -> Result<()> {
     let target = format!("={session}:");
-    let output = Command::new("tmux")
+    let output = server
+        .command()
         .args(["send-keys", "-t", &target, "-l", "--", text])
         .output()?;
     command_unit(output, "tmux send literal text")

@@ -55,10 +55,15 @@ pub fn discord_channel_session_name(prefix: &str, channel_id: &str) -> String {
 
 pub fn ensure_control_session(config: &Config, cwd: &Path) -> Result<String> {
     let session = control_session_name(&config.tmux_session_prefix);
-    if !tmux::has_session(&session)?
-        && let Err(create_err) =
-            tmux::new_session(&session, cwd, &config.default_program_command(), &[])
-        && !matches!(tmux::has_session(&session), Ok(true))
+    if !tmux::has_session(&config.tmux_server, &session)?
+        && let Err(create_err) = tmux::new_session(
+            &config.tmux_server,
+            &session,
+            cwd,
+            &config.default_program_command(),
+            &[],
+        )
+        && !matches!(tmux::has_session(&config.tmux_server, &session), Ok(true))
     {
         return Err(create_err);
     }

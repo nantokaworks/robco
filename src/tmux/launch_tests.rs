@@ -22,11 +22,18 @@ fn new_worker_session_reports_the_crashed_programs_own_output() {
     if skip_without_tmux() {
         return;
     }
+    let server = TmuxServer::for_tests();
     let session = test_session_name("crash");
     let cwd = std::env::temp_dir();
 
-    let result = new_worker_session(&session, &cwd, "sh -c 'echo boom-detail; exit 7'", &[]);
-    let _ = kill_session(&session);
+    let result = new_worker_session(
+        &server,
+        &session,
+        &cwd,
+        "sh -c 'echo boom-detail; exit 7'",
+        &[],
+    );
+    let _ = kill_session(&server, &session);
 
     match result {
         Err(Error::WorkerLaunchCrashed { detail, .. }) => {
@@ -41,11 +48,12 @@ fn new_worker_session_accepts_a_pane_that_stays_alive_in_the_right_directory() {
     if skip_without_tmux() {
         return;
     }
+    let server = TmuxServer::for_tests();
     let session = test_session_name("ok");
     let cwd = std::env::temp_dir();
 
-    let result = new_worker_session(&session, &cwd, "sleep 5", &[]);
-    let _ = kill_session(&session);
+    let result = new_worker_session(&server, &session, &cwd, "sleep 5", &[]);
+    let _ = kill_session(&server, &session);
 
     assert!(result.is_ok(), "expected launch to verify, got {result:?}");
 }
@@ -55,9 +63,10 @@ fn verify_launch_refuses_a_pane_started_in_the_wrong_directory() {
     if skip_without_tmux() {
         return;
     }
+    let server = TmuxServer::for_tests();
     let session = test_session_name("wrong-cwd");
     let actual_cwd = std::env::temp_dir();
-    let output = session::new_session_command(&session, &actual_cwd, "sleep 5", &[])
+    let output = session::new_session_command(&server, &session, &actual_cwd, "sleep 5", &[])
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -67,8 +76,8 @@ fn verify_launch_refuses_a_pane_started_in_the_wrong_directory() {
     // other than the `-c` argument it was launched with.
     let expected_cwd = actual_cwd.join("not-where-the-pane-landed");
     let log_path = output_tap_path(&session);
-    let result = verify_launch(&session, &expected_cwd, &log_path);
-    let _ = kill_session(&session);
+    let result = verify_launch(&server, &session, &expected_cwd, &log_path);
+    let _ = kill_session(&server, &session);
 
     match result {
         Err(Error::WorkerLaunchWrongCwd { expected, .. }) => {

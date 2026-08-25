@@ -85,8 +85,9 @@ impl MergeFlow<'_> {
             on_failure: OnFailure::Abort,
         }
         .run(|cleanup_step| step(step_label(cleanup_step)))?;
-        let _ = crate::tmux::kill_session(self.tmux_session);
-        let _ = crate::tmux::kill_session(self.shell_session);
+        let server = crate::tmux::TmuxServer::default_server();
+        let _ = crate::tmux::kill_session(&server, self.tmux_session);
+        let _ = crate::tmux::kill_session(&server, self.shell_session);
         self.announce_merge();
         Ok(())
     }

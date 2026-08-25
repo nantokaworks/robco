@@ -8,11 +8,11 @@ use crate::{
         monitor::{ObservationError, Observations, SessionObservation},
     },
     registry::Registry,
+    tmux::TmuxServer,
 };
 use branch_activity::gather_branch_activity;
 use chrono::{DateTime, Utc};
 use external_state::{gather_pr_states, gather_task_states};
-use std::process::Command;
 
 #[path = "branch_activity.rs"]
 mod branch_activity;
@@ -22,6 +22,7 @@ pub(super) mod external_state;
 mod liveness;
 
 pub(super) fn gather(
+    server: &TmuxServer,
     ledger: &mut Ledger,
     inbox: &mut InboxReader,
     now: DateTime<Utc>,
@@ -88,12 +89,12 @@ pub(super) fn gather(
             // session is still standing would let its entry be forgotten while
             // the worktree it names is still there.
             observations.registered_agents.push(entry.agent_id.clone());
-            match liveness::probe_session_status(&agent.tmux_session) {
+            match liveness::probe_session_status(server, &agent.tmux_session) {
                 Ok(dead) => {
                     let last_activity_at = if dead {
                         None
                     } else {
-                        match tmux_activity(&agent.tmux_session) {
+                        match tmux_activity(server, &agent.tmux_session) {
                             Ok(at) => Some(at),
                             // A probe fault is not the same signal as "no
                             // activity" — silently treating it as one is
@@ -176,8 +177,8 @@ fn detached_agents(ledger: &Ledger, registry: &Registry) -> Vec<String> {
 /// mode documented on `tmux::session::exact`, which this daemon-side probe
 /// predates and did not go through). The trailing `:` selects the session's
 /// default window/pane, which resolves `#{session_activity}` correctly.
-fn tmux_activity(session: &str) -> std::result::Result<DateTime<Utc>, String> {
-    let mut command = Command::new("tmux");
+fn tmux_activity(server: &TmuxServer, session: &str) -> std::result::Result<DateTime<Utc>, String> {
+    let mut command = server.command();
     command.args([
         "display-message",
         "-p",

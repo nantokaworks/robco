@@ -6,7 +6,9 @@ mod launch;
 mod panes;
 mod probe;
 mod resize;
+mod server;
 mod session;
+mod session_option;
 
 pub use attach::{attach, send_keys, send_literal_text, single_line};
 pub use capture::{capture_plain, capture_scrollback, capture_text, history_size, pane_pid};
@@ -14,6 +16,7 @@ pub use env::session_env;
 pub use launch::new_worker_session;
 pub use panes::{PaneSnapshot, capture_panes};
 pub use resize::resize_session;
+pub use server::TmuxServer;
 #[cfg(test)]
 pub(crate) use session::is_installed;
 pub use session::{
