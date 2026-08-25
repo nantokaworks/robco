@@ -106,13 +106,17 @@ pub(crate) fn append_to(path: &Path, entry: &DecisionEntry) -> Result<()> {
     Ok(())
 }
 
-/// Fails loudly rather than writing a decision line under the operator's
-/// real home directory during a test run.
+/// Fails loudly rather than reading or writing a decision-log line under the
+/// operator's real home directory during a test run.
 ///
 /// `config::robco_dir`/`home_dir` already redirect every caller that resolves
 /// its path through `decision_log_path` (dropr:2zv1HmithVvCszUFmAaEY) — this
 /// is the second line of defense named in dropr:goePffPb7zAkCztR3HCV8 for a
-/// future test that reaches this function with a path built some other way.
+/// future test that reaches one of these path-taking functions with a path
+/// built some other way. Every function in this module and `logging::compact`
+/// that accepts an explicit `&Path` calls this first, not just `append_to`,
+/// so the same defense covers reads (`tail_from`, `corrupt_line_count_at`,
+/// `DigestCursor::at_end_of`) and the compaction rewrite (`compact_at`).
 /// Deliberately checks `dirs::home_dir` — the real, unredirected home — not
 /// `config::home_dir`, whose whole point under `cfg(test)` is to disagree
 /// with it.
@@ -121,7 +125,7 @@ fn refuse_the_operators_real_home(path: &Path) {
     if let Some(real_home) = dirs::home_dir() {
         assert!(
             !path.starts_with(&real_home),
-            "logging::append_to refused to write {path:?} under the operator's real home \
+            "logging refused to touch {path:?} under the operator's real home \
              {real_home:?} during a test run"
         );
     }
@@ -156,6 +160,8 @@ pub fn corrupt_line_count() -> Result<usize> {
 }
 
 pub(crate) fn corrupt_line_count_at(path: &Path) -> Result<usize> {
+    #[cfg(test)]
+    refuse_the_operators_real_home(path);
     let file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
@@ -184,6 +190,8 @@ impl DigestCursor {
     }
 
     fn at_end_of(path: PathBuf) -> Result<Self> {
+        #[cfg(test)]
+        refuse_the_operators_real_home(&path);
         let offset = match fs::metadata(&path) {
             Ok(metadata) => metadata.len(),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
@@ -253,6 +261,8 @@ pub fn coalesce_digest(entries: &[DecisionEntry]) -> Option<String> {
 }
 
 pub(crate) fn tail_from(path: &Path, limit: usize) -> Result<Vec<DecisionEntry>> {
+    #[cfg(test)]
+    refuse_the_operators_real_home(path);
     let mut file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

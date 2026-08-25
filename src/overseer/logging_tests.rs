@@ -156,10 +156,10 @@ fn append_never_writes_the_operators_real_decision_log() {
 /// loudly instead of quietly writing there. The assertion panics before any
 /// file I/O runs, so this test never touches the real path it names.
 #[test]
-#[should_panic(expected = "refused to write")]
+#[should_panic(expected = "refused to touch")]
 fn append_to_panics_on_a_path_under_the_operators_real_home() {
     let Some(real_home) = dirs::home_dir() else {
-        panic!("refused to write: no real home dir resolved to test the guard against");
+        panic!("refused to touch: no real home dir resolved to test the guard against");
     };
     let path = real_home
         .join(".robco-logging-guard-test")
@@ -169,4 +169,46 @@ fn append_to_panics_on_a_path_under_the_operators_real_home() {
         &DecisionEntry::new(DecisionKind::Skip, "must never land"),
     )
     .unwrap();
+}
+
+/// The same second line of defense as `append_to`, extended to every other
+/// function that reads a decision log by an explicit `&Path`: a future test
+/// that reaches `corrupt_line_count_at` with a path under the operator's real
+/// home must fail loudly instead of silently scanning it.
+#[test]
+#[should_panic(expected = "refused to touch")]
+fn corrupt_line_count_at_panics_on_a_path_under_the_operators_real_home() {
+    let Some(real_home) = dirs::home_dir() else {
+        panic!("refused to touch: no real home dir resolved to test the guard against");
+    };
+    let path = real_home
+        .join(".robco-logging-guard-test")
+        .join("decisions.jsonl");
+    corrupt_line_count_at(&path).unwrap();
+}
+
+/// Same guard, for the digest cursor's construction path.
+#[test]
+#[should_panic(expected = "refused to touch")]
+fn digest_cursor_at_end_of_panics_on_a_path_under_the_operators_real_home() {
+    let Some(real_home) = dirs::home_dir() else {
+        panic!("refused to touch: no real home dir resolved to test the guard against");
+    };
+    let path = real_home
+        .join(".robco-logging-guard-test")
+        .join("decisions.jsonl");
+    DigestCursor::at_end_of(path).unwrap();
+}
+
+/// Same guard, for the tail-reading path.
+#[test]
+#[should_panic(expected = "refused to touch")]
+fn tail_from_panics_on_a_path_under_the_operators_real_home() {
+    let Some(real_home) = dirs::home_dir() else {
+        panic!("refused to touch: no real home dir resolved to test the guard against");
+    };
+    let path = real_home
+        .join(".robco-logging-guard-test")
+        .join("decisions.jsonl");
+    tail_from(&path, 10).unwrap();
 }

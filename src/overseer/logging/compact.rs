@@ -33,6 +33,8 @@ pub fn compact(dry_run: bool) -> Result<CompactionReport> {
 const MAX_COMPACT_ATTEMPTS: usize = 200;
 
 pub(crate) fn compact_at(path: &Path, dry_run: bool) -> Result<CompactionReport> {
+    #[cfg(test)]
+    super::refuse_the_operators_real_home(path);
     let sidecar_path = quarantine_sidecar_path(path);
     if dry_run {
         let content = read_or_empty(path)?;
