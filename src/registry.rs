@@ -214,6 +214,21 @@ impl Registry {
                     .unwrap_or(path)
             })
     }
+
+    /// Whether `path` (the same absolute-path string a ledger entry or a
+    /// per-repo state file keys on) still names a repository the registry
+    /// tracks.
+    ///
+    /// A rename updates the registry row's own `path` in place
+    /// (`rename::apply_rename`) without touching anything that keyed on the
+    /// old one, and a removal drops the row outright — both leave `false`
+    /// here for the stale key, which is what a pass should read as "nothing
+    /// live to probe" (dropr task #557).
+    pub fn contains_repo_path(&self, path: &str) -> bool {
+        self.repos
+            .iter()
+            .any(|repo| repo.path.to_string_lossy() == path)
+    }
 }
 
 #[cfg(test)]
