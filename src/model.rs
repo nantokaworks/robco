@@ -106,6 +106,13 @@ pub struct AgentNode {
     pub branch: String,
     pub base_commit: String,
     pub program: String,
+    /// The `robco` version that performed this spawn — the version whose
+    /// compiled-in template `agent::hooks::write_report_hooks` wrote from.
+    /// `None` for an agent adopted from a worktree robco did not create
+    /// itself, which was never spawned by any robco binary at all
+    /// (dropr:559).
+    #[serde(default)]
+    pub spawned_by_version: Option<String>,
     #[serde(default)]
     pub claude_session_id: Option<String>,
     #[serde(default)]
@@ -448,6 +455,7 @@ mod tests {
                 branch: id.into(),
                 base_commit: String::new(),
                 program: String::new(),
+                spawned_by_version: None,
                 claude_session_id: None,
                 profile: None,
                 tmux_session: id.into(),
@@ -495,6 +503,7 @@ mod tests {
                 branch: id.into(),
                 base_commit: String::new(),
                 program: String::new(),
+                spawned_by_version: None,
                 claude_session_id: None,
                 profile: None,
                 tmux_session: id.into(),
@@ -583,6 +592,7 @@ mod tests {
             branch: "task".into(),
             base_commit: String::new(),
             program: "claude".into(),
+            spawned_by_version: None,
             claude_session_id: None,
             profile: None,
             tmux_session: "robco_task".into(),

@@ -14,8 +14,14 @@ use std::process::Command;
 pub(super) fn execute_action(action: &TriageAction, case: &ExceptionCase) -> Result<()> {
     match action {
         TriageAction::DroprScribbleCreate { task_id, content } => dropr_write(case, || {
-            crate::dropr::scribble_create_timeout(task_id, content, COMMAND_TIMEOUT)
-                .map_err(|error| write_failed("dropr scribble_create", &error))
+            let repo_url = crate::overseer::repo_lookup::repo_url_for(&case.repo);
+            crate::dropr::scribble_create_timeout(
+                task_id,
+                repo_url.as_deref(),
+                content,
+                COMMAND_TIMEOUT,
+            )
+            .map_err(|error| write_failed("dropr scribble_create", &error))
         }),
         TriageAction::DroprTaskStatusUpdate { task_id, status } => dropr_write(case, || {
             crate::dropr::task_status_update_timeout(task_id, status, COMMAND_TIMEOUT)

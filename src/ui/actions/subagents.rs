@@ -115,6 +115,7 @@ mod tests {
                 branch: "task".into(),
                 base_commit: String::new(),
                 program: "claude".into(),
+                spawned_by_version: None,
                 claude_session_id: Some("session-agent".into()),
                 profile: None,
                 tmux_session: "robco_repo_task".into(),

@@ -19,6 +19,7 @@ pub mod monitor;
 pub mod other_prs;
 pub(crate) mod paths;
 pub(crate) mod remedy;
+pub(crate) mod repo_lookup;
 pub(crate) mod repo_watch;
 pub mod review;
 pub mod row_summaries;

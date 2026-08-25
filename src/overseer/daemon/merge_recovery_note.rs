@@ -26,7 +26,13 @@ pub(super) fn note_on_task(entry: &mut LedgerEntry, reason: &str) {
         entry.agent_id,
         entry.merge_recovery.charged
     );
-    if let Err(error) = crate::dropr::scribble_create_timeout(&task_id, &content, COMMAND_TIMEOUT) {
+    let repo_url = crate::overseer::repo_lookup::repo_url_for(&entry.repo);
+    if let Err(error) = crate::dropr::scribble_create_timeout(
+        &task_id,
+        repo_url.as_deref(),
+        &content,
+        COMMAND_TIMEOUT,
+    ) {
         // A note that did not land leaves the handback recorded nowhere an
         // operator looks, so it escalates on its own instead of riding inside
         // another decision's reason where the alert digest never reads it.

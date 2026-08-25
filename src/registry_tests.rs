@@ -38,6 +38,7 @@ fn dummy_agent() -> AgentNode {
         branch: "b".to_string(),
         base_commit: String::new(),
         program: "claude".to_string(),
+        spawned_by_version: None,
         claude_session_id: None,
         profile: None,
         tmux_session: "robco_r_t".to_string(),

@@ -58,14 +58,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "nothing to do yet unless it trips" => "tripしない限り対応不要です",
 
-        // table::runtime::PREFIX — "rejected triage action:"
-        "a triage action was rejected before it could run" => {
-            "triage actionが実行前に拒否されました"
-        }
-        "check the triage action against the task's current state" => {
-            "triage actionをタスクの現在の状態と照らして確認してください"
-        }
-
         // table::runtime::PREFIX — "triage action failed:"
         "a triage action ran and failed" => "triage actionが実行され、失敗しました",
         "check the triage backend logs, then re-run triage on the task" => {
