@@ -96,7 +96,17 @@ pub(super) fn watch_pass(config: &Config, now: DateTime<Utc>) -> Result<()> {
         }
         state.repos.insert(key, now);
     }
+    prune_unregistered(&mut state, &registry);
     state.save()
+}
+
+/// Drops every key the registry no longer lists — a rename only updates the
+/// registry row (`apply_rename`), so nothing else ever revisits this map to
+/// clear the old key on its own (dropr task #557).
+fn prune_unregistered(state: &mut RepoWatchState, registry: &Registry) {
+    state
+        .repos
+        .retain(|path, _| registry.contains_repo_path(path));
 }
 
 /// Whether a repository's watch is due — absent entirely counts as due, the
