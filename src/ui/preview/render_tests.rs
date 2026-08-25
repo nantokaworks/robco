@@ -20,6 +20,7 @@ fn agent(id: &str) -> AgentNode {
         branch: format!("feature/{id}"),
         base_commit: String::new(),
         program: "codex".to_string(),
+        spawned_by_version: None,
         claude_session_id: None,
         profile: None,
         tmux_session: format!("robco_{id}"),

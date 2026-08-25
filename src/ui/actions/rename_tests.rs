@@ -42,6 +42,7 @@ fn test_agent(worktree_path: std::path::PathBuf) -> AgentNode {
         branch: "feature".into(),
         base_commit: String::new(),
         program: "codex".into(),
+        spawned_by_version: None,
         claude_session_id: None,
         profile: None,
         tmux_session: "robco_test_missing".into(),
