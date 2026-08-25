@@ -55,47 +55,41 @@ pub struct TriageResult {
     pub action: Option<TriageAction>,
     pub reason: String,
     /// Set when `action` failed to deserialize against a known action
-    /// shape — a model formatting slip, such as a missing field — rather
-    /// than being rejected on its own merits. The `outcome` and `reason`
-    /// above still parsed cleanly, so the caller carries on with those and
-    /// only drops the one action it could not read; see `ParseError`'s doc
-    /// comment for why this is not a hard failure.
+    /// shape, or was rejected on policy grounds — a model formatting slip,
+    /// or an action triage's own guards do not allow. The `outcome` and
+    /// `reason` above still parsed cleanly, so the caller carries on with
+    /// those and only drops the one action it could not use; see [`parse`]'s
+    /// doc comment for why neither case is a hard failure.
     pub action_error: Option<String>,
 }
 
-/// A `result.json` the daemon cannot fully trust.
+/// A `result.json` the daemon cannot fully trust: the top-level JSON is
+/// broken, or the reason is blank. There is no usable outcome or reason at
+/// all, so the caller has nothing to act on and escalates.
 ///
-/// `Malformed` means there is no usable outcome or reason at all — the top
-/// level JSON itself is broken, or the reason is blank — so the caller has
-/// nothing to act on and escalates. `RejectedAction` is narrower: it is a
-/// *policy* rejection of an action the model was not allowed to take (only
-/// `task_status_update`'s own-task and worker-alive guards raise it), which
-/// stays a hard failure because a model attempting a disallowed action is
-/// worth an operator's attention. A *schema* mismatch on the action — a
-/// missing or misnamed field, the common shape of a formatting slip — is
-/// deliberately not a variant here: [`parse`] recovers from it in place and
-/// reports it through [`TriageResult::action_error`] instead, so a session
-/// whose outcome and reason parsed fine is not thrown away over an action it
-/// tried and failed to spell correctly. See dropr:401.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ParseError {
-    Malformed(String),
-    RejectedAction(String),
-}
-
+/// Two other ways a `result.json` can be unusable are deliberately not
+/// hard failures: a *schema* mismatch on the action (a missing or misnamed
+/// field, the common shape of a formatting slip), and a *policy* rejection
+/// of an action the model was not allowed to take (only
+/// `task_status_update`'s own-task and worker-alive guards raise one). Both
+/// are recovered in place instead — [`parse`] drops the one unusable action
+/// and reports why through [`TriageResult::action_error`], while `outcome`
+/// and `reason` still come through — because neither is worth an operator's
+/// attention: a model spelling an action wrong, or trying one triage's own
+/// guards already caught, is triage's problem to log, not the operator's to
+/// act on. See dropr:401 for the schema case, dropr:556 for the policy one.
 pub fn parse(
     raw: &[u8],
     own_task: Option<&str>,
     worker_id: &str,
     worker_alive: &dyn Fn(&str) -> bool,
-) -> Result<TriageResult, ParseError> {
-    let raw: RawResult =
-        serde_json::from_slice(raw).map_err(|error| ParseError::Malformed(error.to_string()))?;
+) -> Result<TriageResult, String> {
+    let raw: RawResult = serde_json::from_slice(raw).map_err(|error| error.to_string())?;
     if raw.reason.trim().is_empty() {
-        return Err(ParseError::Malformed("reason must not be blank".into()));
+        return Err("reason must not be blank".into());
     }
     let mut action_error = None;
-    let action = raw.action.and_then(|mut value| {
+    let mut action = raw.action.and_then(|mut value| {
         normalize_tag(&mut value);
         let name = value
             .get("name")
@@ -115,15 +109,18 @@ pub fn parse(
         // (see `ExceptionCase::dropr_task_id`) — there is then no task lock
         // for the model to legitimately release, so the comparison below
         // rejects every `task_id` it could name (dropr:535).
-        if own_task != Some(task_id.as_str()) || !matches!(status.as_str(), "open" | "ready") {
-            return Err(ParseError::RejectedAction(
-                "task_status_update may only release this worker's task lock".into(),
-            ));
-        }
-        if worker_alive(worker_id) {
-            return Err(ParseError::RejectedAction(
-                "task_status_update refused while the owning worker session is alive".into(),
-            ));
+        let rejection = if own_task != Some(task_id.as_str())
+            || !matches!(status.as_str(), "open" | "ready")
+        {
+            Some("task_status_update may only release this worker's task lock".to_string())
+        } else if worker_alive(worker_id) {
+            Some("task_status_update refused while the owning worker session is alive".to_string())
+        } else {
+            None
+        };
+        if let Some(rejection) = rejection {
+            action_error = Some(rejection);
+            action = None;
         }
     }
     Ok(TriageResult {

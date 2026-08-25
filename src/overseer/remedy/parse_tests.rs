@@ -134,14 +134,6 @@ fn circuit_shapes_from_the_review_pass_resolve_distinctly() {
 }
 
 #[test]
-fn rejected_triage_action_resolves_to_review() {
-    assert_eq!(
-        for_reason("rejected triage action: unknown action kind").step,
-        Move::Review
-    );
-}
-
-#[test]
 fn a_free_text_sentence_with_no_colon_is_still_read_as_a_verdict() {
     assert_eq!(
         for_reason("touches the migration registry without a rollback").step,

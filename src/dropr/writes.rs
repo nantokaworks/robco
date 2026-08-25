@@ -53,10 +53,21 @@ impl fmt::Display for WriteError {
 pub type WriteResult = std::result::Result<(), WriteError>;
 
 /// Leaves one note on a task's blackboard.
-pub(crate) fn scribble_create_timeout(task_id: &str, body: &str, timeout: Duration) -> WriteResult {
+///
+/// `repo_url` scopes the call for a `task_id` given as a `#N` display id
+/// (see `LedgerEntry::dropr_task_id`'s doc comment): dropr rejects a
+/// display id with no workspace to resolve it against. Pass it whenever the
+/// caller has a repository to resolve — a nanoid `task_id` already carries
+/// its own scope and ignores it (dropr:556).
+pub(crate) fn scribble_create_timeout(
+    task_id: &str,
+    repo_url: Option<&str>,
+    body: &str,
+    timeout: Duration,
+) -> WriteResult {
     write(
         "scribble_create",
-        scribble_arguments(task_id, body),
+        scribble_arguments(task_id, repo_url, body),
         timeout,
     )
 }
@@ -99,15 +110,17 @@ pub(crate) fn task_create_timeout(
     )
 }
 
-fn scribble_arguments(task_id: &str, body: &str) -> Value {
-    json!({
-        "items": [{
-            "task_id": task_id,
-            "agent_id": OVERSEER_AGENT_ID,
-            "kind": "note",
-            "body": body,
-        }],
-    })
+fn scribble_arguments(task_id: &str, repo_url: Option<&str>, body: &str) -> Value {
+    let mut item = json!({
+        "task_id": task_id,
+        "agent_id": OVERSEER_AGENT_ID,
+        "kind": "note",
+        "body": body,
+    });
+    if let Some(repo_url) = repo_url {
+        item["repo_url"] = Value::String(repo_url.to_string());
+    }
+    json!({ "items": [item] })
 }
 
 fn status_arguments(task_id: &str, status: &str) -> Value {
