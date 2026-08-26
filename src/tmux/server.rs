@@ -41,13 +41,39 @@ impl TmuxServer {
         Self(Some(socket.into()))
     }
 
-    /// One throwaway server, shared by every test in this process, that
-    /// never reaches the operator's own tmux server (dropr:555). Named from
-    /// the test process's own pid under `/tmp` directly rather than
-    /// `std::env::temp_dir()`: `TMPDIR` on macOS resolves under
+    /// One throwaway server per *thread*, not just per process, that never
+    /// reaches the operator's own tmux server (dropr:555) — and, unlike a
+    /// single server shared by the whole process, never reaches another
+    /// concurrently-running test's server either (dropr:549).
+    ///
+    /// A single per-process server was tried first and still raced: `tmux`
+    /// tears its whole server down the instant its live session count hits
+    /// zero, unless something already told it `set-option -g exit-empty
+    /// off` — and that option is server-wide, not per-session, so it only
+    /// protects a server once *some* session on it has set it. A test that
+    /// opens and closes a plain session without ever setting it (most of
+    /// this crate's do — only `tmux::launch::new_worker_session` sets it, as
+    /// part of dropr:554's own verified-launch chain) can drop a freshly
+    /// started shared server's count straight to zero and kill it — taking
+    /// down every *other* concurrently-running test's session on that same
+    /// server with it, including one that is mid-launch. Rust's test harness
+    /// runs each test on its own thread, so keying the socket on the thread
+    /// too gives concurrently-running tests independent servers with no
+    /// count to race on.
+    ///
+    /// Named from the test process's own pid under `/tmp` directly rather
+    /// than `std::env::temp_dir()`: `TMPDIR` on macOS resolves under
     /// `/var/folders/...`, and stacked with a scratch-directory prefix that
-    /// can already push past the ~104-byte `sockaddr_un` path limit.
+    /// can already push past the ~104-byte `sockaddr_un` path limit. The
+    /// thread id is reduced to its bare digits for the same reason.
     pub(crate) fn for_tests() -> Self {
-        Self::socket(format!("/tmp/robco-test-tmux-{}.sock", std::process::id()))
+        let thread_id: String = format!("{:?}", std::thread::current().id())
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect();
+        Self::socket(format!(
+            "/tmp/robco-test-tmux-{}-{thread_id}.sock",
+            std::process::id()
+        ))
     }
 }
