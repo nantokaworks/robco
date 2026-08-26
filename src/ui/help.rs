@@ -51,6 +51,8 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("  p              edit and request PR from selected running agent"),
         l("  c              check out the default branch in the primary checkout"),
         l("                 (clean tree only)"),
+        l("  C              clear the repo's own chat session (confirms)"),
+        l("                 idle/done only; refuses on a busy session or none live"),
         l("  enter          on a repo row (INFO showing): open its dropr task list"),
         l("                 on a task row: open its body in a popup"),
         l("  n              on a task row: start it now, same as s (skip body)"),

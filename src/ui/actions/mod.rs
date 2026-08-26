@@ -3,6 +3,7 @@ pub(super) mod background_refresh;
 mod background_support;
 mod checkout_main;
 pub(super) mod children;
+mod clear_chat;
 pub(super) mod clone;
 mod discord_channels;
 pub(super) mod discovery;

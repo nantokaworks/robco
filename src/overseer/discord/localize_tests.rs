@@ -172,6 +172,7 @@ fn briefing_collection_does_not_block_spawn_caller() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         },
         Duration::from_secs(1),
         SessionEnv::default(),

@@ -99,6 +99,7 @@ fn create_agent_installs_report_hooks_in_the_new_worktree() {
             autonomous_args: Vec::new(),
             model: None,
             backend: None,
+            clear_command: None,
         }],
         tmux_server: crate::tmux::TmuxServer::for_tests(),
         ..Config::default()

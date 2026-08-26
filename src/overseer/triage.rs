@@ -136,6 +136,7 @@ pub(crate) fn triage_profile(config: &Config) -> Option<Profile> {
                 autonomous_args: Vec::new(),
                 model: None,
                 backend: None,
+                clear_command: None,
             })
         })
 }
