@@ -98,17 +98,13 @@ fn each_repository_keeps_its_own_merge_outcome() {
     install_job(&mut app, "/repo-a", "a");
     install_job(&mut app, "/repo-b", "b");
 
-    app.finish_merge_with(
-        &PathBuf::from("/repo-a"),
-        Err("a failed".into()),
-        |_| Ok(()),
-    )
+    app.finish_merge_with(&PathBuf::from("/repo-a"), Err("a failed".into()), |_, _| {
+        Ok(())
+    })
     .unwrap();
-    app.finish_merge_with(
-        &PathBuf::from("/repo-b"),
-        Err("b failed".into()),
-        |_| Ok(()),
-    )
+    app.finish_merge_with(&PathBuf::from("/repo-b"), Err("b failed".into()), |_, _| {
+        Ok(())
+    })
     .unwrap();
 
     assert_eq!(
