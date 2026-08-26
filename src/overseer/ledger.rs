@@ -216,6 +216,19 @@ impl Ledger {
         })
     }
 
+    /// Whether `agent_id`'s pull request has reached `LedgerPhase::Merged` —
+    /// observed the same way regardless of whether it merged through
+    /// robco's own merge flow or externally (`gh pr merge`, github.com):
+    /// `overseer::monitor::apply::apply_pr` reconciles the phase from the
+    /// pull request's own state, not from who ran the merge. Used to tell a
+    /// session that is genuinely finished apart from one that died without
+    /// merging (dropr:563).
+    pub fn observed_merged(&self, agent_id: &str) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.agent_id == agent_id && entry.phase == LedgerPhase::Merged)
+    }
+
     pub fn load() -> Result<Self> {
         let path = super::ledger_path()?;
         Self::load_from(&path)

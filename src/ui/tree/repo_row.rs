@@ -56,7 +56,13 @@ pub(super) fn build(
         "  ",
     ));
     if !expanded && !repo.agents.is_empty() {
-        collapsed_rollup(repo, selected, style, &mut right);
+        collapsed_rollup(
+            repo,
+            &app.overseer_snapshot.ledger,
+            selected,
+            style,
+            &mut right,
+        );
     }
     let mut lines = vec![label::labeled_row(
         projects_width,
@@ -91,10 +97,28 @@ pub(super) fn build(
     lines
 }
 
+/// The status a rollup counts an agent under: its own `Status::Dead`
+/// unless the ledger has observed its pull request merged, in which case
+/// it counts as `Status::Done` — the same substitution
+/// `crate::ui::tree::indicator::select` makes for the row's own glyph, so a
+/// collapsed repo's rollup never shows a merged-but-dead agent as an error
+/// that an expanded row right next to it would not (dropr:563).
+fn rollup_status(
+    agent: &crate::model::AgentNode,
+    ledger: &crate::overseer::ledger::Ledger,
+) -> Status {
+    if agent.status == Status::Dead && ledger.observed_merged(&agent.id) {
+        Status::Done
+    } else {
+        agent.status
+    }
+}
+
 /// Status-glyph rollup shown on a collapsed repo row in place of its
 /// (invisible) agent rows.
 fn collapsed_rollup(
     repo: &crate::model::RepoNode,
+    ledger: &crate::overseer::ledger::Ledger,
     selected: bool,
     style: Style,
     right: &mut Vec<Span<'static>>,
@@ -112,7 +136,7 @@ fn collapsed_rollup(
             status,
             repo.agents
                 .iter()
-                .filter(|agent| agent.status == status)
+                .filter(|agent| rollup_status(agent, ledger) == status)
                 .count(),
         )
     });
@@ -177,7 +201,7 @@ fn collapsed_rollup(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::test_support;
+    use crate::{overseer::ledger::Ledger, ui::test_support};
 
     fn rollup_repo() -> crate::model::RepoNode {
         let dir = std::path::PathBuf::from("/tmp/repo_row_tests");
@@ -196,7 +220,13 @@ mod tests {
     fn selected_rollup_has_no_background_gap() {
         let repo = rollup_repo();
         let mut right = Vec::new();
-        collapsed_rollup(&repo, true, THEME.selection_style(), &mut right);
+        collapsed_rollup(
+            &repo,
+            &Ledger::default(),
+            true,
+            THEME.selection_style(),
+            &mut right,
+        );
 
         // Status chunks, the worktree-missing chunk, and the merge-failed
         // chunk all previously fell through to a style with no `bg`, leaving
@@ -220,7 +250,13 @@ mod tests {
     fn unselected_rollup_keeps_per_status_colours() {
         let repo = rollup_repo();
         let mut right = Vec::new();
-        collapsed_rollup(&repo, false, THEME.hint_style(), &mut right);
+        collapsed_rollup(
+            &repo,
+            &Ledger::default(),
+            false,
+            THEME.hint_style(),
+            &mut right,
+        );
 
         assert!(!right.is_empty());
         for span in &right {
@@ -243,3 +279,7 @@ mod tests {
         assert_eq!(waiting_chunk.style.fg, Some(THEME.waiting));
     }
 }
+
+#[cfg(test)]
+#[path = "repo_row_rollup_merged_tests.rs"]
+mod rollup_merged_tests;

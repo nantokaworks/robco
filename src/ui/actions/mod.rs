@@ -1,4 +1,5 @@
 mod attach;
+mod auto_cleanup;
 pub(super) mod background_refresh;
 mod background_support;
 mod checkout_main;

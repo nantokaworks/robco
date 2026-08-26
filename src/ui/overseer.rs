@@ -134,6 +134,16 @@ impl OverseerSnapshot {
         decisions::merge_lifecycle(&self.ledger, agent_id)
     }
 
+    /// Whether `agent_id`'s pull request has been observed merged — through
+    /// robco's own merge flow, or externally (`gh pr merge`, github.com).
+    /// See [`crate::overseer::ledger::Ledger::observed_merged`]. Callers
+    /// gate this on `Status::Dead` themselves, the same way
+    /// [`Self::merge_lifecycle`] gates its own read on the session having
+    /// gone quiet (dropr:563).
+    pub(in crate::ui) fn observed_merged(&self, agent_id: &str) -> bool {
+        self.ledger.observed_merged(agent_id)
+    }
+
     /// The raw gate reason behind `merge_lifecycle`'s bucket. See
     /// [`decisions::merge_hold_detail`].
     pub(in crate::ui) fn merge_hold_detail(
