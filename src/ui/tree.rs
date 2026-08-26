@@ -117,6 +117,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 indicator_state.merge_lifecycle = (agent.status != Status::Running)
                     .then(|| app.overseer_snapshot.merge_lifecycle(&agent.id))
                     .flatten();
+                // Only ever consulted while `agent.status == Status::Dead`
+                // (`indicator::select` gates on its own `dead` flag), so no
+                // extra gating is needed here the way the ledger-sourced
+                // badges above need it.
+                indicator_state.merged = app.overseer_snapshot.observed_merged(&agent.id);
                 indicator_state.shell_active = agent.shell_working;
                 indicator_state.mcp_active = agent.mcp_active;
                 indicator_state.subagents_active = active;

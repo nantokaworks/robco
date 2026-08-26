@@ -16,7 +16,7 @@ use crate::ui::{
     overseer::{DECISION_SNAPSHOT_LIMIT, OverseerSnapshot, heartbeat_is_fresh},
 };
 
-use super::{background_refresh::StatusResult, background_support::merge_status};
+use super::{background_refresh::StatusResult, background_support::merge_status, lifecycle};
 
 /// Persisted classification state for the Overseer's own control tmux
 /// session, carried across refresh ticks the same way a [`WatchStatusState`]
@@ -123,6 +123,27 @@ impl App {
             .is_none_or(|at| at <= started)
         {
             self.apply_overseer(result.overseer);
+        }
+        self.run_auto_cleanup(result.auto_cleanup);
+    }
+
+    /// Runs the existing `CleanOnly` sequence for every candidate the
+    /// background capture found — see
+    /// `auto_cleanup::merged_cleanup_candidates`. Skips a repository that
+    /// already has a merge job running: `start_cleanup` would only show a
+    /// "merge already in progress" toast for a case nobody asked about,
+    /// since nothing here is operator-initiated (dropr:563).
+    fn run_auto_cleanup(&mut self, candidates: Vec<(std::path::PathBuf, String)>) {
+        for (repo_path, agent_id) in candidates {
+            if self.merge_job(&repo_path).is_some() {
+                continue;
+            }
+            let Some((repo, agent)) =
+                lifecycle::resolve_agent(&self.registry.repos, &repo_path, &agent_id)
+            else {
+                continue;
+            };
+            self.start_cleanup(repo, agent);
         }
     }
 
@@ -233,6 +254,7 @@ mod tests {
         StatusResult {
             repos: Vec::new(),
             overseer_visible: true,
+            auto_cleanup: Vec::new(),
             overseer: OverseerResult {
                 inbox: inbox::Inbox {
                     items: Vec::new(),
@@ -244,3 +266,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "overseer_refresh_auto_cleanup_tests.rs"]
+mod auto_cleanup_tests;

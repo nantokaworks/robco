@@ -49,6 +49,14 @@ pub(in crate::ui) struct IndicatorState {
     /// [`select`] — so a value here is inert unless `static_status` is
     /// exactly `Some(Status::Done)`.
     pub merge_lifecycle: Option<MergeLifecycle>,
+    /// Whether the ledger has observed this row's pull request merged —
+    /// through robco's own merge flow, or externally (`gh pr merge`,
+    /// github.com). Only ever consulted when `dead` is set — see [`select`]
+    /// — so a session that is still alive is unaffected by this either way.
+    /// A dead session whose pull request merged is genuinely finished, not
+    /// an error, so it renders like `Status::Done` instead of the red
+    /// `Status::Dead` glyph (dropr:563).
+    pub merged: bool,
 }
 
 impl IndicatorState {
@@ -71,6 +79,7 @@ impl IndicatorState {
                 matches!(status, Status::Done | Status::Idle | Status::BranchOnly)
             }),
             merge_lifecycle: None,
+            merged: false,
         }
     }
 }
@@ -81,12 +90,17 @@ impl IndicatorState {
 /// the static Done/Idle/BranchOnly status glyph — except that a `Done` row
 /// with an open, unmerged pull request shows its merge-lifecycle glyph
 /// instead, so a session gone quiet is never indistinguishable from one
-/// that actually merged. Worktree-missing state is supplementary and is
-/// selected separately by [`select_supplementary`], as is the `merge-queued`
-/// badge — robco holding a queued merge approval says nothing about what the
-/// agent itself is doing, so the two never compete for the one glyph column.
+/// that actually merged. A `dead` row is the one exception ahead of all of
+/// that: it is never anything but dead/error *unless* the ledger has
+/// observed its pull request merged, in which case it renders like the
+/// plain `Status::Done` glyph instead — the session ending is not the
+/// story once robco knows the work actually landed (dropr:563). Worktree-
+/// missing state is supplementary and is selected separately by
+/// [`select_supplementary`], as is the `merge-queued` badge — robco holding
+/// a queued merge approval says nothing about what the agent itself is
+/// doing, so the two never compete for the one glyph column.
 pub(in crate::ui) fn select(state: IndicatorState) -> Option<Indicator> {
-    if state.dead {
+    if state.dead && !state.merged {
         Some(Indicator::Status(Status::Dead))
     } else if state.merging {
         Some(Indicator::Merging)
@@ -104,6 +118,9 @@ pub(in crate::ui) fn select(state: IndicatorState) -> Option<Indicator> {
         Some(Indicator::DroprRefresh)
     } else if state.static_status == Some(Status::Done) && state.merge_lifecycle.is_some() {
         state.merge_lifecycle.map(Indicator::MergeLifecycle)
+    } else if state.dead {
+        // `state.merged` is what got here past the guard above.
+        Some(Indicator::Status(Status::Done))
     } else {
         state.static_status.map(Indicator::Status)
     }
@@ -128,6 +145,9 @@ pub(in crate::ui) fn select_supplementary(state: IndicatorState) -> Supplementar
     }
 }
 
+#[cfg(test)]
+#[path = "indicator_merged_tests.rs"]
+mod merged_tests;
 #[cfg(test)]
 #[path = "indicator_tests.rs"]
 mod tests;

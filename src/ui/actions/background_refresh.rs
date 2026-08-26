@@ -14,6 +14,7 @@ use crate::{
 };
 
 use super::{
+    auto_cleanup,
     background_support::*,
     discovery,
     discovery_capture::{DiscoveryResult, capture_discovery},
@@ -46,6 +47,12 @@ pub(super) struct StatusResult {
     pub(super) repos: Vec<RepoNode>,
     pub(super) overseer_visible: bool,
     pub(super) overseer: OverseerResult,
+    /// Repository path and agent id of every agent whose pull request the
+    /// ledger has observed merged while its session went `Status::Dead`,
+    /// and whose worktree carries no uncommitted or untracked changes —
+    /// see [`auto_cleanup::merged_cleanup_candidates`]. `apply_status` runs
+    /// the existing `CleanOnly` sequence against each one (dropr:563).
+    pub(super) auto_cleanup: Vec<(PathBuf, String)>,
 }
 
 impl BackgroundRefresh {
@@ -249,9 +256,13 @@ fn capture_status(
             );
         }
     }
+    let overseer = capture_overseer(&registry, config, control_watch);
+    let auto_cleanup =
+        auto_cleanup::merged_cleanup_candidates(&registry, &overseer.snapshot.ledger);
     StatusResult {
-        overseer: capture_overseer(&registry, config, control_watch),
+        overseer,
         repos: registry.repos,
         overseer_visible: list::overseer_is_visible(),
+        auto_cleanup,
     }
 }
