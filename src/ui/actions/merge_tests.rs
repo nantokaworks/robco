@@ -595,7 +595,7 @@ fn success_resolves_identity_after_selection_and_index_drift() {
     app.registry.repos[0].agents.swap(0, 1);
     app.selected = 3;
 
-    app.finish_merge_with(&PathBuf::from("/repo-b"), Ok(()), |_| Ok(()))
+    app.finish_merge_with(&PathBuf::from("/repo-b"), Ok(()), |_, _| Ok(()))
         .unwrap();
 
     assert_eq!(
@@ -627,7 +627,7 @@ fn success_remaps_dialog_to_same_later_agent() {
     install_job(&mut app, "/repo", "merged");
     app.mode = Mode::ConfirmKill { repo: 0, agent: 2 };
 
-    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_| Ok(()))
+    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_, _| Ok(()))
         .unwrap();
 
     let Mode::ConfirmKill { repo, agent } = app.mode else {
@@ -644,7 +644,7 @@ fn success_closes_dialog_for_removed_agent_defensively() {
     install_job(&mut app, "/repo", "merged");
     app.mode = Mode::ConfirmDeleteBranch { repo: 0, agent: 0 };
 
-    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_| Ok(()))
+    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_, _| Ok(()))
         .unwrap();
 
     assert!(matches!(app.mode, Mode::Normal));
@@ -709,7 +709,7 @@ fn a_landed_merge_asks_dropr_for_the_repository_s_tasks_again() {
     app.registry.repos = vec![linked_repo("/repo", vec![agent("wanted")], "workspace-1")];
     install_job(&mut app, "/repo", "wanted");
 
-    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_| Ok(()))
+    app.finish_merge_with(&PathBuf::from("/repo"), Ok(()), |_, _| Ok(()))
         .unwrap();
 
     assert_eq!(app.dropr_task_settle, vec!["workspace-1".to_string()]);
@@ -726,7 +726,7 @@ fn a_failed_merge_asks_dropr_for_nothing() {
     app.finish_merge_with(
         &PathBuf::from("/repo"),
         Err("merge refused".to_string()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )
     .unwrap();
 

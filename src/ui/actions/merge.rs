@@ -6,6 +6,7 @@ use std::{
 use crate::{
     Result, agent,
     locale::{fmt, t},
+    registry::Registry,
 };
 
 use super::{
@@ -13,6 +14,26 @@ use super::{
     lifecycle::resolve_agent,
     merge_worker::{MergeEvent, MergeMode, MergeTarget, WORKER_TERMINATED, spawn},
 };
+
+/// Remove the merged agent from the on-disk registry.
+///
+/// Re-reads the registry under the write lock instead of saving this
+/// process's in-memory snapshot: the merge can finish well after another
+/// writer (another `robco` process, or an agent registering elsewhere)
+/// touched the shared file, and a snapshot save would silently discard that
+/// write (dropr:561).
+fn persist_merged_agent_removal(repo_path: &Path, agent_id: &str) -> Result<()> {
+    Registry::locked_update(|registry| {
+        if let Some(repo) = registry
+            .repos
+            .iter_mut()
+            .find(|repo| repo.path == repo_path)
+        {
+            repo.agents.retain(|agent| agent.id != agent_id);
+        }
+    })?;
+    Ok(())
+}
 
 /// One in-flight merge. Jobs live in [`App::merge_jobs`] keyed by repository
 /// path, which is why the repository is not repeated here.
@@ -164,14 +185,14 @@ impl App {
         repo_path: &Path,
         result: std::result::Result<(), String>,
     ) -> Result<()> {
-        self.finish_merge_with(repo_path, result, crate::registry::Registry::save)
+        self.finish_merge_with(repo_path, result, persist_merged_agent_removal)
     }
 
     fn finish_merge_with(
         &mut self,
         repo_path: &Path,
         result: std::result::Result<(), String>,
-        save: impl FnOnce(&crate::registry::Registry) -> Result<()>,
+        save: impl FnOnce(&Path, &str) -> Result<()>,
     ) -> Result<()> {
         let Some(job) = self.merge_jobs.remove(repo_path) else {
             return Ok(());
@@ -198,7 +219,7 @@ impl App {
                 {
                     self.registry.repos[repo].agents.remove(agent);
                     let dialog_closed = self.remap_dialog_after_agent_removal(repo, agent);
-                    save(&self.registry)?;
+                    save(repo_path, &agent_id)?;
                     if dialog_closed {
                         self.show_message(t(
                             self.locale,

@@ -58,12 +58,6 @@ impl Registry {
         })
     }
 
-    pub fn save(&self) -> Result<()> {
-        ensure_robco_dir()?;
-        let path = state_path()?;
-        self.save_at(&path)
-    }
-
     pub fn add_pinned(&mut self, path: &Path) -> Result<bool> {
         let path = path.canonicalize()?;
         Ok(self.add_canonical_pinned(path))
@@ -122,6 +116,13 @@ impl Registry {
         })
     }
 
+    /// A whole-registry snapshot write, kept for tests only: it writes
+    /// exactly `self` under the write lock without re-reading first, so a
+    /// production caller using it would silently erase whatever another
+    /// writer committed in between (dropr:561; see
+    /// `locked_update_keeps_a_row_a_stale_snapshot_would_erase`). Callers
+    /// that need to persist a mutation use [`Registry::locked_update`].
+    #[cfg(test)]
     fn save_at(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
