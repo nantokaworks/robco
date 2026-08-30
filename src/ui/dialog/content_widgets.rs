@@ -2,7 +2,10 @@
 //! `content.rs` reaches for — split out to keep that file under the size
 //! limit.
 
-use ratatui::text::{Line, Span};
+use ratatui::{
+    layout::Rect,
+    text::{Line, Span},
+};
 
 use crate::locale::{Locale, t};
 use crate::ui::{input_wrap, text_input::TextInput, theme::DEFAULT as THEME};
@@ -36,4 +39,26 @@ pub(super) fn hint_line(locale: Locale, text: &'static str) -> Line<'static> {
         t(locale, text).to_string(),
         THEME.hint_style(),
     ))
+}
+
+/// Body shared by `Mode::PromptOverseer` and `Mode::PromptSession` (dropr:565):
+/// both are a single wrapped instruction field over a `enter send / esc
+/// cancel` hint, differing only in the dialog title.
+pub(super) fn instruction_prompt_body(
+    locale: Locale,
+    body: Rect,
+    content_width: usize,
+    input: &TextInput,
+) -> (Vec<Line<'static>>, (usize, usize)) {
+    let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
+    let wrapped = input_wrap::input_lines(
+        t(locale, "instruction"),
+        input,
+        content_width,
+        max_input_height,
+    );
+    let caret = wrapped.caret;
+    let mut lines = wrapped.lines;
+    lines.push(hint_line(locale, "enter send   esc cancel"));
+    (lines, caret)
 }

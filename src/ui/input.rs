@@ -132,6 +132,15 @@ impl App {
                     self.instruct_overseer(&instruction);
                 }
             },
+            Mode::PromptSession { session, input } => match overseer::prompt_action(input, key) {
+                overseer::PromptAction::Stay => {}
+                overseer::PromptAction::Cancel => self.mode = Mode::Normal,
+                overseer::PromptAction::Submit(instruction) => {
+                    let session = session.clone();
+                    self.mode = Mode::Normal;
+                    self.instruct_session(&session, &instruction);
+                }
+            },
             Mode::PromptInbox { item, input } => match overseer::prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
@@ -288,6 +297,23 @@ impl App {
                 KeyCode::Char('m') => self.merge_selected(),
                 KeyCode::Char('c') => self.checkout_main_selected(),
                 KeyCode::Char('C') => self.clear_chat_selected(),
+                // Only the Claude tab has a live session to type into (see
+                // `panes_for`: it is offered only for Repo/Agent/Orphan rows),
+                // so gating on the tab rather than the selection type covers
+                // exactly those rows without naming them here.
+                KeyCode::Char('i') if self.preview == PreviewPane::Claude => {
+                    match super::scrollback::live_session(self) {
+                        Some(session) => {
+                            self.mode = Mode::PromptSession {
+                                session,
+                                input: TextInput::new(),
+                            };
+                        }
+                        None => {
+                            self.show_message(t(self.locale, "no live session for this tab"));
+                        }
+                    }
+                }
                 KeyCode::Char('p') => self.confirm_pr_selected(),
                 KeyCode::Char('x') => self.confirm_kill_selected(),
                 KeyCode::Char('g') => self.open_rename_prompt(),

@@ -19,6 +19,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("                 on OVERSEER: attach the control AI, creating it if absent"),
         l("                 on a section header: fold or unfold that section"),
         l("  i              on the OVERSEER control AI row: send it an instruction"),
+        l("                 on the CLAUDE/CODEX tab: send one line to that session"),
         l("  ctrl-q         return from attached tmux session"),
         l("  r              on a repo row: reload dropr tasks; else restart agent"),
         l("  x              remove an agent worktree, pinned repo, or orphan session"),

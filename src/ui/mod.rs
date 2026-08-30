@@ -86,6 +86,17 @@ enum Mode {
     PromptOverseer {
         input: TextInput,
     },
+    /// Send a one-line instruction into a repo/agent/orphan row's live
+    /// CLAUDE/CODEX tmux session (dropr:565), opened by `i` while that tab is
+    /// showing. Holds the resolved session NAME, not a row index or
+    /// selection — background discovery can reorder rows while the prompt is
+    /// open, and only the name still points at the same session by the time
+    /// Enter sends it (see `Mode::PromptInbox` / `Mode::PromptRenameRepo` for
+    /// the same rule).
+    PromptSession {
+        session: String,
+        input: TextInput,
+    },
     /// The answer prompt carries the whole row it was opened for, not just the
     /// target session: on a successful send the row's `(kind, target_id, at)`
     /// identity is what marks it handled (`App::answer_inbox`), and the

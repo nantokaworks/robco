@@ -96,6 +96,81 @@ fn overseer_instruction_key_opens_prompt() {
     assert!(matches!(app.mode, Mode::PromptOverseer { .. }));
 }
 
+/// An app with one repo and one running agent, agent row selected.
+fn test_app_with_agent() -> App {
+    let temp = tempfile::tempdir().unwrap();
+    let config = Config {
+        worktree_root: temp.path().join("worktrees"),
+        ..Config::default()
+    };
+    let mut app = App::new(
+        test_support::registry_with_agent(temp.path()),
+        config,
+        temp.path().into(),
+    );
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::Agent { .. }))
+        .expect("no agent row");
+    app
+}
+
+#[test]
+fn i_on_the_claude_tab_opens_the_instruct_session_prompt() {
+    let mut app = test_app_with_agent();
+    app.preview = PreviewPane::Claude;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(matches!(&app.mode, Mode::PromptSession { session, .. } if session == "robco_one"));
+}
+
+#[test]
+fn esc_cancels_the_instruct_session_prompt_without_sending() {
+    let mut app = test_app_with_agent();
+    app.mode = Mode::PromptSession {
+        session: "robco_one".into(),
+        input: TextInput::from("hello"),
+    };
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn i_on_a_non_claude_tab_does_not_open_the_instruct_session_prompt() {
+    let mut app = test_app_with_agent();
+    app.preview = PreviewPane::Info;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(matches!(app.mode, Mode::Normal));
+}
+
+#[test]
+fn i_with_no_live_session_shows_a_message_instead_of_opening() {
+    let mut app = test_app_with_agent();
+    app.preview = PreviewPane::Claude;
+    let Some(Selection::Agent { repo, agent }) = app.selected_item() else {
+        panic!("no agent row selected");
+    };
+    app.registry.repos[repo].agents[agent].status = crate::model::Status::BranchOnly;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
+        .unwrap();
+
+    assert!(matches!(app.mode, Mode::Normal));
+    assert_eq!(
+        app.message.as_ref().map(|(message, _)| message.as_str()),
+        Some("no live session for this tab")
+    );
+}
+
 #[test]
 fn expanding_discord_and_selecting_a_channel_row_routes_enter_to_attach() {
     let mut app = test_app();
