@@ -336,6 +336,7 @@ fn active_phases_excludes_terminal_entries() {
                 pr_facts: None,
                 worker_finished_at: None,
                 approval_dropped: None,
+                branch_update_head: None,
             },
             LedgerEntry {
                 task_id: "terminal".into(),
@@ -366,6 +367,7 @@ fn active_phases_excludes_terminal_entries() {
                 pr_facts: None,
                 worker_finished_at: None,
                 approval_dropped: None,
+                branch_update_head: None,
             },
         ],
         ..Ledger::default()
@@ -415,6 +417,7 @@ fn workers_by_repo_names_the_repo_not_its_absolute_path() {
             pr_facts: None,
             worker_finished_at: None,
             approval_dropped: None,
+            branch_update_head: None,
         }],
         ..Ledger::default()
     };
@@ -469,6 +472,7 @@ fn primary_holder_names_the_repo_and_the_task() {
             pr_facts: None,
             worker_finished_at: None,
             approval_dropped: None,
+            branch_update_head: None,
         }],
         ..Ledger::default()
     };

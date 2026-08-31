@@ -33,6 +33,7 @@ fn entry(repo: &str) -> LedgerEntry {
         pr_facts: None,
         worker_finished_at: None,
         approval_dropped: None,
+        branch_update_head: None,
     }
 }
 
@@ -90,6 +91,32 @@ fn a_held_pull_request_never_claims_the_slot_so_it_does_not_starve_the_one_behin
     // The order skips the stuck pull request: the slot is still free for
     // whichever pull request is next in queue order.
     assert!(heads.claim("/repo", "other-agent"));
+}
+
+/// dropr:577: a successful branch update records the pull request's
+/// pre-update head, so `merge_allow::take_merge_approval` can later tell this
+/// exact move apart from a worker's own push and carry a live approval
+/// forward onto the branch's new head.
+#[test]
+fn a_successful_branch_update_records_the_head_it_moved_from() {
+    let mut e = entry("/repo");
+    let halt = record_update_head(&mut e, "old-head", Ok(()));
+
+    assert_eq!(halt.reason, merge_state::BRANCH_UPDATED);
+    assert_eq!(e.branch_update_head.as_deref(), Some("old-head"));
+}
+
+/// A failed branch update never moved the branch, so there is no new head
+/// for a live approval to carry forward onto — recording the old one would
+/// only let an unrelated later push claim a robco-driven move that never
+/// happened.
+#[test]
+fn a_failed_branch_update_records_nothing() {
+    let mut e = entry("/repo");
+    let halt = record_update_head(&mut e, "old-head", Err("behind_update_exit:1".into()));
+
+    assert_eq!(halt.reason, "behind_update_exit:1");
+    assert!(e.branch_update_head.is_none());
 }
 
 #[test]

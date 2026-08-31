@@ -278,6 +278,7 @@ fn off_mode_skips_the_probe_entirely() {
         pr_facts: None,
         worker_finished_at: None,
         approval_dropped: None,
+        branch_update_head: None,
     };
     let registry = Registry::default();
     let cache = ProtectionCache::default();

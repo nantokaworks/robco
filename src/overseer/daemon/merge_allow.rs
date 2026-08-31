@@ -73,14 +73,18 @@ pub(super) fn take_operator_override(entry: &mut LedgerEntry, head: &str) -> Res
 /// (`discord::ledger_requests::record_approval`), which is what let this
 /// entry's escalated phase be looked at again in the first place.
 ///
-/// A head that no longer matches means a worker pushed after the operator
-/// approved. That is not on its own reason to lose the approval (dropr:534):
+/// A head that no longer matches means either a worker pushed after the
+/// operator approved, or robco itself moved the branch by updating it onto
+/// its base (dropr:577). Neither is on its own reason to lose the approval:
 /// `merge_recovery_enabled` exists precisely so a worker can repair a
 /// failing check and push, and every successful recovery moves the head —
 /// so without this, recovery invalidates the very approval it was serving.
-/// [`carries_forward`] answers whether *this* push is that fix rather than
-/// an unrelated one; when it is, the approval is re-granted against the new
-/// head instead of consumed, so a merge failure this pass still leaves a
+/// The same is true of a `BEHIND` branch update: robco runs it to keep the
+/// queue moving, not because anyone asked the pull request to change, so it
+/// must not spend an approval the operator already granted. [`carry_forward_reason`]
+/// answers whether *this* push is one of those two robco-driven moves rather
+/// than an unrelated one; when it is, the approval is re-granted against the
+/// new head instead of consumed, so a merge failure this pass still leaves a
 /// live approval for the next one. Every other case — a force-push, a
 /// rebase, or a push robco never asked the worker to make — drops the
 /// approval and records why, so it does not look, later, like a merge that
@@ -90,8 +94,7 @@ pub(super) fn take_merge_approval(entry: &mut LedgerEntry, head: &str) -> Result
         return Ok(false);
     };
     if granted.head != head {
-        if carries_forward(entry, &granted.head, head) {
-            let reason = carried(&granted.head, head);
+        if let Some(reason) = carry_forward_reason(entry, &granted.head, head) {
             entry.merge_approval = Some(MergeApproval {
                 head: head.to_owned(),
                 granted_at: granted.granted_at,
@@ -110,23 +113,36 @@ pub(super) fn take_merge_approval(entry: &mut LedgerEntry, head: &str) -> Result
     Ok(true)
 }
 
-/// Whether a push that moved the pull request past `approved_head` is the
-/// specific fix robco itself asked the worker to make, rather than an
-/// open-ended "any later commit" (dropr:534's own out-of-scope rail).
+/// The reason to log when a push that moved the pull request past
+/// `approved_head` still qualifies to carry the operator's approval forward,
+/// or `None` when it is the open-ended "any later commit" dropr:534's own
+/// out-of-scope rail rules out.
 ///
-/// Two conditions both have to hold, and neither alone is enough:
+/// `head` must be a fast-forward of `approved_head` regardless of which
+/// robco-driven move applies — a force-push or a rebase presents a head the
+/// operator's approval never covered even when one of the conditions below
+/// also holds. Given that, exactly one of two robco-driven moves qualifies:
 ///
 /// - `entry.merge_recovery.head` still names `approved_head` — the exact
 ///   revision `merge_recovery::plan` last dispatched a handback for (see
 ///   `MergeRecovery::head`). A worker push unrelated to a robco-dispatched
 ///   recovery never sets this, so an approval never carries forward for a
 ///   push nobody asked the worker to make.
-/// - `head` is a fast-forward of `approved_head` — a plain push, not a
-///   force-push or a rebase, which would present a head the operator's
-///   approval never covered even if recovery *did* just run.
-fn carries_forward(entry: &LedgerEntry, approved_head: &str, head: &str) -> bool {
-    entry.merge_recovery.head.as_deref() == Some(approved_head)
-        && is_descendant(entry, approved_head, head)
+/// - `entry.branch_update_head` still names `approved_head` — the exact
+///   revision robco itself updated onto its base because the pull request
+///   had fallen behind (see `merge_apply::record_update_head`). The move is
+///   robco's own, not a worker's, so it carries the approval the same way.
+fn carry_forward_reason(entry: &LedgerEntry, approved_head: &str, head: &str) -> Option<String> {
+    if !is_descendant(entry, approved_head, head) {
+        return None;
+    }
+    if entry.merge_recovery.head.as_deref() == Some(approved_head) {
+        return Some(carried(approved_head, head));
+    }
+    if entry.branch_update_head.as_deref() == Some(approved_head) {
+        return Some(carried_by_update(approved_head, head));
+    }
+    None
 }
 
 /// Whether `head` is a fast-forward of `approved_head`, fetching
@@ -154,6 +170,18 @@ fn carried(approved_head: &str, head: &str) -> String {
     )
 }
 
+/// Reason recorded when robco's own `BEHIND` branch update — not a worker
+/// push or a recovery handback — keeps the operator's approval alive under
+/// its new head. Kept apart from [`carried`] so the decision log says which
+/// of the two robco-driven moves the approval actually survived.
+fn carried_by_update(approved_head: &str, head: &str) -> String {
+    format!(
+        "merge_approval_carried_update:{}..{}",
+        short(approved_head),
+        short(head)
+    )
+}
+
 /// Reason recorded when a live request no longer names the pull request's
 /// current head and does not qualify to carry forward.
 fn dropped(approved_head: &str, head: &str) -> String {
@@ -171,6 +199,9 @@ fn short(sha: &str) -> &str {
     &sha[..sha.len().min(7)]
 }
 
+#[cfg(test)]
+#[path = "merge_allow_carry_tests.rs"]
+mod carry_tests;
 #[cfg(test)]
 #[path = "merge_allow_tests.rs"]
 mod tests;
