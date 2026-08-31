@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use super::{tool, tool_with_output};
 
 pub(super) fn tools() -> Vec<Value> {
-    vec![pr_status(), pr_request(), merge()]
+    vec![pr_status(), pr_request(), pr_update_branch(), merge()]
 }
 
 fn pr_status() -> Value {
@@ -58,6 +58,36 @@ fn pr_request() -> Value {
                 }
             },
             "required": ["agent_id"],
+            "additionalProperties": false
+        }),
+    )
+}
+
+fn pr_update_branch() -> Value {
+    tool_with_output(
+        "robco_pr_update_branch",
+        "Bring an agent's pull request branch up to date with its base, the same action the \
+         TUI's `u` key runs. Runs entirely on GitHub's own side (`gh pr update-branch`), so it \
+         never touches the agent's worktree or the primary checkout, and unlike `robco_merge` \
+         nothing here is destructive — there is no `confirm` gate. Refuses when the branch has \
+         no open pull request. When the branch was actually behind, this also resets the \
+         Overseer's own automated update budget for it, so a pull request the auto-merge gate \
+         parked after spending that budget gets looked at again on the next pass.",
+        agent_id_schema(),
+        json!({
+            "type": "object",
+            "properties": {
+                "agent_id": { "type": "string" },
+                "branch": { "type": "string" },
+                "outcome": {
+                    "type": "string",
+                    "enum": ["updated", "already_up_to_date"],
+                    "description":
+                        "updated: GitHub reported the branch behind its base and the update ran. \
+                         already_up_to_date: nothing was sent."
+                }
+            },
+            "required": ["agent_id", "branch", "outcome"],
             "additionalProperties": false
         }),
     )

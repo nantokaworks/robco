@@ -46,6 +46,21 @@ pub fn explain_merge_failure(strategy: MergeStrategy, output: &str) -> Option<Me
         })
 }
 
+/// The refusal named when a `gh pr merge` failed while GitHub's own
+/// `mergeStateStatus` reports the pull request `BEHIND` its base — a base
+/// branch ruleset that requires branches to be up to date before merging
+/// refuses the merge outright rather than merging a stale head. Named by
+/// re-reading the live merge state rather than by matching `gh`'s own output
+/// text (see `git::remote::merge_pr`): the wording `gh` relays for this case
+/// has not been pinned down the way [`CANNOT_REBASE`]'s has, while
+/// `mergeStateStatus` is a fact the caller can just ask GitHub for again.
+pub fn behind_refusal() -> MergeRefusal {
+    MergeRefusal {
+        reason: "merge_state_behind",
+        message: "the branch is behind its base; update it (press u), then merge",
+    }
+}
+
 /// What a failed command actually said. `gh` reports refusals on stderr, but
 /// falls back to stdout for some failures, and an empty detail is the one
 /// message that tells the operator nothing at all.
@@ -107,6 +122,13 @@ mod tests {
             explain_merge_failure(MergeStrategy::Rebase, "GraphQL: Resource not accessible")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn the_behind_refusal_names_the_fix() {
+        let refusal = behind_refusal();
+        assert_eq!(refusal.reason, "merge_state_behind");
+        assert!(refusal.message.contains("update it"));
     }
 
     #[test]

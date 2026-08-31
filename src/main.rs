@@ -19,6 +19,7 @@ mod notify;
 mod openclaw;
 mod overseer;
 mod pr;
+mod pr_update;
 mod registry;
 mod rename;
 mod setup;
