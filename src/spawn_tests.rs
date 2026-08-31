@@ -213,6 +213,75 @@ fn spawn_in_repo_installs_report_hooks_even_when_not_autonomous() {
     );
 }
 
+/// dropr:566 — a background refresh's `reconcile` can adopt a launching
+/// worker's worktree before this call runs, leaving a row with the same id
+/// already in the registry. `persist_child` must replace that row instead of
+/// appending a second one that never gets the launch's own fields.
+#[test]
+fn persist_child_replaces_an_existing_row_with_the_same_id_instead_of_appending() {
+    use crate::registry::Registry;
+
+    let fixture = TestRepo::new();
+    let repo_name = "dropr566-persist-child-upsert";
+    let repo = repo(fixture.path(), repo_name);
+    Registry::locked_update(|registry| {
+        registry.repos.push(repo.clone());
+    })
+    .unwrap();
+
+    let shared_id = "shared-id-566".to_string();
+    let worktree_path = fixture.path().join("worktree");
+
+    let adopted = agent::adopt_worktree(
+        &repo,
+        &Config::default(),
+        worktree_path.clone(),
+        Some("dropr/task-566".into()),
+        None,
+        None,
+        Some(agent::RecoveredIdentity {
+            id: shared_id.clone(),
+            parent_agent_id: None,
+        }),
+    );
+    let adopted_outcome = SpawnOutcome::from(&adopted);
+    persist_child(&repo.path, adopted, &adopted_outcome).unwrap();
+
+    let mut launched = agent::adopt_worktree(
+        &repo,
+        &Config::default(),
+        worktree_path,
+        Some("dropr/task-566".into()),
+        None,
+        None,
+        Some(agent::RecoveredIdentity {
+            id: shared_id.clone(),
+            parent_agent_id: None,
+        }),
+    );
+    launched.title = "#566 real title".into();
+    launched.spawned_by_version = Some("0.7.0".into());
+    launched.claude_session_id = Some("session-abc".into());
+    let launched_outcome = SpawnOutcome::from(&launched);
+    persist_child(&repo.path, launched, &launched_outcome).unwrap();
+
+    let registry = Registry::load().unwrap();
+    let persisted = registry
+        .repos
+        .iter()
+        .find(|candidate| candidate.path == repo.path)
+        .unwrap();
+    let rows: Vec<_> = persisted
+        .agents
+        .iter()
+        .filter(|agent| agent.id == shared_id)
+        .collect();
+    assert_eq!(rows.len(), 1, "expected exactly one row for the shared id");
+    assert_eq!(rows[0].title, "#566 real title");
+    assert_eq!(rows[0].spawned_by_version.as_deref(), Some("0.7.0"));
+    assert_eq!(rows[0].claude_session_id.as_deref(), Some("session-abc"));
+}
+
 #[test]
 fn outcome_copies_agent_shape() {
     let outcome = SpawnOutcome {
