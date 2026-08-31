@@ -35,7 +35,7 @@ pub(super) fn build(
     )];
     if !app.repo_is_local(repo) {
         right.push(Span::styled(
-            format!("  {}", super::short_path(&repo.path)),
+            format!("  {}", super::host_group::short_path(&repo.path)),
             if selected { style } else { THEME.muted_style() },
         ));
     }

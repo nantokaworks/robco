@@ -9,6 +9,7 @@ use crate::{
 
 fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
     RepoNode {
+        host: None,
         path: PathBuf::from(path),
         name: path.rsplit('/').next().unwrap_or("repo").to_string(),
         remote_url: None,

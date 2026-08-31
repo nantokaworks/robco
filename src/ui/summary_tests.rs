@@ -3,6 +3,7 @@ use crate::dropr::{DroprTaskCandidate, DroprTaskFetch, DroprWorkspace};
 
 fn repo(dropr: Option<DroprWorkspace>, dropr_tasks: DroprTaskFetch) -> RepoNode {
     RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

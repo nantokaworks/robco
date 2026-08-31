@@ -24,6 +24,20 @@ impl App {
             return;
         };
         let repo_path = self.registry.repos[repo].path.clone();
+        if self.registry.repos[repo].host.is_some() {
+            let Some(client) = self.remote_client_for_repo(repo) else {
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return;
+            };
+            match client.checkout_main(&repo_path.display().to_string()) {
+                Ok(outcome) if outcome.ok => {
+                    self.show_message(fmt(self.locale, "checked out {}", &[&outcome.branch]));
+                }
+                Ok(_) => self.show_message(t(self.locale, "remote checkout was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return;
+        }
         // Resolved fresh, never assumed: see dropr:503. A repository whose
         // `origin/HEAD` cannot be read has no default branch this action can
         // safely check out.

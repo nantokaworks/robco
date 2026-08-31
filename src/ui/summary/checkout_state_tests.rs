@@ -2,6 +2,7 @@ use super::*;
 
 fn repo(checkout_state: Option<CheckoutState>) -> RepoNode {
     RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

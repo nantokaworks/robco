@@ -102,6 +102,7 @@ mod tests {
     fn repo(path: &Path, worktree_path: &Path) -> RepoNode {
         let now = Local::now();
         RepoNode {
+            host: None,
             path: path.into(),
             name: "repo".into(),
             remote_url: None,

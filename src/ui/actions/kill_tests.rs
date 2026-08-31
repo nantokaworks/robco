@@ -87,6 +87,7 @@ fn test_agent(worktree_path: std::path::PathBuf) -> AgentNode {
 
 fn test_repo(path: std::path::PathBuf, agent: AgentNode) -> RepoNode {
     RepoNode {
+        host: None,
         path,
         name: "repo".into(),
         remote_url: None,

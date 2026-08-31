@@ -28,6 +28,7 @@ fn app_with_task(description: Option<&str>) -> App {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.registry.repos = vec![crate::model::RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

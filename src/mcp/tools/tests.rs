@@ -11,6 +11,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
     Registry {
         version: 1,
         repos: vec![RepoNode {
+            host: None,
             path: "/repo".into(),
             name: "repo".to_string(),
             remote_url: None,

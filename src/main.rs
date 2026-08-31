@@ -29,7 +29,6 @@ pub mod subagents;
 mod tmux;
 mod ui;
 mod version;
-
 use std::{ffi::OsString, path::PathBuf, process::ExitCode};
 
 use clap::{Parser, error::ErrorKind};
@@ -93,6 +92,7 @@ async fn main() -> ExitCode {
 
 async fn run(args: Args) -> Result<()> {
     let mut config = Config::load()?;
+    config.add_ad_hoc_hosts(args.host);
     if let Some(program) = args.program {
         config.default_program = program;
     }

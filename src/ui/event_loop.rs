@@ -25,36 +25,22 @@ use crate::{
     registry::Registry,
 };
 
-use super::{
-    App, DISCOVERY_INTERVAL, backend::RemoteBackend, dialog, hyperlink, layout, preview, spinner,
-    tree,
-};
+use super::{App, DISCOVERY_INTERVAL, dialog, hyperlink, layout, preview, spinner, tree};
 
-pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
-    let remote = if let Ok(host) = std::env::var("ROBCO_REMOTE_HOST")
-        && !host.trim().is_empty()
+pub fn run(registry: Registry, mut config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
+    // Keep the legacy variable as one ad-hoc host, now alongside local/configured hosts.
+    if let Ok(ssh) = std::env::var("ROBCO_REMOTE_HOST")
+        && !ssh.trim().is_empty()
+        && !config.hosts.iter().any(|host| host.ssh == ssh.trim())
     {
-        let backend = RemoteBackend::connect(host.trim()).map_err(remote_error)?;
-        let (registry, orphans) = backend.initial_snapshot().map_err(remote_error)?;
-        Some((registry, orphans, backend))
-    } else {
-        None
-    };
+        config.hosts.push(crate::config::HostConfig {
+            ssh: ssh.trim().to_string(),
+            name: None,
+        });
+    }
     let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
-    if let Some((registry, orphans, backend)) = remote {
-        app.expanded = vec![true; registry.repos.len()];
-        app.registry = registry;
-        app.orphans = orphans.unwrap_or_default();
-        app.backend = Arc::new(backend);
-    }
+    app.start_remote_hosts();
     run_app(app)
-}
-
-fn remote_error(error: crate::remote::RemoteError) -> crate::Error {
-    crate::Error::Command {
-        context: "remote robco connection",
-        stderr: error.to_string(),
-    }
 }
 
 fn run_app(mut app: App) -> Result<()> {
@@ -217,6 +203,7 @@ fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
     registry
         .repos
         .iter()
+        .filter(|repo| repo.host.is_none())
         .flat_map(|repo| {
             repo.agents.iter().map(|agent| WatchTarget {
                 tmux_session: agent.tmux_session.clone(),

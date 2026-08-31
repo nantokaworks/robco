@@ -135,6 +135,12 @@ impl App {
     /// Schedule a background capture for whatever the current selection needs.
     /// Called once per event-loop iteration with the full terminal area.
     pub(in crate::ui) fn schedule_preview_capture(&mut self, full_area: Rect) {
+        if self
+            .selected_repo()
+            .is_some_and(|repo| self.registry.repos[repo].host.is_some())
+        {
+            return;
+        }
         if let Some(target) = self.current_capture_target(full_area) {
             self.preview_capture.request(target, self.locale);
         }
@@ -148,7 +154,11 @@ impl App {
     /// that session. Returns `None` both when nothing is cached yet and when the
     /// session produced no output, so the caller's placeholder covers both.
     pub(in crate::ui) fn cached_tmux(&self, session: &str) -> Option<Text<'static>> {
-        self.backend.cached_tmux(&self.preview_capture, session)
+        if self.is_remote_session(session) {
+            self.remote_cached_tmux(session)
+        } else {
+            self.backend.cached_tmux(&self.preview_capture, session)
+        }
     }
 
     /// The last completed diff capture for `path`, if that is what is cached.

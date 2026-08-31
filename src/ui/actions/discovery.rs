@@ -179,6 +179,7 @@ mod tests {
     fn legacy_nested_agents_are_pruned_without_prefix_false_positives() {
         let config = Config::default();
         let mut repo = RepoNode {
+            host: None,
             path: "/repo".into(),
             name: "repo".into(),
             remote_url: None,

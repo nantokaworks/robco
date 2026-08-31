@@ -8,6 +8,7 @@ fn session_env(vars: &[(&str, &str)]) -> SessionEnv {
 
 fn repo(path: &std::path::Path, name: &str) -> RepoNode {
     RepoNode {
+        host: None,
         path: path.into(),
         name: name.into(),
         remote_url: None,

@@ -6,7 +6,6 @@ use crate::{
 };
 
 use super::{App, default_pane};
-
 mod repo_rows;
 
 impl App {
@@ -45,12 +44,16 @@ impl App {
                         |id| format!("discord-channel:{id}"),
                     )
             }
-            Selection::Repo(repo) => {
-                format!("repo:{}", self.registry.repos[repo].path.display())
-            }
-            Selection::Agent { repo, agent } => {
-                format!("agent:{}", self.registry.repos[repo].agents[agent].id)
-            }
+            Selection::Repo(repo) => format!(
+                "repo:{}:{}",
+                self.repo_host_key(repo),
+                self.registry.repos[repo].path.display()
+            ),
+            Selection::Agent { repo, agent } => format!(
+                "agent:{}:{}",
+                self.repo_host_key(repo),
+                self.registry.repos[repo].agents[agent].id
+            ),
             Selection::ChildWorktree { repo, agent, child } => format!(
                 "child:{}",
                 self.registry.repos[repo].agents[agent].children[child]
@@ -183,7 +186,7 @@ impl App {
                 .repos
                 .iter()
                 .enumerate()
-                .filter(|(_, repo)| self.repo_is_local(repo))
+                .filter(|(_, repo)| repo.host.is_none() && self.repo_is_local(repo))
                 .map(|(idx, _)| idx)
                 .collect(),
         )
@@ -198,7 +201,9 @@ impl App {
                 .iter()
                 .enumerate()
                 .filter(|(_, repo)| {
-                    !self.repo_is_local(repo) && (!repo.agents.is_empty() || repo.pinned)
+                    repo.host.is_none()
+                        && !self.repo_is_local(repo)
+                        && (!repo.agents.is_empty() || repo.pinned)
                 })
                 .map(|(idx, _)| idx)
                 .collect(),
@@ -254,7 +259,9 @@ impl App {
                 }
             }
         }
-
+        for repo_idx in self.remote_repo_indices() {
+            repo_rows::push_repo_rows(self, &mut visible, repo_idx, &self.registry.repos[repo_idx]);
+        }
         if !self.orphans.is_empty() {
             visible.push(Selection::OrphanHeader);
             if !self.orphans_collapsed {

@@ -24,6 +24,7 @@ fn task(display_id: &str) -> DroprTaskCandidate {
 
 fn repo_node(tasks: Vec<DroprTaskCandidate>) -> RepoNode {
     RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

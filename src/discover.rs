@@ -67,6 +67,7 @@ pub(crate) fn repo_node(path: std::path::PathBuf, pinned: bool) -> RepoNode {
         remote_url,
         pinned,
         agents: Vec::new(),
+        host: None,
         dropr: None,
         dropr_tasks: DroprTaskFetch::default(),
         main_status: None,

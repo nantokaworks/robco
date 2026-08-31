@@ -20,6 +20,10 @@ pub struct Args {
     /// Directory whose direct children should be scanned for git repositories.
     pub launch_dir: Option<PathBuf>,
 
+    /// Add an ad-hoc remote ssh destination to the TUI (repeatable).
+    #[arg(long)]
+    pub host: Vec<String>,
+
     /// Program to launch for newly-created agents.
     #[arg(long)]
     pub program: Option<String>,

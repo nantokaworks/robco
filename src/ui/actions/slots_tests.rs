@@ -264,6 +264,7 @@ fn agent(id: &str, path: &str, branch: &str) -> AgentNode {
 
 fn repo() -> RepoNode {
     RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

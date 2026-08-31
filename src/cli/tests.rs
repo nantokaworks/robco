@@ -209,6 +209,21 @@ fn bare_invocation_has_no_ephemeral_root() {
 }
 
 #[test]
+fn host_flag_is_repeatable_without_consuming_launch_dir() {
+    let args = Args::try_parse_from([
+        "robco",
+        "--host",
+        "prod",
+        "--host",
+        "ops@example",
+        "/some/dir",
+    ])
+    .unwrap();
+    assert_eq!(args.host, ["prod", "ops@example"]);
+    assert_eq!(args.launch_dir, Some(PathBuf::from("/some/dir")));
+}
+
+#[test]
 fn rejects_removed_list_flag() {
     assert!(Args::try_parse_from(["robco", "--list"]).is_err());
 }

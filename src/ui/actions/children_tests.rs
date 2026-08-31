@@ -270,6 +270,7 @@ fn agent_path_is_not_its_own_child() {
 
 fn repo_node(path: std::path::PathBuf) -> RepoNode {
     RepoNode {
+        host: None,
         path,
         name: "repo".into(),
         remote_url: None,

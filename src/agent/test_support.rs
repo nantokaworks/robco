@@ -25,6 +25,7 @@ pub(crate) fn fake_claude_binary(dir: &Path) -> PathBuf {
 
 pub(super) fn repo_named(name: &str) -> RepoNode {
     RepoNode {
+        host: None,
         path: format!("/tmp/{name}").into(),
         name: name.to_string(),
         remote_url: None,

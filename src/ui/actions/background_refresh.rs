@@ -84,7 +84,7 @@ impl App {
     pub(in crate::ui) fn initial_tick(&mut self) {
         let started = Instant::now();
         let result = self.backend.capture_status(
-            clone_registry(&self.registry),
+            clone_local_registry(&self.registry),
             &self.config,
             &self.background_refresh.control_watch,
         );
@@ -103,7 +103,7 @@ impl App {
         let started = Instant::now();
         self.background_refresh.status_in_flight = Some(started);
         let sender = self.background_refresh.status_tx.clone();
-        let registry = clone_registry(&self.registry);
+        let registry = clone_local_registry(&self.registry);
         let config = self.config.clone();
         let control_watch = self.background_refresh.control_watch.clone();
         let backend = Arc::clone(&self.backend);
@@ -143,7 +143,7 @@ impl App {
             self.background_refresh.dropr_overlay_load_started_at = Some(started);
         }
         let sender = self.background_refresh.discovery_tx.clone();
-        let registry = clone_registry(&self.registry);
+        let registry = clone_local_registry(&self.registry);
         let config = self.config.clone();
         let roots = self.effective_roots().map(PathBuf::from).collect();
         let backend = Arc::clone(&self.backend);
@@ -178,10 +178,11 @@ impl App {
                 }
             }
         }
+        self.ingest_remote_hosts();
     }
 
     fn apply_discovery(&mut self, mut result: DiscoveryResult) {
-        if fingerprint(&self.registry) != result.fingerprint {
+        if fingerprint(&clone_local_registry(&self.registry)) != result.fingerprint {
             return;
         }
         let selected = self.selected_item().map(|item| self.item_key(item));
@@ -191,9 +192,10 @@ impl App {
             .repos
             .iter()
             .zip(&self.expanded)
+            .filter(|(repo, _)| repo.host.is_none())
             .map(|(repo, value)| (discovery::path_key(&repo.path), *value))
             .collect::<HashMap<_, _>>();
-        let expanded = result
+        let mut expanded: Vec<bool> = result
             .registry
             .repos
             .iter()
@@ -212,6 +214,19 @@ impl App {
             &mut result.registry.repos,
             carry_dropr,
         );
+        let remote = self
+            .registry
+            .repos
+            .iter()
+            .zip(&self.expanded)
+            .filter(|(repo, _)| repo.host.is_some())
+            .map(|(repo, expanded)| (repo.clone(), *expanded))
+            .collect::<Vec<_>>();
+        expanded.extend(remote.iter().map(|(_, expanded)| *expanded));
+        result
+            .registry
+            .repos
+            .extend(remote.into_iter().map(|(repo, _)| repo));
         if let Some(status) = result.overlay {
             self.background_refresh.dropr_overlay_status = status;
         }
@@ -225,7 +240,7 @@ impl App {
         if result.save {
             self.background_refresh
                 .registry_saver
-                .save(clone_registry(&self.registry), result.fingerprint);
+                .save(clone_local_registry(&self.registry), result.fingerprint);
         }
         self.refresh_dropr_tasks(false);
     }

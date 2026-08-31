@@ -85,6 +85,13 @@ impl App {
             }
             Some(Selection::Repo(repo)) => {
                 let repo_node = &self.registry.repos[repo];
+                if repo_node.host.is_some() {
+                    self.show_message(t(
+                        self.locale,
+                        "removing remote repository registrations is not available",
+                    ));
+                    return;
+                }
                 if repo_node.pinned {
                     if repo_node.agents.is_empty() {
                         self.mode = Mode::ConfirmRemoveRepo {
@@ -141,6 +148,31 @@ impl App {
         };
         let selected_repo = self.registry.repos[repo].clone();
         let selected_agent = selected_repo.agents[agent_idx].clone();
+        if selected_repo.host.is_some() {
+            let Some(client) = self.remote_client_for_repo(repo) else {
+                self.mode = Mode::Normal;
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return Ok(());
+            };
+            match client.kill_agent(&selected_agent.id, force, force) {
+                Ok(outcome) if outcome.ok => {
+                    if outcome.branch_remains && !outcome.branch_deleted {
+                        self.registry.repos[repo].agents[agent_idx].status = Status::BranchOnly;
+                        self.mode = Mode::ConfirmDeleteBranch {
+                            repo,
+                            agent: agent_idx,
+                        };
+                    } else {
+                        self.registry.repos[repo].agents.remove(agent_idx);
+                        self.mode = Mode::Normal;
+                        self.show_message(fmt(self.locale, "killed {}", &[&selected_agent.title]));
+                    }
+                }
+                Ok(_) => self.show_message(t(self.locale, "remote kill was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return Ok(());
+        }
         match agent::kill_agent(&selected_repo, &selected_agent, force) {
             Ok(()) => self.finish_kill(repo, agent_idx, &selected_repo, &selected_agent),
             Err(error) => {
@@ -209,6 +241,25 @@ impl App {
         }
         let selected_repo = repo_node.clone();
         let selected_agent = agent_node.clone();
+        if selected_repo.host.is_some() {
+            let Some(client) = self.remote_client_for_repo(repo) else {
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return Ok(());
+            };
+            match client.kill_agent(&selected_agent.id, true, true) {
+                Ok(outcome) if outcome.ok && outcome.branch_deleted => {
+                    self.registry.repos[repo].agents.remove(agent_idx);
+                    self.show_message(fmt(
+                        self.locale,
+                        "deleted branch {}",
+                        &[&selected_agent.branch],
+                    ));
+                }
+                Ok(_) => self.show_message(t(self.locale, "remote branch delete was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return Ok(());
+        }
         match git::delete_branch(&selected_repo.path, &selected_agent.branch) {
             Ok(()) => {
                 self.locked_registry_update(|registry| {

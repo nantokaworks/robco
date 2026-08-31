@@ -60,6 +60,10 @@ impl RemoteBackend {
         self.discovery()
     }
 
+    pub(in crate::ui) fn client(&self) -> RemoteClient {
+        self.client.clone()
+    }
+
     fn discovery(&self) -> Result<(Registry, Option<Vec<OrphanSession>>), RemoteError> {
         let value = self.client.call("robco_discovery_snapshot", json!({}))?;
         let wire: DiscoveryWire = serde_json::from_value(value)

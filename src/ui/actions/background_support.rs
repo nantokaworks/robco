@@ -7,10 +7,15 @@ use std::{
 
 use crate::{model::RepoNode, notify, overseer::logging, registry::Registry};
 
-pub(super) fn clone_registry(registry: &Registry) -> Registry {
+pub(super) fn clone_local_registry(registry: &Registry) -> Registry {
     Registry {
         version: registry.version,
-        repos: registry.repos.clone(),
+        repos: registry
+            .repos
+            .iter()
+            .filter(|repo| repo.host.is_none())
+            .cloned()
+            .collect(),
     }
 }
 
@@ -20,7 +25,10 @@ pub(super) fn fingerprint(registry: &Registry) -> Vec<u8> {
 
 pub(super) fn merge_status(current: &mut [RepoNode], refreshed: Vec<RepoNode>) {
     for repo in current {
-        let Some(source) = refreshed.iter().find(|source| source.path == repo.path) else {
+        let Some(source) = refreshed
+            .iter()
+            .find(|source| source.path == repo.path && source.host == repo.host)
+        else {
             continue;
         };
         copy_repo_status(source, repo);
@@ -38,7 +46,10 @@ pub(super) fn merge_status(current: &mut [RepoNode], refreshed: Vec<RepoNode>) {
 /// absent link there means the repo really was unlinked.
 pub(super) fn carry_runtime(current: &[RepoNode], refreshed: &mut [RepoNode], carry_dropr: bool) {
     for repo in refreshed {
-        let Some(source) = current.iter().find(|source| source.path == repo.path) else {
+        let Some(source) = current
+            .iter()
+            .find(|source| source.path == repo.path && source.host == repo.host)
+        else {
             continue;
         };
         copy_repo_status(source, repo);

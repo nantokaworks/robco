@@ -16,7 +16,7 @@ use crate::{Result, config::Config, locale::Locale, model::Selection, registry::
 
 use actions::{
     background_refresh::BackgroundRefresh, dropr_tasks::DroprTaskRefresh,
-    preview_capture::PreviewCapture,
+    preview_capture::PreviewCapture, remote_hosts::HostSlot,
 };
 use backend::{Backend, LocalBackend};
 
@@ -359,6 +359,8 @@ pub struct App {
     /// `actions::dropr_task_settle` (dropr:510).
     dropr_task_settle: Vec<String>,
     backend: Arc<dyn Backend>,
+    /// Independently-polled remote hosts, in configured tree order.
+    hosts: Vec<HostSlot>,
     background_refresh: BackgroundRefresh,
     preview_capture: PreviewCapture,
     /// Aggregated inbox, newest first. The rows the operator moves between are
@@ -453,6 +455,7 @@ impl App {
             dropr_task_refresh: DroprTaskRefresh::new(),
             dropr_task_settle: Vec::new(),
             backend: Arc::new(LocalBackend),
+            hosts: Vec::new(),
             background_refresh: BackgroundRefresh::new(),
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),

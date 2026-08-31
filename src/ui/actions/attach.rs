@@ -1,14 +1,11 @@
 use crate::{
     Result, agent,
     locale::{fmt, t},
-    model::{Selection, Status},
+    model::{HostLabel, Selection, Status},
     overseer, tmux,
 };
 
-use super::{
-    super::{App, suspend_terminal},
-    dropr_tasks::DroprTaskReload,
-};
+use super::super::{App, suspend_terminal};
 
 impl App {
     /// Suspend the TUI and hand the terminal to a tmux session. A failure here
@@ -17,9 +14,17 @@ impl App {
     /// bubbling `Err` would unwind out of the event loop and exit robco, which
     /// over ssh drops the whole connection.
     fn attach_session(&mut self, session: &str) {
+        self.attach_session_on(session, None);
+    }
+
+    fn attach_session_on(&mut self, session: &str, host: Option<&HostLabel>) {
         self.force_redraw = true;
         let server = &self.config.tmux_server;
-        if let Err(err) = suspend_terminal(|| tmux::attach(server, session)) {
+        let result = suspend_terminal(|| match host {
+            Some(host) => remote_attach(host, session),
+            None => tmux::attach(server, session),
+        });
+        if let Err(err) = result {
             self.show_message(err.to_string());
         }
     }
@@ -30,7 +35,8 @@ impl App {
                 .tmux_session
                 .clone();
             if let Some(session) = session {
-                self.attach_session(&session);
+                let host = self.registry.repos[repo].host.clone();
+                self.attach_session_on(&session, host.as_ref());
             } else {
                 self.show_message(t(self.locale, "no live session in this child worktree"));
             }
@@ -48,8 +54,14 @@ impl App {
             self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
             return Ok(());
         }
-        match agent::ensure_agent_session(&selected) {
-            Ok(()) => self.attach_session(&selected.tmux_session),
+        let host = self.registry.repos[repo].host.clone();
+        let ensured = if host.is_some() {
+            Ok(())
+        } else {
+            agent::ensure_agent_session(&selected)
+        };
+        match ensured {
+            Ok(()) => self.attach_session_on(&selected.tmux_session, host.as_ref()),
             Err(err) => self.show_message(err.to_string()),
         }
         Ok(())
@@ -62,22 +74,37 @@ impl App {
                 agent: agent_idx,
             }) => {
                 let selected = self.registry.repos[repo].agents[agent_idx].clone();
+                let host = self.registry.repos[repo].host.clone();
                 if selected.status == Status::BranchOnly {
                     self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
                     return Ok(());
                 }
-                match agent::ensure_shell_session(&selected) {
-                    Ok(()) => self.attach_session(&agent::shell_session_name(&selected)),
+                let ensured = if host.is_some() {
+                    Ok(())
+                } else {
+                    agent::ensure_shell_session(&selected)
+                };
+                match ensured {
+                    Ok(()) => {
+                        self.attach_session_on(&agent::shell_session_name(&selected), host.as_ref())
+                    }
                     Err(err) => self.show_message(err.to_string()),
                 }
             }
             Some(Selection::Repo(repo)) => {
                 let repo_node = self.registry.repos[repo].clone();
+                let host = repo_node.host.clone();
                 let prefix = self.config.tmux_session_prefix.clone();
-                match agent::ensure_repo_shell_session(&prefix, &repo_node) {
-                    Ok(()) => {
-                        self.attach_session(&agent::repo_shell_session_name(&prefix, &repo_node))
-                    }
+                let ensured = if host.is_some() {
+                    Ok(())
+                } else {
+                    agent::ensure_repo_shell_session(&prefix, &repo_node)
+                };
+                match ensured {
+                    Ok(()) => self.attach_session_on(
+                        &agent::repo_shell_session_name(&prefix, &repo_node),
+                        host.as_ref(),
+                    ),
                     Err(err) => self.show_message(err.to_string()),
                 }
             }
@@ -111,22 +138,35 @@ impl App {
                 agent: agent_idx,
             }) => {
                 let selected = self.registry.repos[repo].agents[agent_idx].clone();
+                let host = self.registry.repos[repo].host.clone();
                 if selected.status == Status::BranchOnly {
                     self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
                     return Ok(());
                 }
-                match agent::ensure_agent_session(&selected) {
-                    Ok(()) => self.attach_session(&selected.tmux_session),
+                let ensured = if host.is_some() {
+                    Ok(())
+                } else {
+                    agent::ensure_agent_session(&selected)
+                };
+                match ensured {
+                    Ok(()) => self.attach_session_on(&selected.tmux_session, host.as_ref()),
                     Err(err) => self.show_message(err.to_string()),
                 }
             }
             Some(Selection::Repo(repo)) => {
                 let repo_node = self.registry.repos[repo].clone();
+                let host = repo_node.host.clone();
                 let prefix = self.config.tmux_session_prefix.clone();
-                match agent::ensure_repo_claude_session(&self.config, &prefix, &repo_node) {
-                    Ok(()) => {
-                        self.attach_session(&agent::repo_claude_session_name(&prefix, &repo_node))
-                    }
+                let ensured = if host.is_some() {
+                    Ok(())
+                } else {
+                    agent::ensure_repo_claude_session(&self.config, &prefix, &repo_node)
+                };
+                match ensured {
+                    Ok(()) => self.attach_session_on(
+                        &agent::repo_claude_session_name(&prefix, &repo_node),
+                        host.as_ref(),
+                    ),
                     Err(err) => self.show_message(err.to_string()),
                 }
             }
@@ -155,6 +195,20 @@ impl App {
     /// was opened for. Mirrors `instruct_overseer`, but for the row-owned
     /// session rather than the control AI's.
     pub(in crate::ui) fn instruct_session(&mut self, session: &str, instruction: &str) {
+        if self.is_remote_session(session) {
+            let Some(client) = self.remote_client_for_session(session) else {
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return;
+            };
+            match client.instruct_session(session, instruction) {
+                Ok(outcome) if outcome.ok => {
+                    self.show_message(t(self.locale, "instruction sent"));
+                }
+                Ok(_) => self.show_message(t(self.locale, "remote instruction was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return;
+        }
         let server = self.config.tmux_server.clone();
         self.instruct_session_with(
             session,
@@ -221,57 +275,21 @@ impl App {
         };
         self.attach_session(&session);
     }
+}
 
-    pub(in crate::ui) fn restart_selected(&mut self) -> Result<()> {
-        if let Some(Selection::Repo(_)) = self.selected_item() {
-            let message = match self.refresh_dropr_tasks(true) {
-                DroprTaskReload::Running => "reloading dropr tasks…",
-                DroprTaskReload::Failed => "failed to start dropr task reload",
-                DroprTaskReload::NoLinkedWorkspaces => "no dropr-linked repos",
-                DroprTaskReload::OverlayPending => "dropr workspaces not loaded yet",
-                DroprTaskReload::OverlayUnavailable => "dropr workspace listing unavailable",
-                DroprTaskReload::OverlayDisabled => "dropr overlay is disabled",
-                DroprTaskReload::NoMaterialisedWorkspaces => {
-                    "linked repos have no materialised dropr board yet"
-                }
-            };
-            self.show_message(t(self.locale, message));
-            return Ok(());
-        }
-        if matches!(self.selected_item(), Some(Selection::ChildWorktree { .. })) {
-            self.show_message(t(
-                self.locale,
-                "restart is not available for child worktrees",
-            ));
-            return Ok(());
-        }
-        if let Some(Selection::DiscordChannel(index)) = self.selected_item() {
-            self.reset_discord_channel_selected(index);
-            return Ok(());
-        }
-        if let Some(Selection::Agent {
-            repo,
-            agent: agent_idx,
-        }) = self.selected_item()
-        {
-            let selected = self.registry.repos[repo].agents[agent_idx].clone();
-            if self.is_merging_agent(&self.registry.repos[repo].path, &selected.id) {
-                self.show_message(t(
-                    self.locale,
-                    "cannot restart an agent while it is merging",
-                ));
-                return Ok(());
-            }
-            if selected.status == Status::BranchOnly {
-                self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
-                return Ok(());
-            }
-            match agent::restart_agent(&selected) {
-                Ok(()) => self.show_message(fmt(self.locale, "restarted {}", &[&selected.title])),
-                Err(err) => self.show_message(err.to_string()),
-            }
-        }
+/// Direct ssh attach intentionally nests the operator's local and remote tmux.
+fn remote_attach(host: &HostLabel, session: &str) -> Result<()> {
+    let target = format!("={session}");
+    let status = std::process::Command::new("ssh")
+        .args(["-t", &host.ssh, "tmux", "attach", "-t", &target])
+        .status()?;
+    if status.success() {
         Ok(())
+    } else {
+        Err(crate::Error::Command {
+            context: "remote tmux attach",
+            stderr: format!("ssh exited with {status}"),
+        })
     }
 }
 

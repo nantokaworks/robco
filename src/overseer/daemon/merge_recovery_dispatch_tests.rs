@@ -172,6 +172,7 @@ fn registry_with_session(session: &str) -> Registry {
     Registry {
         version: 1,
         repos: vec![crate::model::RepoNode {
+            host: None,
             path: "/repo".into(),
             name: "repo".into(),
             remote_url: None,

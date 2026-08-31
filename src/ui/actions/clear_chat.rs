@@ -52,11 +52,33 @@ impl App {
             self.show_message(message);
             return;
         }
+        let session = agent::repo_claude_session_name(&self.config.tmux_session_prefix, &repo_node);
+        if repo_node.host.is_some() {
+            let repo = self
+                .registry
+                .repos
+                .iter()
+                .position(|repo| repo.path == repo_node.path && repo.host == repo_node.host)
+                .expect("selected repo remains present");
+            let Some(client) = self.remote_client_for_repo(repo) else {
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return;
+            };
+            match client.clear_chat(&repo_node.path.display().to_string()) {
+                Ok(outcome) if outcome.ok => self.show_message(fmt(
+                    self.locale,
+                    "cleared chat session for {}",
+                    &[&repo_node.name],
+                )),
+                Ok(_) => self.show_message(t(self.locale, "remote clear was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return;
+        }
         let clear_command = self
             .config
             .default_program_clear_command()
             .expect("clear_chat_blocker already confirmed a command is configured");
-        let session = agent::repo_claude_session_name(&self.config.tmux_session_prefix, &repo_node);
         let result = tmux::send_literal_text(&self.config.tmux_server, &session, &clear_command)
             .and_then(|()| tmux::send_keys(&self.config.tmux_server, &session, &["Enter"]));
         match result {
@@ -77,6 +99,19 @@ impl App {
     /// for. Returns the localized refusal message when the clear must not
     /// proceed.
     fn clear_chat_blocker(&self, repo_node: &crate::model::RepoNode) -> Option<String> {
+        if repo_node.host.is_some() {
+            return (!matches!(
+                repo_node.main_status,
+                Some(Status::Idle) | Some(Status::Done)
+            ))
+            .then(|| {
+                t(
+                    self.locale,
+                    "chat session is busy — wait for it to finish before clearing",
+                )
+                .to_string()
+            });
+        }
         let Some(_clear_command) = self.config.default_program_clear_command() else {
             return Some(fmt(
                 self.locale,

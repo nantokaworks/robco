@@ -8,6 +8,12 @@ use crate::{
     subagents::TaskSubagent,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HostLabel {
+    pub name: String,
+    pub ssh: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoNode {
     pub path: PathBuf,
@@ -18,6 +24,9 @@ pub struct RepoNode {
     pub pinned: bool,
     #[serde(default)]
     pub agents: Vec<AgentNode>,
+    /// Owning remote host. Runtime only; refreshed each tick and never persisted.
+    #[serde(skip)]
+    pub host: Option<HostLabel>,
     #[serde(skip)]
     pub dropr: Option<DroprWorkspace>,
     /// Result of the last dropr task fetch, failures included: a pane that
