@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     io,
     path::PathBuf,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -17,12 +18,14 @@ use actions::{
     background_refresh::BackgroundRefresh, dropr_tasks::DroprTaskRefresh,
     preview_capture::PreviewCapture,
 };
+use backend::{Backend, LocalBackend};
 
 /// How often the launch directory and each repo's worktrees are re-scanned to
 /// pick up projects or worktrees created outside robco.
 const DISCOVERY_INTERVAL: Duration = Duration::from_secs(3);
 
 mod actions;
+mod backend;
 mod blockfont;
 mod confirm_pr;
 #[cfg(test)]
@@ -355,6 +358,7 @@ pub struct App {
     /// invalidated. Drained once per tick by
     /// `actions::dropr_task_settle` (dropr:510).
     dropr_task_settle: Vec<String>,
+    backend: Arc<dyn Backend>,
     background_refresh: BackgroundRefresh,
     preview_capture: PreviewCapture,
     /// Aggregated inbox, newest first. The rows the operator moves between are
@@ -448,6 +452,7 @@ impl App {
             clone_job: None,
             dropr_task_refresh: DroprTaskRefresh::new(),
             dropr_task_settle: Vec::new(),
+            backend: Arc::new(LocalBackend),
             background_refresh: BackgroundRefresh::new(),
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),

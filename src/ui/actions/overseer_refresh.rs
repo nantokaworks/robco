@@ -27,18 +27,18 @@ use super::{background_refresh::StatusResult, background_support::merge_status, 
 /// keep it rather than flipping the row (see
 /// [`crate::status::classify_session_status`]).
 #[derive(Debug, Default, Clone)]
-pub(super) struct ControlWatch {
+pub(in crate::ui) struct ControlWatch {
     pub(super) status: Option<Status>,
     pub(super) state: WatchStatusState,
 }
 
-pub(super) struct OverseerResult {
+pub(in crate::ui) struct OverseerResult {
     pub(super) inbox: inbox::Inbox,
     pub(super) snapshot: OverseerSnapshot,
     pub(super) control_watch: ControlWatch,
 }
 
-pub(super) fn capture_overseer(
+pub(in crate::ui) fn capture_overseer(
     registry: &Registry,
     config: &Config,
     control_watch: &ControlWatch,
@@ -163,7 +163,7 @@ impl App {
     pub(in crate::ui) fn refresh_overseer_snapshot(&mut self) {
         // Operator commands only need overseer state immediately; deliberately
         // skip the potentially slow per-repo and per-agent status probes.
-        let result = capture_overseer(
+        let result = self.backend.capture_overseer(
             &self.registry,
             &self.config,
             &self.background_refresh.control_watch,

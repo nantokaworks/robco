@@ -17,9 +17,9 @@ use super::{
     auto_cleanup,
     background_support::*,
     discovery,
-    discovery_capture::{DiscoveryResult, capture_discovery},
+    discovery_capture::DiscoveryResult,
     dropr_overlay::{self, OverlayStatus},
-    overseer_refresh::{ControlWatch, OverseerResult, capture_overseer},
+    overseer_refresh::{ControlWatch, OverseerResult},
     registry_sync,
 };
 use crate::ui::{App, list};
@@ -43,7 +43,7 @@ pub(in crate::ui) struct BackgroundRefresh {
     registry_saver: RegistrySaver,
 }
 
-pub(super) struct StatusResult {
+pub(in crate::ui) struct StatusResult {
     pub(super) repos: Vec<RepoNode>,
     pub(super) overseer_visible: bool,
     pub(super) overseer: OverseerResult,
@@ -83,7 +83,7 @@ impl App {
 
     pub(in crate::ui) fn initial_tick(&mut self) {
         let started = Instant::now();
-        let result = capture_status(
+        let result = self.backend.capture_status(
             clone_registry(&self.registry),
             &self.config,
             &self.background_refresh.control_watch,
@@ -106,6 +106,7 @@ impl App {
         let registry = clone_registry(&self.registry);
         let config = self.config.clone();
         let control_watch = self.background_refresh.control_watch.clone();
+        let backend = Arc::clone(&self.backend);
         let spawn = std::thread::Builder::new()
             .name("ui-status-refresh".into())
             .spawn(move || {
@@ -113,7 +114,7 @@ impl App {
                     if let Ok(mut cursor) = cursor.lock() {
                         notify_new_decisions(&mut cursor, &notify_tx, config.notify.enabled);
                     }
-                    capture_status(registry, &config, &control_watch)
+                    backend.capture_status(registry, &config, &control_watch)
                 }))
                 .ok();
                 let _ = sender.send((started, result));
@@ -145,11 +146,12 @@ impl App {
         let registry = clone_registry(&self.registry);
         let config = self.config.clone();
         let roots = self.effective_roots().map(PathBuf::from).collect();
+        let backend = Arc::clone(&self.backend);
         let spawn = std::thread::Builder::new()
             .name("ui-discovery-refresh".into())
             .spawn(move || {
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    capture_discovery(registry, config, roots, reload_overlay)
+                    backend.capture_discovery(registry, config, roots, reload_overlay)
                 }))
                 .ok();
                 let _ = sender.send((started, result));
@@ -233,10 +235,11 @@ impl App {
     }
 }
 
-fn capture_status(
+pub(in crate::ui) fn capture_status(
     mut registry: Registry,
     config: &Config,
     control_watch: &ControlWatch,
+    capture_overseer_fn: impl FnOnce(&Registry, &Config, &ControlWatch) -> OverseerResult,
 ) -> StatusResult {
     let processes = config
         .process_indicator
@@ -256,7 +259,7 @@ fn capture_status(
             );
         }
     }
-    let overseer = capture_overseer(&registry, config, control_watch);
+    let overseer = capture_overseer_fn(&registry, config, control_watch);
     let auto_cleanup =
         auto_cleanup::merged_cleanup_candidates(&registry, &overseer.snapshot.ledger);
     StatusResult {

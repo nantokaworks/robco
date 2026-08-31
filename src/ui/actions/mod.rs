@@ -8,7 +8,7 @@ mod clear_chat;
 pub(super) mod clone;
 mod discord_channels;
 pub(super) mod discovery;
-mod discovery_capture;
+pub(super) mod discovery_capture;
 mod dropr_overlay;
 mod dropr_task_drill;
 mod dropr_task_finish;
