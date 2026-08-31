@@ -66,6 +66,7 @@ fn entry(phase: LedgerPhase, approval: Option<MergeApproval>) -> LedgerEntry {
         pr_facts: None,
         worker_finished_at: None,
         approval_dropped: None,
+        branch_update_head: None,
     }
 }
 

@@ -285,6 +285,7 @@ mod tests {
             pr_facts: None,
             worker_finished_at: None,
             approval_dropped: None,
+            branch_update_head: None,
         });
 
         assert_eq!(app.task_display_id(&ledgered), Some("#477".into()));
