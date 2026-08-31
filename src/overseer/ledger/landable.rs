@@ -43,6 +43,7 @@ pub(crate) fn new_entry(agent: &AgentNode, repo: &str, now: DateTime<Utc>) -> Le
         retries: 0,
         pr_url: None,
         branch_updates: 0,
+        branch_update_head: None,
         merge_recovery: Default::default(),
         merge_hold: Default::default(),
         merge_hold_cap_escalated: false,

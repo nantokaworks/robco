@@ -57,6 +57,18 @@ pub struct LedgerEntry {
     /// looping. Defaulted so ledgers written before the field existed still load.
     #[serde(default)]
     pub branch_updates: u32,
+    /// Head sha this pull request carried the last time robco updated its
+    /// branch onto its base because it had fallen behind
+    /// (`daemon::merge_apply::merge_state_cleared`). Lets
+    /// `daemon::merge_allow::take_merge_approval` tell a robco-driven branch
+    /// update apart from a worker's own push, the same way
+    /// `merge_recovery.head` marks a robco-dispatched recovery handback: a
+    /// live approval survives under the new head only when the push that
+    /// moved it past the approved revision is one robco itself made
+    /// (dropr:577). `None` until the first such update, and for a ledger
+    /// written before the field existed.
+    #[serde(default)]
+    pub branch_update_head: Option<String>,
     /// Handbacks of a failed merge to the worker that owns this branch.
     /// Defaulted so ledgers written before the field existed still load.
     #[serde(default)]

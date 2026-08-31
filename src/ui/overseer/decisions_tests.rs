@@ -39,6 +39,7 @@ fn ledger_entry(agent_id: &str, task_id: &str, phase: LedgerPhase) -> LedgerEntr
         pr_facts: None,
         worker_finished_at: None,
         approval_dropped: None,
+        branch_update_head: None,
     }
 }
 

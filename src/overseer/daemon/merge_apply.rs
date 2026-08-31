@@ -16,6 +16,7 @@ use super::{
     merge_queue::{self, Heads},
     merge_state,
     merge_state::{BehindPlan, MergeState},
+    pull_request::head_sha,
 };
 use crate::{
     Result,
@@ -63,10 +64,9 @@ pub(super) fn merge_state_cleared(
             }
             match merge_state::plan_update(entry, config) {
                 BehindPlan::Update(flag) => {
-                    Some(match merge_state::run_update(&entry.repo, url, flag) {
-                        Ok(()) => Halt::hold(merge_state::BRANCH_UPDATED),
-                        Err(reason) => Halt::hold(reason),
-                    })
+                    let head = head_sha(value).to_owned();
+                    let result = merge_state::run_update(&entry.repo, url, flag);
+                    Some(record_update_head(entry, &head, result))
                 }
                 BehindPlan::Escalate => {
                     entry.phase = LedgerPhase::Escalated;
@@ -75,6 +75,31 @@ pub(super) fn merge_state_cleared(
                 }
             }
         }
+    }
+}
+
+/// Records the head `entry`'s branch carried into a robco-driven update once
+/// `run_update` reports whether it succeeded, and returns the resulting halt.
+///
+/// `head` is the head the pull request had *before* this update — the
+/// revision any live `merge_approval` was granted against. Recording it only
+/// on success (dropr:577) is what lets `merge_allow::take_merge_approval`
+/// later tell this exact move apart from a worker's own push and carry a
+/// live approval forward onto the branch's new head, the same way
+/// `merge_recovery.head` marks a robco-dispatched recovery handback. A
+/// failed update never moved the branch, so there is no new head for an
+/// approval to survive under.
+fn record_update_head(
+    entry: &mut LedgerEntry,
+    head: &str,
+    result: std::result::Result<(), String>,
+) -> Halt {
+    match result {
+        Ok(()) => {
+            entry.branch_update_head = Some(head.to_owned());
+            Halt::hold(merge_state::BRANCH_UPDATED)
+        }
+        Err(reason) => Halt::hold(reason),
     }
 }
 
