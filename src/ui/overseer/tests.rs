@@ -263,15 +263,15 @@ fn info_pane_reads_auto_merge_from_snapshot_not_stale_config() {
     // Regression for #171: the Info pane must render overseer flags from the
     // disk-backed snapshot, not the in-memory `app.config` that only the `,`
     // settings editor refreshes. Simulate an external edit landing on disk
-    // (snapshot reloaded → auto-merge on) while `app.config` is still stale "off".
+    // (snapshot reloaded → merge-gate on) while `app.config` is still stale "off".
     let mut app = test_app();
     app.config.overseer.auto_merge = false;
     app.overseer_snapshot.overseer.auto_merge = true;
 
     let rendered = category_text(&app, OverseerCategory::Health);
 
-    assert!(rendered.contains("auto-merge: on"));
-    assert!(!rendered.contains("auto-merge: off"));
+    assert!(rendered.contains("merge-gate: on"));
+    assert!(!rendered.contains("merge-gate: off"));
 }
 
 #[test]

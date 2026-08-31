@@ -191,7 +191,7 @@ fn daemon_line(
 /// part in.
 fn toggle_line(config: &OverseerConfig, recovery_drops: u32) -> String {
     format!(
-        "auto-merge: {} (protection: {})  merge-recovery: {}",
+        "merge-gate: {} (protection: {})  merge-recovery: {}",
         on_off(config.auto_merge),
         config.protection_mode.label(),
         merge_recovery_state(config, recovery_drops),

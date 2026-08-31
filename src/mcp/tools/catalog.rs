@@ -35,7 +35,15 @@ pub fn list_tools() -> Value {
             json!({
                 "type": "object",
                 "properties": {
-                    "auto_merge": { "type": "boolean" },
+                    "auto_merge": {
+                        "type": "boolean",
+                        "description": "Whether the daemon's merge gate runs at all. \
+                            Even when true, a pull request only merges after a \
+                            per-PR operator approval (`m`, `!merge`, or \
+                            `robco_approve`); this key never means unattended \
+                            merging. Key name kept as `auto_merge` for backward \
+                            compatibility with existing clients."
+                    },
                     "daemon_alive": { "type": "boolean" }
                 },
                 "required": ["auto_merge", "daemon_alive"],

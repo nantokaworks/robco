@@ -60,11 +60,11 @@ pub(crate) fn execute(
         Command::Status => reports::status(),
         Command::AutoMerge(false) => {
             command::set_runtime(OverseerSetting::AutoMerge, false)?;
-            Ok("automerge: off".into())
+            Ok("merge-gate: off".into())
         }
         Command::AutoMerge(true) => Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            "automerge can only be enabled via the local CLI",
+            "merge-gate can only be enabled via the local CLI",
         )
         .into()),
         Command::Workers => reports::workers(),

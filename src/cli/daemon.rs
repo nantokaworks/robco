@@ -21,7 +21,7 @@ pub enum ConfigCommand {
     /// Choose the channel that receives reports (decision notifications and
     /// digests). Cleared, reports fall back to the chat channel.
     NotifyChannel(OverseerNotifyChannelArgs),
-    /// Set how strictly auto-merge requires the base branch to be protected.
+    /// Set how strictly the merge gate requires the base branch to be protected.
     Protection(OverseerProtectionArgs),
 }
 

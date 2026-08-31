@@ -17,7 +17,7 @@ pub(super) fn describe(command: &Command) -> Entry {
     match command {
         Command::Status => Entry {
             usage: "!status",
-            description: "Show automerge and worker count.",
+            description: "Show merge-gate and worker count.",
         },
         Command::Help => Entry {
             usage: "!help",
@@ -25,7 +25,7 @@ pub(super) fn describe(command: &Command) -> Entry {
         },
         Command::AutoMerge(_) => Entry {
             usage: "!automerge off",
-            description: "Turn auto-merge off. Turning it on from Discord is refused.",
+            description: "Turn the merge gate off. Turning it on from Discord is refused.",
         },
         Command::Workers => Entry {
             usage: "!workers",
