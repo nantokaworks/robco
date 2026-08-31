@@ -32,11 +32,46 @@ fn prompt_contains_assignment_and_rails() {
 
 #[test]
 fn prompt_hands_the_claim_over_instead_of_asking_for_one() {
-    // The overseer claims at dispatch time; a worker that re-claimed would be
-    // racing its own dispatcher for the lock it already benefits from.
+    // The launcher claims before the worker session starts; a worker that
+    // re-claimed would be racing its own launcher for the lock it already
+    // benefits from.
     let prompt = worker(None);
     assert!(prompt.contains("already claimed #132"));
     assert!(prompt.contains("Do NOT run `dropr task next`"));
+}
+
+/// dropr:573: three launch paths (daemon dispatch, the MCP tool, the TUI `n`
+/// key) claim under three different agent ids. The prompt used to assert one
+/// of them was the holder and told the worker to self-block otherwise — a
+/// check that only ever passed for the daemon path. The claim is already
+/// verified at launch time (a refused claim fails the launch itself), so the
+/// worker has nothing left to check and the prompt must not name any of the
+/// three ids. Uses its own title/repo (rather than the `worker()` fixture,
+/// whose title happens to contain the word "overseer") so the check is a
+/// clean id search, not a substring collision with unrelated prose.
+#[test]
+fn prompt_names_no_launch_path_agent_id() {
+    for subtasks in [Vec::new(), vec![subtask("#432")]] {
+        let prompt = worker_prompt(
+            "#132",
+            "abc",
+            "Ship the thing",
+            "/repo/path",
+            &subtasks,
+            None,
+            None,
+        );
+        for agent_id in ["`overseer`", "`robco-spawn`", "`robco-ui`"] {
+            assert!(
+                !prompt.contains(agent_id),
+                "prompt names {agent_id}: {prompt}"
+            );
+        }
+    }
+    let prompt = worker(None);
+    assert!(!prompt.contains("Verify the task is claimed"));
+    assert!(!prompt.contains("If it is claimed by anyone else"));
+    assert!(!prompt.contains("as dropr agent"));
 }
 
 #[test]
