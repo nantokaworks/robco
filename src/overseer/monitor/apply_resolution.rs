@@ -76,9 +76,9 @@ pub(in crate::overseer::monitor) fn apply_escalation_resolution(
     }
 }
 
-/// Common tail of both resolution paths — the explicit `unblocked` report in
-/// `apply::apply_inbox` and the activity signals in
-/// [`apply_escalation_resolution`] above. Both call sites already require
+/// Tail of the signal-driven resolution path — activity
+/// [`apply_escalation_resolution`] above observed on its own, with nothing
+/// from the worker saying so directly. Gated by its one call site on
 /// `entry.worker_escalated`, so this never fires for a merge-subsystem
 /// escalation — but it clears the merge-hold reconsideration markers
 /// regardless, the same way `daemon::merge_hold_recheck::settle` does,
@@ -88,13 +88,16 @@ pub(in crate::overseer::monitor) fn apply_escalation_resolution(
 ///
 /// Lands on `Working` rather than whatever phase preceded the escalation,
 /// which the ledger does not record: the next `apply_pr` / `apply_task_failure`
-/// / `apply_session` in this same pass (or the next one, for a signal-driven
-/// resolution that runs after them) re-derives the entry's real phase from
-/// live state, the same way a freshly dispatched entry always has. Clearing
-/// `settled_at` gives a later escalation of the same entry its own fresh
-/// clock — `monitor::settle` only stamps a new one when the field reads
-/// `None` — so a worker that reports blocked again is judged against its own
-/// timestamp, not a stale one this resolution already spent.
+/// / `apply_session`, in the following pass, re-derives the entry's real
+/// phase from live state, the same way a freshly dispatched entry always
+/// has. Clearing `settled_at` gives a later escalation of the same entry its
+/// own fresh clock — `monitor::settle` only stamps a new one when the field
+/// reads `None` — so a worker that reports blocked again is judged against
+/// its own timestamp, not a stale one this resolution already spent.
+///
+/// An explicit `unblocked` report is not routed here — see
+/// [`revive_report`] below, which the worker's own report is trusted enough
+/// to reach on `Failed` too, not only `Escalated`.
 pub(super) fn resolve(entry: &mut LedgerEntry, signal: &str, actions: &mut Vec<Action>) {
     entry.phase = LedgerPhase::Working;
     entry.settled_at = None;
@@ -111,6 +114,37 @@ pub(super) fn resolve(entry: &mut LedgerEntry, signal: &str, actions: &mut Vec<A
     actions.push(Action::LogDecision {
         task_id: Some(entry.task_id.clone()),
         message: reason,
+    });
+}
+
+/// The explicit-report counterpart to [`resolve`] — called from
+/// `apply::apply_inbox` for an `unblocked` report against an entry that is
+/// `Escalated` (with `entry.worker_escalated`) or `Failed`. Reuses
+/// `ledger::revive` (dropr:575) rather than a second copy of its bookkeeping
+/// reset, so this lands on the exact phase (`PrOpened` once a pull request is
+/// known, `Dispatched` otherwise) and clears the exact fields an operator's
+/// own merge request already gets through `ledger::ensure_landable` — merge
+/// hold, merge recovery, and Discord notification dedup markers included,
+/// none of which `resolve` above ever touched.
+///
+/// `Failed` needs no `worker_escalated` gate the way `Escalated` does:
+/// nothing but a worker's own session going dead or stuck timing out ever
+/// reaches `Failed` (`apply::fail`), so there is no merge-subsystem cause to
+/// mistake this report for — unlike `Escalated`, which the merge gate's own
+/// safety valves share.
+pub(super) fn revive_report(
+    entry: &mut LedgerEntry,
+    now: DateTime<Utc>,
+    actions: &mut Vec<Action>,
+) {
+    crate::overseer::ledger::revive(entry, now);
+    let reason = "resolved_externally:explicit_report";
+    actions.push(Action::Notify {
+        message: format!("{}: {reason}", entry.display_id),
+    });
+    actions.push(Action::LogDecision {
+        task_id: Some(entry.task_id.clone()),
+        message: reason.into(),
     });
 }
 

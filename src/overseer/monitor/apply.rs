@@ -19,7 +19,7 @@ use super::{
 #[path = "apply_resolution.rs"]
 mod resolution;
 pub(super) use resolution::apply_escalation_resolution;
-use resolution::resolve;
+use resolution::revive_report;
 
 /// Reason recorded when a prerequisite wait outlives its bound — a worker's
 /// `waiting-prerequisite` report, or the auto-merge gate's own
@@ -32,6 +32,7 @@ const PREREQUISITE_WAIT_EXCEEDED: &str = "prerequisite_wait_exceeded";
 pub(super) fn apply_inbox(
     entry: &mut LedgerEntry,
     observations: &Observations,
+    now: DateTime<Utc>,
     actions: &mut Vec<Action>,
 ) {
     let mut reports: Vec<_> = observations
@@ -68,18 +69,24 @@ pub(super) fn apply_inbox(
             }
             // A worker that got its answer straight from a human typing into
             // its own tmux session — rather than through dropr or the inbox —
-            // has no other way to tell Overseer the block lifted. Resolving
-            // here, inside `apply_inbox`, means the same pass's `apply_pr` /
+            // or whose session merely looked dead to a stale probe, has no
+            // other way to tell Overseer the block lifted. Reviving here,
+            // inside `apply_inbox`, means the same pass's `apply_pr` /
             // `apply_task_failure` / `apply_session` immediately re-derive the
             // entry's real phase instead of waiting for the next poll.
             //
-            // Gated on `worker_escalated` the same as the signal-driven path
-            // in `apply_escalation_resolution`: the worker's own worktree and
-            // session stay alive through a merge-subsystem escalation too, so
-            // a worker that fires this hook without knowing the block is on
-            // the merge side, not its own, must not clear it.
-            "unblocked" if entry.phase == LedgerPhase::Escalated && entry.worker_escalated => {
-                resolve(entry, "explicit_report", actions)
+            // `Escalated` is gated on `worker_escalated` the same as the
+            // signal-driven path in `apply_escalation_resolution`: the
+            // worker's own worktree and session stay alive through a
+            // merge-subsystem escalation too, so a worker that fires this
+            // hook without knowing the block is on the merge side, not its
+            // own, must not clear it. `Failed` needs no such gate — see
+            // `resolution::revive_report`.
+            "unblocked"
+                if entry.phase == LedgerPhase::Failed
+                    || (entry.phase == LedgerPhase::Escalated && entry.worker_escalated) =>
+            {
+                revive_report(entry, now, actions)
             }
             // The worker's own claim that its work is finished — a report,
             // not proof. `Merged` / `Failed` / `Escalated` stay derived from

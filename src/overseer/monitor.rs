@@ -28,7 +28,7 @@ fn reconcile_entry(entry: &mut LedgerEntry, observations: &Observations, now: Da
         return;
     }
     let original = entry.phase;
-    apply_inbox(entry, observations, actions);
+    apply_inbox(entry, observations, now, actions);
     // Checked for every entry regardless of phase: the wait may have been set
     // here (a worker's `waiting-prerequisite` report) or by the auto-merge
     // pass finding the entry's pull request held on a `blocks` edge, and both
