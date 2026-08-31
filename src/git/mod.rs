@@ -1,3 +1,4 @@
+mod behind;
 mod branch;
 mod local_ref;
 mod merge_failure;
@@ -13,6 +14,7 @@ mod remote;
 pub(crate) mod test_repo;
 mod worktree;
 
+pub use behind::*;
 pub use branch::*;
 pub(crate) use local_ref::*;
 pub use merge_failure::*;

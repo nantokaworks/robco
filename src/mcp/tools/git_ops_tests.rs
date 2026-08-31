@@ -13,7 +13,12 @@ use super::*;
 fn the_catalog_declares_the_pr_and_merge_tools() {
     let tools = catalog::list_tools();
     let tools = tools.as_array().unwrap();
-    for name in ["robco_pr_status", "robco_pr_request", "robco_merge"] {
+    for name in [
+        "robco_pr_status",
+        "robco_pr_request",
+        "robco_pr_update_branch",
+        "robco_merge",
+    ] {
         assert!(
             tools.iter().any(|tool| tool["name"] == name),
             "{name} is missing from the catalog"
@@ -46,7 +51,12 @@ fn the_pr_request_description_says_the_agent_authors_the_pull_request() {
 
 #[test]
 fn the_pr_and_merge_tools_validate_their_agent_id() {
-    for name in ["robco_pr_status", "robco_pr_request", "robco_merge"] {
+    for name in [
+        "robco_pr_status",
+        "robco_pr_request",
+        "robco_pr_update_branch",
+        "robco_merge",
+    ] {
         let error = call_tool(name, Some(json!({ "agent_id": " " }))).unwrap_err();
         assert!(
             matches!(error, ToolError::InvalidParams(_)),

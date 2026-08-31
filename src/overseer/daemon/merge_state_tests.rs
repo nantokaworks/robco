@@ -1,9 +1,12 @@
 use serde_json::json;
 
 use super::*;
-use crate::overseer::{
-    config::OverseerConfig,
-    ledger::{LedgerEntry, LedgerPhase},
+use crate::{
+    config::MergeStrategy,
+    overseer::{
+        config::OverseerConfig,
+        ledger::{LedgerEntry, LedgerPhase},
+    },
 };
 
 /// The update budget lives under `overseer`, the strategy it spends lives at the

@@ -1,54 +1,5 @@
-use std::{path::Path, process::Command};
-
+use super::test_support::{Fixture, add_worktree, run_git};
 use super::*;
-use crate::model::AgentNode;
-
-struct Fixture {
-    _temp: tempfile::TempDir,
-    repo: RepoNode,
-    config: Config,
-    agent_path: std::path::PathBuf,
-}
-
-#[test]
-fn adoption_grace_period_has_a_strict_boundary() {
-    assert!(should_skip_adoption(std::time::Duration::from_secs(14)));
-    assert!(!should_skip_adoption(std::time::Duration::from_secs(15)));
-}
-
-impl Fixture {
-    fn new() -> Self {
-        let temp = tempfile::tempdir().unwrap();
-        let repo_path = temp.path().join("repo");
-        run_git(temp.path(), &["init", repo_path.to_str().unwrap()]);
-        run_git(&repo_path, &["config", "user.email", "robco@example.com"]);
-        run_git(&repo_path, &["config", "user.name", "Robco Test"]);
-        std::fs::write(repo_path.join("README"), "test\n").unwrap();
-        run_git(&repo_path, &["add", "README"]);
-        run_git(&repo_path, &["commit", "-m", "initial"]);
-
-        let worktree_root = temp.path().join("worktrees");
-        let agent_path = worktree_root.join("dropr_task-749_gOQmxo");
-        add_worktree(&repo_path, &agent_path, "dropr/task-749");
-        let mut repo = repo_node(repo_path);
-        repo.agents.push(agent_node(&repo, &agent_path));
-        let config = Config {
-            worktree_root,
-            ..Config::default()
-        };
-        Self {
-            _temp: temp,
-            repo,
-            config,
-            agent_path,
-        }
-    }
-
-    fn reconcile(&mut self) -> (bool, bool) {
-        let worktrees = git::list_worktrees(&self.repo.path).unwrap();
-        reconcile(&mut self.repo, &self.config, worktrees)
-    }
-}
 
 #[test]
 fn nested_worktree_is_child_instead_of_flat_agent() {
@@ -211,39 +162,6 @@ fn merged_producer_slot_reports_zero_commits_ahead() {
 }
 
 #[test]
-fn recovered_identity_of_a_tracked_agent_does_not_add_a_second_row() {
-    let mut fixture = Fixture::new();
-    let tracked_id = fixture.repo.agents[0].id.clone();
-    let tracked_path = fixture.repo.agents[0].worktree_path.clone();
-    // The worktree git reports is the tracked agent under a spelling `path_key`
-    // cannot match — the registry entry's directory no longer canonicalizes, so
-    // its lexical path is compared against git's. Its session still names the
-    // tracked agent, which is what a second row would clone the id from.
-    let renamed = fixture.config.worktree_root.join("dropr_task-749_renamed");
-    let worktree = Worktree {
-        path: renamed,
-        head: None,
-        branch: Some("dropr/task-749".into()),
-    };
-
-    let added = adopt_top_level(
-        &mut fixture.repo,
-        &fixture.config,
-        worktree,
-        Some("robco_repo_task-749".into()),
-        Some(agent::RecoveredIdentity {
-            id: tracked_id.clone(),
-            parent_agent_id: None,
-        }),
-    );
-
-    assert!(!added);
-    assert_eq!(fixture.repo.agents.len(), 1);
-    assert_eq!(fixture.repo.agents[0].id, tracked_id);
-    assert_eq!(fixture.repo.agents[0].worktree_path, tracked_path);
-}
-
-#[test]
 fn outside_worktree_is_ignored() {
     let mut fixture = Fixture::new();
     let outside = fixture._temp.path().join("outside");
@@ -266,60 +184,4 @@ fn agent_path_is_not_its_own_child() {
     assert!(!agent_added);
     assert!(!children_changed);
     assert!(fixture.repo.agents[0].children.is_empty());
-}
-
-fn repo_node(path: std::path::PathBuf) -> RepoNode {
-    RepoNode {
-        host: None,
-        path,
-        name: "repo".into(),
-        remote_url: None,
-        pinned: false,
-        agents: Vec::new(),
-        dropr: None,
-        dropr_tasks: crate::dropr::DroprTaskFetch::default(),
-        main_status: None,
-        main_last_capture: None,
-        main_last_spinner: None,
-        main_last_change_at: None,
-        main_shell_working: false,
-        main_mcp_active: false,
-        main_pane_pid: None,
-        main_tracked_command: None,
-        main_subagents_active: 0,
-        main_behind_origin: None,
-        checkout_state: None,
-    }
-}
-
-fn agent_node(repo: &RepoNode, path: &Path) -> AgentNode {
-    agent::adopt_worktree(
-        repo,
-        &Config::default(),
-        path.to_path_buf(),
-        Some("dropr/task-749".into()),
-        None,
-        None,
-        None,
-    )
-}
-
-fn add_worktree(repo: &Path, path: &Path, branch: &str) {
-    run_git(
-        repo,
-        &["worktree", "add", "-b", branch, path.to_str().unwrap()],
-    );
-}
-
-fn run_git(cwd: &Path, args: &[&str]) {
-    let output = Command::new("git")
-        .args(["-C", cwd.to_str().unwrap()])
-        .args(args)
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "git {args:?} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
 }

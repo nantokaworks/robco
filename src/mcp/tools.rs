@@ -24,6 +24,7 @@ mod overseer_snapshot;
 mod pane_capture;
 mod policy;
 mod pr;
+mod pr_update;
 mod questions;
 mod report;
 mod shared;
@@ -96,6 +97,7 @@ pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
         }
         "robco_pr_status" => pr::pr_status(parse_args(arguments)?),
         "robco_pr_request" => pr::pr_request(parse_args(arguments)?),
+        "robco_pr_update_branch" => pr_update::pr_update_branch(parse_args(arguments)?),
         "robco_merge" => merge::merge(parse_args(arguments)?),
         "robco_tasks" => mcp_bridge::text_result(&Command::Tasks),
         "robco_log" => {

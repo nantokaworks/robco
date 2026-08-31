@@ -221,7 +221,17 @@ pub(crate) fn persist_child(
             .iter_mut()
             .find(|repo| repo.path == repo_path)
         {
-            repo.agents.push(child);
+            // A background refresh's `reconcile` can adopt this same worker
+            // between session creation and this call, leaving a row with the
+            // same id already in place (dropr:566). That row carries none of
+            // the launch's `spawned_by_version` / `claude_session_id` /
+            // `task_number` / real title, so replace it instead of appending
+            // a second row that would go stale forever.
+            if let Some(existing) = repo.agents.iter_mut().find(|agent| agent.id == child.id) {
+                *existing = child;
+            } else {
+                repo.agents.push(child);
+            }
             found = true;
         }
     })?;

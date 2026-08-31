@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -9,13 +8,10 @@ use chrono::{DateTime, Utc};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    command::escalate_workers,
-    daemon::pull_request,
-    discord::ledger_requests::record_runtime_approval,
-    ledger::{self, Ledger, OperatorOverride},
-    ledger_path, runtime_requests_dir,
-};
+mod apply_request;
+use apply_request::apply;
+
+use super::{ledger::Ledger, ledger_path, runtime_requests_dir};
 use crate::{Result, registry::Registry};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -70,6 +66,23 @@ pub(crate) enum RuntimeRequest {
     RunTask {
         source: String,
         task: String,
+        at: DateTime<Utc>,
+    },
+    /// An operator's own `u` action (TUI key or `robco_pr_update_branch` MCP
+    /// tool) just brought a pull request's branch up to date with its base on
+    /// GitHub's own side — see `crate::pr_update::update_behind`. `target` is
+    /// the ledger entry's `agent_id` or `display_id`, the same two keys
+    /// `robco_approve` and the Inbox already key on.
+    ///
+    /// Applying it resets the automated update budget
+    /// (`LedgerEntry::branch_updates`) that `merge_state::plan_update` spends
+    /// and, when the budget's own cap had escalated the entry, revives it so
+    /// the next auto-merge pass looks at it again — the cap exists to stop an
+    /// endless *automated* update loop, and an explicit operator action is
+    /// not that loop (dropr:574).
+    BranchUpdated {
+        source: String,
+        target: String,
         at: DateTime<Utc>,
     },
 }
@@ -188,73 +201,6 @@ pub(crate) fn drain_in(
         }
     }
     Ok(pending_runs)
-}
-
-pub(crate) fn apply(ledger: &mut Ledger, request: RuntimeRequest, registry: Option<&Registry>) {
-    match request {
-        RuntimeRequest::PanicEscalate { agent_ids, .. } => {
-            escalate_workers(ledger, &agent_ids.into_iter().collect::<HashSet<_>>());
-        }
-        // Nothing to apply: the pass that drains this request goes on to
-        // observe the merge for itself, which is the whole point of waking it.
-        RuntimeRequest::MergeCompleted { .. } => {}
-        RuntimeRequest::OperatorMergeOverride { target, .. } => {
-            grant_operator_override(ledger, &target, registry);
-        }
-        RuntimeRequest::MergeApproval {
-            source,
-            target,
-            head,
-            ..
-        } => {
-            record_runtime_approval(ledger, &target, &head, &source, registry);
-        }
-        // `drain_in` pulls this variant out before calling `apply` — see the
-        // variant's own doc comment. Kept as an explicit no-op arm, not a
-        // wildcard, so a future caller that bypasses `drain_in` fails safe
-        // (nothing dispatches) instead of silently matching a wildcard.
-        RuntimeRequest::RunTask { .. } => {}
-    }
-}
-
-/// Finds the ledger entry `target` names and records an operator override
-/// scoped to its pull request's current head.
-///
-/// An already-existing entry with no pull request recorded yet is left
-/// untouched rather than run through `ledger::ensure_landable`: there is
-/// nothing an override can grant against it, so reviving a `Failed` or
-/// `Escalated` settlement here would only discard that state for no gain.
-/// `ensure_landable` still adopts or revives once a pull request is known —
-/// or the entry does not exist at all yet, which `robco_approve` already
-/// validates against before this request is ever enqueued (dropr:523).
-///
-/// Silently a no-op when there is truly nothing to adopt, or GitHub cannot be
-/// read right now — an operator override that missed its moment is not a
-/// failure this drain should abort or retry over, the same way [`apply`]
-/// already treats a `PanicEscalate` naming a since-vanished agent id. The
-/// operator can simply approve again.
-fn grant_operator_override(ledger: &mut Ledger, target: &str, registry: Option<&Registry>) {
-    let already_known_without_a_pr = ledger
-        .entries
-        .iter()
-        .find(|entry| entry.agent_id == target || entry.display_id == target)
-        .is_some_and(|entry| entry.pr_url.is_none());
-    if already_known_without_a_pr {
-        return;
-    }
-    let Some(entry) = ledger::ensure_landable(ledger, target, registry, Utc::now()) else {
-        return;
-    };
-    let Some(url) = entry.pr_url.clone() else {
-        return;
-    };
-    let Ok(value) = pull_request::read(&entry.repo, &url) else {
-        return;
-    };
-    entry.operator_override = Some(OperatorOverride {
-        head: pull_request::head_sha(&value).to_owned(),
-        granted_at: Utc::now(),
-    });
 }
 
 fn quarantine_applied(path: &Path, error: &std::io::Error) {

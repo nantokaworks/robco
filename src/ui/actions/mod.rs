@@ -38,3 +38,4 @@ mod restart;
 mod settings;
 pub(super) mod slots;
 mod subagents;
+mod update_branch;

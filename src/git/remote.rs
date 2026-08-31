@@ -4,8 +4,10 @@ use std::{
 };
 
 use super::{
-    GIT_LOCAL_TIMEOUT, GIT_NETWORK_TIMEOUT, command_output, command_unit,
-    merge_failure::{command_failure_text, explain_merge_failure},
+    GIT_LOCAL_TIMEOUT, GIT_NETWORK_TIMEOUT,
+    behind::pr_behind,
+    command_output, command_unit,
+    merge_failure::{self, command_failure_text, explain_merge_failure},
 };
 use crate::{Error, Result, config::MergeStrategy, exec::run_timeout};
 
@@ -94,15 +96,26 @@ pub fn merge_pr(repo: &Path, branch: &str, strategy: MergeStrategy) -> Result<()
     }
     Err(Error::Command {
         context: "gh pr merge",
-        stderr: refusal_detail(strategy, &output),
+        stderr: refusal_detail(repo, branch, strategy, &output),
     })
 }
 
 /// The failure an operator reads. A refusal robco can explain leads with the
 /// cause, because `gh`'s own line names the exit rather than the branch shape
 /// behind it; the raw output still follows, so nothing is hidden.
-fn refusal_detail(strategy: MergeStrategy, output: &Output) -> String {
+///
+/// `BEHIND` is checked first, and by re-reading GitHub's own live merge state
+/// rather than by matching `gh`'s failure text — see
+/// [`merge_failure::behind_refusal`] for why. The re-read is best effort: a
+/// failure reading it (network hiccup, `gh` unavailable) falls through to the
+/// text-based explanation exactly as before, rather than losing the refusal
+/// this function already had.
+fn refusal_detail(repo: &Path, branch: &str, strategy: MergeStrategy, output: &Output) -> String {
     let raw = command_failure_text(output);
+    if pr_behind(repo, branch).unwrap_or(false) {
+        let refusal = merge_failure::behind_refusal();
+        return format!("{} (gh: {raw})", refusal.message);
+    }
     match explain_merge_failure(strategy, &raw) {
         Some(refusal) => format!(
             "{} refused: {} (gh: {raw})",

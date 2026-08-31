@@ -1,4 +1,4 @@
-use crate::{config::language_directive, dropr::Subtask, overseer::OVERSEER_AGENT_ID};
+use crate::{config::language_directive, dropr::Subtask};
 
 /// Default value of `overseer.worker_prompt_template` — the task-specific
 /// half of [`worker_prompt`], unset. An operator's override replaces this
@@ -74,11 +74,9 @@ pub fn worker_prompt(
     format!(
         r#"{task_specific}
 
-Run `dropr bootstrap` first. The Overseer already claimed {display_id} for you, as dropr agent
-`{OVERSEER_AGENT_ID}` — the task is yours. Do NOT run `dropr task next` and do NOT claim it again;
-a second claim would only fight the one you already hold. Verify the task is claimed by
-`{OVERSEER_AGENT_ID}`, then run `robco report --kind claimed`. If it is claimed by anyone else, run
-`robco report --kind blocked` and stop without touching the repository.
+Run `dropr bootstrap` first. The Overseer already claimed {display_id} for you — the task is yours.
+Do NOT run `dropr task next` and do NOT claim it again; a second claim would only fight the one you
+already hold. Run `robco report --kind claimed`.
 
 Follow RUN discipline: implement the task, self-review the diff, run relevant tests, commit with
 `(refs dropr:{task_id})` in the commit message, and push only your assigned branch. Open a pull

@@ -27,6 +27,7 @@ const AGENT_HINTS: Hints = &[
     ("↵", "attach"),
     ("r", "restart"),
     ("m", "merge"),
+    ("u", "update"),
     ("p", "pr"),
     ("x", "remove"),
     ("?", "help"),

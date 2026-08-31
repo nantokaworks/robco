@@ -323,6 +323,90 @@ fn run_task_is_handed_back_instead_of_applied_and_still_acked() {
 }
 
 #[test]
+fn branch_updated_resets_the_budget_and_revives_an_escalated_entry() {
+    let mut entry = ledger_entry("worker-1", LedgerPhase::Escalated);
+    entry.branch_updates = 3;
+    entry.worker_escalated = false;
+    let mut ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+
+    apply(
+        &mut ledger,
+        RuntimeRequest::BranchUpdated {
+            source: "test".into(),
+            target: "worker-1".into(),
+            at: Utc::now(),
+        },
+        None,
+    );
+
+    assert_eq!(ledger.entries[0].branch_updates, 0);
+    assert_eq!(ledger.entries[0].phase, LedgerPhase::PrOpened);
+}
+
+/// A live entry the update budget never escalated stays exactly where it
+/// was — the reset is harmless bookkeeping, not a phase change every entry
+/// earns.
+#[test]
+fn branch_updated_only_resets_the_budget_for_a_live_entry() {
+    let mut entry = ledger_entry("worker-1", LedgerPhase::PrOpened);
+    entry.branch_updates = 2;
+    let mut ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+
+    apply(
+        &mut ledger,
+        RuntimeRequest::BranchUpdated {
+            source: "test".into(),
+            target: "worker-1".into(),
+            at: Utc::now(),
+        },
+        None,
+    );
+
+    assert_eq!(ledger.entries[0].branch_updates, 0);
+    assert_eq!(ledger.entries[0].phase, LedgerPhase::PrOpened);
+}
+
+#[test]
+fn branch_updated_matches_by_display_id_and_is_a_noop_for_no_match() {
+    let mut entry = ledger_entry("worker-1", LedgerPhase::Escalated);
+    entry.branch_updates = 1;
+    let mut ledger = Ledger {
+        entries: vec![entry],
+        ..Ledger::default()
+    };
+
+    apply(
+        &mut ledger,
+        RuntimeRequest::BranchUpdated {
+            source: "test".into(),
+            target: "no-such-agent".into(),
+            at: Utc::now(),
+        },
+        None,
+    );
+    assert_eq!(ledger.entries[0].branch_updates, 1);
+    assert_eq!(ledger.entries[0].phase, LedgerPhase::Escalated);
+
+    apply(
+        &mut ledger,
+        RuntimeRequest::BranchUpdated {
+            source: "test".into(),
+            target: "#202".into(),
+            at: Utc::now(),
+        },
+        None,
+    );
+    assert_eq!(ledger.entries[0].branch_updates, 0);
+    assert_eq!(ledger.entries[0].phase, LedgerPhase::PrOpened);
+}
+
+#[test]
 fn merge_approval_round_trips_through_json() {
     let request = RuntimeRequest::MergeApproval {
         source: "tui".into(),
