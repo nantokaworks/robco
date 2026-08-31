@@ -25,16 +25,45 @@ use crate::{
     registry::Registry,
 };
 
-use super::{App, DISCOVERY_INTERVAL, dialog, hyperlink, layout, preview, spinner, tree};
+use super::{
+    App, DISCOVERY_INTERVAL, backend::RemoteBackend, dialog, hyperlink, layout, preview, spinner,
+    tree,
+};
 
 pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
+    let remote = if let Ok(host) = std::env::var("ROBCO_REMOTE_HOST")
+        && !host.trim().is_empty()
+    {
+        let backend = RemoteBackend::connect(host.trim()).map_err(remote_error)?;
+        let (registry, orphans) = backend.initial_snapshot().map_err(remote_error)?;
+        Some((registry, orphans, backend))
+    } else {
+        None
+    };
+    let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
+    if let Some((registry, orphans, backend)) = remote {
+        app.expanded = vec![true; registry.repos.len()];
+        app.registry = registry;
+        app.orphans = orphans.unwrap_or_default();
+        app.backend = Arc::new(backend);
+    }
+    run_app(app)
+}
+
+fn remote_error(error: crate::remote::RemoteError) -> crate::Error {
+    crate::Error::Command {
+        context: "remote robco connection",
+        stderr: error.to_string(),
+    }
+}
+
+fn run_app(mut app: App) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
     // Establish live status before the watcher records its first baseline.
     // Otherwise deserialized `worktree_missing = false` can race the first tick.
     app.initial_tick();

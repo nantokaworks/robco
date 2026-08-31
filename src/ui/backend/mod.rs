@@ -1,4 +1,5 @@
 mod local;
+mod remote;
 
 use std::path::{Path, PathBuf};
 
@@ -14,6 +15,7 @@ use super::actions::{
 };
 
 pub(in crate::ui) use local::LocalBackend;
+pub(in crate::ui) use remote::RemoteBackend;
 
 /// Read-only host state used by the TUI.
 ///

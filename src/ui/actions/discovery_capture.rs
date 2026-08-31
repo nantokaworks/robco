@@ -28,6 +28,20 @@ pub(in crate::ui) struct DiscoveryResult {
     pub(super) overlay: Option<OverlayStatus>,
 }
 
+pub(in crate::ui) fn remote_result(
+    registry: Registry,
+    fingerprint: Vec<u8>,
+    orphans: Option<Vec<OrphanSession>>,
+) -> DiscoveryResult {
+    DiscoveryResult {
+        registry,
+        fingerprint,
+        orphans,
+        save: false,
+        overlay: None,
+    }
+}
+
 pub(in crate::ui) fn capture_discovery(
     mut registry: Registry,
     config: Config,

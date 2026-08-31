@@ -220,6 +220,21 @@ pub(in crate::ui) fn cached_diff(
     }
 }
 
+pub(in crate::ui) fn tmux_target(
+    preview_capture: &PreviewCapture,
+    session: &str,
+) -> Option<(u16, u16, u16)> {
+    match preview_capture.last_target.as_ref() {
+        Some(CaptureTarget::Tmux {
+            session: target,
+            width,
+            height,
+            offset,
+        }) if target == session => Some((*width, *height, *offset)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

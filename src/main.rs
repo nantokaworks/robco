@@ -20,6 +20,7 @@ mod openclaw;
 mod overseer;
 mod pr;
 mod registry;
+mod remote;
 mod rename;
 mod setup;
 mod spawn;

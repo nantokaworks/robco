@@ -44,15 +44,15 @@ pub(in crate::ui) struct BackgroundRefresh {
 }
 
 pub(in crate::ui) struct StatusResult {
-    pub(super) repos: Vec<RepoNode>,
-    pub(super) overseer_visible: bool,
-    pub(super) overseer: OverseerResult,
+    pub(in crate::ui) repos: Vec<RepoNode>,
+    pub(in crate::ui) overseer_visible: bool,
+    pub(in crate::ui) overseer: OverseerResult,
     /// Repository path and agent id of every agent whose pull request the
     /// ledger has observed merged while its session went `Status::Dead`,
     /// and whose worktree carries no uncommitted or untracked changes —
     /// see [`auto_cleanup::merged_cleanup_candidates`]. `apply_status` runs
     /// the existing `CleanOnly` sequence against each one (dropr:563).
-    pub(super) auto_cleanup: Vec<(PathBuf, String)>,
+    pub(in crate::ui) auto_cleanup: Vec<(PathBuf, String)>,
 }
 
 impl BackgroundRefresh {

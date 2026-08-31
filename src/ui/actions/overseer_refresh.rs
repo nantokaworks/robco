@@ -28,14 +28,14 @@ use super::{background_refresh::StatusResult, background_support::merge_status, 
 /// [`crate::status::classify_session_status`]).
 #[derive(Debug, Default, Clone)]
 pub(in crate::ui) struct ControlWatch {
-    pub(super) status: Option<Status>,
-    pub(super) state: WatchStatusState,
+    pub(in crate::ui) status: Option<Status>,
+    pub(in crate::ui) state: WatchStatusState,
 }
 
 pub(in crate::ui) struct OverseerResult {
-    pub(super) inbox: inbox::Inbox,
-    pub(super) snapshot: OverseerSnapshot,
-    pub(super) control_watch: ControlWatch,
+    pub(in crate::ui) inbox: inbox::Inbox,
+    pub(in crate::ui) snapshot: OverseerSnapshot,
+    pub(in crate::ui) control_watch: ControlWatch,
 }
 
 pub(in crate::ui) fn capture_overseer(
