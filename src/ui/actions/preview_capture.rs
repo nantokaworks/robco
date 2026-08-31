@@ -135,6 +135,12 @@ impl App {
     /// Schedule a background capture for whatever the current selection needs.
     /// Called once per event-loop iteration with the full terminal area.
     pub(in crate::ui) fn schedule_preview_capture(&mut self, full_area: Rect) {
+        if self
+            .selected_repo()
+            .is_some_and(|repo| self.registry.repos[repo].host.is_some())
+        {
+            return;
+        }
         if let Some(target) = self.current_capture_target(full_area) {
             self.preview_capture.request(target, self.locale);
         }
@@ -148,23 +154,16 @@ impl App {
     /// that session. Returns `None` both when nothing is cached yet and when the
     /// session produced no output, so the caller's placeholder covers both.
     pub(in crate::ui) fn cached_tmux(&self, session: &str) -> Option<Text<'static>> {
-        match &self.preview_capture.current {
-            Some((
-                CaptureTarget::Tmux {
-                    session: cached, ..
-                },
-                text,
-            )) if cached == session => text.clone(),
-            _ => None,
+        if self.is_remote_session(session) {
+            self.remote_cached_tmux(session)
+        } else {
+            self.backend.cached_tmux(&self.preview_capture, session)
         }
     }
 
     /// The last completed diff capture for `path`, if that is what is cached.
     pub(in crate::ui) fn cached_diff(&self, path: &std::path::Path) -> Option<Text<'static>> {
-        match &self.preview_capture.current {
-            Some((CaptureTarget::Diff { path: cached }, text)) if cached == path => text.clone(),
-            _ => None,
-        }
+        self.backend.cached_diff(&self.preview_capture, path)
     }
 
     fn current_capture_target(&self, full_area: Rect) -> Option<CaptureTarget> {
@@ -203,5 +202,68 @@ impl App {
             height,
             offset: self.preview_scroll,
         })
+    }
+}
+
+pub(in crate::ui) fn cached_tmux(
+    preview_capture: &PreviewCapture,
+    session: &str,
+) -> Option<Text<'static>> {
+    match &preview_capture.current {
+        Some((
+            CaptureTarget::Tmux {
+                session: cached, ..
+            },
+            text,
+        )) if cached == session => text.clone(),
+        _ => None,
+    }
+}
+
+pub(in crate::ui) fn cached_diff(
+    preview_capture: &PreviewCapture,
+    path: &std::path::Path,
+) -> Option<Text<'static>> {
+    match &preview_capture.current {
+        Some((CaptureTarget::Diff { path: cached }, text)) if cached == path => text.clone(),
+        _ => None,
+    }
+}
+
+pub(in crate::ui) fn tmux_target(
+    preview_capture: &PreviewCapture,
+    session: &str,
+) -> Option<(u16, u16, u16)> {
+    match preview_capture.last_target.as_ref() {
+        Some(CaptureTarget::Tmux {
+            session: target,
+            width,
+            height,
+            offset,
+        }) if target == session => Some((*width, *height, *offset)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cached_preview_only_matches_the_last_completed_target() {
+        let mut capture = PreviewCapture::new();
+        capture.current = Some((
+            CaptureTarget::Tmux {
+                session: "worker".into(),
+                width: 80,
+                height: 24,
+                offset: 0,
+            },
+            Some(Text::raw("pane")),
+        ));
+
+        assert_eq!(cached_tmux(&capture, "worker"), Some(Text::raw("pane")));
+        assert_eq!(cached_tmux(&capture, "other"), None);
+        assert_eq!(cached_diff(&capture, std::path::Path::new("repo")), None);
     }
 }

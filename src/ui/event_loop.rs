@@ -27,14 +27,29 @@ use crate::{
 
 use super::{App, DISCOVERY_INTERVAL, dialog, hyperlink, layout, preview, spinner, tree};
 
-pub fn run(registry: Registry, config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
+pub fn run(registry: Registry, mut config: Config, ephemeral_root: Option<PathBuf>) -> Result<()> {
+    // Keep the legacy variable as one ad-hoc host, now alongside local/configured hosts.
+    if let Ok(ssh) = std::env::var("ROBCO_REMOTE_HOST")
+        && !ssh.trim().is_empty()
+        && !config.hosts.iter().any(|host| host.ssh == ssh.trim())
+    {
+        config.hosts.push(crate::config::HostConfig {
+            ssh: ssh.trim().to_string(),
+            name: None,
+        });
+    }
+    let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
+    app.start_remote_hosts();
+    run_app(app)
+}
+
+fn run_app(mut app: App) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new_with_ephemeral(registry, config, ephemeral_root);
     // Establish live status before the watcher records its first baseline.
     // Otherwise deserialized `worktree_missing = false` can race the first tick.
     app.initial_tick();
@@ -188,6 +203,7 @@ fn watch_targets(registry: &Registry) -> Vec<WatchTarget> {
     registry
         .repos
         .iter()
+        .filter(|repo| repo.host.is_none())
         .flat_map(|repo| {
             repo.agents.iter().map(|agent| WatchTarget {
                 tmux_session: agent.tmux_session.clone(),

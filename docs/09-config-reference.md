@@ -10,6 +10,7 @@ does not require any config at all.
 ```json
 {
   "default_program": "claude",
+  "hosts": [],
   "profiles": [],
   "branch_prefix": null,
   "worktree_root": "~/.robco/worktrees",
@@ -42,6 +43,7 @@ default.
 | Key | Type | Default | What it does |
 |-----|------|---------|--------------|
 | `default_program` | string | `"claude"` | Program launched for each new agent. Either a **profile name** (resolved through `profiles`) or a raw shell command run as-is. |
+| `hosts` | array of `{ssh, name?}` | `[]` | Remote RobCo installations shown after local repositories in the TUI. See [Remote hosts](#remote-hosts). |
 | `profiles` | array of `{name, program}` | `[]` | Named launch commands. When `default_program` matches a profile `name`, that profile's `program` is executed. See [Profiles](#profiles). |
 | `branch_prefix` | string or `null` | `null` | Prefix for branches RobCo creates. When `null`, it is derived as `<sanitized-repo-name>/` (e.g. `my.repo` → `my-repo/`). Set explicitly (e.g. `"robco/"`) to override. |
 | `worktree_root` | string (path) | `"~/.robco/worktrees"` | Directory under which git worktrees are created. A leading `~` is expanded to your home directory. |
@@ -57,6 +59,31 @@ default.
 | `language` | string or `null` | `null` | Language every LLM surface is told to write its human-readable prose in. When `null`, RobCo sends the prompts it always has. See [language](#language). |
 | `notify` | object | (all `true`) | Desktop-notification toggles per status. See [notify](#notify). |
 | `project_icon` | enum | `"none"` | Marker style for the PROJECTS tree rows. See [project_icon](#project_icon). |
+
+## Remote hosts
+
+Each entry opens an independent `ssh <destination> robco mcp-stdio` connection. `ssh` is
+passed through as one destination argument without parsing. `name` is optional tree chrome;
+when omitted, the destination itself labels the group.
+
+```json
+{
+  "hosts": [
+    { "ssh": "prod", "name": "Production" },
+    { "ssh": "operator@staging" }
+  ]
+}
+```
+
+`--host <destination>` is repeatable and adds ad-hoc destinations for one run. CLI values
+are added to configured hosts and deduplicated by exact `ssh` destination string:
+
+```sh
+robco --host prod --host operator@staging
+```
+
+The legacy `ROBCO_REMOTE_HOST` variable behaves as one more ad-hoc destination. With no
+configured, CLI, or environment hosts, the tree and local polling path are unchanged.
 
 ## Profiles
 

@@ -58,6 +58,7 @@ fn task(display_id: &str) -> DroprTaskCandidate {
 
 fn repo_node(path: std::path::PathBuf, tasks: Vec<DroprTaskCandidate>) -> RepoNode {
     RepoNode {
+        host: None,
         path,
         name: "repo".into(),
         remote_url: None,

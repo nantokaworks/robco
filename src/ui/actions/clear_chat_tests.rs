@@ -10,6 +10,7 @@ use crate::{
 
 fn repo_node(name: &str) -> RepoNode {
     RepoNode {
+        host: None,
         path: std::env::temp_dir().join(name),
         name: name.to_string(),
         remote_url: None,

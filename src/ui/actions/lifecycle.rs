@@ -5,7 +5,7 @@ use crate::{
 };
 use std::path::Path;
 
-use super::super::App;
+use super::super::{App, Mode};
 
 pub(super) fn resolve_agent(
     repos: &[RepoNode],
@@ -86,6 +86,15 @@ impl App {
         let selected = repo_node.agents[agent_idx].clone();
         if selected.status == Status::BranchOnly {
             self.show_message(fmt(self.locale, "branch remains: {}", &[&selected.branch]));
+            return;
+        }
+        if repo_node.host.is_some() {
+            self.mode = Mode::ConfirmMerge {
+                repo,
+                agent: agent_idx,
+                plan: super::super::LandPlan::MergeNow,
+                head: None,
+            };
             return;
         }
 

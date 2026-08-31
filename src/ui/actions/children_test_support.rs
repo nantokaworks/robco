@@ -46,6 +46,7 @@ impl Fixture {
 
 fn repo_node(path: std::path::PathBuf) -> RepoNode {
     RepoNode {
+        host: None,
         path,
         name: "repo".into(),
         remote_url: None,

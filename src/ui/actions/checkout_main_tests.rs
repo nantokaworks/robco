@@ -8,6 +8,7 @@ use crate::{
 
 fn repo_node(repo: &TestRepo) -> RepoNode {
     RepoNode {
+        host: None,
         path: repo.path().to_path_buf(),
         name: "repo".into(),
         remote_url: None,

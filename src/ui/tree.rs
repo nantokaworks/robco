@@ -13,6 +13,7 @@ use indicator::{IndicatorState, select, select_supplementary};
 
 mod footer;
 mod hints;
+mod host_group;
 pub(in crate::ui) mod indicator;
 mod label;
 mod launch_row;
@@ -32,6 +33,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
         "PROJECTS",
         THEME.accent_bold_style(),
     ))];
+    let mut shown_hosts = Vec::new();
     for (idx, item) in visible.iter().enumerate() {
         let selected = idx == app.selected;
         let marker = if selected { ">" } else { " " };
@@ -47,6 +49,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             | Selection::OverseerInbox(_)
             | Selection::DiscordChannel(_) => continue,
             Selection::Repo(repo_idx) => {
+                host_group::before_repo(app, repo_idx, &mut shown_hosts, &mut lines);
                 lines.extend(repo_row::build(
                     app,
                     repo_idx,
@@ -247,6 +250,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 )));
             }
             Selection::OrphanHeader => {
+                host_group::finish(app, &mut shown_hosts, &mut lines);
                 let count = app.orphans.len();
                 let arrow = if app.orphans_collapsed { "▸" } else { "▾" };
                 let noun = if count == 1 { "session" } else { "sessions" };
@@ -264,13 +268,14 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     Span::styled(format!("{marker}   "), style),
                     Span::styled(orphan.name.clone(), style),
                     Span::styled(
-                        format!("  {}", short_path(&orphan.cwd)),
+                        format!("  {}", host_group::short_path(&orphan.cwd)),
                         if selected { style } else { THEME.muted_style() },
                     ),
                 ]));
             }
         }
     }
+    host_group::finish(app, &mut shown_hosts, &mut lines);
 
     let tree = Paragraph::new(lines).style(THEME.accent_style());
     let projects_area = Rect {
@@ -282,13 +287,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     footer::draw(frame, app, root.footer, message);
 }
 
-fn short_path(path: &std::path::Path) -> String {
-    match dirs::home_dir().and_then(|home| path.strip_prefix(home).ok()) {
-        Some(rest) => format!("~/{}", rest.display()),
-        None => path.display().to_string(),
-    }
-}
-
+#[cfg(test)]
+mod host_group_tests;
 #[cfg(test)]
 mod merge_queued_row_tests;
 #[cfg(test)]

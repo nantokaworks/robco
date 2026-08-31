@@ -1,7 +1,9 @@
 use serde_json::{Value, json};
 
+mod actions;
 mod discord_ops;
 mod git_ops;
+mod snapshots;
 
 pub fn list_tools() -> Value {
     let mut tools = vec![
@@ -180,7 +182,9 @@ pub fn list_tools() -> Value {
         ),
     ];
     tools.extend(git_ops::tools());
+    tools.extend(actions::tools());
     tools.extend(discord_ops::tools());
+    tools.extend(snapshots::tools());
     Value::Array(tools)
 }
 

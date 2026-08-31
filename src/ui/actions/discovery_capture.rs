@@ -19,7 +19,7 @@ use super::{
     orphans, registry_sync, subagents,
 };
 
-pub(super) struct DiscoveryResult {
+pub(in crate::ui) struct DiscoveryResult {
     pub(super) registry: Registry,
     pub(super) fingerprint: Vec<u8>,
     pub(super) orphans: Option<Vec<OrphanSession>>,
@@ -28,7 +28,21 @@ pub(super) struct DiscoveryResult {
     pub(super) overlay: Option<OverlayStatus>,
 }
 
-pub(super) fn capture_discovery(
+pub(in crate::ui) fn remote_result(
+    registry: Registry,
+    fingerprint: Vec<u8>,
+    orphans: Option<Vec<OrphanSession>>,
+) -> DiscoveryResult {
+    DiscoveryResult {
+        registry,
+        fingerprint,
+        orphans,
+        save: false,
+        overlay: None,
+    }
+}
+
+pub(in crate::ui) fn capture_discovery(
     mut registry: Registry,
     config: Config,
     roots: Vec<PathBuf>,

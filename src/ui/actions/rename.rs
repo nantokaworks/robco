@@ -67,6 +67,36 @@ impl App {
         }
 
         let old_path = path.to_path_buf();
+        if self.registry.repos[repo].host.is_some() {
+            let Some(client) = self.remote_client_for_repo(repo) else {
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return;
+            };
+            match client.rename_repo(&old_path.display().to_string(), new_name) {
+                Ok(outcome) if outcome.ok => {
+                    let node = &mut self.registry.repos[repo];
+                    node.path = PathBuf::from(&outcome.new_path);
+                    node.name = new_name.to_string();
+                    if outcome.unrepaired_worktrees.is_empty() {
+                        self.show_message(fmt(self.locale, "renamed to {}", &[new_name]));
+                    } else {
+                        let details = outcome
+                            .unrepaired_worktrees
+                            .iter()
+                            .map(|item| format!("  {}: {}", item.path, item.error))
+                            .collect();
+                        self.mode = Mode::ErrorDialog {
+                            title: t(self.locale, "rename incomplete").into(),
+                            lines: details,
+                            force_kill: None,
+                        };
+                    }
+                }
+                Ok(_) => self.show_message(t(self.locale, "remote rename was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return;
+        }
         match rename::rename_repo_dir(&old_path, new_name) {
             Ok(outcome) => self.finish_rename(old_path, outcome, new_name),
             Err(error) => self.show_message(error.to_string()),

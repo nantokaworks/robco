@@ -5,6 +5,7 @@ use crate::{config::Config, model::RepoNode, registry::Registry};
 
 fn repo(path: &str) -> RepoNode {
     RepoNode {
+        host: None,
         path: path.into(),
         name: path.to_string(),
         remote_url: None,

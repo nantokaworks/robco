@@ -6,6 +6,7 @@ use crate::subagents::{SubagentStatus, TaskSubagent};
 
 fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
     RepoNode {
+        host: None,
         path: path.into(),
         name: path.rsplit('/').next().unwrap_or("repo").to_string(),
         remote_url: None,

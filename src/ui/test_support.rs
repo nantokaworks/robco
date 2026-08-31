@@ -47,6 +47,7 @@ pub(in crate::ui) fn agent(id: &str, worktree_path: PathBuf) -> AgentNode {
 
 pub(in crate::ui) fn repo(path: PathBuf, agents: Vec<AgentNode>) -> RepoNode {
     RepoNode {
+        host: None,
         name: path
             .file_name()
             .and_then(|name| name.to_str())

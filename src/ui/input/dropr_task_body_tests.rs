@@ -16,6 +16,7 @@ fn app_with_a_task_reading() -> App {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
     app.registry.repos = vec![RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

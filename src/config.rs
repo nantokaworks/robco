@@ -1,20 +1,24 @@
 mod discord_notify;
+mod hosts;
 mod language;
 mod merge_strategy;
 mod notify;
 mod paths;
+mod project_icon;
 
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
+pub use hosts::HostConfig;
 pub(crate) use language::directive as language_directive;
 pub use merge_strategy::MergeStrategy;
 pub use notify::NotifyConfig;
 use paths::config_path;
 pub use paths::{config_file_path, ensure_robco_dir, state_path};
 pub(crate) use paths::{expand_tilde, home_dir, robco_dir, ui_state_path};
+pub use project_icon::ProjectIcon;
 
 pub(crate) fn resolve_program(name: &str) -> Option<PathBuf> {
     crate::overseer::session::resolve_program_impl(name)
@@ -36,29 +40,6 @@ fn default_pr_prompt() -> String {
 
 use crate::{Result, openclaw::OpenClawConfig, overseer::config::OverseerConfig};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum ProjectIcon {
-    #[default]
-    None,
-    Nerdfont,
-    Emoji,
-}
-
-impl ProjectIcon {
-    /// PROJECTS 行の開閉マーカー。None は従来の三角、その他はフォルダの開/閉。
-    pub fn marker(self, expanded: bool) -> &'static str {
-        match (self, expanded) {
-            (ProjectIcon::None, true) => "▾",
-            (ProjectIcon::None, false) => "▸",
-            (ProjectIcon::Nerdfont, true) => "\u{f07c}", // nf-fa-folder_open
-            (ProjectIcon::Nerdfont, false) => "\u{f07b}", // nf-fa-folder
-            (ProjectIcon::Emoji, true) => "📂",
-            (ProjectIcon::Emoji, false) => "📁",
-        }
-    }
-}
-
 fn notify_flag_default() -> bool {
     true
 }
@@ -66,6 +47,9 @@ fn notify_flag_default() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub default_program: String,
+    /// Remote robco installations shown alongside this machine in the TUI.
+    #[serde(default)]
+    pub hosts: Vec<HostConfig>,
     #[serde(default)]
     pub profiles: Vec<Profile>,
     #[serde(default)]
@@ -192,6 +176,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             default_program: "claude".to_string(),
+            hosts: Vec::new(),
             profiles: default_profiles(),
             branch_prefix: None,
             worktree_root: home_dir()
@@ -305,6 +290,9 @@ impl Config {
     }
 }
 
+#[cfg(test)]
+#[path = "config/hosts_tests.rs"]
+mod hosts_tests;
 #[cfg(test)]
 #[path = "config_tests.rs"]
 mod tests;

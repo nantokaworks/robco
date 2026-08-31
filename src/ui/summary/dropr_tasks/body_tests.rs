@@ -25,6 +25,7 @@ fn repo_node(
     subtrees_known: std::collections::HashSet<String>,
 ) -> RepoNode {
     RepoNode {
+        host: None,
         path: "/repo".into(),
         name: "repo".into(),
         remote_url: None,

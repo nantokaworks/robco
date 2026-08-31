@@ -82,6 +82,30 @@ impl App {
         plan: LandPlan,
         head: Option<String>,
     ) {
+        if self.registry.repos[repo].host.is_some() {
+            let Some(client) = self.remote_client_for_repo(repo) else {
+                self.mode = Mode::Normal;
+                self.show_message(t(self.locale, "remote host is not connected"));
+                return;
+            };
+            let agent_id = self.registry.repos[repo].agents[agent].id.clone();
+            self.mode = Mode::Normal;
+            match client.land_agent(&agent_id) {
+                Ok(outcome) if outcome.ok => self.show_message(fmt(
+                    self.locale,
+                    "remote land action: {}",
+                    &[&outcome.action],
+                )),
+                Ok(outcome) if !outcome.failed_checks.is_empty() => self.show_message(fmt(
+                    self.locale,
+                    "Nothing was merged because these checks failed: {}",
+                    &[&outcome.failed_checks.join(", ")],
+                )),
+                Ok(_) => self.show_message(t(self.locale, "remote land was refused")),
+                Err(error) => self.show_message(error.to_string()),
+            }
+            return;
+        }
         match plan {
             LandPlan::MergeNow => self.start_merge(repo, agent),
             LandPlan::QueueApproval => {

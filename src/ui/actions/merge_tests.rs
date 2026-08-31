@@ -49,6 +49,7 @@ fn agent(id: &str) -> AgentNode {
 
 fn repo(path: &str, agents: Vec<AgentNode>) -> RepoNode {
     RepoNode {
+        host: None,
         path: path.into(),
         name: path.to_string(),
         remote_url: None,

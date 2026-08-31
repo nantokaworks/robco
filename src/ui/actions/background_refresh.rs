@@ -17,9 +17,9 @@ use super::{
     auto_cleanup,
     background_support::*,
     discovery,
-    discovery_capture::{DiscoveryResult, capture_discovery},
+    discovery_capture::DiscoveryResult,
     dropr_overlay::{self, OverlayStatus},
-    overseer_refresh::{ControlWatch, OverseerResult, capture_overseer},
+    overseer_refresh::{ControlWatch, OverseerResult},
     registry_sync,
 };
 use crate::ui::{App, list};
@@ -43,16 +43,16 @@ pub(in crate::ui) struct BackgroundRefresh {
     registry_saver: RegistrySaver,
 }
 
-pub(super) struct StatusResult {
-    pub(super) repos: Vec<RepoNode>,
-    pub(super) overseer_visible: bool,
-    pub(super) overseer: OverseerResult,
+pub(in crate::ui) struct StatusResult {
+    pub(in crate::ui) repos: Vec<RepoNode>,
+    pub(in crate::ui) overseer_visible: bool,
+    pub(in crate::ui) overseer: OverseerResult,
     /// Repository path and agent id of every agent whose pull request the
     /// ledger has observed merged while its session went `Status::Dead`,
     /// and whose worktree carries no uncommitted or untracked changes —
     /// see [`auto_cleanup::merged_cleanup_candidates`]. `apply_status` runs
     /// the existing `CleanOnly` sequence against each one (dropr:563).
-    pub(super) auto_cleanup: Vec<(PathBuf, String)>,
+    pub(in crate::ui) auto_cleanup: Vec<(PathBuf, String)>,
 }
 
 impl BackgroundRefresh {
@@ -83,8 +83,8 @@ impl App {
 
     pub(in crate::ui) fn initial_tick(&mut self) {
         let started = Instant::now();
-        let result = capture_status(
-            clone_registry(&self.registry),
+        let result = self.backend.capture_status(
+            clone_local_registry(&self.registry),
             &self.config,
             &self.background_refresh.control_watch,
         );
@@ -103,9 +103,10 @@ impl App {
         let started = Instant::now();
         self.background_refresh.status_in_flight = Some(started);
         let sender = self.background_refresh.status_tx.clone();
-        let registry = clone_registry(&self.registry);
+        let registry = clone_local_registry(&self.registry);
         let config = self.config.clone();
         let control_watch = self.background_refresh.control_watch.clone();
+        let backend = Arc::clone(&self.backend);
         let spawn = std::thread::Builder::new()
             .name("ui-status-refresh".into())
             .spawn(move || {
@@ -113,7 +114,7 @@ impl App {
                     if let Ok(mut cursor) = cursor.lock() {
                         notify_new_decisions(&mut cursor, &notify_tx, config.notify.enabled);
                     }
-                    capture_status(registry, &config, &control_watch)
+                    backend.capture_status(registry, &config, &control_watch)
                 }))
                 .ok();
                 let _ = sender.send((started, result));
@@ -142,14 +143,15 @@ impl App {
             self.background_refresh.dropr_overlay_load_started_at = Some(started);
         }
         let sender = self.background_refresh.discovery_tx.clone();
-        let registry = clone_registry(&self.registry);
+        let registry = clone_local_registry(&self.registry);
         let config = self.config.clone();
         let roots = self.effective_roots().map(PathBuf::from).collect();
+        let backend = Arc::clone(&self.backend);
         let spawn = std::thread::Builder::new()
             .name("ui-discovery-refresh".into())
             .spawn(move || {
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    capture_discovery(registry, config, roots, reload_overlay)
+                    backend.capture_discovery(registry, config, roots, reload_overlay)
                 }))
                 .ok();
                 let _ = sender.send((started, result));
@@ -176,10 +178,11 @@ impl App {
                 }
             }
         }
+        self.ingest_remote_hosts();
     }
 
     fn apply_discovery(&mut self, mut result: DiscoveryResult) {
-        if fingerprint(&self.registry) != result.fingerprint {
+        if fingerprint(&clone_local_registry(&self.registry)) != result.fingerprint {
             return;
         }
         let selected = self.selected_item().map(|item| self.item_key(item));
@@ -189,9 +192,10 @@ impl App {
             .repos
             .iter()
             .zip(&self.expanded)
+            .filter(|(repo, _)| repo.host.is_none())
             .map(|(repo, value)| (discovery::path_key(&repo.path), *value))
             .collect::<HashMap<_, _>>();
-        let expanded = result
+        let mut expanded: Vec<bool> = result
             .registry
             .repos
             .iter()
@@ -210,6 +214,19 @@ impl App {
             &mut result.registry.repos,
             carry_dropr,
         );
+        let remote = self
+            .registry
+            .repos
+            .iter()
+            .zip(&self.expanded)
+            .filter(|(repo, _)| repo.host.is_some())
+            .map(|(repo, expanded)| (repo.clone(), *expanded))
+            .collect::<Vec<_>>();
+        expanded.extend(remote.iter().map(|(_, expanded)| *expanded));
+        result
+            .registry
+            .repos
+            .extend(remote.into_iter().map(|(repo, _)| repo));
         if let Some(status) = result.overlay {
             self.background_refresh.dropr_overlay_status = status;
         }
@@ -223,7 +240,7 @@ impl App {
         if result.save {
             self.background_refresh
                 .registry_saver
-                .save(clone_registry(&self.registry), result.fingerprint);
+                .save(clone_local_registry(&self.registry), result.fingerprint);
         }
         self.refresh_dropr_tasks(false);
     }
@@ -233,10 +250,11 @@ impl App {
     }
 }
 
-fn capture_status(
+pub(in crate::ui) fn capture_status(
     mut registry: Registry,
     config: &Config,
     control_watch: &ControlWatch,
+    capture_overseer_fn: impl FnOnce(&Registry, &Config, &ControlWatch) -> OverseerResult,
 ) -> StatusResult {
     let processes = config
         .process_indicator
@@ -256,7 +274,7 @@ fn capture_status(
             );
         }
     }
-    let overseer = capture_overseer(&registry, config, control_watch);
+    let overseer = capture_overseer_fn(&registry, config, control_watch);
     let auto_cleanup =
         auto_cleanup::merged_cleanup_candidates(&registry, &overseer.snapshot.ledger);
     StatusResult {

@@ -11,6 +11,7 @@ pub(super) fn registry_with_agent(id: &str) -> Registry {
     Registry {
         version: 1,
         repos: vec![RepoNode {
+            host: None,
             path: "/repo".into(),
             name: "repo".to_string(),
             remote_url: None,
@@ -150,7 +151,7 @@ fn activity_output_schemas_require_new_fields() {
 fn catalog_includes_agent_create_and_every_tool() {
     let tools = catalog::list_tools();
     let tools = tools.as_array().unwrap();
-    assert_eq!(tools.len(), 18);
+    assert_eq!(tools.len(), 33);
     let create = tools
         .iter()
         .find(|tool| tool["name"] == "robco_agent_create")
