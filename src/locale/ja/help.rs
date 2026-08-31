@@ -111,6 +111,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 PR closed without merging: says to reopen it" => {
             "                 未mergeでcloseされたPR：再openを促す"
         }
+        "  u              update a behind PR's branch from its base (GitHub-side)" => {
+            "  u              behind状態のPRブランチをbaseから更新（GitHub側で実行）"
+        }
         "  p              edit and request PR from selected running agent" => {
             "  p              選択中の稼働エージェントからPRを編集・依頼"
         }

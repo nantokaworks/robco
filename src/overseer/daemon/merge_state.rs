@@ -32,15 +32,11 @@
 //! `checks_not_green` so the worker gets pushed the fix, while a draft with a green
 //! rollup surfaces as `merge_state:draft` so an operator knows to mark it ready.
 
-use std::process::Command;
+use std::path::Path;
 
 use serde_json::Value;
 
-use super::COMMAND_TIMEOUT;
-use crate::{
-    config::{Config, MergeStrategy},
-    overseer::{exec::run_timeout, ledger::LedgerEntry},
-};
+use crate::{config::Config, overseer::ledger::LedgerEntry};
 
 /// Reason recorded when a branch was updated onto its base. The pull request is held
 /// rather than merged, because its required checks must re-run against the new head.
@@ -137,22 +133,25 @@ pub(super) fn plan_update(entry: &mut LedgerEntry, config: &Config) -> BehindPla
 /// merges by rebase gets a rebased branch rather than a merge commit from the base.
 /// A merge commit here is exactly what would later make the rebase merge itself
 /// impossible, so the two settings cannot be allowed to drift apart.
-fn update_flag(strategy: MergeStrategy) -> Option<&'static str> {
-    (strategy == MergeStrategy::Rebase).then_some("--rebase")
-}
+///
+/// Re-exported rather than reimplemented: `crate::git::update_branch_flag` is the same
+/// choice the operator's own `u` action and `robco_pr_update_branch` MCP tool make
+/// (dropr:574), and a second copy here is exactly the kind of drift that would let
+/// this pass and an operator's manual update disagree.
+pub(super) use crate::git::update_branch_flag as update_flag;
 
-/// Runs `gh pr update-branch`, returning the hold reason when it does not succeed.
+/// Runs `gh pr update-branch` through the shared implementation
+/// (`crate::git::update_branch`), returning the hold reason when it does not succeed.
+///
+/// The reason strings this returns are a contract of their own: `discord::humanize`
+/// and `overseer::remedy` both match on the `behind_update_exit:` / `behind_update_error:`
+/// prefixes, never the text after them, so translating `crate::git`'s error shape into
+/// these two forms costs nothing downstream.
 pub(super) fn run_update(repo: &str, url: &str, flag: Option<&'static str>) -> Result<(), String> {
-    let mut command = Command::new("gh");
-    command
-        .current_dir(repo)
-        .args(["pr", "update-branch", url])
-        .args(flag);
-    match run_timeout(command, COMMAND_TIMEOUT) {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => Err(format!("behind_update_exit:{}", output.status)),
-        Err(error) => Err(format!("behind_update_error:{error}")),
-    }
+    crate::git::update_branch(Path::new(repo), url, flag).map_err(|error| match error {
+        crate::Error::Command { stderr, .. } => format!("behind_update_exit:{stderr}"),
+        other => format!("behind_update_error:{other}"),
+    })
 }
 
 #[cfg(test)]

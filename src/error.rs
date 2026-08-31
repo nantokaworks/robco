@@ -69,6 +69,8 @@ pub enum Error {
     DroprSubtasksUnconfirmed(String),
     #[error("worker session {session} exited right after launch: {detail}")]
     WorkerLaunchCrashed { session: String, detail: String },
+    #[error("no open pull request for {0}")]
+    NoOpenPullRequest(String),
     #[error(
         "worker session {session} started in {actual}, not {expected}; the tmux server's own \
          working directory is gone and the server needs a restart"

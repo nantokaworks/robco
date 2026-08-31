@@ -295,6 +295,7 @@ impl App {
                 },
                 KeyCode::Char('r') => self.restart_selected()?,
                 KeyCode::Char('m') => self.merge_selected(),
+                KeyCode::Char('u') => self.update_branch_selected(),
                 KeyCode::Char('c') => self.checkout_main_selected(),
                 KeyCode::Char('C') => self.clear_chat_selected(),
                 // Only the Claude tab has a live session to type into (see

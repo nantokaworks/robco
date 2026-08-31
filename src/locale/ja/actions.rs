@@ -95,6 +95,13 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "実行してください: git -C {} worktree repair <worktree-path>"
         }
 
+        // actions/update_branch.rs (dropr:574)
+        "branch update is not available for child worktrees" => {
+            "子worktreeではブランチ更新できません"
+        }
+        "updated {} from its base" => "{} をbaseから更新しました",
+        "{} is already up to date with its base" => "{} は既にbaseと同期しています",
+
         // actions/checkout_main.rs
         "c: select a repo to check out its default branch in its primary checkout" => {
             "c: primary checkoutでdefault branchをcheckoutするリポジトリを選択してください"

@@ -49,6 +49,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("                 checks running: queue approval; green: merge now"),
         l("                 failed check: refuse; merged PR: clean up"),
         l("                 PR closed without merging: says to reopen it"),
+        l("  u              update a behind PR's branch from its base (GitHub-side)"),
         l("  p              edit and request PR from selected running agent"),
         l("  c              check out the default branch in the primary checkout"),
         l("                 (clean tree only)"),

@@ -20,7 +20,7 @@ fn agent_row_advertises_its_own_actions() {
     .to_string();
     assert_eq!(
         line,
-        "[↵] ATTACH [r] RESTART [m] MERGE [p] PR [x] REMOVE [?] HELP [q] QUIT"
+        "[↵] ATTACH [r] RESTART [m] MERGE [u] UPDATE [p] PR [x] REMOVE [?] HELP [q] QUIT"
     );
 }
 
