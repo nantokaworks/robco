@@ -39,6 +39,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  i              on the OVERSEER control AI row: send it an instruction" => {
             "  i              OVERSEER制御AI行：指示を送信"
         }
+        "                 on the CLAUDE/CODEX tab: send one line to that session" => {
+            "                 CLAUDE/CODEXタブ：そのセッションへ1行送信"
+        }
         "  ctrl-q         return from attached tmux session" => {
             "  ctrl-q         アタッチ中のtmuxセッションから戻る"
         }

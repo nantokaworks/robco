@@ -22,6 +22,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "dismissed merge notice" => "merge通知を閉じました",
         "IME is on; switch to ASCII input" => "IMEが有効です。ASCII入力に切り替えてください",
+        "no live session for this tab" => "このタブには稼働中のセッションがありません",
         _ => return None,
     })
 }

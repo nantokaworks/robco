@@ -13,6 +13,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "branch remains: {}" => "ブランチは残っています: {}",
         "instruction sent to overseer control" => "overseer制御に指示を送信しました",
+        "instruction sent" => "指示を送信しました",
         "reloading dropr tasks…" => "droprタスクを再読込中…",
         "failed to start dropr task reload" => "droprタスクの再読込を開始できませんでした",
         "no dropr-linked repos" => "dropr連携リポジトリがありません",

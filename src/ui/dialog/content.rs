@@ -11,7 +11,9 @@ mod content_widgets;
 #[path = "inbox_dismiss_content.rs"]
 mod inbox_dismiss_content;
 
-use content_widgets::{CLEANUP_FOLLOWS, confirm_lines, hint_line, input_line};
+use content_widgets::{
+    CLEANUP_FOLLOWS, confirm_lines, hint_line, input_line, instruction_prompt_body,
+};
 
 /// A dialog's title and body, plus where the text caret belongs inside it.
 pub(super) struct DialogContent {
@@ -66,17 +68,12 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
             )
         }
         Mode::PromptOverseer { input } => {
-            let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
-            let wrapped = input_wrap::input_lines(
-                t(locale, "instruction"),
-                input,
-                content_width,
-                max_input_height,
-            );
-            let caret = wrapped.caret;
-            let mut lines = wrapped.lines;
-            lines.push(hint_line(locale, "enter send   esc cancel"));
+            let (lines, caret) = instruction_prompt_body(locale, body, content_width, input);
             (t(locale, "instruct overseer control"), lines, Some(caret))
+        }
+        Mode::PromptSession { input, .. } => {
+            let (lines, caret) = instruction_prompt_body(locale, body, content_width, input);
+            (t(locale, "send instruction"), lines, Some(caret))
         }
         Mode::PromptInbox { item, input } => {
             let max_input_height = body.height.saturating_sub(5).clamp(1, 10) as usize;
