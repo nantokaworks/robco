@@ -64,14 +64,20 @@ pub(super) fn reconcile(
         if !is_managed_worktree(&worktree.path, &config.worktree_root) {
             continue;
         }
+        // A worker's tmux session comes up before `spawn::persist_child`
+        // writes the registry row (dropr:566), so a young worktree can
+        // already have a live session by the time this refresh runs.
+        // Gating on age alone — not `session.is_none()` — is what actually
+        // holds back a launch still in flight; a genuine orphan session
+        // always sits on an old worktree, so it is still adopted below.
+        if worktree_age(&worktree.path).is_some_and(should_skip_adoption) {
+            continue;
+        }
         let session = crate::tmux::find_session_by_cwd(
             &config.tmux_server,
             &config.tmux_session_prefix,
             &worktree.path,
         );
-        if session.is_none() && worktree_age(&worktree.path).is_some_and(should_skip_adoption) {
-            continue;
-        }
         known.insert(path_key(&worktree.path));
         let recovered_id = session
             .as_deref()
@@ -195,5 +201,13 @@ pub(in crate::ui) fn child_is_visible(owner: &AgentNode, child: &ChildWorktree) 
 }
 
 #[cfg(test)]
+#[path = "children_test_support.rs"]
+mod test_support;
+
+#[cfg(test)]
 #[path = "children_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "children_adoption_tests.rs"]
+mod adoption_tests;
