@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+mod actions;
 mod client;
 mod error;
 mod transport;

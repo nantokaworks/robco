@@ -14,6 +14,7 @@ use crate::{
 
 const PROMPT_LINES: usize = 20;
 
+mod actions;
 mod approve;
 mod catalog;
 mod discovery;
@@ -49,6 +50,9 @@ impl std::fmt::Display for ToolError {
 pub type ToolResult<T> = std::result::Result<T, ToolError>;
 
 pub fn call_tool(name: &str, arguments: Option<Value>) -> ToolResult<Value> {
+    if let Some(result) = actions::dispatch(name, arguments.clone()) {
+        return result;
+    }
     match name {
         "robco_whoami" => identity::whoami(),
         "robco_report" => {

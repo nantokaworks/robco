@@ -4,7 +4,17 @@ use serde_json::json;
 
 use super::*;
 
-const TOOLS: &str = r#"[{"name":"robco_agent_list"},{"name":"robco_discovery_snapshot"},{"name":"robco_overseer_snapshot"},{"name":"robco_pane_capture"}]"#;
+const TOOLS: &str = concat!(
+    "[{\"name\":\"robco_agent_list\"},{\"name\":\"robco_agent_kill\"},",
+    "{\"name\":\"robco_agent_restart\"},{\"name\":\"robco_agent_land\"},",
+    "{\"name\":\"robco_answer\"},{\"name\":\"robco_daemon_panic_stop\"},",
+    "{\"name\":\"robco_daemon_start\"},{\"name\":\"robco_daemon_stop\"},",
+    "{\"name\":\"robco_discovery_snapshot\"},{\"name\":\"robco_inbox_dismiss\"},",
+    "{\"name\":\"robco_inbox_dismiss_all\"},{\"name\":\"robco_instruct\"},",
+    "{\"name\":\"robco_overseer_snapshot\"},{\"name\":\"robco_pane_capture\"},",
+    "{\"name\":\"robco_repo_checkout_main\"},{\"name\":\"robco_repo_clear_chat\"},",
+    "{\"name\":\"robco_repo_rename\"}]"
+);
 
 fn shell(script: &str) -> Command {
     let mut command = Command::new("sh");

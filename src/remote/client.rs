@@ -4,11 +4,24 @@ use serde_json::{Value, json};
 
 use super::{RemoteError, transport::Transport};
 
-const REQUIRED_TOOLS: [&str; 4] = [
+const REQUIRED_TOOLS: [&str; 17] = [
     "robco_agent_list",
+    "robco_agent_kill",
+    "robco_agent_restart",
+    "robco_agent_land",
+    "robco_answer",
+    "robco_daemon_panic_stop",
+    "robco_daemon_start",
+    "robco_daemon_stop",
     "robco_discovery_snapshot",
+    "robco_inbox_dismiss",
+    "robco_inbox_dismiss_all",
+    "robco_instruct",
     "robco_overseer_snapshot",
     "robco_pane_capture",
+    "robco_repo_checkout_main",
+    "robco_repo_clear_chat",
+    "robco_repo_rename",
 ];
 
 #[derive(Clone)]
