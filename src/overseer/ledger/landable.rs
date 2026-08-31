@@ -111,7 +111,12 @@ pub(crate) fn ensure_landable<'a>(
 /// entry's own pull-request state would carry — `PrOpened` once a pull
 /// request is known, `Dispatched` otherwise. Never called for `Merged`; see
 /// [`ensure_landable`].
-fn revive(entry: &mut LedgerEntry, now: DateTime<Utc>) {
+///
+/// `pub(crate)` beyond this module's own [`ensure_landable`] caller so
+/// `monitor::apply`'s explicit `unblocked`-report path (dropr:575) can reuse
+/// this exact bookkeeping reset instead of keeping a second, drifting copy of
+/// it — see `monitor::apply_resolution::revive_report`.
+pub(crate) fn revive(entry: &mut LedgerEntry, now: DateTime<Utc>) {
     entry.phase = if entry.pr_url.is_some() {
         LedgerPhase::PrOpened
     } else {

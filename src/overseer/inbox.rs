@@ -44,10 +44,12 @@ pub enum ReportKind {
     /// escalates on its own, only after `overseer.max_prerequisite_wait_hours`.
     WaitingPrerequisite,
     /// A human answered the worker directly inside its own session rather
-    /// than through dropr or the Inbox. `monitor::apply::apply_inbox` lifts
-    /// the escalation immediately on receiving this, the same way it does for
-    /// `blocked`, instead of waiting for the daemon's own next observation
-    /// pass to notice the tmux activity on its own.
+    /// than through dropr or the Inbox — or the worker's session merely
+    /// looked dead to a stale probe. `monitor::apply::apply_inbox` revives
+    /// the ledger entry immediately on receiving this, the same way it does
+    /// for `blocked`'s escalation, instead of waiting for the daemon's own
+    /// next observation pass to notice the tmux activity on its own, or for
+    /// an operator to ask for a merge by hand (dropr:575).
     Unblocked,
 }
 

@@ -73,10 +73,16 @@ fn an_unblocked_report_cascades_to_the_real_phase_in_the_same_pass() {
 }
 
 /// The bug the reworked `settle` exists to close: an `unblocked` report can
-/// resolve an entry and a same-pass `apply_task_failure` can re-escalate it
-/// before the pass ends. The re-escalation must still get its own fresh
-/// `settled_at` rather than inheriting the `None` the resolution left behind
-/// — otherwise the entry could never be probed for resolution again.
+/// revive an entry and a later report in the very same pass can re-escalate
+/// it before the pass ends. The re-escalation must still get its own fresh
+/// `settled_at` rather than inheriting the `None` the revival left behind —
+/// otherwise the entry could never be probed for resolution again. Two
+/// inbox reports drive it (rather than a dropr task observation, as the
+/// signal-driven test above uses): an explicit revival lands on `Dispatched`
+/// / `PrOpened` (dropr:575), not `Working`, so it is no longer eligible for
+/// `apply_task_failure`'s own "open dropr task" re-escalation — a later
+/// `blocked` report is what a real worker sends if the answer it just
+/// received turns out not to hold.
 #[test]
 fn a_same_pass_resolve_then_re_escalate_still_gets_a_fresh_clock() {
     let mut escalated = ledger();
@@ -86,8 +92,10 @@ fn a_same_pass_resolve_then_re_escalate_still_gets_a_fresh_clock() {
 
     let observations: Observations = serde_json::from_str(
         r#"{
-            "inbox":[{"at":"2026-07-16T00:06:00Z","agent_id":"worker-1","kind":"unblocked"}],
-            "tasks":[{"task_id":"task-131","state":"open"}]
+            "inbox":[
+                {"at":"2026-07-16T00:06:00Z","agent_id":"worker-1","kind":"unblocked"},
+                {"at":"2026-07-16T00:06:30Z","agent_id":"worker-1","kind":"blocked"}
+            ]
         }"#,
     )
     .unwrap();
@@ -125,6 +133,88 @@ fn a_merge_gate_escalation_survives_both_resolution_paths() {
     assert_eq!(result.entries[0].phase, LedgerPhase::Escalated);
     assert_eq!(result.entries[0].settled_at, Some(at(5)));
     assert!(result.entries[0].merge_hold_cap_escalated);
+    assert!(!actions.iter().any(|action| matches!(
+        action,
+        Action::LogDecision { message, .. } if message.starts_with("resolved_externally:")
+    )));
+}
+
+/// dropr:575 — a `Failed` entry (worker session looked dead or timed out —
+/// see `apply::fail`) is revived on an `unblocked` report exactly like
+/// `ledger::ensure_landable` revives one for the TUI `m` key, Discord
+/// `!merge`, or `robco_approve`: no pull request known yet, so the phase
+/// lands on `Dispatched`, and the merge-hold / recheck / notification-dedup
+/// bookkeeping an operator's own revival clears is cleared here too — no
+/// `worker_escalated` gate, since nothing but the worker's own session ever
+/// reaches `Failed`.
+#[test]
+fn an_unblocked_report_revives_a_failed_entry() {
+    let mut failed = ledger();
+    failed.entries[0].phase = LedgerPhase::Failed;
+    failed.entries[0].settled_at = Some(at(5));
+    failed.entries[0].merge_hold_cap_escalated = true;
+    failed.entries[0].merge_hold_rechecks = 2;
+    failed.entries[0].merge_hold_recheck_reason = Some("checks_not_green".into());
+    failed.entries[0].escalation_notified_reason = Some("worker exceeded stuck timeout".into());
+
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:06:00Z","agent_id":"worker-1","kind":"unblocked"}]}"#,
+    )
+    .unwrap();
+    let (result, actions) = reconcile(&failed, &observations, at(6), 30, 72);
+
+    assert_eq!(result.entries[0].phase, LedgerPhase::Dispatched);
+    assert_eq!(result.entries[0].settled_at, None);
+    assert!(!result.entries[0].merge_hold_cap_escalated);
+    assert_eq!(result.entries[0].merge_hold_rechecks, 0);
+    assert_eq!(result.entries[0].merge_hold_recheck_reason, None);
+    assert_eq!(result.entries[0].escalation_notified_reason, None);
+    assert!(actions.iter().any(|action| matches!(
+        action,
+        Action::LogDecision { message, .. } if message == "resolved_externally:explicit_report"
+    )));
+}
+
+/// An `unblocked` report against an entry that is already live (not
+/// `Escalated` or `Failed`) changes nothing — the worker is only confirming
+/// what the ledger already believes.
+#[test]
+fn an_unblocked_report_against_a_live_entry_is_a_no_op() {
+    let mut working = ledger();
+    working.entries[0].phase = LedgerPhase::Working;
+
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:06:00Z","agent_id":"worker-1","kind":"unblocked"}]}"#,
+    )
+    .unwrap();
+    let (result, actions) = reconcile(&working, &observations, at(6), 30, 72);
+
+    assert_eq!(result.entries[0].phase, LedgerPhase::Working);
+    assert!(actions.is_empty());
+}
+
+/// An `unblocked` report naming an agent with no ledger entry is ignored
+/// without error — `apply_inbox` filters every report by `agent_id` before
+/// it ever reaches a phase match, so a stray report for an unknown agent
+/// simply matches nothing.
+#[test]
+fn an_unblocked_report_for_an_unknown_agent_is_a_no_op() {
+    let escalated = {
+        let mut escalated = ledger();
+        escalated.entries[0].phase = LedgerPhase::Escalated;
+        escalated.entries[0].settled_at = Some(at(5));
+        escalated.entries[0].worker_escalated = true;
+        escalated
+    };
+
+    let observations: Observations = serde_json::from_str(
+        r#"{"inbox":[{"at":"2026-07-16T00:06:00Z","agent_id":"worker-9-unknown","kind":"unblocked"}]}"#,
+    )
+    .unwrap();
+    let (result, actions) = reconcile(&escalated, &observations, at(6), 30, 72);
+
+    assert_eq!(result.entries[0].phase, LedgerPhase::Escalated);
+    assert_eq!(result.entries[0].settled_at, Some(at(5)));
     assert!(!actions.iter().any(|action| matches!(
         action,
         Action::LogDecision { message, .. } if message.starts_with("resolved_externally:")
