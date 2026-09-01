@@ -12,7 +12,7 @@ pub use budgets::{
     PendingHandback,
 };
 mod landable;
-pub(crate) use landable::{ensure_landable, new_entry};
+pub(crate) use landable::{ensure_landable, new_entry, revive};
 mod phase;
 pub use phase::{LedgerPhase, holds_capacity, terminal, waiting_on_prerequisite};
 mod pr_facts;
