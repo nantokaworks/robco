@@ -9,7 +9,7 @@ use ratatui::{
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::{config::Config, registry::Registry, ui::TextInput};
+use crate::{config::Config, registry::Registry, ui::text_input::TextInput};
 
 use super::{App, Mode, draw};
 

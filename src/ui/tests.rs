@@ -1,7 +1,12 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
-use crate::{config::Config, model::OverseerCategory, registry::Registry};
+use crate::{
+    config::Config,
+    model::{OverseerCategory, Selection},
+    registry::Registry,
+    ui::text_input::TextInput,
+};
 
 fn test_app() -> App {
     let temp = tempfile::tempdir().unwrap();

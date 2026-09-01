@@ -11,7 +11,7 @@ use crate::{
     config::Config,
     model::{AgentNode, RepoNode, Selection, Status},
     registry::Registry,
-    ui::{Mode, TextInput},
+    ui::{Mode, text_input::TextInput},
 };
 
 fn agent(id: &str) -> AgentNode {
