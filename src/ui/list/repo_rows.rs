@@ -4,7 +4,7 @@
 //!
 //! A repo's dropr tasks are not rows here: walking past a repository must not
 //! walk through its tasks too (dropr:475). They live in the repo's own INFO
-//! preview instead, reached by drilling in — see `ui::mod::DroprTaskFocus`.
+//! preview instead, reached by drilling in — see `ui::DroprTaskFocus`.
 
 use crate::model::{RepoNode, Selection};
 use crate::ui::App;
