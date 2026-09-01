@@ -6,7 +6,7 @@ fn toggle_line_reports_no_switch_the_daemon_ignores() {
     let line = toggle_line(&config, 0);
     assert_eq!(
         line,
-        "auto-merge: off (protection: required)  merge-recovery: off"
+        "merge-gate: off (protection: required)  merge-recovery: off"
     );
     // A dispatching daemon must never be described as switched off.
     assert!(!line.contains("overseer: off"));

@@ -9,7 +9,7 @@ use super::commands::Command;
 pub(super) fn describe_command(command: &Command) -> String {
     match command {
         Command::Status => "status".into(),
-        Command::AutoMerge(value) => format!("automerge {}", on_off(*value)),
+        Command::AutoMerge(value) => format!("merge-gate {}", on_off(*value)),
         Command::Workers => "workers".into(),
         Command::Tasks => "tasks".into(),
         Command::Skip(task) => format!("skip {task}"),

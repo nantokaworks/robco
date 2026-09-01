@@ -48,7 +48,7 @@ pub(super) fn append_health(
         ),
     ]));
     lines.push(flags_line(&[
-        ("auto-merge", on_off(config.auto_merge).into(), false),
+        ("merge-gate", on_off(config.auto_merge).into(), false),
         (
             "protection",
             config.protection_mode.label().into(),
@@ -57,8 +57,9 @@ pub(super) fn append_health(
         (
             "merge-recovery",
             merge_recovery_state(config),
-            // Recovery without auto-merge is inert: nothing ever fails a merge
-            // to hand back, so the setting reads as armed while doing nothing.
+            // Recovery without the merge gate is inert: nothing ever fails a
+            // merge to hand back, so the setting reads as armed while doing
+            // nothing.
             config.merge_recovery_enabled && !config.auto_merge,
         ),
     ]));

@@ -12,7 +12,7 @@ use crate::{Result, cli::OverseerSetting, config::Config, overseer::config::Prot
 pub(super) fn set(setting: OverseerSetting, enabled: bool) -> Result<()> {
     set_runtime(setting, enabled)?;
     let label = match setting {
-        OverseerSetting::AutoMerge => "auto-merge",
+        OverseerSetting::AutoMerge => "merge-gate",
     };
     println!("{label}: {}", on_off(enabled));
     Ok(())
@@ -76,9 +76,11 @@ pub(super) fn protection_warning(mode: ProtectionMode) -> Option<&'static str> {
     match mode {
         ProtectionMode::Required => None,
         ProtectionMode::Relaxed => {
-            Some("auto-merge no longer requires status-check protection on the base branch")
+            Some("the merge gate no longer requires status-check protection on the base branch")
         }
-        ProtectionMode::Off => Some("auto-merge no longer verifies base-branch protection at all"),
+        ProtectionMode::Off => {
+            Some("the merge gate no longer verifies base-branch protection at all")
+        }
     }
 }
 

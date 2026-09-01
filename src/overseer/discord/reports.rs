@@ -30,7 +30,7 @@ pub(crate) fn status() -> crate::Result<String> {
 /// about whether the Overseer is running.
 fn status_line(config: &OverseerConfig, active: usize) -> String {
     [
-        format!("**automerge** {}", on_off(config.auto_merge)),
+        format!("**merge-gate** {}", on_off(config.auto_merge)),
         format!("**workers** {active}"),
     ]
     .join("\n")

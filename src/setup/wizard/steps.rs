@@ -62,7 +62,12 @@ pub(crate) fn overseer<R: BufRead, W: Write>(
     let default_program = config.default_program.clone();
     let profiles = config.profiles.clone();
     let overseer = &mut config.overseer;
-    let auto_merge = prompt::confirm(input, output, "Enable auto-merge?", overseer.auto_merge)?;
+    writeln!(
+        output,
+        "▌ robco ▸ INFO ············· a merge still needs a per-PR approval \
+         (`m`, `!merge`, or `robco_approve`); this only lets the daemon act on one"
+    )?;
+    let auto_merge = prompt::confirm(input, output, "Enable the merge gate?", overseer.auto_merge)?;
     if auto_merge && !overseer.auto_merge {
         writeln!(
             output,
