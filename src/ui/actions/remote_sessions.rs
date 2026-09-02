@@ -1,4 +1,5 @@
-//! Routes session reads and writes to the host that owns the selected row.
+//! Routes session reads and writes to the selected owning host when possible,
+//! avoiding collisions when separate hosts use the same tmux session name.
 
 use ratatui::text::Text;
 
@@ -26,6 +27,12 @@ impl App {
     }
 
     fn remote_session_repo(&self, session: &str) -> Option<usize> {
+        if let Some(repo) = self.selected_repo().filter(|repo| {
+            let repo = &self.registry.repos[*repo];
+            repo.host.is_some() && owns_session(self, repo, session)
+        }) {
+            return Some(repo);
+        }
         self.registry
             .repos
             .iter()
@@ -42,4 +49,53 @@ fn owns_session(app: &App, repo: &RepoNode, session: &str) -> bool {
                 .any(|child| child.tmux_session.as_deref() == Some(session))
     }) || crate::agent::repo_claude_session_name(&app.config.tmux_session_prefix, repo) == session
         || crate::agent::repo_shell_session_name(&app.config.tmux_session_prefix, repo) == session
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::Config, model::HostLabel, registry::Registry, ui::actions::remote_hosts::HostSlot,
+    };
+
+    #[test]
+    fn duplicate_remote_session_names_prefer_selected_repo() {
+        let repo = |ssh: &str| {
+            let mut repo: RepoNode = serde_json::from_value(serde_json::json!({
+                "path": format!("/{ssh}/shared"), "name": "shared",
+                "remote_url": null, "pinned": true
+            }))
+            .unwrap();
+            repo.host = Some(HostLabel {
+                name: ssh.into(),
+                ssh: ssh.into(),
+            });
+            repo
+        };
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(
+            Registry {
+                version: 1,
+                repos: vec![repo("first"), repo("selected")],
+            },
+            Config::default(),
+            temp.path().into(),
+        );
+        app.hosts = ["first", "selected"]
+            .into_iter()
+            .map(|ssh| {
+                HostSlot::idle(HostLabel {
+                    name: ssh.into(),
+                    ssh: ssh.into(),
+                })
+            })
+            .collect();
+        app.selected = app
+            .visible()
+            .iter()
+            .position(|selection| matches!(selection, crate::model::Selection::Repo(1)))
+            .unwrap();
+
+        assert_eq!(app.remote_session_repo("robco_shared_main"), Some(1));
+    }
 }

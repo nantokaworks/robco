@@ -53,9 +53,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         // The row's one tab is the live control session capture itself — see
         // `panes_for`'s comment on `Selection::OverseerAi`.
         (_, Some(Selection::OverseerAi)) => overseer::control_preview(app),
-        // An item row previews itself, not the list it belongs to: the other
-        // items are already on screen in the left frame. `panes_for` gives this
-        // selection a single Info tab, so the catch-all pane is that one tab.
+        // An inbox item row previews itself, not the list it belongs to.
         (_, Some(Selection::OverseerInbox(index))) => {
             super::overseer::inbox_item_preview(app, index)
         }
@@ -108,12 +106,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             });
             (title, text)
         }
-        // The repo's own INFO tab: normally its summary, or — while the
-        // dropr task drill-down is focused (dropr:475) — the task list
-        // highlighting its cursor (Level 1) or one task's full body in its
-        // place (Level 2/3). The snapshot the OVERSEER frame already
-        // refreshes: one ledger (and one other-PR cache) for the whole TUI,
-        // no disk read here.
+        // The repo INFO tab also hosts the dropr task drill-down (dropr:475).
         (_, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let dropr_fetch_in_flight = repo
@@ -131,8 +124,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 dropr_fetch_in_flight,
             )
         }
-        // Rendered as a tab rather than an overlay so reading the failure never
-        // costs the operator sight of the tab bar.
         (PreviewPane::Error, Some(Selection::Agent { repo, agent })) => {
             let repo = &registry.repos[repo];
             let agent = &repo.agents[agent];
@@ -213,9 +204,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     &ai_label,
                 );
             }
-            let text = app
-                .cached_diff(&agent.worktree_path)
-                .unwrap_or_else(|| loading_diff(app.locale));
+            let text = worktree_diff(app, repo.host.is_some(), &agent.worktree_path);
             (title, text)
         }
         (PreviewPane::Info, Some(Selection::ChildWorktree { repo, agent, child })) => {
@@ -238,9 +227,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     .and_then(|name| name.to_str())
                     .unwrap_or("worktree")
             });
-            let text = app
-                .cached_diff(&child.path)
-                .unwrap_or_else(|| loading_diff(app.locale));
+            let text = worktree_diff(app, repo.host.is_some(), &child.path);
             (format!("{} / {} / {label}", repo.name, agent.title), text)
         }
         (_, Some(Selection::Orphan(orphan_idx))) => {
@@ -297,4 +284,17 @@ fn loading_diff(locale: crate::locale::Locale) -> Text<'static> {
         THEME.muted_style(),
     ))]
     .into()
+}
+
+fn worktree_diff(app: &App, remote: bool, path: &std::path::Path) -> Text<'static> {
+    if remote {
+        vec![Line::from(Span::styled(
+            t(app.locale, "diff is not available for a remote worktree"),
+            THEME.muted_style(),
+        ))]
+        .into()
+    } else {
+        app.cached_diff(path)
+            .unwrap_or_else(|| loading_diff(app.locale))
+    }
 }
