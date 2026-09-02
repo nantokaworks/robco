@@ -17,6 +17,7 @@ use super::{
 mod confirm;
 mod dropr_task_body;
 mod dropr_task_drill;
+mod host_connect;
 mod inbox_dismiss;
 mod inbox_respond;
 mod mouse;
@@ -124,6 +125,7 @@ impl App {
                     input.handle_key(key);
                 }
             },
+            Mode::PromptHostConnect { .. } => host_connect::handle_prompt(self, key),
             Mode::PromptOverseer { input } => match overseer::prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
@@ -210,6 +212,7 @@ impl App {
                 }
             }
             Mode::Normal => match key.code {
+                code if host_connect::handle_normal(self, code) => {}
                 code if overseer::handle_normal(self, code) => {}
                 code if dropr_task_drill::handle_normal(self, code) => {}
                 KeyCode::Char('q') | KeyCode::Esc => {

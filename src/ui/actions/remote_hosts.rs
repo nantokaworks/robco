@@ -205,6 +205,13 @@ impl App {
             .collect();
     }
 
+    pub(in crate::ui) fn connect_host(&mut self, ssh: String) {
+        self.hosts.push(HostSlot::spawn(
+            HostConfig { ssh, name: None },
+            self.config.clone(),
+        ));
+    }
+
     pub(in crate::ui) fn ingest_remote_hosts(&mut self) {
         let selected = self.selected_item().map(|item| self.item_key(item));
         let expanded = expanded_map(&self.registry.repos, &self.expanded);

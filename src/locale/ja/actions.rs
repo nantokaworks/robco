@@ -240,6 +240,10 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "reset {} to idle" => "{} をidleにリセットしました",
         "{} is not in a failed state" => "{} はfailed状態ではありません",
         "removed channel {}" => "チャンネル {} を削除しました",
+
+        // actions/remote_hosts.rs
+        "already connected to {}" => "{} には接続済みです",
+        "connecting to {}" => "{} に接続中です",
         _ => return None,
     })
 }
