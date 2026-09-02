@@ -24,6 +24,13 @@ struct HostSnapshot {
     generation: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::ui) enum HostConnection {
+    Connecting,
+    Connected,
+    Failed,
+}
+
 pub(in crate::ui) struct HostSlot {
     pub(in crate::ui) label: HostLabel,
     snapshot: Arc<Mutex<HostSnapshot>>,
@@ -49,12 +56,30 @@ impl HostSlot {
         }
     }
 
-    pub(in crate::ui) fn error(&self) -> Option<String> {
-        self.snapshot.lock().ok()?.error.clone()
+    /// Derives connection state from the published snapshot so the poller has
+    /// one source of truth. Errors win because publishing one also advances the
+    /// generation, which must not make a failed first attempt look connected.
+    pub(in crate::ui) fn connection_and_error(&self) -> (HostConnection, Option<String>) {
+        let snapshot = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let connection = if snapshot.error.is_some() {
+            HostConnection::Failed
+        } else if snapshot.generation == 0 {
+            HostConnection::Connecting
+        } else {
+            HostConnection::Connected
+        };
+        (connection, snapshot.error.clone())
     }
 
     pub(in crate::ui) fn backend(&self) -> Option<Arc<RemoteBackend>> {
-        self.snapshot.lock().ok()?.backend.clone()
+        self.snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .backend
+            .clone()
     }
 
     #[cfg(test)]
@@ -62,6 +87,31 @@ impl HostSlot {
         Self {
             label,
             snapshot: Arc::new(Mutex::new(HostSnapshot::default())),
+            applied_generation: 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn connected(label: HostLabel) -> Self {
+        Self {
+            label,
+            snapshot: Arc::new(Mutex::new(HostSnapshot {
+                generation: 1,
+                ..HostSnapshot::default()
+            })),
+            applied_generation: 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn failed(label: HostLabel, error: &str) -> Self {
+        Self {
+            label,
+            snapshot: Arc::new(Mutex::new(HostSnapshot {
+                error: Some(error.into()),
+                generation: 1,
+                ..HostSnapshot::default()
+            })),
             applied_generation: 0,
         }
     }
@@ -84,9 +134,11 @@ fn poll_host(label: HostLabel, config: Config, cell: Arc<Mutex<HostSnapshot>>) {
         match RemoteBackend::connect(&label.ssh) {
             Ok(backend) => {
                 let backend = Arc::new(backend);
-                if let Ok(mut snapshot) = cell.lock() {
-                    snapshot.backend = Some(Arc::clone(&backend));
-                }
+                let mut snapshot = cell
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                snapshot.backend = Some(Arc::clone(&backend));
+                drop(snapshot);
                 loop {
                     match backend.initial_snapshot() {
                         Ok((registry, _)) => {
@@ -117,19 +169,21 @@ fn publish(
     for repo in &mut repos {
         repo.host = Some(label.clone());
     }
-    if let Ok(mut snapshot) = cell.lock() {
-        carry_runtime(&snapshot.repos, &mut repos, true);
-        snapshot.repos = repos;
-        snapshot.error = error;
-        snapshot.generation = snapshot.generation.wrapping_add(1);
-    }
+    let mut snapshot = cell
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    carry_runtime(&snapshot.repos, &mut repos, true);
+    snapshot.repos = repos;
+    snapshot.error = error;
+    snapshot.generation = snapshot.generation.wrapping_add(1);
 }
 
 fn publish_error(cell: &Mutex<HostSnapshot>, error: String) {
-    if let Ok(mut snapshot) = cell.lock() {
-        snapshot.error = Some(error);
-        snapshot.generation = snapshot.generation.wrapping_add(1);
-    }
+    let mut snapshot = cell
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    snapshot.error = Some(error);
+    snapshot.generation = snapshot.generation.wrapping_add(1);
 }
 
 impl App {
@@ -156,9 +210,10 @@ impl App {
         let expanded = expanded_map(&self.registry.repos, &self.expanded);
         let mut changed = false;
         for slot in &mut self.hosts {
-            let Ok(snapshot) = slot.snapshot.lock() else {
-                continue;
-            };
+            let snapshot = slot
+                .snapshot
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if snapshot.generation == slot.applied_generation {
                 continue;
             }
@@ -204,7 +259,7 @@ impl App {
             .find(|slot| slot.label == *host)?
             .snapshot
             .lock()
-            .ok()?
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .backend
             .as_ref()
             .map(|backend| backend.client())
@@ -227,25 +282,5 @@ fn expanded_map(repos: &[RepoNode], expanded: &[bool]) -> HashMap<(Option<String
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn publish_tags_repos_and_preserves_last_success_on_error() {
-        let cell = Mutex::new(HostSnapshot::default());
-        let label = HostLabel {
-            name: "Prod".into(),
-            ssh: "prod".into(),
-        };
-        let repo = serde_json::from_value(serde_json::json!({
-            "path": "/srv/repo", "name": "repo", "remote_url": null
-        }))
-        .unwrap();
-        publish(&cell, &label, vec![repo], None);
-        publish_error(&cell, "offline".into());
-        let snapshot = cell.lock().unwrap();
-        assert_eq!(snapshot.repos[0].host.as_ref(), Some(&label));
-        assert_eq!(snapshot.repos.len(), 1);
-        assert_eq!(snapshot.error.as_deref(), Some("offline"));
-    }
-}
+#[path = "remote_hosts_tests.rs"]
+mod tests;
