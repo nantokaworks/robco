@@ -13,6 +13,7 @@ use indicator::{IndicatorState, select, select_supplementary};
 
 mod footer;
 mod hints;
+mod host_chip;
 mod host_group;
 pub(in crate::ui) mod indicator;
 mod label;
@@ -29,11 +30,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     }
     let projects_width = panes.tree.width.saturating_sub(1);
 
-    let mut lines = vec![Line::from(Span::styled(
-        "PROJECTS",
-        THEME.accent_bold_style(),
-    ))];
-    let mut shown_hosts = Vec::new();
+    let mut lines = host_chip::lines(app, projects_width, app.started.elapsed());
     for (idx, item) in visible.iter().enumerate() {
         let selected = idx == app.selected;
         let marker = if selected { ">" } else { " " };
@@ -49,7 +46,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             | Selection::OverseerInbox(_)
             | Selection::DiscordChannel(_) => continue,
             Selection::Repo(repo_idx) => {
-                host_group::before_repo(app, repo_idx, &mut shown_hosts, &mut lines);
                 lines.extend(repo_row::build(
                     app,
                     repo_idx,
@@ -250,7 +246,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 )));
             }
             Selection::OrphanHeader => {
-                host_group::finish(app, &mut shown_hosts, &mut lines);
                 let count = app.orphans.len();
                 let arrow = if app.orphans_collapsed { "▸" } else { "▾" };
                 let noun = if count == 1 { "session" } else { "sessions" };
@@ -275,7 +270,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             }
         }
     }
-    host_group::finish(app, &mut shown_hosts, &mut lines);
 
     let tree = Paragraph::new(lines).style(THEME.accent_style());
     let projects_area = Rect {

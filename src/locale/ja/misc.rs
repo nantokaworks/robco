@@ -28,6 +28,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "No shell session. Press enter to open one." => {
             "shellセッションがありません。enterで開始できます。"
         }
+        // PROJECTS remote-host status detail. The host name remains the
+        // untranslated label; this sentence is the explanatory content.
+        "connecting..." => "接続中…",
 
         // summary.rs — the one clear prose sentence in the repo summary pane;
         // its surrounding field labels (path/remote/agents/...) stay as

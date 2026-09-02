@@ -64,7 +64,9 @@ default.
 
 Each entry opens an independent `ssh <destination> robco mcp-stdio` connection. `ssh` is
 passed through as one destination argument without parsing. `name` is optional tree chrome;
-when omitted, the destination itself labels the group.
+when omitted, the destination itself labels the host. Each host has a connection-state chip
+in the PROJECTS header, and its repository rows appear after local repositories with an
+`@name` suffix instead of a separate host group.
 
 ```json
 {

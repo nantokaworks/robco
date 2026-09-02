@@ -259,6 +259,7 @@ impl App {
                 }
             }
         }
+        // Host state is render-only, so remote reordering still moves repo rows alone.
         for repo_idx in self.remote_repo_indices() {
             repo_rows::push_repo_rows(self, &mut visible, repo_idx, &self.registry.repos[repo_idx]);
         }
