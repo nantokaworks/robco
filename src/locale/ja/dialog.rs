@@ -35,6 +35,10 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "git format: <git-url> [branch]" => "形式: <git-url> [branch]",
         "enter add   esc cancel" => "enterで追加   escでキャンセル",
         "enter rename   esc cancel" => "enterで名前変更   escでキャンセル",
+        "enter host or user@host; config.hosts keeps it" => {
+            "hostまたはuser@hostを入力。config.hostsに追加すると保存されます"
+        }
+        "enter connect   esc cancel" => "enterで接続   escでキャンセル",
         "enter send   esc cancel" => "enterで送信   escでキャンセル",
         "enter delete   esc cancel" => "enterで削除   escでキャンセル",
         "ends the running session now and removes the worktree" => {

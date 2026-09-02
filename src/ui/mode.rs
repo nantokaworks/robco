@@ -22,6 +22,9 @@ pub(in crate::ui) enum Mode {
         path: PathBuf,
         input: TextInput,
     },
+    PromptHostConnect {
+        input: TextInput,
+    },
     PromptOverseer {
         input: TextInput,
     },

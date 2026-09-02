@@ -63,6 +63,12 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "  K              stop the overseer daemon process (running)" => {
             "  K              overseerデーモンプロセスを停止（稼働中）"
         }
+        "  H              connect to a host by ssh destination" => {
+            "  H              SSH接続先を指定してホストへ接続"
+        }
+        "                 use --host at startup or config.hosts to persist it" => {
+            "                 起動時は--host、永続化にはconfig.hostsを使用"
+        }
         "  l              expand OVERSEER > Inbox to reach its item rows" => {
             "  l              OVERSEER > Inboxを展開し項目行を表示"
         }

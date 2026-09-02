@@ -77,8 +77,9 @@ in the PROJECTS header, and its repository rows appear after local repositories 
 }
 ```
 
-`--host <destination>` is repeatable and adds ad-hoc destinations for one run. CLI values
-are added to configured hosts and deduplicated by exact `ssh` destination string:
+`--host <destination>` is repeatable and adds ad-hoc destinations for one run. In the TUI,
+press `H` to connect another ad-hoc destination for the current session. Ad-hoc values are
+combined with configured hosts and deduplicated by exact `ssh` destination string:
 
 ```sh
 robco --host prod --host operator@staging

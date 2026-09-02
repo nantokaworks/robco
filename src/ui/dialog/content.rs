@@ -67,6 +67,16 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                 Some((0, column)),
             )
         }
+        Mode::PromptHostConnect { input } => {
+            let (line, column) = input_line("ssh destination", input);
+            let prose = t(locale, "enter host or user@host; config.hosts keeps it");
+            let hint = hint_line(locale, "enter connect   esc cancel");
+            (
+                "CONNECT HOST",
+                vec![Line::from(prose), line, hint],
+                Some((1, column)),
+            )
+        }
         Mode::PromptOverseer { input } => {
             let (lines, caret) = instruction_prompt_body(locale, body, content_width, input);
             (t(locale, "instruct overseer control"), lines, Some(caret))
