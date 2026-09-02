@@ -135,10 +135,30 @@ impl App {
     /// Schedule a background capture for whatever the current selection needs.
     /// Called once per event-loop iteration with the full terminal area.
     pub(in crate::ui) fn schedule_preview_capture(&mut self, full_area: Rect) {
-        if self
+        if let Some(repo) = self
             .selected_repo()
-            .is_some_and(|repo| self.registry.repos[repo].host.is_some())
+            .filter(|repo| self.registry.repos[*repo].host.is_some())
         {
+            let Some(CaptureTarget::Tmux {
+                session,
+                width,
+                height,
+                offset,
+            }) = self.current_capture_target(full_area)
+            else {
+                return;
+            };
+            let Some(host) = self.registry.repos[repo].host.as_ref() else {
+                return;
+            };
+            if let Some(backend) = self
+                .hosts
+                .iter()
+                .find(|slot| slot.label == *host)
+                .and_then(|slot| slot.backend())
+            {
+                backend.schedule_remote_pane(&session, width, height, offset);
+            }
             return;
         }
         if let Some(target) = self.current_capture_target(full_area) {
@@ -230,40 +250,6 @@ pub(in crate::ui) fn cached_diff(
     }
 }
 
-pub(in crate::ui) fn tmux_target(
-    preview_capture: &PreviewCapture,
-    session: &str,
-) -> Option<(u16, u16, u16)> {
-    match preview_capture.last_target.as_ref() {
-        Some(CaptureTarget::Tmux {
-            session: target,
-            width,
-            height,
-            offset,
-        }) if target == session => Some((*width, *height, *offset)),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cached_preview_only_matches_the_last_completed_target() {
-        let mut capture = PreviewCapture::new();
-        capture.current = Some((
-            CaptureTarget::Tmux {
-                session: "worker".into(),
-                width: 80,
-                height: 24,
-                offset: 0,
-            },
-            Some(Text::raw("pane")),
-        ));
-
-        assert_eq!(cached_tmux(&capture, "worker"), Some(Text::raw("pane")));
-        assert_eq!(cached_tmux(&capture, "other"), None);
-        assert_eq!(cached_diff(&capture, std::path::Path::new("repo")), None);
-    }
-}
+#[path = "preview_capture_tests.rs"]
+mod tests;

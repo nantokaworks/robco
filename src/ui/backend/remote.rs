@@ -21,7 +21,7 @@ use crate::ui::{
         background_refresh::StatusResult,
         discovery_capture::{DiscoveryResult, remote_result},
         overseer_refresh::{ControlWatch, OverseerResult},
-        preview_capture::{PreviewCapture, tmux_target},
+        preview_capture::PreviewCapture,
     },
     inbox,
     overseer::OverseerSnapshot,
@@ -135,10 +135,13 @@ impl RemoteBackend {
         if pane.in_flight || (pane.target.as_ref() == Some(&target) && !due) {
             return;
         }
+        let target_changed = pane.target.as_ref() != Some(&target);
         pane.in_flight = true;
         pane.last_at = Some(Instant::now());
         pane.target = Some(target.clone());
-        pane.text = None;
+        if target_changed {
+            pane.text = None;
+        }
         drop(pane);
         let client = self.client.clone();
         let cache = self.pane.clone();
@@ -167,6 +170,40 @@ impl RemoteBackend {
             }
         });
     }
+
+    /// Drive the remote capture worker explicitly because the local preview
+    /// scheduler must never send a remote session to the local tmux server.
+    pub(in crate::ui) fn schedule_remote_pane(
+        &self,
+        session: &str,
+        width: u16,
+        height: u16,
+        offset: u16,
+    ) {
+        self.schedule_pane((session.to_string(), width, height, offset));
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn test(client: RemoteClient) -> Self {
+        Self {
+            client,
+            pane: Arc::new(Mutex::new(PaneCache::default())),
+            error: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn test_pane_target(&self) -> Option<(String, u16, u16, u16)> {
+        self.pane.lock().unwrap().target.clone()
+    }
+}
+
+fn cached_pane(pane: &PaneCache, session: &str) -> Option<Text<'static>> {
+    pane.target
+        .as_ref()
+        .is_some_and(|target| target.0 == session)
+        .then(|| pane.text.clone())
+        .flatten()
 }
 
 impl Backend for RemoteBackend {
@@ -238,17 +275,16 @@ impl Backend for RemoteBackend {
         }
     }
 
-    fn cached_tmux(&self, preview: &PreviewCapture, session: &str) -> Option<Text<'static>> {
-        let (width, height, offset) = tmux_target(preview, session)?;
-        let target = (session.to_string(), width, height, offset);
-        self.schedule_pane(target.clone());
+    fn cached_tmux(&self, _preview: &PreviewCapture, session: &str) -> Option<Text<'static>> {
         let pane = self.pane.lock().unwrap();
-        (pane.target.as_ref() == Some(&target))
-            .then(|| pane.text.clone())
-            .flatten()
+        cached_pane(&pane, session)
     }
 
     fn cached_diff(&self, _preview: &PreviewCapture, _path: &Path) -> Option<Text<'static>> {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "remote_tests.rs"]
+mod tests;

@@ -65,6 +65,18 @@ impl HostSlot {
             applied_generation: 0,
         }
     }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn with_backend(label: HostLabel, backend: Arc<RemoteBackend>) -> Self {
+        Self {
+            label,
+            snapshot: Arc::new(Mutex::new(HostSnapshot {
+                backend: Some(backend),
+                ..HostSnapshot::default()
+            })),
+            applied_generation: 0,
+        }
+    }
 }
 
 fn poll_host(label: HostLabel, config: Config, cell: Arc<Mutex<HostSnapshot>>) {

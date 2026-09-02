@@ -10,6 +10,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "Session is gone." => "セッションは終了しました。",
         "No repositories discovered." => "リポジトリが見つかりませんでした。",
         "Loading diff…" => "diffを読み込み中…",
+        "diff is not available for a remote worktree" => "リモートworktreeではdiffを利用できません",
 
         // preview/overseer.rs
         "Control session not started." => "制御セッションは開始されていません。",

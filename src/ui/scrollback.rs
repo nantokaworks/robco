@@ -86,13 +86,92 @@ impl App {
     pub(in crate::ui) fn scroll_preview(&mut self, up: bool, step: u16) {
         self.preview_scroll = match (live_session(self), up) {
             (Some(session), true) => {
-                let limit =
-                    tmux::history_size(&tmux::TmuxServer::default_server(), &session).unwrap_or(0);
-                self.preview_scroll.saturating_add(step).min(limit)
+                let history = (!self.is_remote_session(&session)).then(|| {
+                    tmux::history_size(&tmux::TmuxServer::default_server(), &session).unwrap_or(0)
+                });
+                tmux_scroll_offset(self.preview_scroll, step, history)
             }
             (Some(_), false) => self.preview_scroll.saturating_sub(step),
             (None, true) => self.preview_scroll.saturating_sub(step),
             (None, false) => self.preview_scroll.saturating_add(step),
         };
+    }
+}
+
+fn tmux_scroll_offset(current: u16, step: u16, local_history: Option<u16>) -> u16 {
+    let offset = current.saturating_add(step);
+    local_history.map_or(offset, |limit| offset.min(limit))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        config::Config,
+        model::{AgentNode, HostLabel, RepoNode},
+        registry::Registry,
+        ui::actions::remote_hosts::HostSlot,
+    };
+
+    #[test]
+    fn remote_scrollback_is_not_clamped_by_local_history() {
+        let now = chrono::Local::now();
+        let agent = AgentNode {
+            id: "worker".into(),
+            parent_agent_id: None,
+            title: "worker".into(),
+            task_number: None,
+            worktree_path: "/remote/repo-worker".into(),
+            branch: "worker".into(),
+            base_commit: String::new(),
+            program: "codex".into(),
+            spawned_by_version: None,
+            claude_session_id: None,
+            profile: None,
+            tmux_session: "robco_worker".into(),
+            created_at: now,
+            updated_at: now,
+            status: Status::Running,
+            worktree_missing: false,
+            merge_error: None,
+            last_capture: None,
+            last_spinner: None,
+            last_change_at: None,
+            last_auto_accept_at: None,
+            shell_working: false,
+            mcp_active: false,
+            pane_pid: None,
+            tracked_command: None,
+            subagents: Vec::new(),
+            children: Vec::new(),
+        };
+        let mut repo: RepoNode = serde_json::from_value(serde_json::json!({
+            "path": "/remote/repo", "name": "repo", "remote_url": null,
+            "pinned": true
+        }))
+        .unwrap();
+        let host = HostLabel {
+            name: "Remote".into(),
+            ssh: "remote".into(),
+        };
+        repo.host = Some(host.clone());
+        repo.agents = vec![agent];
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.registry.repos = vec![repo];
+        app.hosts = vec![HostSlot::idle(host)];
+        app.overseer_visible = false;
+        app.expanded = vec![true];
+        app.selected = app
+            .visible()
+            .iter()
+            .position(|item| matches!(item, Selection::Agent { .. }))
+            .unwrap();
+        app.preview = PreviewPane::Claude;
+        app.preview_scroll = 7;
+
+        app.scroll_preview(true, 5);
+
+        assert_eq!(app.preview_scroll, 12);
     }
 }
