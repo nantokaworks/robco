@@ -75,6 +75,8 @@ const DISCORD_CHANNEL_HINTS: Hints = &[
 
 const ESCALATION_HINTS: Hints = &[("d", "dismiss"), ("?", "help"), ("q", "quit")];
 
+const READ_ONLY_HINTS: Hints = &[("?", "help"), ("q", "quit")];
+
 const DROPR_TASK_LIST_HINTS: Hints = &[
     ("j/k", "move"),
     ("↵", "open"),
@@ -148,6 +150,7 @@ fn hints_for(
         Some(Selection::Repo(_)) => REPO_HINTS,
         Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::RemoteControlAi(_)) => OVERSEER_AI_HINTS,
+        Some(Selection::RemoteHostError(_)) => READ_ONLY_HINTS,
         Some(Selection::OverseerCategory(OverseerCategory::Discord)) => EXPANDABLE_CATEGORY_HINTS,
         Some(Selection::OverseerAlert(_) | Selection::RepoEscalation { .. }) => ESCALATION_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,

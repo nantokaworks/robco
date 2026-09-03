@@ -19,7 +19,6 @@ const GAP: &str = "  ";
 struct HostView {
     name: String,
     connection: HostConnection,
-    first_error_line: Option<String>,
     has_repos: bool,
     daemon_alive: bool,
 }
@@ -34,10 +33,6 @@ pub(super) fn lines(app: &App, width: u16, elapsed: Duration) -> Vec<Line<'stati
             Some(HostView {
                 name: slot.label.name.clone(),
                 connection: view.connection,
-                first_error_line: view
-                    .error
-                    .as_ref()
-                    .map(|error| error.lines().next().unwrap_or_default().to_owned()),
                 daemon_alive: view.daemon_alive,
                 has_repos: app
                     .registry
@@ -48,9 +43,36 @@ pub(super) fn lines(app: &App, width: u16, elapsed: Duration) -> Vec<Line<'stati
         })
         .collect::<Vec<_>>();
     let mut lines = vec![header_line(&hosts, width, elapsed)];
-    lines.extend(failed_lines(&hosts));
     lines.extend(connecting_lines(app, &hosts, elapsed));
     lines
+}
+
+pub(super) fn failed_row(
+    app: &App,
+    host: usize,
+    selected: bool,
+    marker: &str,
+) -> Option<Line<'static>> {
+    let slot = app.hosts.get(host)?;
+    let view = app.host_view(host)?;
+    if view.connection != HostConnection::Failed {
+        return None;
+    }
+    let first_line = view.error.as_deref()?.lines().next().unwrap_or_default();
+    Some(Line::from(vec![
+        Span::styled(
+            format!("{marker} "),
+            if selected {
+                THEME.selection_style()
+            } else {
+                failure_style()
+            },
+        ),
+        Span::styled(
+            format!("✗ {}: {first_line}", slot.label.name),
+            failure_style(),
+        ),
+    ]))
 }
 
 fn header_line(hosts: &[HostView], width: u16, elapsed: Duration) -> Line<'static> {
@@ -80,19 +102,6 @@ fn header_line(hosts: &[HostView], width: u16, elapsed: Duration) -> Line<'stati
         spans.push(Span::styled("…", THEME.muted_style()));
     }
     Line::from(spans)
-}
-
-fn failed_lines(hosts: &[HostView]) -> impl Iterator<Item = Line<'static>> + '_ {
-    hosts.iter().filter_map(|host| {
-        if host.connection != HostConnection::Failed {
-            return None;
-        }
-        let first_line = host.first_error_line.as_deref()?;
-        Some(Line::styled(
-            format!("✗ {}: {first_line}", host.name),
-            failure_style(),
-        ))
-    })
 }
 
 fn connecting_lines<'a>(

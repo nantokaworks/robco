@@ -61,6 +61,12 @@ impl HostSlot {
         snapshot.discord_channels = discord_channels;
         snapshot.generation = snapshot.generation.wrapping_add(1);
     }
+
+    pub(in crate::ui) fn replace_error(&self, error: Option<&str>) {
+        let mut snapshot = self.snapshot.lock().unwrap();
+        snapshot.error = error.map(str::to_string);
+        snapshot.generation = snapshot.generation.wrapping_add(1);
+    }
 }
 
 impl App {

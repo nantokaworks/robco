@@ -67,6 +67,9 @@ pub enum Selection {
     DiscordChannel(usize),
     /// A connected remote host's Overseer control AI, indexing `App::hosts`.
     RemoteControlAi(usize),
+    /// A failed remote host, indexing `App::hosts` so its full connection
+    /// error has a selectable Info pane.
+    RemoteHostError(usize),
     /// A retained remote Discord channel in that host snapshot's display order.
     RemoteDiscordChannel {
         host: usize,

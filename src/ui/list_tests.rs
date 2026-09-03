@@ -136,6 +136,7 @@ fn connected_remote_hosts_list_global_chats_after_their_repos() {
     assert_eq!(
         app.visible(),
         vec![
+            Selection::RemoteHostError(1),
             Selection::Repo(0),
             Selection::RemoteControlAi(0),
             Selection::RemoteDiscordChannel {
@@ -152,6 +153,49 @@ fn connected_remote_hosts_list_global_chats_after_their_repos() {
     app.expanded.insert(0, true);
     app.restore_selection(Some(key.clone()));
     assert_eq!(app.item_key(app.selected_item().unwrap()), key);
+}
+
+#[test]
+fn failed_host_row_reanchors_to_control_row_when_host_recovers() {
+    use crate::{model::HostLabel, ui::actions::remote_hosts::HostSlot};
+
+    let temp = tempfile::tempdir().unwrap();
+    let repo = crate::ui::test_support::repo(temp.path().join("repo"), Vec::new());
+    let mut app = App::new(
+        Registry {
+            version: 1,
+            repos: vec![repo],
+        },
+        Config::default(),
+        temp.path().into(),
+    );
+    app.overseer_visible = false;
+    app.orphans.clear();
+    app.hosts = vec![HostSlot::idle(HostLabel {
+        name: "Prod".into(),
+        ssh: "ops@prod".into(),
+    })];
+    app.sync_remote_host_views();
+    app.selected = 0;
+    assert_eq!(app.selected_item(), Some(Selection::Repo(0)));
+    assert!(!app.visible().contains(&Selection::RemoteHostError(0)));
+
+    app.hosts[0].replace_error(Some("offline\nretry later"));
+    app.ingest_remote_hosts();
+    assert_eq!(app.selected_item(), Some(Selection::Repo(0)));
+    assert_eq!(app.visible()[0], Selection::RemoteHostError(0));
+    assert_eq!(
+        app.item_key(Selection::RemoteHostError(0)),
+        "remote-host-error:ops@prod"
+    );
+    app.selected = 0;
+    assert_eq!(app.selected_item(), Some(Selection::RemoteHostError(0)));
+
+    app.hosts[0].replace_error(None);
+    app.ingest_remote_hosts();
+    assert_eq!(app.selected_item(), Some(Selection::RemoteControlAi(0)));
+    assert_ne!(app.selected_item(), Some(Selection::Repo(0)));
+    assert!(!app.visible().contains(&Selection::RemoteHostError(0)));
 }
 
 #[test]
