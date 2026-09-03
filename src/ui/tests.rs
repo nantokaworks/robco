@@ -46,8 +46,6 @@ fn prompt_repo_word_deletion_reaches_the_shared_buffer() {
 
 #[test]
 fn overseer_category_panes_show_info_only() {
-    // The control AI moved to its own row (dropr:370): none of the five
-    // categories own a session, so none offers a second tab to cycle to.
     assert_eq!(
         panes_for(Some(Selection::OverseerCategory(OverseerCategory::Health))),
         &[PreviewPane::Info]
@@ -59,8 +57,6 @@ fn overseer_expand_collapse_keys_update_tree() {
     let mut app = test_app();
     app.overseer_visible = true;
     app.selected = 0;
-    // Ignore any live robco tmux sessions the host discovers as orphans so the
-    // tree contents are deterministic across environments.
     app.orphans = Vec::new();
 
     // The header is not a row of its own, so the first row is the control AI,
@@ -137,6 +133,7 @@ fn esc_cancels_the_instruct_session_prompt_without_sending() {
     let mut app = test_app_with_agent();
     app.mode = Mode::PromptSession {
         session: "robco_one".into(),
+        host: None,
         input: TextInput::from("hello"),
     };
 

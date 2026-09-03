@@ -7,6 +7,10 @@ requests. Overseer does not choose its own work: the operator picks a task — f
 serializes it. It is deliberately split so that policy stays deterministic while LLMs are
 used only for bounded judgment calls.
 
+Remote hosts expose their control AI and retained Discord chats as `@host` rows in the
+client PROJECTS tree. Those rows attach, instruct, and preview against the remote host;
+the dedicated OVERSEER frame continues to show only the local machine's Overseer.
+
 ## Architecture
 
 ### Control plane

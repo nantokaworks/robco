@@ -17,7 +17,7 @@ impl App {
         self.attach_session_on(session, None);
     }
 
-    fn attach_session_on(&mut self, session: &str, host: Option<&HostLabel>) {
+    pub(in crate::ui) fn attach_session_on(&mut self, session: &str, host: Option<&HostLabel>) {
         self.force_redraw = true;
         let server = &self.config.tmux_server;
         let result = suspend_terminal(|| match host {

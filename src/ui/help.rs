@@ -31,6 +31,7 @@ pub(crate) fn lines(locale: Locale) -> Vec<Line<'static>> {
         l("Remote hosts"),
         l("  H              connect to a host by ssh destination"),
         l("                 use --host at startup or config.hosts to persist it"),
+        l("                 control AI and Discord chats appear after its repos"),
         Line::from(""),
         l("Overseer inbox"),
         l("  l              expand OVERSEER > Inbox to reach its item rows"),

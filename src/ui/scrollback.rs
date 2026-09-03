@@ -27,6 +27,15 @@ pub(in crate::ui) fn live_session(app: &App) -> Option<String> {
                 .get(index)
                 .map(|channel_id| overseer::discord_channel_session_name(prefix, channel_id))
         }
+        (PreviewPane::Info, Selection::RemoteControlAi(_)) => {
+            Some(overseer::control_session_name(prefix))
+        }
+        (PreviewPane::Info, Selection::RemoteDiscordChannel { host, channel }) => {
+            let view = app.host_view(host)?;
+            crate::ui::overseer::ordered_channel_ids(&view.discord_channels)
+                .get(channel)
+                .map(|id| overseer::discord_channel_session_name(prefix, id))
+        }
         (PreviewPane::Claude, Selection::Repo(repo)) => Some(agent::repo_claude_session_name(
             prefix,
             &app.registry.repos[repo],

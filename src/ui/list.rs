@@ -17,9 +17,7 @@ impl App {
         )
     }
 
-    /// Stable identity for the current selection, used to remember its preview
-    /// tab. Indices shift as items are added or removed, so repos key on their
-    /// path and agents on their unique id.
+    /// Stable identity for selection restoration and remembered preview tabs.
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
             Selection::OverseerAi => "overseer:control-ai".to_string(),
@@ -43,6 +41,9 @@ impl App {
                         || "discord-channel:missing".to_string(),
                         |id| format!("discord-channel:{id}"),
                     )
+            }
+            Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. } => {
+                repo_rows::remote_item_key(self, selection)
             }
             Selection::Repo(repo) => format!(
                 "repo:{}:{}",
@@ -259,9 +260,8 @@ impl App {
                 }
             }
         }
-        // Host state is render-only, so remote reordering still moves repo rows alone.
-        for repo_idx in self.remote_repo_indices() {
-            repo_rows::push_repo_rows(self, &mut visible, repo_idx, &self.registry.repos[repo_idx]);
+        for (host, slot) in self.hosts.iter().enumerate() {
+            repo_rows::push_remote_host_rows(self, &mut visible, host, slot);
         }
         if !self.orphans.is_empty() {
             visible.push(Selection::OrphanHeader);

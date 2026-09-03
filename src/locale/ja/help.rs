@@ -69,6 +69,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 use --host at startup or config.hosts to persist it" => {
             "                 起動時は--host、永続化にはconfig.hostsを使用"
         }
+        "                 control AI and Discord chats appear after its repos" => {
+            "                 制御AIとDiscordチャットはリポジトリの後に表示"
+        }
         "  l              expand OVERSEER > Inbox to reach its item rows" => {
             "  l              OVERSEER > Inboxを展開し項目行を表示"
         }

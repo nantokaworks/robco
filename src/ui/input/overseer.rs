@@ -65,6 +65,21 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         return true;
     }
     match app.selected_item() {
+        Some(Selection::RemoteControlAi(host)) => {
+            if code == KeyCode::Char('i') {
+                let session =
+                    crate::overseer::control_session_name(&app.config.tmux_session_prefix);
+                if let Some(label) = app.hosts.get(host).map(|slot| slot.label.clone()) {
+                    app.mode = Mode::PromptSession {
+                        session,
+                        host: Some(label),
+                        input: TextInput::new(),
+                    };
+                }
+                return true;
+            }
+            false
+        }
         // The control AI row is the one place `i` sends an instruction: it is
         // the row that owns the session the instruction goes into. Not gated
         // on the preview tab — the row has only one (Info), unlike the old
@@ -91,6 +106,45 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
         Some(Selection::OverseerInbox(index)) => inbox_key(app, index, code),
         _ => false,
     }
+}
+
+pub(super) fn attach_remote_chat(app: &mut App, selection: Selection) {
+    let target = remote_chat_target(app, selection);
+    let Ok((label, session)) = target else {
+        if let Err(message) = target {
+            app.show_message(t(app.locale, message));
+        }
+        return;
+    };
+    app.attach_session_on(&session, Some(&label));
+}
+
+pub(in crate::ui) fn remote_chat_target(
+    app: &App,
+    selection: Selection,
+) -> std::result::Result<(crate::model::HostLabel, String), &'static str> {
+    let prefix = &app.config.tmux_session_prefix;
+    let (host, session) = match selection {
+        Selection::RemoteControlAi(host) => (host, crate::overseer::control_session_name(prefix)),
+        Selection::RemoteDiscordChannel { host, channel } => {
+            let Some(view) = app.host_view(host) else {
+                return Err("remote host is not connected");
+            };
+            let ids = crate::ui::overseer::ordered_channel_ids(&view.discord_channels);
+            let Some(channel_id) = ids.get(channel) else {
+                return Err("channel is no longer listed");
+            };
+            (
+                host,
+                crate::overseer::discord_channel_session_name(prefix, channel_id),
+            )
+        }
+        _ => return Err("remote host is not connected"),
+    };
+    let Some(label) = app.hosts.get(host).map(|slot| slot.label.clone()) else {
+        return Err("remote host is not connected");
+    };
+    Ok((label, session))
 }
 
 /// Keys that act on the selected Inbox row. They work from every preview tab —

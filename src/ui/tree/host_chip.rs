@@ -21,25 +21,30 @@ struct HostView {
     connection: HostConnection,
     first_error_line: Option<String>,
     has_repos: bool,
+    daemon_alive: bool,
 }
 
 pub(super) fn lines(app: &App, width: u16, elapsed: Duration) -> Vec<Line<'static>> {
     let hosts = app
         .hosts
         .iter()
-        .map(|slot| {
-            let (connection, error) = slot.connection_and_error();
-            HostView {
+        .enumerate()
+        .filter_map(|(host, slot)| {
+            let view = app.host_view(host)?;
+            Some(HostView {
                 name: slot.label.name.clone(),
-                connection,
-                first_error_line: error
+                connection: view.connection,
+                first_error_line: view
+                    .error
+                    .as_ref()
                     .map(|error| error.lines().next().unwrap_or_default().to_owned()),
+                daemon_alive: view.daemon_alive,
                 has_repos: app
                     .registry
                     .repos
                     .iter()
                     .any(|repo| repo.host.as_ref() == Some(&slot.label)),
-            }
+            })
         })
         .collect::<Vec<_>>();
     let mut lines = vec![header_line(&hosts, width, elapsed)];
@@ -59,13 +64,17 @@ fn header_line(hosts: &[HostView], width: u16, elapsed: Duration) -> Line<'stati
             HostConnection::Failed => ("✗", failure_style()),
         };
         let chip = format!("{GAP}{glyph} {}", host.name);
-        let chip_width = display_width(&chip);
+        let warning = host.connection == HostConnection::Connected && !host.daemon_alive;
+        let chip_width = display_width(&chip) + usize::from(warning) * 2;
         if used + chip_width > usize::from(width) {
             dropped = true;
             break;
         }
         used += chip_width;
         spans.push(Span::styled(chip, style));
+        if warning {
+            spans.push(Span::styled(" ⚠", failure_style()));
+        }
     }
     if dropped && used < usize::from(width) {
         spans.push(Span::styled("…", THEME.muted_style()));

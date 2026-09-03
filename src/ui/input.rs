@@ -22,6 +22,8 @@ mod inbox_dismiss;
 mod inbox_respond;
 mod mouse;
 mod overseer;
+#[cfg(test)]
+pub(in crate::ui) use overseer::remote_chat_target;
 mod prompt_agent;
 mod tree_nav;
 
@@ -134,13 +136,18 @@ impl App {
                     self.instruct_overseer(&instruction);
                 }
             },
-            Mode::PromptSession { session, input } => match overseer::prompt_action(input, key) {
+            Mode::PromptSession {
+                session,
+                host,
+                input,
+            } => match overseer::prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
                 overseer::PromptAction::Submit(instruction) => {
                     let session = session.clone();
+                    let host = host.clone();
                     self.mode = Mode::Normal;
-                    self.instruct_session(&session, &instruction);
+                    self.instruct_prompt_session(host.as_ref(), &session, &instruction);
                 }
             },
             Mode::PromptInbox { item, input } => match overseer::prompt_action(input, key) {
@@ -282,6 +289,12 @@ impl App {
                     Some(Selection::DiscordChannel(index)) => {
                         self.attach_discord_channel_selected(index);
                     }
+                    Some(
+                        selection @ (Selection::RemoteControlAi(_)
+                        | Selection::RemoteDiscordChannel { .. }),
+                    ) => {
+                        overseer::attach_remote_chat(self, selection);
+                    }
                     // The drill-down's entry point (dropr:475): INFO is the
                     // only tab that can show the task list, so this leaves
                     // every other tab's `enter` (Claude/Terminal attach)
@@ -310,6 +323,7 @@ impl App {
                         Some(session) => {
                             self.mode = Mode::PromptSession {
                                 session,
+                                host: None,
                                 input: TextInput::new(),
                             };
                         }
