@@ -1,8 +1,8 @@
 //! Renders the OVERSEER Discord category (dropr:363): one selectable row per
 //! retained per-channel ops agent, newest activity first — reusing the
-//! marker-and-status row shape the Overseer control AI row and the Inbox
-//! item rows already use (dropr:371), so Enter can attach the channel's live
-//! tmux session the same way Enter attaches any other AI session.
+//! marker-and-status row shape the Overseer control AI row uses (dropr:371),
+//! so Enter can attach the channel's live tmux session the same way Enter
+//! attaches any other AI session.
 
 use ratatui::text::{Line, Span, Text};
 
@@ -40,8 +40,7 @@ pub(in crate::ui) fn ordered_channel_ids(channels: &DiscordChannels) -> Vec<Stri
 }
 
 /// The Discord category's detail: one row per retained channel, and nothing
-/// else. Item `n` is detail row `n`, the same contract `inbox_rows::detail_lines`
-/// keeps for its own item rows.
+/// else. Item `n` is detail row `n`, so the frame needs no second index map.
 pub(in crate::ui) fn detail_lines(app: &App) -> Vec<Line<'static>> {
     let channels = &app.overseer_snapshot.discord_channels;
     let ids = ordered_channel_ids(channels);
@@ -192,7 +191,7 @@ pub(in crate::ui) fn channel_preview_from(
 }
 
 /// `User:` / `Agent:` are UI item labels, not prose — English regardless of
-/// `language`, the same rule `inbox_rows::field` follows for its own labels.
+/// `language`, matching the other structural labels in this pane.
 fn turn_label(label: &'static str) -> Line<'static> {
     Line::styled(format!("{label}:"), THEME.muted_style())
 }
@@ -204,9 +203,8 @@ fn turn_body(text: &str) -> Vec<Line<'static>> {
 }
 
 /// Coarse "Xm/Xh/Xd ago" rendering — no existing helper in this codebase
-/// scales past raw seconds (`overseer.rs`'s heartbeat age deliberately stays
-/// at that resolution since it is always fresh), but a channel's
-/// `last_active_at` can be days old, where raw seconds stops being readable.
+/// scales past raw seconds, but a channel's `last_active_at` can be days
+/// old, where raw seconds stops being readable.
 fn relative_age(locale: Locale, at: chrono::DateTime<chrono::Utc>) -> String {
     let elapsed = (chrono::Utc::now() - at).num_seconds().max(0);
     if elapsed < 60 {

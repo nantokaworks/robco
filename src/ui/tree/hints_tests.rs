@@ -129,33 +129,15 @@ fn remote_chat_rows_advertise_their_actions() {
 }
 
 #[test]
-fn inbox_category_advertises_expand() {
+fn discord_category_advertises_expand() {
     let line = hints_line(
         None,
-        Some(Selection::OverseerCategory(OverseerCategory::Inbox)),
+        Some(Selection::OverseerCategory(OverseerCategory::Discord)),
         None,
         false,
     )
     .to_string();
     assert_eq!(line, "[l] EXPAND [?] HELP [q] QUIT");
-}
-
-#[test]
-fn other_overseer_categories_carry_no_extra_action() {
-    let line = hints_line(
-        None,
-        Some(Selection::OverseerCategory(OverseerCategory::Health)),
-        None,
-        false,
-    )
-    .to_string();
-    assert_eq!(line, "[?] HELP [q] QUIT");
-}
-
-#[test]
-fn inbox_item_advertises_answer_approve_and_dismiss() {
-    let line = hints_line(None, Some(Selection::OverseerInbox(0)), None, false).to_string();
-    assert_eq!(line, "[↵] ANSWER [y] APPROVE [d] DISMISS [?] HELP [q] QUIT");
 }
 
 #[test]

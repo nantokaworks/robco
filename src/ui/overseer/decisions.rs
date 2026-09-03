@@ -8,59 +8,11 @@
 //! what the UI holds is only a tail of it — so it ends by saying it is capped
 //! rather than letting the newest few read as the whole history.
 
-use ratatui::text::{Line, Span};
-
 use crate::locale::{Locale, t};
 use crate::model::MergeLifecycle;
 use crate::overseer::discord::humanize;
 use crate::overseer::ledger::{Ledger, LedgerPhase};
 use crate::overseer::logging::{DecisionEntry, DecisionKind};
-use crate::ui::theme::DEFAULT as THEME;
-
-/// Reason prefix `overseer::dispatch::claim` writes when it stands off a task
-/// an agent outside the overseer's ledger has claimed.
-const EXTERNAL_CLAIM_PREFIX: &str = "claimed_elsewhere:";
-
-/// Current stand-offs, as `task → holder`, newest state per task.
-///
-/// A later dispatch of the same task clears its entry, so the set reflects what
-/// is being stood off now rather than every stand-off the log ever recorded.
-pub(super) fn standoffs(decisions: &[DecisionEntry]) -> Vec<String> {
-    let mut held: Vec<(&str, &str)> = Vec::new();
-    for entry in decisions {
-        let Some(task) = entry.task.as_deref() else {
-            continue;
-        };
-        let holder = entry.reason.strip_prefix(EXTERNAL_CLAIM_PREFIX);
-        if holder.is_some() || entry.kind == DecisionKind::Dispatch {
-            held.retain(|(recorded, _)| *recorded != task);
-        }
-        if let Some(holder) = holder {
-            held.push((task, holder));
-        }
-    }
-    held.into_iter()
-        .map(|(task, holder)| format!("{task} → {holder}"))
-        .collect()
-}
-
-/// Decisions the expanded `Decisions` category lists.
-///
-/// An operator who opened the category came for the log, so it lists as much of
-/// the snapshot as it reasonably can.
-pub(super) const DETAIL_LIMIT: usize = 20;
-
-// Keeping the cap under what a snapshot holds is what keeps the notice honest:
-// a snapshot filled to its own limit still has entries left over for the notice
-// to point at.
-const _: () = assert!(DETAIL_LIMIT < super::DECISION_SNAPSHOT_LIMIT);
-
-/// What the list says when it left entries out.
-///
-/// The wording carries no count. The log is append-only and what the UI holds
-/// is a tail of it, so how many entries lie beyond the rendered ones is not
-/// knowable here — only that they exist.
-const MORE_HINT: &str = "older entries stay in the decision log";
 
 /// The reason `agent_id`'s worker still needs a human decision, or `None`
 /// once the Overseer has closed the loop on its own.
@@ -72,8 +24,7 @@ const MORE_HINT: &str = "older entries stay in the decision log";
 /// `--kind blocked` report set it (`overseer::triage::completion`). So the
 /// ledger phase alone cannot distinguish "still needs a person" from
 /// "the Overseer already handled it" — the most recent Escalate / Hold / Skip
-/// decision for the entry's task is the tie-breaker, the same way `standoffs`
-/// above tracks the latest state per task by walking the oldest-first log.
+/// decision for the entry's task is the tie-breaker.
 pub(super) fn blocked_reason(
     locale: Locale,
     ledger: &Ledger,
@@ -192,16 +143,15 @@ const PHASE_MIRROR_SOURCE: &str = "daemon_event";
 /// `monitor::apply::fail` through `Action::LogDecision`, which
 /// `logging::log_message` records as a `Hold`. Each phase therefore reads its
 /// own decision kind, and the newest one wins — the same walk over this
-/// oldest-first log that [`standoffs`] and [`blocked_reason`] already do.
+/// oldest-first log that [`blocked_reason`] already does.
 ///
 /// Unlike [`blocked_reason`], a later `Hold` does not clear the answer. That
 /// function asks whether a person is still needed, which the Overseer can
 /// answer for itself; this asks where the entry ended up, and a terminal
 /// phase never reverts (`overseer::ledger::terminal`).
 ///
-/// The reason is humanized through the same table the Inbox row uses
-/// (`ui::overseer::inbox_rows::row_reason`), so one condition reads the same
-/// wherever it is shown. It stays English, like every other row-level string
+/// The reason is humanized through the same table escalation rows use, so one
+/// condition reads the same wherever it is shown. It stays English, like every other row-level string
 /// — see the workspace localization policy.
 pub(super) fn terminal_reason(
     ledger: &Ledger,
@@ -239,55 +189,11 @@ pub(super) fn terminal_reason(
     )
 }
 
-pub(super) fn append_decisions(
-    lines: &mut Vec<Line<'static>>,
-    decisions: &[DecisionEntry],
-    locale: Locale,
-) {
-    lines.push(Line::from(Span::styled(
-        t(locale, "recent decisions"),
-        THEME.accent_bold_style(),
-    )));
-    // `decisions` is oldest-first (see `logging::tail`); show the newest first.
-    let recent = decisions
-        .iter()
-        .rev()
-        .take(DETAIL_LIMIT)
-        .collect::<Vec<_>>();
-    if recent.is_empty() {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", t(locale, "none")),
-            THEME.muted_style(),
-        )));
-        return;
-    }
-    let truncated = decisions.len() > recent.len();
-    for entry in recent {
-        let task = entry.task.as_deref().unwrap_or("-");
-        let label = match entry.kind {
-            DecisionKind::Escalate | DecisionKind::CircuitOpen => "!",
-            _ => "·",
-        };
-        lines.push(Line::from(format!(
-            "  {label} {} {task} — {}",
-            entry.at.format("%m-%d %H:%M"),
-            entry.reason
-        )));
-    }
-    if truncated {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", t(locale, MORE_HINT)),
-            THEME.muted_style(),
-        )));
-    }
-}
-
 #[cfg(test)]
 #[path = "decisions_tests.rs"]
 mod tests;
 
-// `terminal_reason`'s own file: `decisions_tests.rs` is already at the source
-// size limit, the same reason `decisions_standoffs_tests.rs` was split out.
+// `terminal_reason`'s own file keeps the focused fixtures separate.
 #[cfg(test)]
 #[path = "decisions_terminal_tests.rs"]
 mod terminal_tests;

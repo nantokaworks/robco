@@ -47,11 +47,6 @@ impl App {
             Some(Selection::OverseerCategory(category)) => {
                 self.set_overseer_category_expanded(category, false);
             }
-            // An item row collapses the category that owns it, like a child row
-            // folding away under its parent.
-            Some(Selection::OverseerInbox(_)) => {
-                self.set_overseer_category_expanded(crate::model::OverseerCategory::Inbox, false);
-            }
             Some(Selection::Repo(repo)) => self.set_repo_expanded(repo, false),
             Some(Selection::Agent { repo, agent }) => {
                 self.set_agent_children_expanded(repo, agent, false);
@@ -103,28 +98,6 @@ mod tests {
         app.expand_selected_tree_item();
         app.collapse_selected_tree_item();
         assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
-    }
-
-    #[test]
-    fn collapsing_a_childless_category_row_is_a_no_op() {
-        let temp = tempfile::tempdir().unwrap();
-        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-        app.overseer_visible = true;
-        app.selected = app
-            .visible()
-            .iter()
-            .position(|row| {
-                *row == Selection::OverseerCategory(crate::model::OverseerCategory::Ledger)
-            })
-            .expect("no Ledger row");
-
-        // `Ledger` has no expansion of its own (dropr:469 retired the
-        // `Details` wrapper it used to nest under), so `h` on it changes
-        // nothing — the row stays visible, unlike collapsing an Inbox item.
-        app.collapse_selected_tree_item();
-        assert!(app.visible().contains(&Selection::OverseerCategory(
-            crate::model::OverseerCategory::Ledger
-        )));
     }
 
     #[test]

@@ -99,7 +99,6 @@ impl RemoteBackend {
                     discord_channels: wire.discord_channels,
                     decisions: wire.decisions,
                     daemon_alive: wire.daemon_alive,
-                    heartbeat_age: wire.heartbeat_age,
                     daemon_version: wire.daemon_version,
                     control_status,
                 },

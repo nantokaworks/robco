@@ -42,7 +42,7 @@ fn a_saved_layout_round_trips_through_the_file() {
         state.orphans_collapsed = true;
         state
             .expanded_overseer_categories
-            .insert(OverseerCategory::Inbox.label().to_string());
+            .insert(OverseerCategory::Discord.label().to_string());
         state.project_order = vec!["/repos/beta".into(), "/repos/alpha".into()];
     });
     let written = store.state().clone();
@@ -123,16 +123,13 @@ fn expand_and_collapse_flags_survive_a_restart() {
     app.set_repo_expanded(1, false);
     app.set_other_collapsed(true);
     app.set_orphans_collapsed(true);
-    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
     app.set_overseer_category_expanded(OverseerCategory::Discord, true);
 
     let restarted = app_at(temp.path(), registry_under(temp.path(), &["alpha", "beta"]));
     assert_eq!(restarted.expanded, vec![true, false]);
     assert!(restarted.other_collapsed);
     assert!(restarted.orphans_collapsed);
-    assert!(restarted.overseer_category_expanded(OverseerCategory::Inbox));
     assert!(restarted.overseer_category_expanded(OverseerCategory::Discord));
-    assert!(!restarted.overseer_category_expanded(OverseerCategory::Health));
 }
 
 #[test]
@@ -148,22 +145,15 @@ fn an_unrecognised_expanded_category_label_in_the_file_is_ignored_without_a_rese
             .insert("SomeRetiredCategory".into());
         state
             .expanded_overseer_categories
-            .insert(OverseerCategory::Inbox.label().to_string());
+            .insert(OverseerCategory::Discord.label().to_string());
     });
 
     let flags = store.state().overseer_expanded();
-    assert!(flags[OverseerCategory::Inbox.index()]);
-    assert!(!flags[OverseerCategory::Health.index()]);
-    assert!(!flags[OverseerCategory::Ledger.index()]);
-    assert!(!flags[OverseerCategory::Decisions.index()]);
-    assert!(!flags[OverseerCategory::Discord.index()]);
+    assert!(flags[OverseerCategory::Discord.index()]);
 }
 
 #[test]
-fn a_ui_state_file_written_by_0_2_0_survives_the_details_and_inbox_label_retirement() {
-    // 0.2.0 persisted the pre-dropr:469 category shape: `Inbox` under its old
-    // "Waiting on you" label, and `Details` expanded — Ledger and Decisions did
-    // not yet exist as top-level rows to persist a label of their own.
+fn an_old_ui_state_file_loads_only_discord_cleanly() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("ui-state.json");
     fs::write(
@@ -173,24 +163,22 @@ fn a_ui_state_file_written_by_0_2_0_survives_the_details_and_inbox_label_retirem
             "expanded_children": [],
             "other_collapsed": false,
             "orphans_collapsed": false,
-            "expanded_overseer_categories": ["Waiting on you", "Details"],
+            "expanded_overseer_categories": [
+                "Inbox", "Health", "Ledger", "Decisions",
+                "Waiting on you", "Details", "Discord"
+            ],
             "project_order": []
         }"#,
     )
     .unwrap();
 
     let flags = UiStateStore::at(path).state().overseer_expanded();
-    assert!(
-        flags[OverseerCategory::Inbox.index()],
-        "Inbox expansion lost on migration: {flags:?}"
-    );
-    assert!(
-        flags[OverseerCategory::Ledger.index()],
-        "Details fold did not reach Ledger: {flags:?}"
-    );
-    assert!(
-        flags[OverseerCategory::Decisions.index()],
-        "Details fold did not reach Decisions: {flags:?}"
+    assert_eq!(flags, [true]);
+    assert_eq!(
+        UiStateStore::at(temp.path().join("ui-state.json"))
+            .state()
+            .expanded_overseer_categories,
+        BTreeSet::from(["Discord".to_string()])
     );
 }
 

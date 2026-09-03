@@ -71,7 +71,7 @@ in the time between the operator's pick and the spawn. So immediately before a w
 spawned, Overseer re-reads the task in dropr and takes its claim itself:
 
 - A task another agent holds is not dispatched; the pass records a hold with reason
-  `claimed_elsewhere:<agent>`, and the OVERSEER frame lists it under `standing off`.
+  `claimed_elsewhere:<agent>`, visible in `robco decisions`.
 - A claim that has outlived `claim_ttl_minutes` is taken over, recorded as
   `claim_expired:<agent>` so the takeover is never silent.
 - A claim dropr will not grant, or a state read that fails, holds the candidate
@@ -692,7 +692,7 @@ So a held pass costs budget. Each one is charged to the entry's `merge_hold` and
 the worker's answer to the last one — and a changed reason each restart the count, while a
 frozen pair keeps spending it. When the budget runs out the entry reaches `escalated`,
 records `merge_hold_cap_reached:<reason>` once, and stops recording that hold, which is
-what puts it in front of an operator in `robco status` and the TUI Inbox instead
+what puts it in front of an operator in `robco status` and on its TUI worker row instead
 of leaving it to accumulate identical lines.
 
 An entry escalated that way is not abandoned. The condition it stopped on — protection,
@@ -766,7 +766,8 @@ Reasons are classified into the worker's and the operator's:
 This worker/operator split is `overseer::remedy::classify`, which the module also uses as
 its own fallback: any reason it calls worker-fixable, `overseer::remedy::resolve` treats as
 `Answer` even without a dedicated table entry, so the two never drift apart. `remedy` is the
-broader authority the Inbox reads from — see [The Inbox in the TUI](#the-inbox-in-the-tui) —
+broader authority the escalation aggregation reads from — see
+[Escalations in the TUI](#escalations-in-the-tui) —
 turning a reason into a short move (`ANSWER`, `MERGE`, `RESET`, `RETRY`, `REVIEW`, `WATCH`)
 plus a sentence of guidance, rather than only the narrower recoverable/operator question this
 section answers.
@@ -819,8 +820,7 @@ session is gone, escalates under
 `merge_recovery_skipped:send_failed:<error>` when the prompt did not reach the session, and
 `merge_recovery_cap_reached` when the budget runs out. Each handback also posts a scribble
 on the dropr task; a scribble that fails to land is logged and does not abort the merge
-pass. `robco status --debug` and the TUI OVERSEER frame both report the switch and
-its cap.
+pass. `robco status --debug` reports the switch and its cap.
 
 ### Discord rails
 
@@ -899,8 +899,8 @@ robco status
 `robco config protection required|relaxed|off` changes how strictly that gate requires
 base-branch protection, and `robco overseer autonomy approval_only|conservative|full_auto`
 changes how much of the merge envelope the daemon clears on its own. These commands persist
-their values in `~/.robco/config.json`. `robco status` and the TUI OVERSEER frame
-report the active protection mode and autonomy level next to `auto-merge`, and both warn
+their values in `~/.robco/config.json`. `robco status` reports the active protection mode
+and autonomy level next to `auto-merge`, and warns
 while auto-merge runs under a loosened gate — naming, for `full_auto`, the risks the
 envelope stops escalating.
 
@@ -911,8 +911,8 @@ is merged, released, and installed does not reach the board until the daemon is 
 too. Each pass therefore records its own version in the heartbeat, and
 `robco status --debug` reports it as `version=` beside `pid` and `heartbeat`. When
 that version differs from the `robco` binary answering the command — the exact
-"installed but not restarted" state — both the status command and the TUI Health frame
-warn and name the two builds; the OVERSEER header carries it as a `stale build` warning
+"installed but not restarted" state — the status command warns and names the two builds;
+the OVERSEER header carries it as a `stale build` warning
 row, and the plain (non-`--debug`) `robco status` lists it under `stuck:`. A
 heartbeat written before the daemon recorded its build reads as `unknown` and warns the
 same way, because only a release older than this one leaves the field out. Restart the
@@ -1053,67 +1053,28 @@ recorded count any more (dropr:476). The one thing a named launch still refuses 
 to refuse a launch any more; treat it as an operator/triage annotation, not an enforced
 exclusion.
 
-The JSONL decision log is the durable audit trail used by `robco status`, the TUI
-Overseer info pane, and Discord notifications. The daemon writes observation snapshots
+The JSONL decision log is the durable audit trail used by `robco status`,
+`robco decisions`, and Discord notifications. The daemon writes observation snapshots
 separately so a failed probe becomes a logged skipped observation instead of invented
 state.
 
-### The Inbox in the TUI
+### Escalations in the TUI
 
-The `Inbox` category under `OVERSEER` aggregates what is waiting on the operator: every
-escalation the daemon recorded, plus every worker sitting on a confirmation prompt. Each
-item's reason is resolved by `overseer::remedy` into a `Move` — `ANSWER`, `MERGE`,
-`RETRY`, `REVIEW`, or `WATCH` — and the category row summarises it as `N/M actionable`: how
-many of the listed items resolve to something other than `WATCH`. This is independent of
-whether the item has a live tmux session — merging a pull request by hand, or reviewing a
-parked ledger entry needs no session at all, so those rows count even when their worker is
-gone. Only `WATCH` — nothing has failed and nothing is
-waiting on a human, e.g. checks still running — is excluded. The row also carries the same
-`?` waiting glyph an agent row shows, lit whenever `N` is above zero, so the row's own
-attention state reads at a glance without parsing the `N/M` count.
+The same aggregation still derives what needs an operator from daemon escalations and
+workers waiting at confirmation prompts, but there is no Inbox category or second cursor.
+An escalation with a registered worker renders directly beneath that worker row. If the
+worker is gone, it renders beneath its local repository; if it has no repository, it renders
+under the OVERSEER header warnings. Selecting a workerless row opens its full Info preview.
 
-Expanding the category (`l`, `→`, or `Enter` on the category row) turns each item into a
-row of its own — one level, with no repeated count row between the category and its items,
-because the category row's own `N/M actionable` summary already carries the count. Those
-rows are ordinary tree rows: `j` / `k` move onto them, they carry the tree's own selection
-marker, and `h` folds them back under the category. There is no second cursor and no key
-that only works while a particular preview tab is showing — an item lives in the left
-frame, so what the right pane happens to display never decides what acting on it does.
+On a worker row, `y` approves the newest actionable escalation by sending `y` + `Enter` to
+that worker, and `d` dismisses its newest escalation. A repository-level or OVERSEER alert
+has no live worker to answer, so `d` dismisses it while `y` and `Enter` report that it is
+display-only. `robco inbox clear`, Discord `!inbox`, and the MCP inbox tools are unchanged.
 
-A row reads `[ESC] REVIEW #296`: the kind code (`ESC` or `?`, the dismissal identity) stays,
-and the resolved move's tag replaces the raw reason that used to fill the row — the raw
-reason rarely fit the sidebar anyway, and a bare code or a free-text sentence said
-nothing about what to *do*. A `WATCH` tag renders muted; every other tag renders like the
-rest of the row.
+### Dismissing escalation items
 
-Selecting an item previews *that item*: its kind, the same resolved move, target, session,
-timestamp, a `what this means` / `next step` pair of sentences, and its reason in full. The
-sidebar trims the row to the frame width, so the pane is where the whole escalation — and
-the guidance about it — is readable. It deliberately does not re-list the other items — they
-are already on screen a few columns to the left.
-
-Four keys act on the selected item:
-
-- `Enter` opens the answer prompt. Submitting sends the text, then `Enter`, to that item's
-  tmux session — the same thing an operator would type after attaching.
-- `y` approves it, sending `y` + `Enter` to the same session.
-- `d` dismisses it.
-- `D` clears the whole Inbox, behind a confirmation. It is also bound on the Inbox category
-  row itself.
-
-An item whose worker is dead or branch-only has no session to answer into, or was never
-one to answer in the first place (a merge, a reset, a review). It is still listed — the
-escalation is real and the operator still needs to see it — but the preview's `session`
-field reads `display-only`, and both `Enter` and `y` say so rather than appearing to send
-something. `Enter` on such a row never falls through to attaching a session. An item whose
-own move needed an answer but has no session resolves to `REVIEW` instead — `remedy::resolve`
-downgrades it, since an instruction with no session to send it to is the operator's problem,
-not the worker's.
-
-### Dismissing Inbox items
-
-The Inbox is derived, not stored: it is rebuilt from the decision log, the ledger, and the
-registry on every refresh. Dismissing therefore cannot delete a record, and does not try
+The escalation list is derived, not stored: it is rebuilt from the decision log, the ledger,
+and the registry on every refresh. Dismissing therefore cannot delete a record, and does not try
 to — it writes a suppression to `~/.robco/overseer/inbox_dismissals.json` that the
 aggregation applies as a filter. `decisions.jsonl` and `ledger.json` are never touched.
 
@@ -1125,18 +1086,16 @@ avoid. Entries whose target no longer appears in any source are pruned on the ne
 so the file does not grow one row per escalation the Overseer has ever raised.
 
 This is what the ledger-sourced rows needed. A ledger entry parked at `phase=escalated`
-never ages out on its own, unlike a decision-sourced row, which falls out of the Inbox once
+never ages out on its own, unlike a decision-sourced item, which falls out of aggregation once
 enough newer decisions accumulate. Before dismissal existed, the only way to clear one was
 to stop the daemon and hand-edit `ledger.json`.
 
-`robco inbox clear` is the scriptable equivalent of `D`: it aggregates the same
-three sources and suppresses everything they currently produce, so the Inbox can be cleared
-with the TUI closed.
+`robco inbox clear` aggregates the same three sources and suppresses everything they
+currently produce, so all current items can be cleared with the TUI closed.
 
-The list is re-aggregated on every refresh and sorted newest-first, so a newly arrived
-escalation shifts the rows below it. The cursor is re-anchored by the item's own identity
-rather than by its position, so an arrival cannot slide the selection onto a different
-worker between the operator reading a row and pressing `y` on it.
+The list is re-aggregated on every refresh and sorted newest-first. Worker actions resolve
+the selected worker's items at keypress time, so a newly arrived escalation under another
+worker cannot redirect an approval or dismissal.
 
 ### Worktree ownership
 

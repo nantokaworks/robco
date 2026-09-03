@@ -47,7 +47,7 @@ fn prompt_repo_word_deletion_reaches_the_shared_buffer() {
 #[test]
 fn overseer_category_panes_show_info_only() {
     assert_eq!(
-        panes_for(Some(Selection::OverseerCategory(OverseerCategory::Health))),
+        panes_for(Some(Selection::OverseerCategory(OverseerCategory::Discord))),
         &[PreviewPane::Info]
     );
 }
@@ -60,26 +60,24 @@ fn overseer_expand_collapse_keys_update_tree() {
     app.orphans = Vec::new();
 
     // The header is not a row of its own, so the first row is the control AI,
-    // followed by the five categories, which are always listed.
-    assert_eq!(app.visible().len(), 6);
+    // followed by Discord, the only category.
+    assert_eq!(app.visible().len(), 2);
     assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
 
-    // Inbox is the one category these keys are asserted on; read-only Health is
-    // covered by `overseer_frame::tests::a_leaf_category_cannot_be_expanded_by_any_key`.
-    app.selected = OverseerCategory::Inbox.index() + 1;
+    app.selected = OverseerCategory::Discord.index() + 1;
     assert_eq!(
         app.selected_item(),
-        Some(Selection::OverseerCategory(OverseerCategory::Inbox))
+        Some(Selection::OverseerCategory(OverseerCategory::Discord))
     );
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
-    assert!(app.overseer_category_expanded(OverseerCategory::Inbox));
+    assert!(app.overseer_category_expanded(OverseerCategory::Discord));
     app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE))
         .unwrap();
-    assert!(!app.overseer_category_expanded(OverseerCategory::Inbox));
+    assert!(!app.overseer_category_expanded(OverseerCategory::Discord));
     app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE))
         .unwrap();
-    assert!(app.overseer_category_expanded(OverseerCategory::Inbox));
+    assert!(app.overseer_category_expanded(OverseerCategory::Discord));
 }
 
 #[test]

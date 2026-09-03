@@ -1,7 +1,4 @@
-//! DELIBERATE temporary copies of the preview body builder, `pr_label`, and
-//! `field` from `ui::overseer::inbox_rows`. Leaf #585 (dropr task
-//! 10mZwhUrBNq5wY64l5496) deletes `inbox_rows.rs`; keep these helpers local
-//! until then rather than consolidating code around a module that is going away.
+//! Preview body for an escalation shown in an agent's Info pane.
 
 use ratatui::text::{Line, Span};
 

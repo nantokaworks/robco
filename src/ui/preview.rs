@@ -49,9 +49,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             super::overseer::category_preview(app, category)
         }
         (_, Some(Selection::OverseerAi)) => overseer::control_preview(app),
-        (_, Some(Selection::OverseerInbox(index))) => {
-            super::overseer::inbox_item_preview(app, index)
-        }
         (
             _,
             Some(Selection::OverseerAlert(index) | Selection::RepoEscalation { item: index, .. }),

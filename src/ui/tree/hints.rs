@@ -63,26 +63,12 @@ const OVERSEER_AI_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
-const INBOX_CATEGORY_HINTS: Hints = &[("l", "expand"), ("?", "help"), ("q", "quit")];
-
-/// Discord: the other expandable category, whose only footer-worthy action is
-/// the expand itself.
 const EXPANDABLE_CATEGORY_HINTS: Hints = &[("l", "expand"), ("?", "help"), ("q", "quit")];
 
 const DISCORD_CHANNEL_HINTS: Hints = &[
     ("↵", "attach"),
     ("r", "retry"),
     ("x", "remove"),
-    ("?", "help"),
-    ("q", "quit"),
-];
-
-const OTHER_CATEGORY_HINTS: Hints = &[("?", "help"), ("q", "quit")];
-
-const INBOX_ITEM_HINTS: Hints = &[
-    ("↵", "answer"),
-    ("y", "approve"),
-    ("d", "dismiss"),
     ("?", "help"),
     ("q", "quit"),
 ];
@@ -162,10 +148,7 @@ fn hints_for(
         Some(Selection::Repo(_)) => REPO_HINTS,
         Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::RemoteControlAi(_)) => OVERSEER_AI_HINTS,
-        Some(Selection::OverseerCategory(OverseerCategory::Inbox)) => INBOX_CATEGORY_HINTS,
         Some(Selection::OverseerCategory(OverseerCategory::Discord)) => EXPANDABLE_CATEGORY_HINTS,
-        Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
-        Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
         Some(Selection::OverseerAlert(_) | Selection::RepoEscalation { .. }) => ESCALATION_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,
         Some(Selection::RemoteDiscordChannel { .. }) => CHILD_WORKTREE_HINTS,
