@@ -164,7 +164,7 @@ impl App {
     /// operator sees it flip before the claim round trip even starts) and
     /// files the job under its task id so a second press on the same row is
     /// refused. Split out of [`Self::launch_dropr_task`] so a test can drive
-    /// it with [`super::dropr_task_worker::test_job`] instead of a real,
+    /// it with `super::dropr_task_worker::test_job` instead of a real,
     /// network-touching launch.
     fn begin_launch(&mut self, repo: usize, job: TaskLaunchJob) {
         if let Some(repo_node) = self.registry.repos.get_mut(repo) {

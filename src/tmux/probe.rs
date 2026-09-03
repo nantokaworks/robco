@@ -1,5 +1,5 @@
 //! Reading a just-launched pane's liveness and location back from tmux
-//! (dropr:554), for [`super::launch::verify_launch`] to act on.
+//! (dropr:554), for `super::launch::verify_launch` to act on.
 
 use std::path::PathBuf;
 

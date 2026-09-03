@@ -206,7 +206,7 @@ impl App {
 
     /// Whether the INFO pane's task list for `workspace_id` is waiting on an
     /// outstanding fetch — including the first, background-triggered one a
-    /// freshly linked workspace gets, which [`dropr_refresh_in_flight`]
+    /// freshly linked workspace gets, which [`Self::dropr_refresh_in_flight`]
     /// (manual-only, used by the repo row's glyph) does not cover.
     pub(in crate::ui) fn dropr_task_fetch_running(&self, workspace_id: &str) -> bool {
         refresh_running(&self.dropr_task_refresh, workspace_id)

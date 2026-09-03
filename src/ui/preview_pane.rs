@@ -8,13 +8,13 @@ pub enum PreviewPane {
     Terminal,
     /// Detail of a worktree failure the operator has not dismissed yet. Unlike
     /// the other tabs this one is not a fixed property of the selection type —
-    /// see [`App::preview_panes`] for when it joins the tab list.
+    /// see [`crate::ui::App::preview_panes`] for when it joins the tab list.
     Error,
 }
 
 /// Preview tabs a tree selection always has, in display order. The first entry
 /// is the default tab used when nothing has been remembered yet. State-dependent
-/// tabs are added on top of this by [`App::preview_panes`], which is what the
+/// tabs are added on top of this by [`crate::ui::App::preview_panes`], which is what the
 /// tab bar and tab cycling read — this list alone is not the whole tab bar.
 pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] {
     match selection {
