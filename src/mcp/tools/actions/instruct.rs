@@ -1,4 +1,4 @@
-//! Send a one-line instruction to a named tmux session on the daemon host.
+//! Send an instruction to a named tmux session on the daemon host.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -17,9 +17,8 @@ pub(super) struct InstructArgs {
 pub(super) fn instruct(args: InstructArgs) -> ToolResult<Value> {
     validate_non_blank("session", &args.session)?;
     validate_non_blank("text", &args.text)?;
-    let text = tmux::single_line(&args.text);
     let server = tmux::TmuxServer::default_server();
-    tmux::send_literal_text(&server, &args.session, &text).map_err(exec_err)?;
+    tmux::send_literal_text(&server, &args.session, &args.text).map_err(exec_err)?;
     tmux::send_keys(&server, &args.session, &["Enter"]).map_err(exec_err)?;
     Ok(json!({ "ok": true, "session": args.session }))
 }

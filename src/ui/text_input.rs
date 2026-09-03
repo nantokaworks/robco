@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// A single-line text buffer with a movable cursor, shared by every TUI prompt.
+/// A text buffer with a movable cursor, shared by every TUI prompt.
 ///
 /// The cursor is a *character* offset kept inside `0..=len`, so editing
 /// multi-byte input can never slice a UTF-8 codepoint in half. Display columns

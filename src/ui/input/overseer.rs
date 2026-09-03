@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{Result, locale::t, model::Selection};
 
@@ -13,6 +13,29 @@ pub(super) enum PromptAction {
 pub(super) fn prompt_action(input: &mut TextInput, key: KeyEvent) -> PromptAction {
     match key.code {
         KeyCode::Esc => PromptAction::Cancel,
+        KeyCode::Enter if !key.modifiers.is_empty() => PromptAction::Stay,
+        KeyCode::Enter if input.text().trim().is_empty() => PromptAction::Stay,
+        KeyCode::Enter => PromptAction::Submit(input.text().trim().to_string()),
+        _ => {
+            input.handle_key(key);
+            PromptAction::Stay
+        }
+    }
+}
+
+pub(super) fn instruction_prompt_action(input: &mut TextInput, key: KeyEvent) -> PromptAction {
+    // ANY modified Enter inserts a newline, not just the advertised
+    // Alt/Shift chords: a chord this prompt does not recognize (Ctrl+Enter,
+    // Ctrl+Shift+Enter, ...) must never fall through to the submit arm and
+    // send a half-written instruction. Only a bare Enter submits.
+    let newline = matches!(key.code, KeyCode::Enter) && !key.modifiers.is_empty()
+        || matches!(key.code, KeyCode::Char('j')) && key.modifiers.contains(KeyModifiers::CONTROL);
+    match key.code {
+        KeyCode::Esc => PromptAction::Cancel,
+        _ if newline => {
+            input.insert('\n');
+            PromptAction::Stay
+        }
         KeyCode::Enter if input.text().trim().is_empty() => PromptAction::Stay,
         KeyCode::Enter => PromptAction::Submit(input.text().trim().to_string()),
         _ => {
@@ -252,6 +275,9 @@ impl App {
     }
 }
 
+#[cfg(test)]
+#[path = "instruction_prompt_tests.rs"]
+mod instruction_prompt_tests;
 #[cfg(test)]
 #[path = "overseer_tests.rs"]
 mod tests;

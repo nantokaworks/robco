@@ -53,7 +53,7 @@ impl App {
         match &mut self.mode {
             Mode::PromptAgent { repo, input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Enter => {
+                KeyCode::Enter if key.modifiers.is_empty() => {
                     let (title, prompt) = prompt_agent::parse(input.text());
                     let repo_idx = *repo;
                     self.mode = Mode::Normal;
@@ -102,7 +102,7 @@ impl App {
             },
             Mode::PromptRepo { input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Enter => {
+                KeyCode::Enter if key.modifiers.is_empty() => {
                     let value = input.text().trim().to_string();
                     self.mode = Mode::Normal;
                     if !value.is_empty() {
@@ -115,7 +115,7 @@ impl App {
             },
             Mode::PromptRenameRepo { path, input } => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Enter => {
+                KeyCode::Enter if key.modifiers.is_empty() => {
                     let new_name = input.text().trim().to_string();
                     let path = path.clone();
                     self.mode = Mode::Normal;
@@ -128,7 +128,8 @@ impl App {
                 }
             },
             Mode::PromptHostConnect { .. } => host_connect::handle_prompt(self, key),
-            Mode::PromptOverseer { input } => match overseer::prompt_action(input, key) {
+            Mode::PromptOverseer { input } => match overseer::instruction_prompt_action(input, key)
+            {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
                 overseer::PromptAction::Submit(instruction) => {
@@ -140,7 +141,7 @@ impl App {
                 session,
                 host,
                 input,
-            } => match overseer::prompt_action(input, key) {
+            } => match overseer::instruction_prompt_action(input, key) {
                 overseer::PromptAction::Stay => {}
                 overseer::PromptAction::Cancel => self.mode = Mode::Normal,
                 overseer::PromptAction::Submit(instruction) => {

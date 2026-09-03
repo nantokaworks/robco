@@ -205,3 +205,17 @@ fn cursor_counts_characters_not_bytes() {
     assert_eq!(input.len(), 3);
     assert_eq!(input.cursor(), 3);
 }
+
+#[test]
+fn left_and_right_cross_a_newline() {
+    let mut input = TextInput::from("one\ntwo");
+    for _ in 0..4 {
+        press(&mut input, KeyCode::Left);
+    }
+    assert_eq!(input.cursor(), 3);
+
+    press(&mut input, KeyCode::Right);
+    assert_eq!(input.cursor(), 4);
+    press(&mut input, KeyCode::Char('X'));
+    assert_eq!(input.text(), "one\nXtwo");
+}

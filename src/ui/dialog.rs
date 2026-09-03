@@ -35,14 +35,21 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) -> Option<(u16, u16)> {
         caret,
     } = content::content(app, body)?;
 
-    let width = (lines
-        .iter()
-        .map(Line::width)
-        .max()
-        .unwrap_or(0)
-        .max(title.len()) as u16
-        + 4)
-    .min(body.width);
+    let width = if matches!(
+        &app.mode,
+        Mode::PromptOverseer { .. } | Mode::PromptSession { .. }
+    ) {
+        body.width
+    } else {
+        (lines
+            .iter()
+            .map(Line::width)
+            .max()
+            .unwrap_or(0)
+            .max(title.len()) as u16
+            + 4)
+        .min(body.width)
+    };
     let height = (lines.len() as u16 + 2).min(body.height);
     let area = layout::centered_area(frame, width, height);
 
