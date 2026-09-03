@@ -1,6 +1,10 @@
+//! Confirm-mode key arms, split out so `ui::input` only routes mode families.
+
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::{Result, locale::t};
+use crate::{Result, config::Config, locale::t};
+
+use crate::ui::confirm_pr::{ConfirmPrAction, confirm_pr_action};
 
 use super::{App, Mode};
 
@@ -124,4 +128,38 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
         }
         _ => None,
     }
+}
+
+pub(super) fn handle_confirm_pr(
+    app: &mut App,
+    key: KeyEvent,
+    send: impl FnOnce(&str, &str) -> Result<()>,
+) -> Result<()> {
+    let Mode::ConfirmPr {
+        repo_path,
+        agent_id,
+        input,
+        approval_head,
+        ..
+    } = &mut app.mode
+    else {
+        unreachable!("checked by confirm router")
+    };
+    let action = confirm_pr_action(&mut app.config, input, key, Config::save);
+    match action {
+        ConfirmPrAction::Stay => {}
+        ConfirmPrAction::Cancel => app.mode = Mode::Normal,
+        ConfirmPrAction::Submit(prompt) => {
+            let repo_path = repo_path.clone();
+            let agent_id = agent_id.clone();
+            let approval_head = approval_head.clone();
+            app.mode = Mode::Normal;
+            app.request_pr(&repo_path, &agent_id, &prompt, approval_head, send)?;
+        }
+        ConfirmPrAction::Saved(result) => match result {
+            Ok(()) => app.show_message(t(app.locale, "saved PR prompt to config")),
+            Err(err) => app.show_message(err.to_string()),
+        },
+    }
+    Ok(())
 }
