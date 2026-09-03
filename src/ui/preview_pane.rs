@@ -1,4 +1,6 @@
-use crate::model::Selection;
+use ratatui::text::{Line, Span, Text};
+
+use crate::{locale::t, model::Selection};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewPane {
@@ -20,7 +22,9 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
     match selection {
         // The control AI is a row of its own now (dropr:370), so no category
         // row owns a session to show behind a second tab.
-        Some(Selection::OverseerCategory(_)) => &[PreviewPane::Info],
+        Some(Selection::OverseerCategory(_) | Selection::RemoteHostError(_)) => {
+            &[PreviewPane::Info]
+        }
         // The row is acted on from the left frame (Enter attaches, `i`
         // instructs), so its one tab is the live control session capture
         // itself and there is no second tab to cycle to.
@@ -58,4 +62,27 @@ pub(in crate::ui) fn default_pane(selection: Option<Selection>) -> PreviewPane {
         .first()
         .copied()
         .unwrap_or(PreviewPane::Claude)
+}
+
+pub(super) fn worktree_diff(
+    app: &crate::ui::App,
+    remote: bool,
+    path: &std::path::Path,
+) -> Text<'static> {
+    let muted = crate::ui::theme::DEFAULT.muted_style();
+    if remote {
+        vec![Line::from(Span::styled(
+            t(app.locale, "diff is not available for a remote worktree"),
+            muted,
+        ))]
+        .into()
+    } else {
+        app.cached_diff(path).unwrap_or_else(|| {
+            vec![Line::from(Span::styled(
+                t(app.locale, "Loading diff…"),
+                muted,
+            ))]
+            .into()
+        })
+    }
 }

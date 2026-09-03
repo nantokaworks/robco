@@ -8,13 +8,18 @@
 
 use crate::model::{RepoNode, Selection};
 use crate::ui::App;
-use crate::ui::actions::remote_hosts::{HostConnection, HostSlot};
+pub(super) use crate::ui::actions::remote_hosts::HostConnection;
+use crate::ui::actions::remote_hosts::HostSlot;
 
 pub(super) fn remote_item_key(app: &App, selection: Selection) -> String {
     match selection {
         Selection::RemoteControlAi(host) => app.hosts.get(host).map_or_else(
             || "remote-control:missing".to_string(),
             |slot| format!("remote-control:{}", slot.label.ssh),
+        ),
+        Selection::RemoteHostError(host) => app.hosts.get(host).map_or_else(
+            || "remote-host-error:missing".to_string(),
+            |slot| format!("remote-host-error:{}", slot.label.ssh),
         ),
         Selection::RemoteDiscordChannel { host, channel } => app
             .hosts

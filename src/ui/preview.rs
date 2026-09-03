@@ -1,6 +1,6 @@
 use ratatui::{
     Frame,
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, Padding, Paragraph, Wrap},
 };
 
@@ -9,7 +9,9 @@ use crate::{
     locale::t,
     model::{Selection, Status},
     ui::{
-        App, PreviewPane, layout, merge_dialog, scrollback,
+        App, PreviewPane,
+        actions::remote_hosts::HostConnection,
+        layout, merge_dialog, scrollback,
         summary::{agent_summary, child_summary},
         theme::DEFAULT as THEME,
     },
@@ -19,6 +21,8 @@ mod agent_details;
 mod agent_escalation;
 mod branch_only;
 mod dropr_task_preview;
+#[cfg(test)]
+mod error_info_tests;
 mod labels;
 mod notice;
 mod overseer;
@@ -66,6 +70,26 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                 return;
             };
             preview
+        }
+        (_, Some(Selection::RemoteHostError(host))) => {
+            let (Some(slot), Some(view)) = (app.hosts.get(host), app.host_view(host)) else {
+                return;
+            };
+            let state = match view.connection {
+                HostConnection::Connecting => "connecting",
+                HostConnection::Connected => "connected",
+                HostConnection::Failed => "failed",
+            };
+            let error = view
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .replace('\n', "\n       ");
+            let text = format!(
+                "host: {}\nssh: {}\nconnection: {state}\nerror: {error}",
+                slot.label.name, slot.label.ssh
+            );
+            (slot.label.name.clone(), text.into())
         }
         (
             _,
@@ -202,7 +226,8 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     &ai_label,
                 );
             }
-            let text = worktree_diff(app, repo.host.is_some(), &agent.worktree_path);
+            let text =
+                super::preview_pane::worktree_diff(app, repo.host.is_some(), &agent.worktree_path);
             (title, text)
         }
         (PreviewPane::Info, Some(Selection::ChildWorktree { repo, agent, child })) => {
@@ -225,7 +250,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
                     .and_then(|name| name.to_str())
                     .unwrap_or("worktree")
             });
-            let text = worktree_diff(app, repo.host.is_some(), &child.path);
+            let text = super::preview_pane::worktree_diff(app, repo.host.is_some(), &child.path);
             (format!("{} / {} / {label}", repo.name, agent.title), text)
         }
         (_, Some(Selection::Orphan(orphan_idx))) => {
@@ -272,26 +297,4 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         .scroll((para_scroll, 0));
     frame.render_widget(preview, panes.preview);
     render_merge_notice(frame, app, selection, panes.preview);
-}
-
-/// Placeholder shown while a worktree diff is still being captured off-thread.
-fn loading_diff(locale: crate::locale::Locale) -> Text<'static> {
-    vec![Line::from(Span::styled(
-        t(locale, "Loading diff…"),
-        THEME.muted_style(),
-    ))]
-    .into()
-}
-
-fn worktree_diff(app: &App, remote: bool, path: &std::path::Path) -> Text<'static> {
-    if remote {
-        vec![Line::from(Span::styled(
-            t(app.locale, "diff is not available for a remote worktree"),
-            THEME.muted_style(),
-        ))]
-        .into()
-    } else {
-        app.cached_diff(path)
-            .unwrap_or_else(|| loading_diff(app.locale))
-    }
 }

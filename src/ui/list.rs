@@ -35,9 +35,9 @@ impl App {
                         |id| format!("discord-channel:{id}"),
                     )
             }
-            Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. } => {
-                repo_rows::remote_item_key(self, selection)
-            }
+            Selection::RemoteControlAi(_)
+            | Selection::RemoteHostError(_)
+            | Selection::RemoteDiscordChannel { .. } => repo_rows::remote_item_key(self, selection),
             Selection::Repo(repo) => format!(
                 "repo:{}:{}",
                 self.repo_host_key(repo),
@@ -230,6 +230,16 @@ impl App {
                 }
             }
         }
+        visible.extend(
+            self.hosts
+                .iter()
+                .enumerate()
+                .filter(|(host, _)| {
+                    self.host_view(*host)
+                        .is_some_and(|view| view.connection == repo_rows::HostConnection::Failed)
+                })
+                .map(|(host, _)| Selection::RemoteHostError(host)),
+        );
         for repo_idx in self.local_repos() {
             repo_rows::push_repo_rows(self, &mut visible, repo_idx, &self.registry.repos[repo_idx]);
         }

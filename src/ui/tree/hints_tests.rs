@@ -114,6 +114,7 @@ fn overseer_ai_row_advertises_attach_and_instruct() {
 #[test]
 fn remote_chat_rows_advertise_their_actions() {
     let control = hints_line(None, Some(Selection::RemoteControlAi(0)), None, false).to_string();
+    let failure = hints_line(None, Some(Selection::RemoteHostError(0)), None, false).to_string();
     let channel = hints_line(
         None,
         Some(Selection::RemoteDiscordChannel {
@@ -125,6 +126,7 @@ fn remote_chat_rows_advertise_their_actions() {
     )
     .to_string();
     assert_eq!(control, "[↵] ATTACH [i] INSTRUCT [?] HELP [q] QUIT");
+    assert_eq!(failure, "[?] HELP [q] QUIT");
     assert_eq!(channel, "[↵] ATTACH [?] HELP [q] QUIT");
 }
 

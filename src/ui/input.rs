@@ -288,6 +288,7 @@ impl App {
                     ) => {
                         overseer::attach_remote_chat(self, selection);
                     }
+                    Some(Selection::RemoteHostError(_)) => {}
                     // The drill-down's entry point (dropr:475): INFO is the
                     // only tab that can show the task list, so this leaves
                     // every other tab's `enter` (Claude/Terminal attach)

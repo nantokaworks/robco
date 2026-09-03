@@ -7,16 +7,26 @@ impl App {
         prune_unmanaged(&mut self.registry.repos, &self.config.worktree_root)
     }
 
-    /// Re-point selection at the same item, falling back to a clamp.
+    /// Re-point selection at the same item, mapping a recovered host error to
+    /// its control row and otherwise resetting a vanished host error to row 0.
     pub(in crate::ui) fn restore_selection(&mut self, identity: Option<String>) {
         self.prune_expanded_children();
-        if let Some(identity) = identity
-            && let Some(index) = self
-                .visible()
-                .into_iter()
-                .position(|sel| self.item_key(sel) == identity)
-        {
-            self.selected = index;
+        if let Some(identity) = identity {
+            let visible = self.visible();
+            let successor = identity
+                .strip_prefix("remote-host-error:")
+                .map(|ssh| format!("remote-control:{ssh}"));
+            let exact = visible
+                .iter()
+                .position(|sel| self.item_key(*sel) == identity);
+            let recovered_host = successor
+                .as_ref()
+                .and_then(|next| visible.iter().position(|sel| self.item_key(*sel) == *next));
+            if let Some(index) = exact.or(recovered_host) {
+                self.selected = index;
+            } else if successor.is_some() {
+                self.selected = 0;
+            }
         }
         self.clamp_selection();
         self.restore_preview();

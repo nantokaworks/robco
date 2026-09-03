@@ -54,6 +54,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                     lines.push(line);
                 }
             }
+            Selection::RemoteHostError(host) => {
+                if let Some(line) = host_chip::failed_row(app, host, selected, marker) {
+                    lines.push(line);
+                }
+            }
             Selection::Repo(repo_idx) => {
                 lines.extend(repo_row::build(
                     app,

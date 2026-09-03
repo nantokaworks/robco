@@ -8,9 +8,8 @@ use crate::{
 use super::agent_escalation;
 
 /// Extra detail lines spliced into an agent's Info pane summary: worktree
-/// state, the last merge failure, and — once the AI session itself has gone
-/// quiet — anything the Overseer ledger still has to say about the worker
-/// (a decision it is waiting on, or where its pull request stands).
+/// state, failures, and — once the AI session itself has gone quiet — anything
+/// the Overseer ledger still has to say about the worker.
 pub(in crate::ui) fn lines(app: &App, agent: &AgentNode) -> Vec<Line<'static>> {
     let mut details = Vec::new();
     if agent.worktree_missing {
@@ -56,7 +55,49 @@ pub(in crate::ui) fn lines(app: &App, agent: &AgentNode) -> Vec<Line<'static>> {
                 Span::styled(detail, THEME.merge_lifecycle_style(lifecycle)),
             ]));
         }
+        if let Some(reason) = app.overseer_snapshot.terminal_reason(&agent.id) {
+            push_multiline(
+                &mut details,
+                "stopped: ",
+                &reason,
+                THEME.merge_failed_style(false),
+            );
+        }
+        if let Some(reason) = app.overseer_snapshot.held_reason(&agent.id) {
+            push_multiline(
+                &mut details,
+                "held: ",
+                &reason,
+                THEME.merge_hold_style(false),
+            );
+        }
     }
     details.extend(agent_escalation::lines(app, agent));
     details
 }
+
+fn push_multiline(
+    details: &mut Vec<Line<'static>>,
+    label: &str,
+    body: &str,
+    style: ratatui::style::Style,
+) {
+    let continuation = " ".repeat(label.len());
+    for (row, body_line) in body.split('\n').enumerate() {
+        details.push(Line::from(vec![
+            Span::styled(
+                if row == 0 {
+                    label.to_string()
+                } else {
+                    continuation.clone()
+                },
+                THEME.muted_style(),
+            ),
+            Span::styled(body_line.to_string(), style),
+        ]));
+    }
+}
+
+#[cfg(test)]
+#[path = "agent_details_tests.rs"]
+mod tests;

@@ -75,6 +75,12 @@ fn host_states_render_in_the_header_and_as_detail_lines() {
     );
     assert!(rows.iter().any(|row| row.contains("new: connecting...")));
     assert!(rows.iter().any(|row| row.contains("✗ bad: offline")));
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row.contains("✗ bad: offline"))
+            .count(),
+        1
+    );
     assert!(!rows.iter().any(|row| row.contains("retry later")));
 
     let header = rendered_cells_for_at_width(&app, "PROJECTS", 120);
