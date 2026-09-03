@@ -61,6 +61,7 @@ fn host_states_render_in_the_header_and_as_detail_lines() {
         HostSlot::idle(connecting),
         HostSlot::failed(failed, "offline\nretry later"),
     ];
+    app.sync_remote_host_views();
 
     let rows = render_test_support::rendered_rows_at_width(&app, 120);
     assert!(rows[0].contains("⌁ odin"), "{}", rows[0]);
@@ -101,6 +102,7 @@ fn remote_repo_uses_host_suffix_without_a_divider_or_path() {
     };
     let mut app = bare_app(vec![repo("remote", Some(odin.clone()))]);
     app.hosts = vec![HostSlot::connected(odin)];
+    app.sync_remote_host_views();
 
     let rows = rendered_rows(&app);
     let remote = rows.iter().find(|row| row.contains("remote")).unwrap();
@@ -117,6 +119,7 @@ fn connecting_detail_is_hidden_once_that_host_has_a_repo() {
     };
     let mut app = bare_app(vec![repo("remote", Some(host.clone()))]);
     app.hosts = vec![HostSlot::idle(host)];
+    app.sync_remote_host_views();
 
     let rows = rendered_rows(&app);
     assert!(!rows.iter().any(|row| row.contains("odin: connecting...")));
@@ -130,9 +133,30 @@ fn narrow_header_drops_a_whole_chip_and_shows_ellipsis() {
     };
     let mut app = bare_app(Vec::new());
     app.hosts = vec![HostSlot::connected(host)];
+    app.sync_remote_host_views();
 
     let header = &render_test_support::rendered_rows_at_width(&app, 16)[0];
     assert!(header.contains("PROJECTS…"), "{header}");
     assert!(!header.contains('⌁'), "{header}");
     assert!(!header.contains("long"), "{header}");
+}
+
+#[test]
+fn connected_host_with_dead_daemon_shows_red_warning() {
+    let host = HostLabel {
+        name: "odin".into(),
+        ssh: "odin.example".into(),
+    };
+    let mut app = bare_app(Vec::new());
+    app.hosts = vec![HostSlot::connected_with_chats(
+        host,
+        None,
+        Default::default(),
+        false,
+    )];
+    app.sync_remote_host_views();
+
+    let cells = rendered_cells_for_at_width(&app, "PROJECTS", 120);
+    let warning = cells.iter().find(|cell| cell.symbol() == "⚠").unwrap();
+    assert_eq!(warning.fg, Color::Red);
 }

@@ -8,6 +8,53 @@
 
 use crate::model::{RepoNode, Selection};
 use crate::ui::App;
+use crate::ui::actions::remote_hosts::{HostConnection, HostSlot};
+
+pub(super) fn remote_item_key(app: &App, selection: Selection) -> String {
+    match selection {
+        Selection::RemoteControlAi(host) => app.hosts.get(host).map_or_else(
+            || "remote-control:missing".to_string(),
+            |slot| format!("remote-control:{}", slot.label.ssh),
+        ),
+        Selection::RemoteDiscordChannel { host, channel } => app
+            .hosts
+            .get(host)
+            .and_then(|slot| {
+                let view = app.host_view(host)?;
+                crate::ui::overseer::ordered_channel_ids(&view.discord_channels)
+                    .get(channel)
+                    .map(|id| format!("remote-discord:{}:{id}", slot.label.ssh))
+            })
+            .unwrap_or_else(|| "remote-discord:missing".to_string()),
+        _ => unreachable!("remote chat selection required"),
+    }
+}
+
+pub(super) fn push_remote_host_rows(
+    app: &App,
+    visible: &mut Vec<Selection>,
+    host: usize,
+    slot: &HostSlot,
+) {
+    for repo_idx in app
+        .registry
+        .repos
+        .iter()
+        .enumerate()
+        .filter_map(|(index, repo)| (repo.host.as_ref() == Some(&slot.label)).then_some(index))
+    {
+        push_repo_rows(app, visible, repo_idx, &app.registry.repos[repo_idx]);
+    }
+    let Some(view) = app.host_view(host) else {
+        return;
+    };
+    if view.connection != HostConnection::Connected {
+        return;
+    }
+    visible.push(Selection::RemoteControlAi(host));
+    let count = crate::ui::overseer::ordered_channel_ids(&view.discord_channels).len();
+    visible.extend((0..count).map(|channel| Selection::RemoteDiscordChannel { host, channel }));
+}
 
 pub(super) fn push_repo_rows(
     app: &App,

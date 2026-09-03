@@ -135,10 +135,7 @@ impl App {
     /// Schedule a background capture for whatever the current selection needs.
     /// Called once per event-loop iteration with the full terminal area.
     pub(in crate::ui) fn schedule_preview_capture(&mut self, full_area: Rect) {
-        if let Some(repo) = self
-            .selected_repo()
-            .filter(|repo| self.registry.repos[*repo].host.is_some())
-        {
+        if let Some(host) = self.remote_host_for_selection() {
             let Some(CaptureTarget::Tmux {
                 session,
                 width,
@@ -148,15 +145,7 @@ impl App {
             else {
                 return;
             };
-            let Some(host) = self.registry.repos[repo].host.as_ref() else {
-                return;
-            };
-            if let Some(backend) = self
-                .hosts
-                .iter()
-                .find(|slot| slot.label == *host)
-                .and_then(|slot| slot.backend())
-            {
+            if let Some(backend) = self.hosts.get(host).and_then(|slot| slot.backend()) {
                 backend.schedule_remote_pane(&session, width, height, offset);
             }
             return;

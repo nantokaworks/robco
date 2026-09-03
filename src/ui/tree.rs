@@ -20,6 +20,7 @@ mod label;
 mod launch_row;
 pub(in crate::ui) mod overseer_frame;
 mod reason_line;
+mod remote_chat_row;
 mod repo_row;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
@@ -45,6 +46,11 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             | Selection::OverseerCategory(_)
             | Selection::OverseerInbox(_)
             | Selection::DiscordChannel(_) => continue,
+            Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. } => {
+                if let Some(line) = remote_chat_row::build(app, *item, selected, marker) {
+                    lines.push(line);
+                }
+            }
             Selection::Repo(repo_idx) => {
                 lines.extend(repo_row::build(
                     app,

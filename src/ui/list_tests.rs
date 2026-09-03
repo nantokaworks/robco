@@ -143,6 +143,73 @@ fn selection_identity_survives_overseer_row_toggle() {
 }
 
 #[test]
+fn connected_remote_hosts_list_global_chats_after_their_repos() {
+    use crate::{
+        model::HostLabel, overseer::discord_channels::DiscordChannels,
+        ui::actions::remote_hosts::HostSlot,
+    };
+    let connected = HostLabel {
+        name: "Prod".into(),
+        ssh: "prod".into(),
+    };
+    let failed = HostLabel {
+        name: "Down".into(),
+        ssh: "down".into(),
+    };
+    let remote_repo = |name: &str, host: HostLabel| {
+        let mut repo: crate::model::RepoNode = serde_json::from_value(serde_json::json!({
+            "path": format!("/srv/{name}"), "name": name, "remote_url": null, "pinned": true
+        }))
+        .unwrap();
+        repo.host = Some(host);
+        repo
+    };
+    let channels: DiscordChannels = serde_json::from_value(serde_json::json!({"channels": {
+        "42": {"first_seen_at":"2025-01-01T00:00:00Z","last_active_at":"2025-01-01T00:00:00Z",
+            "turn_count":1,"status":"idle","last_error":null,"channel_name":"ops"}
+    }}))
+    .unwrap();
+    let mut app = test_app();
+    app.overseer_visible = false;
+    app.orphans.clear();
+    app.registry.repos = vec![
+        remote_repo("one", connected.clone()),
+        remote_repo("two", failed.clone()),
+    ];
+    app.expanded = vec![true; 2];
+    app.hosts = vec![
+        HostSlot::connected_with_chats(
+            connected.clone(),
+            Some(crate::model::Status::Idle),
+            channels,
+            true,
+        ),
+        HostSlot::failed(failed, "offline"),
+    ];
+    app.sync_remote_host_views();
+
+    assert_eq!(
+        app.visible(),
+        vec![
+            Selection::Repo(0),
+            Selection::RemoteControlAi(0),
+            Selection::RemoteDiscordChannel {
+                host: 0,
+                channel: 0
+            },
+            Selection::Repo(1),
+        ]
+    );
+
+    app.selected = 2;
+    let key = app.item_key(app.selected_item().unwrap());
+    app.registry.repos.insert(0, remote_repo("new", connected));
+    app.expanded.insert(0, true);
+    app.restore_selection(Some(key.clone()));
+    assert_eq!(app.item_key(app.selected_item().unwrap()), key);
+}
+
+#[test]
 fn agent_children_default_collapsed_expand_and_hide_when_merged() {
     let temp = tempfile::tempdir().unwrap();
     let repo_path = temp.path().join("repos/repo");

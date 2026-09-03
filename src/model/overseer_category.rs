@@ -97,6 +97,13 @@ pub enum Selection {
     /// session that exists only while a turn is running, torn down at the
     /// end of each turn.
     DiscordChannel(usize),
+    /// A connected remote host's Overseer control AI, indexing `App::hosts`.
+    RemoteControlAi(usize),
+    /// A retained remote Discord channel in that host snapshot's display order.
+    RemoteDiscordChannel {
+        host: usize,
+        channel: usize,
+    },
     Repo(usize),
     Agent {
         repo: usize,

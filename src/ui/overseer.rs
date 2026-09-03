@@ -30,7 +30,8 @@ pub(in crate::ui) use categories::{
     category_detail, category_summary, health_warnings, inbox_actionable_count,
 };
 pub(in crate::ui) use discord_agents::{
-    channel_preview as discord_channel_preview, ordered_channel_ids,
+    channel_preview as discord_channel_preview,
+    channel_preview_from as discord_channel_preview_from, ordered_channel_ids,
 };
 pub(in crate::ui) use inbox_rows::item_preview as inbox_item_preview;
 

@@ -1,13 +1,13 @@
-//! One independent poller and latest-value cell per configured remote host.
-
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
+use crate::model::Status;
 use crate::{
     config::{Config, HostConfig},
     model::{HostLabel, RepoNode},
+    overseer::discord_channels::DiscordChannels,
 };
 
 use super::{background_support::carry_runtime, discovery::path_key};
@@ -19,13 +19,45 @@ use crate::ui::{
 #[derive(Default)]
 struct HostSnapshot {
     repos: Vec<RepoNode>,
+    control_status: Option<Status>,
+    discord_channels: DiscordChannels,
+    daemon_alive: bool,
     error: Option<String>,
     backend: Option<Arc<RemoteBackend>>,
     generation: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Default)]
+pub(in crate::ui) struct HostView {
+    pub(in crate::ui) connection: HostConnection,
+    pub(in crate::ui) error: Option<String>,
+    pub(in crate::ui) control_status: Option<Status>,
+    pub(in crate::ui) discord_channels: DiscordChannels,
+    pub(in crate::ui) daemon_alive: bool,
+}
+
+impl HostView {
+    fn from_snapshot(snapshot: &HostSnapshot) -> Self {
+        let connection = if snapshot.error.is_some() {
+            HostConnection::Failed
+        } else if snapshot.generation == 0 {
+            HostConnection::Connecting
+        } else {
+            HostConnection::Connected
+        };
+        Self {
+            connection,
+            error: snapshot.error.clone(),
+            control_status: snapshot.control_status,
+            discord_channels: snapshot.discord_channels.clone(),
+            daemon_alive: snapshot.daemon_alive,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(in crate::ui) enum HostConnection {
+    #[default]
     Connecting,
     Connected,
     Failed,
@@ -56,22 +88,19 @@ impl HostSlot {
         }
     }
 
-    /// Derives connection state from the published snapshot so the poller has
-    /// one source of truth. Errors win because publishing one also advances the
-    /// generation, which must not make a failed first attempt look connected.
-    pub(in crate::ui) fn connection_and_error(&self) -> (HostConnection, Option<String>) {
+    #[cfg(test)]
+    fn snapshot_view(&self) -> HostView {
         let snapshot = self
             .snapshot
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let connection = if snapshot.error.is_some() {
-            HostConnection::Failed
-        } else if snapshot.generation == 0 {
-            HostConnection::Connecting
-        } else {
-            HostConnection::Connected
-        };
-        (connection, snapshot.error.clone())
+        HostView::from_snapshot(&snapshot)
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn connection_and_error(&self) -> (HostConnection, Option<String>) {
+        let view = self.snapshot_view();
+        (view.connection, view.error)
     }
 
     pub(in crate::ui) fn backend(&self) -> Option<Arc<RemoteBackend>> {
@@ -80,52 +109,6 @@ impl HostSlot {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .backend
             .clone()
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn idle(label: HostLabel) -> Self {
-        Self {
-            label,
-            snapshot: Arc::new(Mutex::new(HostSnapshot::default())),
-            applied_generation: 0,
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn connected(label: HostLabel) -> Self {
-        Self {
-            label,
-            snapshot: Arc::new(Mutex::new(HostSnapshot {
-                generation: 1,
-                ..HostSnapshot::default()
-            })),
-            applied_generation: 0,
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn failed(label: HostLabel, error: &str) -> Self {
-        Self {
-            label,
-            snapshot: Arc::new(Mutex::new(HostSnapshot {
-                error: Some(error.into()),
-                generation: 1,
-                ..HostSnapshot::default()
-            })),
-            applied_generation: 0,
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn with_backend(label: HostLabel, backend: Arc<RemoteBackend>) -> Self {
-        Self {
-            label,
-            snapshot: Arc::new(Mutex::new(HostSnapshot {
-                backend: Some(backend),
-                ..HostSnapshot::default()
-            })),
-            applied_generation: 0,
-        }
     }
 }
 
@@ -144,7 +127,16 @@ fn poll_host(label: HostLabel, config: Config, cell: Arc<Mutex<HostSnapshot>>) {
                         Ok((registry, _)) => {
                             let status =
                                 backend.capture_status(registry, &config, &Default::default());
-                            publish(&cell, &label, status.repos, None);
+                            let overseer = status.overseer.snapshot;
+                            publish(
+                                &cell,
+                                &label,
+                                status.repos,
+                                overseer.control_status,
+                                overseer.discord_channels,
+                                overseer.daemon_alive,
+                                None,
+                            );
                         }
                         Err(error) => {
                             publish_error(&cell, error.to_string());
@@ -164,6 +156,9 @@ fn publish(
     cell: &Mutex<HostSnapshot>,
     label: &HostLabel,
     mut repos: Vec<RepoNode>,
+    control_status: Option<Status>,
+    discord_channels: DiscordChannels,
+    daemon_alive: bool,
     error: Option<String>,
 ) {
     for repo in &mut repos {
@@ -174,6 +169,9 @@ fn publish(
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     carry_runtime(&snapshot.repos, &mut repos, true);
     snapshot.repos = repos;
+    snapshot.control_status = control_status;
+    snapshot.discord_channels = discord_channels;
+    snapshot.daemon_alive = daemon_alive;
     snapshot.error = error;
     snapshot.generation = snapshot.generation.wrapping_add(1);
 }
@@ -203,6 +201,7 @@ impl App {
             .into_iter()
             .map(|host| HostSlot::spawn(host, self.config.clone()))
             .collect();
+        self.host_views = vec![HostView::default(); self.hosts.len()];
     }
 
     pub(in crate::ui) fn connect_host(&mut self, ssh: String) {
@@ -210,25 +209,38 @@ impl App {
             HostConfig { ssh, name: None },
             self.config.clone(),
         ));
+        self.host_views.push(HostView::default());
+    }
+
+    pub(in crate::ui) fn host_view(&self, host: usize) -> Option<&HostView> {
+        self.host_views.get(host)
     }
 
     pub(in crate::ui) fn ingest_remote_hosts(&mut self) {
         let selected = self.selected_item().map(|item| self.item_key(item));
         let expanded = expanded_map(&self.registry.repos, &self.expanded);
         let mut changed = false;
-        for slot in &mut self.hosts {
+        self.host_views.truncate(self.hosts.len());
+        for (host, slot) in self.hosts.iter_mut().enumerate() {
             let snapshot = slot
                 .snapshot
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if snapshot.generation == slot.applied_generation {
+            if snapshot.generation == slot.applied_generation && self.host_views.get(host).is_some()
+            {
                 continue;
             }
+            let view = HostView::from_snapshot(&snapshot);
             self.registry
                 .repos
                 .retain(|repo| repo.host.as_ref() != Some(&slot.label));
             self.registry.repos.extend(snapshot.repos.clone());
             slot.applied_generation = snapshot.generation;
+            if let Some(current) = self.host_views.get_mut(host) {
+                *current = view;
+            } else {
+                self.host_views.push(view);
+            }
             changed = true;
         }
         if changed {
@@ -240,20 +252,6 @@ impl App {
                 .collect();
             self.restore_selection(selected);
         }
-    }
-
-    pub(in crate::ui) fn remote_repo_indices(&self) -> Vec<usize> {
-        self.hosts
-            .iter()
-            .flat_map(|slot| {
-                self.registry
-                    .repos
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, repo)| repo.host.as_ref() == Some(&slot.label))
-                    .map(|(index, _)| index)
-            })
-            .collect()
     }
 
     pub(in crate::ui) fn remote_client_for_repo(
@@ -288,6 +286,9 @@ fn expanded_map(repos: &[RepoNode], expanded: &[bool]) -> HashMap<(Option<String
         .collect()
 }
 
+#[cfg(test)]
+#[path = "remote_hosts_test_support.rs"]
+mod test_support;
 #[cfg(test)]
 #[path = "remote_hosts_tests.rs"]
 mod tests;

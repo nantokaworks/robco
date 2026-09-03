@@ -21,6 +21,7 @@ mod dropr_task_preview;
 mod labels;
 mod notice;
 mod overseer;
+mod remote_chat;
 #[cfg(test)]
 mod render_tests;
 pub(in crate::ui) mod tabs;
@@ -62,23 +63,22 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         // no turn is running there is nothing to mirror, so this falls back
         // to the channel's retained conversation turns (dropr:451).
         (_, Some(Selection::DiscordChannel(index))) => {
-            let ids = super::overseer::ordered_channel_ids(&app.overseer_snapshot.discord_channels);
-            let Some(channel_id) = ids.get(index) else {
+            let Some(preview) = remote_chat::render_local_discord(app, index) else {
                 return;
             };
-            let session = crate::overseer::discord_channel_session_name(tmux_prefix, channel_id);
-            match app.cached_tmux(&session) {
-                Some(text) => {
-                    let title = format!(
-                        "Discord / {}",
-                        app.overseer_snapshot
-                            .discord_channels
-                            .display_label(channel_id)
-                    );
-                    (title, text)
-                }
-                None => super::overseer::discord_channel_preview(app, index),
-            }
+            preview
+        }
+        (
+            _,
+            Some(
+                selection
+                @ (Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. }),
+            ),
+        ) => {
+            let Some(preview) = remote_chat::render(app, selection) else {
+                return;
+            };
+            preview
         }
         (PreviewPane::Terminal, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];

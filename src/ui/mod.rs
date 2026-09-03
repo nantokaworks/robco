@@ -140,6 +140,8 @@ pub struct App {
     backend: Arc<dyn Backend>,
     /// Independently-polled remote hosts, in configured tree order.
     hosts: Vec<HostSlot>,
+    /// Frame-stable remote host/chat state, refreshed only by UI-thread ingest.
+    host_views: Vec<actions::remote_hosts::HostView>,
     background_refresh: BackgroundRefresh,
     preview_capture: PreviewCapture,
     /// Aggregated inbox, newest first. The rows the operator moves between are
@@ -235,6 +237,7 @@ impl App {
             dropr_task_settle: Vec::new(),
             backend: Arc::new(LocalBackend),
             hosts: Vec::new(),
+            host_views: Vec::new(),
             background_refresh: BackgroundRefresh::new(),
             preview_capture: PreviewCapture::new(),
             overseer_inbox: Vec::new(),

@@ -151,13 +151,20 @@ fn channel_line(
 /// checked there is no live tmux session to mirror for the channel — a turn
 /// in progress still shows the live session, exactly as before.
 pub(in crate::ui) fn channel_preview(app: &App, index: usize) -> (String, Text<'static>) {
-    let channels = &app.overseer_snapshot.discord_channels;
+    channel_preview_from(app.locale, &app.overseer_snapshot.discord_channels, index)
+}
+
+pub(in crate::ui) fn channel_preview_from(
+    locale: Locale,
+    channels: &DiscordChannels,
+    index: usize,
+) -> (String, Text<'static>) {
     let ids = ordered_channel_ids(channels);
     let Some(channel_id) = ids.get(index) else {
         return (
             "OVERSEER / Discord".to_string(),
             vec![Line::styled(
-                t(app.locale, "channel is no longer listed"),
+                t(locale, "channel is no longer listed"),
                 THEME.muted_style(),
             )]
             .into(),
@@ -168,11 +175,7 @@ pub(in crate::ui) fn channel_preview(app: &App, index: usize) -> (String, Text<'
     if turns.is_empty() {
         return (
             title,
-            vec![Line::styled(
-                t(app.locale, "no turns yet"),
-                THEME.muted_style(),
-            )]
-            .into(),
+            vec![Line::styled(t(locale, "no turns yet"), THEME.muted_style())].into(),
         );
     }
     let mut lines = Vec::new();

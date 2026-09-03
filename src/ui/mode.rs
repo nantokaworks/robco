@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use crate::model::HostLabel;
+
 use super::inbox;
 use super::text_input::TextInput;
 
@@ -30,13 +32,11 @@ pub(in crate::ui) enum Mode {
     },
     /// Send a one-line instruction into a repo/agent/orphan row's live
     /// CLAUDE/CODEX tmux session (dropr:565), opened by `i` while that tab is
-    /// showing. Holds the resolved session NAME, not a row index or
-    /// selection — background discovery can reorder rows while the prompt is
-    /// open, and only the name still points at the same session by the time
-    /// Enter sends it (see `Mode::PromptInbox` / `Mode::PromptRenameRepo` for
-    /// the same rule).
+    /// showing. `host` pins a remote control prompt to the host selected when
+    /// it opened; `None` preserves local/session-derived routing.
     PromptSession {
         session: String,
+        host: Option<HostLabel>,
         input: TextInput,
     },
     /// The answer prompt carries the whole row it was opened for, not just the

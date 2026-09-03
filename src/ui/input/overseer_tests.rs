@@ -5,6 +5,26 @@ use super::*;
 use crate::{config::Config, model::OverseerCategory, registry::Registry, ui::PreviewPane};
 
 #[test]
+fn remote_control_i_opens_the_session_prompt() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.overseer_visible = false;
+    app.orphans.clear();
+    app.hosts = vec![crate::ui::actions::remote_hosts::HostSlot::connected(
+        crate::model::HostLabel {
+            name: "Prod".into(),
+            ssh: "prod".into(),
+        },
+    )];
+    app.sync_remote_host_views();
+    app.selected = 0;
+
+    assert!(handle_normal(&mut app, KeyCode::Char('i')));
+    let expected = crate::overseer::control_session_name(&app.config.tmux_session_prefix);
+    assert!(matches!(&app.mode, Mode::PromptSession { session, .. } if session == &expected));
+}
+
+#[test]
 fn enter_submits_trimmed_instruction() {
     let mut input = TextInput::from("  review task  ");
     let action = prompt_action(
