@@ -92,6 +92,7 @@ async fn main() -> ExitCode {
 }
 
 async fn run(args: Args) -> Result<()> {
+    cli::launch_dir::validate_optional(args.launch_dir.as_deref())?;
     let mut config = Config::load()?;
     config.add_ad_hoc_hosts(args.host);
     if let Some(program) = args.program {
@@ -160,6 +161,7 @@ fn run_command(
         Command::Inbox(args) => overseer::command::run_inbox(args.command)?,
         Command::Install(args) => setup::install_command(&args)?,
         Command::List(args) => {
+            cli::launch_dir::validate_optional(args.dir.as_deref())?;
             let roots = effective_roots(&config.repos_root, args.dir.as_deref().or(ephemeral_root));
             list_repositories(&roots, config)?;
         }
