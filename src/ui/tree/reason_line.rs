@@ -68,12 +68,19 @@ pub(super) fn build(
     agent: &AgentNode,
     stopped: Option<&str>,
     held: Option<&str>,
+    escalation_reasons: &[&str],
     row: &AgentRow,
     projects_width: u16,
 ) -> Option<Line<'static>> {
     let (reason, glyph, style) = if let Some(reason) = first_line(agent.merge_error.as_deref()) {
         (reason, FAILURE_GLYPH, THEME.merge_failed_style(false))
     } else if let Some(reason) = first_line(stopped) {
+        if escalation_reasons
+            .iter()
+            .any(|detail| super::escalation_line::same_first_line(reason, detail))
+        {
+            return None;
+        }
         (reason, FAILURE_GLYPH, THEME.merge_failed_style(false))
     } else {
         let reason = first_line(held)?;

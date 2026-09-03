@@ -16,6 +16,7 @@ use crate::{
 };
 
 mod agent_details;
+mod agent_escalation;
 mod branch_only;
 mod dropr_task_preview;
 mod labels;
@@ -28,8 +29,7 @@ pub(in crate::ui) mod tabs;
 use labels::ai_label;
 use notice::render_merge_notice;
 use tabs::preview_tabs_line;
-/// Inner padding between the preview border and its content, applied to every
-/// tab. `scrollback::inner_dims` subtracts it when sizing mirrored tmux sessions.
+/// Inner padding; `scrollback::inner_dims` subtracts it for mirrored sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
 /// Height of the preview block's top border, which doubles as the tab bar.
 /// Overlays drawn inside the preview start below it so the tabs stay visible.
