@@ -5,6 +5,8 @@ use crate::{
     ui::{App, theme::DEFAULT as THEME},
 };
 
+use super::agent_escalation;
+
 /// Extra detail lines spliced into an agent's Info pane summary: worktree
 /// state, the last merge failure, and — once the AI session itself has gone
 /// quiet — anything the Overseer ledger still has to say about the worker
@@ -55,5 +57,6 @@ pub(in crate::ui) fn lines(app: &App, agent: &AgentNode) -> Vec<Line<'static>> {
             ]));
         }
     }
+    details.extend(agent_escalation::lines(app, agent));
     details
 }

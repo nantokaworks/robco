@@ -5,12 +5,13 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::{Selection, Status};
-use crate::subagents::SubagentStatus;
+use crate::model::Selection;
+#[cfg(test)]
+use crate::model::Status;
 
 use super::{App, layout, theme::DEFAULT as THEME};
-use indicator::{IndicatorState, select, select_supplementary};
-
+mod agent_row;
+mod escalation_line;
 mod footer;
 mod hints;
 mod host_chip;
@@ -22,6 +23,7 @@ pub(in crate::ui) mod overseer_frame;
 mod reason_line;
 mod remote_chat_row;
 mod repo_row;
+use indicator::{IndicatorState, select};
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Option<&str>) {
     let root = layout::root(frame.area());
@@ -77,118 +79,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 repo: repo_idx,
                 agent: agent_idx,
             } => {
-                let repo = &app.registry.repos[repo_idx];
-                let row = crate::model::agent_row(&repo.agents, agent_idx);
-                let agent = &repo.agents[agent_idx];
-                let agent_style = if selected {
-                    style
-                } else if agent.status == Status::BranchOnly {
-                    THEME.status_style(Status::BranchOnly)
-                } else {
-                    style
-                };
-                let active = agent
-                    .subagents
-                    .iter()
-                    .filter(|subagent| subagent.status == SubagentStatus::Running)
-                    .count();
-                let mut indicator_state = IndicatorState::with_status(Some(agent.status));
-                indicator_state.merging = app.is_merging_agent(&repo.path, &agent.id);
-                // Not gated on the agent being quiet, unlike the ledger-sourced
-                // badges below: this is robco's own state, not a report the
-                // worker left behind. The `OpenPrThenQueue` path in fact leaves
-                // the worker running — it is writing the pull request body —
-                // and that is exactly when the operator needs to see that the
-                // merge half of the keypress was accepted too (dropr:545).
-                indicator_state.merge_queued = app.merge_approval_queued(&agent.id);
-                indicator_state.worktree_missing = agent.worktree_missing;
-                indicator_state.merge_failed = agent.merge_error.is_some();
-                // Gated on the agent not actually running: a worker that has
-                // resumed real work (spinner motion) has moved past whatever
-                // report put it in this state, and the pane is the more
-                // current signal at that point.
-                indicator_state.needs_decision = agent.status != Status::Running
-                    && app
-                        .overseer_snapshot
-                        .blocked_reason(app.locale, &agent.id)
-                        .is_some();
-                // Same gating: a worker that has resumed real work has moved
-                // past whatever `--kind done` it last reported.
-                indicator_state.worker_finished = agent.status != Status::Running
-                    && app.overseer_snapshot.worker_finished(&agent.id);
-                // Same gating as `needs_decision` above: a worker that has
-                // resumed real work has moved past whatever the ledger
-                // still records for its last pull request.
-                indicator_state.merge_lifecycle = (agent.status != Status::Running)
-                    .then(|| app.overseer_snapshot.merge_lifecycle(&agent.id))
-                    .flatten();
-                // Only ever consulted while `agent.status == Status::Dead`
-                // (`indicator::select` gates on its own `dead` flag), so no
-                // extra gating is needed here the way the ledger-sourced
-                // badges above need it.
-                indicator_state.merged = app.overseer_snapshot.observed_merged(&agent.id);
-                indicator_state.shell_active = agent.shell_working;
-                indicator_state.mcp_active = agent.mcp_active;
-                indicator_state.subagents_active = active;
-                let primary = select(indicator_state);
-                let right = indicator::supplementary_spans(
-                    primary,
-                    select_supplementary(indicator_state),
+                lines.extend(agent_row::build(
+                    app,
+                    repo_idx,
+                    agent_idx,
                     selected,
-                    " ",
-                );
-                let has_children = agent
-                    .children
-                    .iter()
-                    .any(|child| super::actions::children::child_is_visible(agent, child));
-                let handle = if !has_children {
-                    label::TreeHandle::Leaf
-                } else if app.agent_children_expanded(repo_idx, agent_idx) {
-                    label::TreeHandle::Expanded
-                } else {
-                    label::TreeHandle::Collapsed
-                };
-                let prefix = label::agent_row_prefix(
                     marker,
-                    &row.ancestor_continues,
-                    row.is_last,
-                    handle,
-                    THEME.tree_structure_style(selected),
-                );
-                let title = match &agent.task_number {
-                    Some(number) => format!("#{number} {}", agent.title),
-                    None => agent.title.clone(),
-                };
-                lines.push(label::labeled_row(
-                    projects_width,
-                    prefix,
-                    primary,
-                    &title,
-                    agent_style,
-                    selected,
-                    app.started.elapsed(),
-                    right,
-                ));
-                // The failure's own text, under the row that only badged it
-                // (dropr:518); for a ledger entry parked in a terminal phase,
-                // did not mark at all (dropr:524); or for one still open but
-                // held on something that will not clear on its own
-                // (dropr:529). Nothing when the agent has none of the three,
-                // so a healthy tree keeps its height. Gated the same way the
-                // ledger-sourced badges above are: a worker that has resumed
-                // real work has moved past whatever the ledger still records
-                // for it.
-                let stopped = (agent.status != Status::Running)
-                    .then(|| app.overseer_snapshot.terminal_reason(&agent.id))
-                    .flatten();
-                let held = (agent.status != Status::Running)
-                    .then(|| app.overseer_snapshot.held_reason(&agent.id))
-                    .flatten();
-                lines.extend(reason_line::build(
-                    agent,
-                    stopped.as_deref(),
-                    held.as_deref(),
-                    &row,
+                    style,
                     projects_width,
                 ));
             }
