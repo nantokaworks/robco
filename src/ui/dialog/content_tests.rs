@@ -5,38 +5,12 @@ use crate::{
     config::Config,
     locale::Locale,
     registry::Registry,
-    ui::{LandPlan, inbox::InboxItem, inbox::InboxKind, test_support, text_input::TextInput},
+    ui::{LandPlan, test_support, text_input::TextInput},
 };
 
-fn item(target_id: &str, repo: Option<&str>, detail: &str) -> InboxItem {
-    item_with_session(target_id, repo, detail, None)
-}
-
-fn item_with_session(
-    target_id: &str,
-    repo: Option<&str>,
-    detail: &str,
-    session: Option<&str>,
-) -> InboxItem {
-    InboxItem {
-        kind: InboxKind::Escalation,
-        repo: repo.map(ToString::to_string),
-        agent_id: None,
-        target_session: session.map(ToString::to_string),
-        target_id: target_id.into(),
-        label: format!("{target_id} — {detail}"),
-        detail: detail.into(),
-        at: chrono::Utc::now(),
-        pr_url: None,
-        pr_facts: None,
-        sentence: None,
-    }
-}
-
-fn dialog_app(mode: Mode, items: Vec<InboxItem>) -> App {
+fn dialog_app(mode: Mode) -> App {
     let temp = tempfile::tempdir().unwrap();
     let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-    app.overseer_inbox = items;
     app.mode = mode;
     app
 }
@@ -49,63 +23,6 @@ fn body(app: &App) -> String {
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// dropr:498 — the dialog names what it is about to hide rather than the
-/// files it leaves alone.
-#[test]
-fn the_clear_all_dialog_names_each_item_when_there_are_few() {
-    let items = vec![
-        item("#159", Some("robco"), "merge_state:dirty"),
-        item_with_session("agent-1", None, "checks_not_green", Some("robco-agent-1")),
-    ];
-    let app = dialog_app(Mode::ConfirmInboxDismissAll { count: 2 }, items);
-
-    let text = body(&app);
-
-    assert!(text.contains("hiding 2 item(s):"), "{text}");
-    assert!(text.contains("REVIEW robco #159"), "{text}");
-    assert!(text.contains("ANSWER agent-1"), "{text}");
-}
-
-/// Past the named-list threshold, the dialog summarises by remedy tag rather
-/// than running the list past a dialog's height.
-#[test]
-fn the_clear_all_dialog_summarizes_by_tag_when_there_are_many() {
-    let items = (0..7)
-        .map(|index| item(&format!("#{index}"), None, "merge_state:dirty"))
-        .collect();
-    let app = dialog_app(Mode::ConfirmInboxDismissAll { count: 7 }, items);
-
-    let text = body(&app);
-
-    assert!(text.contains("hiding 7 item(s):"), "{text}");
-    assert!(text.contains("7 REVIEW"), "{text}");
-    // No per-item line when the list is summarised.
-    assert!(!text.contains("#0"), "{text}");
-}
-
-/// The dialog states the cost in the operator's terms and drops the
-/// implementation's file names.
-#[test]
-fn the_clear_all_dialog_states_the_cost_without_naming_files() {
-    let app = dialog_app(
-        Mode::ConfirmInboxDismissAll { count: 1 },
-        vec![item("#159", None, "merge_state:dirty")],
-    );
-
-    let text = body(&app);
-
-    assert!(!text.contains("decisions.jsonl"), "{text}");
-    assert!(!text.contains("ledger.json"), "{text}");
-    assert!(
-        text.contains("nothing on record is deleted, only removed from this list"),
-        "{text}"
-    );
-    assert!(
-        text.contains("a hidden item returns only if the same target escalates again"),
-        "{text}"
-    );
 }
 
 fn agent_app(mode: Mode) -> App {
@@ -240,12 +157,9 @@ fn an_input_dialog_hint_says_enter_and_esc() {
         (Locale::En, "enter add   esc cancel"),
         (Locale::Ja, "enterで追加   escでキャンセル"),
     ] {
-        let mut app = dialog_app(
-            Mode::PromptRepo {
-                input: TextInput::new(),
-            },
-            Vec::new(),
-        );
+        let mut app = dialog_app(Mode::PromptRepo {
+            input: TextInput::new(),
+        });
         app.locale = locale;
 
         let text = body(&app);

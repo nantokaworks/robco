@@ -5,8 +5,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
     Some(match en {
         // input/inbox_dismiss.rs
         "dismissed [{}] {}" => "却下しました [{}] {}",
-        "inbox is already empty" => "受信箱は既に空です",
-        "dismissed {} inbox item(s)" => "受信箱の{}件を却下しました",
+        "no escalation on this worker" => "このworkerにはエスカレーションがありません",
 
         // input.rs
         "created agent {}" => "agentを作成しました: {}",

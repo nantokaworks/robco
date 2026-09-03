@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 
 use crate::model::{OverseerCategory, Selection};
 
-use super::super::DroprTaskFocus;
+use super::super::{App, DroprTaskFocus};
 use super::THEME;
 
 type Hints = &'static [(&'static str, &'static str)];
@@ -25,6 +25,19 @@ const NONE_HINTS: Hints = &[("a", "add"), ("?", "help"), ("q", "quit")];
 
 const AGENT_HINTS: Hints = &[
     ("↵", "attach"),
+    ("r", "restart"),
+    ("m", "merge"),
+    ("u", "update"),
+    ("p", "pr"),
+    ("x", "remove"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
+const AGENT_ESCALATION_HINTS: Hints = &[
+    ("↵", "attach"),
+    ("y", "approve"),
+    ("d", "dismiss"),
     ("r", "restart"),
     ("m", "merge"),
     ("u", "update"),
@@ -50,12 +63,7 @@ const OVERSEER_AI_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
-const INBOX_CATEGORY_HINTS: Hints = &[
-    ("l", "expand"),
-    ("D", "clear"),
-    ("?", "help"),
-    ("q", "quit"),
-];
+const INBOX_CATEGORY_HINTS: Hints = &[("l", "expand"), ("?", "help"), ("q", "quit")];
 
 /// Discord: the other expandable category, whose only footer-worthy action is
 /// the expand itself.
@@ -75,7 +83,6 @@ const INBOX_ITEM_HINTS: Hints = &[
     ("↵", "answer"),
     ("y", "approve"),
     ("d", "dismiss"),
-    ("D", "clear"),
     ("?", "help"),
     ("q", "quit"),
 ];
@@ -116,6 +123,7 @@ const ORPHAN_HINTS: Hints = &[
 const HEADER_HINTS: Hints = &[("l", "expand"), ("?", "help"), ("q", "quit")];
 
 fn hints_for(
+    app: &App,
     selection: Option<Selection>,
     dropr_task_focus: Option<DroprTaskFocus>,
     reading_task_body: bool,
@@ -136,7 +144,19 @@ fn hints_for(
     }
     match selection {
         None => NONE_HINTS,
-        Some(Selection::Agent { .. }) => AGENT_HINTS,
+        Some(Selection::Agent { repo, agent }) => {
+            if app
+                .registry
+                .repos
+                .get(repo)
+                .and_then(|repo| repo.agents.get(agent))
+                .is_some_and(|agent| !app.escalations_for_agent(&agent.id).is_empty())
+            {
+                AGENT_ESCALATION_HINTS
+            } else {
+                AGENT_HINTS
+            }
+        }
         Some(Selection::Repo(_)) => REPO_HINTS,
         Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::RemoteControlAi(_)) => OVERSEER_AI_HINTS,
@@ -153,6 +173,7 @@ fn hints_for(
 }
 
 pub(super) fn hints_line(
+    app: &App,
     message: Option<&str>,
     selection: Option<Selection>,
     dropr_task_focus: Option<DroprTaskFocus>,
@@ -162,7 +183,7 @@ pub(super) fn hints_line(
         return Line::from(Span::styled(text.to_string(), THEME.hint_style()));
     }
 
-    let key_hints = hints_for(selection, dropr_task_focus, reading_task_body);
+    let key_hints = hints_for(app, selection, dropr_task_focus, reading_task_body);
     let mut spans = Vec::with_capacity(key_hints.len() * 5);
     for (key, label) in key_hints {
         if !spans.is_empty() {

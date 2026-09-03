@@ -72,20 +72,15 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "                 control AI and Discord chats appear after its repos" => {
             "                 制御AIとDiscordチャットはリポジトリの後に表示"
         }
-        "  l              expand OVERSEER > Inbox to reach its item rows" => {
-            "  l              OVERSEER > Inboxを展開し項目行を表示"
+        "  y              on a worker row: approve the newest actionable escalation" => {
+            "  y              worker行：最新の対応可能なエスカレーションを承認"
         }
-        "  enter          on an item row: answer the waiting worker" => {
-            "  enter          項目行：待機中のworkerに回答"
+        "                 (sends y + enter)" => "                 （y + enterを送信）",
+        "  d              on a worker row: dismiss its newest escalation" => {
+            "  d              worker行：最新のエスカレーションを却下"
         }
-        "  y              on an item row: approve it (sends y + enter)" => {
-            "  y              項目行：承認（y + enterを送信）"
-        }
-        "  d              on an item row: dismiss it (hides the row only)" => {
-            "  d              項目行：却下（この行のみ非表示）"
-        }
-        "  D              on an item or Inbox row: clear the inbox (confirms)" => {
-            "  D              項目またはInbox行：Inboxを全消去（要確認）"
+        "                 (hides the escalation only)" => {
+            "                 （エスカレーションのみ非表示）"
         }
         "                 also: robco inbox clear" => {
             "                 同等コマンド: robco inbox clear"

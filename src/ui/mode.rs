@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use crate::model::HostLabel;
 
-use super::inbox;
 use super::text_input::TextInput;
 
 pub(in crate::ui) enum Mode {
@@ -38,15 +37,6 @@ pub(in crate::ui) enum Mode {
     PromptSession {
         session: String,
         host: Option<HostLabel>,
-        input: TextInput,
-    },
-    /// The answer prompt carries the whole row it was opened for, not just the
-    /// target session: on a successful send the row's `(kind, target_id, at)`
-    /// identity is what marks it handled (`App::answer_inbox`), and the
-    /// identity must be the one the operator was looking at, not whatever a
-    /// later refresh re-derived under the prompt.
-    PromptInbox {
-        item: inbox::InboxItem,
         input: TextInput,
     },
     ConfirmKill {
@@ -119,12 +109,6 @@ pub(in crate::ui) enum Mode {
     /// workers. Reachable only while the overseer panel is visible and the
     /// daemon is alive.
     ConfirmDaemonStop,
-    /// Clear every listed Inbox row. Holds the count the dialog was opened with
-    /// so the prompt states what it is about to do; the rows themselves are read
-    /// again on confirmation.
-    ConfirmInboxDismissAll {
-        count: usize,
-    },
     /// Read-only view of one dropr task's full body (dropr:501), opened by
     /// `Enter` on a task-list row while `DroprTaskFocus` is focused. Drawn as
     /// a dialog (`ui::dialog::task_body`) over the task list, which stays

@@ -8,8 +8,6 @@ use crate::locale::{fmt, t};
 
 #[path = "content_widgets.rs"]
 mod content_widgets;
-#[path = "inbox_dismiss_content.rs"]
-mod inbox_dismiss_content;
 
 use content_widgets::{
     CLEANUP_FOLLOWS, confirm_lines, hint_line, input_line, instruction_prompt_body,
@@ -84,20 +82,6 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
         Mode::PromptSession { input, .. } => {
             let (lines, caret) = instruction_prompt_body(locale, body, content_width, input);
             (t(locale, "send instruction"), lines, Some(caret))
-        }
-        Mode::PromptInbox { item, input } => {
-            let max_input_height = body.height.saturating_sub(5).clamp(1, 10) as usize;
-            let mut lines = vec![Line::from(fmt(locale, "target: {}", &[&item.label]))];
-            let wrapped = input_wrap::input_lines(
-                t(locale, "answer"),
-                input,
-                content_width,
-                max_input_height,
-            );
-            let caret = (wrapped.caret.0 + lines.len(), wrapped.caret.1);
-            lines.extend(wrapped.lines);
-            lines.push(hint_line(locale, "enter send   esc cancel"));
-            (t(locale, "answer overseer inbox"), lines, Some(caret))
         }
         Mode::ConfirmKill { repo, agent } => (
             t(locale, "delete worktree?"),
@@ -230,11 +214,6 @@ pub(super) fn content(app: &App, body: Rect) -> Option<DialogContent> {
                 )),
                 hint_line(locale, "enter stop   esc cancel"),
             ],
-            None,
-        ),
-        Mode::ConfirmInboxDismissAll { count } => (
-            t(locale, "clear the overseer inbox?"),
-            inbox_dismiss_content::body(locale, *count, &app.overseer_inbox),
             None,
         ),
         Mode::ConfirmRemoveDiscordChannel { label, .. } => (

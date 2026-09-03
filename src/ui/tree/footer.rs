@@ -17,6 +17,7 @@ pub(super) fn draw(frame: &mut Frame<'_>, app: &App, area: Rect, message: Option
     frame.render_widget(ident, footer.zones.ident);
 
     let hints = Paragraph::new(super::hints::hints_line(
+        app,
         message,
         app.selected_item(),
         app.dropr_task_focus,

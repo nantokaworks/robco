@@ -116,17 +116,6 @@ pub(super) fn handle_normal(app: &mut App, code: KeyCode) -> bool {
             }
             false
         }
-        Some(Selection::OverseerCategory(category)) => {
-            // Clear-all is offered from the category row whether or not it is
-            // expanded: the row's own summary already says how many items the
-            // operator is about to clear.
-            if code == KeyCode::Char('D') && category == crate::model::OverseerCategory::Inbox {
-                app.confirm_dismiss_inbox();
-                return true;
-            }
-            false
-        }
-        Some(Selection::OverseerInbox(index)) => inbox_key(app, index, code),
         _ => false,
     }
 }
@@ -168,40 +157,6 @@ pub(in crate::ui) fn remote_chat_target(
         return Err("remote host is not connected");
     };
     Ok((label, session))
-}
-
-/// Keys that act on the selected Inbox row. They work from every preview tab —
-/// the row lives in the left frame, so what the right pane shows has no say in
-/// what acting on it does.
-fn inbox_key(app: &mut App, index: usize, code: KeyCode) -> bool {
-    match code {
-        KeyCode::Char('y') | KeyCode::Char('Y') => {
-            app.approve_inbox(index);
-            true
-        }
-        // `a` answered the inbox before this became a tree row, and it is still
-        // the global add-repository key. Claiming it here keeps that muscle
-        // memory from opening a clone prompt, and says where answering went.
-        KeyCode::Char('a') => {
-            app.show_message(t(
-                app.locale,
-                "press enter to answer the selected inbox item",
-            ));
-            true
-        }
-        // Dismissing one row is undoable by hand (delete the entry) and hides a
-        // single alert, so it acts immediately. Clearing the list is not, so `D`
-        // goes through the same confirmation the other bulk overseer actions do.
-        KeyCode::Char('d') => {
-            app.dismiss_inbox_item(index);
-            true
-        }
-        KeyCode::Char('D') => {
-            app.confirm_dismiss_inbox();
-            true
-        }
-        _ => false,
-    }
 }
 
 impl App {

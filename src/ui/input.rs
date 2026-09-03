@@ -17,6 +17,7 @@ use super::{
 mod confirm;
 mod dropr_task_body;
 mod dropr_task_drill;
+mod escalation;
 mod host_connect;
 mod inbox_dismiss;
 mod inbox_respond;
@@ -151,15 +152,6 @@ impl App {
                     self.instruct_prompt_session(host.as_ref(), &session, &instruction);
                 }
             },
-            Mode::PromptInbox { item, input } => match overseer::prompt_action(input, key) {
-                overseer::PromptAction::Stay => {}
-                overseer::PromptAction::Cancel => self.mode = Mode::Normal,
-                overseer::PromptAction::Submit(answer) => {
-                    let item = item.clone();
-                    self.mode = Mode::Normal;
-                    self.answer_inbox(&item, &answer);
-                }
-            },
             Mode::PrPrecheck { .. } => {
                 if matches!(key.code, KeyCode::Esc) {
                     self.pr_precheck_job = None;
@@ -222,6 +214,7 @@ impl App {
             Mode::Normal => match key.code {
                 code if host_connect::handle_normal(self, code) => {}
                 code if overseer::handle_normal(self, code) => {}
+                code if escalation::handle_normal(self, code) => {}
                 code if dropr_task_drill::handle_normal(self, code) => {}
                 KeyCode::Char('q') | KeyCode::Esc => {
                     let merging = self.merging_branches();
@@ -286,7 +279,6 @@ impl App {
                 KeyCode::Enter => match self.selected_item() {
                     Some(selection) if self.toggle_selected_tree_header(selection) => {}
                     Some(Selection::OverseerAi) => self.attach_control_selected(),
-                    Some(Selection::OverseerInbox(index)) => self.answer_inbox_selected(index),
                     Some(Selection::DiscordChannel(index)) => {
                         self.attach_discord_channel_selected(index);
                     }
@@ -350,7 +342,6 @@ impl App {
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmDaemonStop
-            | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmRemoveDiscordChannel { .. }
             | Mode::ConfirmClearChat { .. } => unreachable!("handled above"),
         }
