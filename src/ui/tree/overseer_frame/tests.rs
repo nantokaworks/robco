@@ -473,6 +473,27 @@ fn warning_rows_are_included_in_selected_category_scroll_position() {
 }
 
 #[test]
+fn selected_overseer_alert_counts_header_warnings_and_preceding_alerts() {
+    let (warnings, mut app) = warning_state();
+    app.overseer_visible = true;
+    let mut first = inbox_app().overseer_inbox.remove(0);
+    first.target_id = "first-alert".into();
+    let mut second = first.clone();
+    second.target_id = "selected-alert".into();
+    app.overseer_inbox = vec![first, second];
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| *row == Selection::OverseerAlert(1))
+        .expect("second alert row");
+
+    let content = build_content_with_warnings(&app, None, &warnings);
+
+    assert_eq!(content.selected_row, 5);
+    assert!(content.lines[5].to_string().contains("selected-alert"));
+}
+
+#[test]
 fn the_control_ai_row_sits_above_every_category() {
     let (_, mut app) = warning_state();
     app.overseer_visible = true;

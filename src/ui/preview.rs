@@ -29,10 +29,7 @@ pub(in crate::ui) mod tabs;
 use labels::ai_label;
 use notice::render_merge_notice;
 use tabs::preview_tabs_line;
-/// Inner padding; `scrollback::inner_dims` subtracts it for mirrored sessions.
 pub(in crate::ui) const PREVIEW_PADDING: u16 = 1;
-/// Height of the preview block's top border, which doubles as the tab bar.
-/// Overlays drawn inside the preview start below it so the tabs stay visible.
 const TAB_BAR_ROWS: u16 = 1;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
@@ -51,17 +48,22 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
         (_, Some(Selection::OverseerCategory(category))) => {
             super::overseer::category_preview(app, category)
         }
-        // The row's one tab is the live control session capture itself — see
-        // `panes_for`'s comment on `Selection::OverseerAi`.
         (_, Some(Selection::OverseerAi)) => overseer::control_preview(app),
-        // An inbox item row previews itself, not the list it belongs to.
         (_, Some(Selection::OverseerInbox(index))) => {
             super::overseer::inbox_item_preview(app, index)
         }
-        // The row's one tab mirrors the channel's tmux session live while a
-        // turn is running (dropr:371) — see `scrollback::live_session`. When
-        // no turn is running there is nothing to mirror, so this falls back
-        // to the channel's retained conversation turns (dropr:451).
+        (
+            _,
+            Some(Selection::OverseerAlert(index) | Selection::RepoEscalation { item: index, .. }),
+        ) => {
+            let Some(item) = app.overseer_inbox.get(index) else {
+                return;
+            };
+            (
+                format!("[{}] {}", item.kind.code(), item.target_id),
+                agent_escalation::item_lines(app, item).into(),
+            )
+        }
         (_, Some(Selection::DiscordChannel(index))) => {
             let Some(preview) = remote_chat::render_local_discord(app, index) else {
                 return;
@@ -106,7 +108,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             });
             (title, text)
         }
-        // The repo INFO tab also hosts the dropr task drill-down (dropr:475).
         (_, Some(Selection::Repo(repo_idx))) => {
             let repo = &registry.repos[repo_idx];
             let dropr_fetch_in_flight = repo
@@ -249,8 +250,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             vec![Line::from(t(app.locale, "No repositories discovered."))].into(),
         ),
     };
-    // Live tmux tabs already captured the scrolled-back window; scrolling the
-    // paragraph on top of that would double-shift. Static tabs keep it.
+    // Live tmux tabs already captured the scrolled-back window.
     let para_scroll = if scrollback::live_session(app).is_some() {
         0
     } else {

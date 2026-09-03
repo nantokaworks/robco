@@ -17,23 +17,20 @@ impl App {
         )
     }
 
-    /// Stable identity for selection restoration and remembered preview tabs.
     pub(in crate::ui) fn item_key(&self, selection: Selection) -> String {
         match selection {
             Selection::OverseerAi => "overseer:control-ai".to_string(),
+            Selection::OverseerAlert(item) => self.overseer_inbox.get(item).map_or_else(
+                || "overseer-alert:missing".to_string(),
+                |item| format!("overseer-alert:{}:{}", item.kind.code(), item.target_id),
+            ),
             Selection::OverseerCategory(category) => {
                 format!("overseer:{}", category.label().to_lowercase())
             }
-            // Keyed on what the item *is*, never on where it currently sits: the
-            // inbox re-aggregates newest-first on every refresh, so an index
-            // would slide the cursor onto whatever a new escalation displaced.
             Selection::OverseerInbox(item) => self.overseer_inbox.get(item).map_or_else(
                 || "overseer-inbox:missing".to_string(),
                 |item| format!("overseer-inbox:{}:{}", item.kind.code(), item.target_id),
             ),
-            // Keyed on the channel id, not the index: `ordered_channel_ids`
-            // re-sorts newest-first on every refresh, so an index would slide
-            // the cursor onto whatever channel a new turn displaced.
             Selection::DiscordChannel(index) => {
                 super::overseer::ordered_channel_ids(&self.overseer_snapshot.discord_channels)
                     .get(index)
@@ -50,6 +47,22 @@ impl App {
                 self.repo_host_key(repo),
                 self.registry.repos[repo].path.display()
             ),
+            Selection::RepoEscalation { repo, item } => self
+                .registry
+                .repos
+                .get(repo)
+                .zip(self.overseer_inbox.get(item))
+                .map_or_else(
+                    || "repo-escalation:missing".to_string(),
+                    |(repo, item)| {
+                        format!(
+                            "repo-escalation:{}:{}:{}",
+                            super::actions::discovery::path_key(&repo.path),
+                            item.kind.code(),
+                            item.target_id
+                        )
+                    },
+                ),
             Selection::Agent { repo, agent } => format!(
                 "agent:{}:{}",
                 self.repo_host_key(repo),
@@ -73,10 +86,7 @@ impl App {
         }
     }
 
-    /// Set the active preview pane from the remembered tab for the current
-    /// selection, falling back to that selection's default tab. Guards against a
-    /// stale pane that is not valid for the current selection type — including
-    /// the error tab once its failure has been dismissed.
+    /// Restore the remembered valid preview tab, or the selection's default.
     pub(in crate::ui) fn restore_preview(&mut self) {
         let selection = self.selected_item();
         let panes = self.preview_panes(selection);
@@ -92,10 +102,6 @@ impl App {
     }
 
     pub(in crate::ui) fn clamp_selection(&mut self) {
-        // The drill-down is only meaningful while the cursor still sits on
-        // the repository row it was entered from; anything else (the repo
-        // was removed, the cursor moved some other way) drops it rather than
-        // leaving a focus level the tree can no longer explain.
         if self.dropr_task_focus.is_some()
             && !matches!(self.selected_item(), Some(Selection::Repo(_)))
         {
@@ -152,9 +158,6 @@ impl App {
         let Some(selection) = self.selected_item() else {
             return;
         };
-        // A drill-down is only ever shown on the INFO tab; leaving it for
-        // another tab exits the drill-down instead of leaving it focused
-        // behind a pane that cannot show it.
         self.dropr_task_focus = None;
         let panes = self.preview_panes(Some(selection));
         if panes.is_empty() {
@@ -193,8 +196,7 @@ impl App {
         )
     }
 
-    /// Registry indices of off-launch-dir repos that still have agents or were
-    /// pinned by manual registration, in the order the operator arranged them.
+    /// Ordered off-launch-dir repos that still have agents or are pinned.
     pub(in crate::ui) fn other_location_repos(&self) -> Vec<usize> {
         self.in_saved_order(
             self.registry
@@ -211,21 +213,18 @@ impl App {
         )
     }
 
-    /// Flattened tree rows in display order: local repos first, then — when any
-    /// off-launch-dir repo still has agents — the collapsible "other locations"
-    /// section listing them.
+    /// Flattened tree rows in display order.
     pub(in crate::ui) fn visible(&self) -> Vec<Selection> {
         let mut visible = Vec::new();
         if self.overseer_visible {
-            // These focus entries map to the dedicated OVERSEER frame; tree
-            // rendering excludes them from the PROJECTS frame. The OVERSEER
-            // header itself is a plain label, so it never becomes a row here.
+            visible.extend(
+                self.global_escalations()
+                    .into_iter()
+                    .map(|(item, _)| Selection::OverseerAlert(item)),
+            );
             visible.push(Selection::OverseerAi);
             for category in OverseerCategory::ALL {
                 visible.push(Selection::OverseerCategory(category));
-                // Inbox and Discord are the categories whose detail is acted
-                // on rather than read, so their items are rows of their own
-                // under the category.
                 if category.has_children() && self.overseer_category_expanded(category) {
                     match category {
                         OverseerCategory::Inbox => visible

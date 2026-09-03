@@ -88,4 +88,99 @@ pub(super) fn push_repo_rows(
             });
         }
     }
+    if repo.host.is_some() {
+        return;
+    }
+    // `InboxItem.repo` is the registry label. Carrying the full path would
+    // touch shared aggregation, deliberately out of this leaf's scope, so a
+    // duplicate label belongs to the first matching local registry row only.
+    let first_match = app
+        .registry
+        .repos
+        .iter()
+        .position(|candidate| candidate.host.is_none() && candidate.name == repo.name);
+    if first_match == Some(repo_idx) {
+        visible.extend(
+            app.escalations_for_repo(&repo.name)
+                .into_iter()
+                .map(|(item, _)| Selection::RepoEscalation {
+                    repo: repo_idx,
+                    item,
+                }),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+
+    use super::*;
+    use crate::{
+        config::Config,
+        model::HostLabel,
+        registry::Registry,
+        ui::{
+            inbox::{InboxItem, InboxKind},
+            test_support,
+        },
+    };
+
+    fn escalation() -> InboxItem {
+        InboxItem {
+            kind: InboxKind::Escalation,
+            repo: Some("same".into()),
+            agent_id: Some("gone".into()),
+            target_session: None,
+            target_id: "alert".into(),
+            label: "alert".into(),
+            detail: "worker blocked".into(),
+            at: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+            pr_url: None,
+            pr_facts: None,
+            sentence: None,
+        }
+    }
+
+    #[test]
+    fn duplicate_labels_assign_escalation_to_first_local_repo_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut first = test_support::repo(temp.path().join("one"), Vec::new());
+        let mut second = test_support::repo(temp.path().join("two"), Vec::new());
+        let mut remote = test_support::repo(temp.path().join("remote"), Vec::new());
+        first.name = "same".into();
+        second.name = "same".into();
+        remote.name = "same".into();
+        remote.host = Some(HostLabel {
+            name: "remote".into(),
+            ssh: "remote".into(),
+        });
+        let mut app = App::new(
+            Registry {
+                version: 1,
+                repos: vec![first, second, remote],
+            },
+            Config::default(),
+            temp.path().into(),
+        );
+        app.overseer_inbox = vec![escalation()];
+        app.expanded = vec![true; 3];
+        let mut visible = Vec::new();
+
+        for repo in 0..3 {
+            push_repo_rows(&app, &mut visible, repo, &app.registry.repos[repo]);
+        }
+
+        let escalations = visible
+            .iter()
+            .filter_map(|selection| match selection {
+                Selection::RepoEscalation { repo, item } => Some((*repo, *item)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(escalations, [(0, 0)]);
+        let key = app.item_key(Selection::RepoEscalation { repo: 0, item: 0 });
+        assert!(key.contains(&app.registry.repos[0].path.display().to_string()));
+        assert!(!key.contains(&app.registry.repos[1].path.display().to_string()));
+    }
 }

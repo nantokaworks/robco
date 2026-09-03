@@ -8,21 +8,14 @@ use ratatui::{
 
 use crate::model::{OverseerCategory, Selection, Status};
 
-use super::{IndicatorState, indicator, label, select};
+use super::{IndicatorState, escalation_line, indicator, label, select};
 use crate::ui::{App, theme::DEFAULT as THEME};
 
 mod inbox_indicator;
 use inbox_indicator::category_indicator;
 
-/// The separator between a label and the value that describes it — the header's
-/// status glyph and a category's summary both sit one of these off their label.
 const GAP: &str = "  ";
 
-/// Indent of every nested row — Inbox items and Discord channels. It matches
-/// the column `category_line` puts every category label at, so the nested
-/// rows read as sitting under their label instead of being outdented past it.
-/// On a 24-column sidebar every column spent here is a column of content
-/// lost, so the frame nests in one step and stops.
 const DETAIL_INDENT: &str = "    ";
 
 pub(in crate::ui) struct FrameContent {
@@ -76,9 +69,14 @@ fn build_content_with_warnings(
     lines.extend(warning_lines(health_warnings));
     let mut selected_row = 0;
 
-    // The control AI sits above the categories: it is the one OVERSEER row
-    // that owns a session to attach to (dropr:370), not a read-only summary of
-    // one, so it reads as the frame's entry point rather than a sixth category.
+    for (item_index, item) in app.global_escalations() {
+        let alert_selected = selected == Some(Selection::OverseerAlert(item_index));
+        if alert_selected {
+            selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+        }
+        lines.push(alert_line(item, alert_selected, width));
+    }
+
     let control_selected = selected == Some(Selection::OverseerAi);
     if control_selected {
         selected_row = u16::try_from(lines.len()).unwrap_or(u16::MAX);
@@ -98,10 +96,6 @@ fn build_content_with_warnings(
             summary,
             *warn,
         ));
-        // Only a category with rows of its own expands here. Health, Ledger,
-        // and Decisions keep their one-line summary; their detail stays
-        // reachable, unchanged, in the Info preview tab via
-        // `overseer::category_preview`.
         if !category.has_children() || !app.overseer_category_expanded(category) {
             continue;
         }
@@ -111,11 +105,6 @@ fn build_content_with_warnings(
                 .into_iter()
                 .map(indent_detail),
         );
-        // Item rows (Inbox, Discord channels) are rows, not read-only
-        // detail: when the cursor is on one, it — not the category above
-        // it — is what the frame scrolls to keep on screen. Each detail
-        // builder draws the marker itself and emits nothing ahead of its
-        // items, so item `n` is detail row `n`.
         let item_index = match (category, selected) {
             (OverseerCategory::Inbox, Some(Selection::OverseerInbox(index))) => Some(index),
             (OverseerCategory::Discord, Some(Selection::DiscordChannel(index))) => Some(index),
@@ -190,6 +179,29 @@ fn warning_lines<'a>(warnings: &'a [&'static str]) -> impl Iterator<Item = Line<
     warnings
         .iter()
         .map(|warning| Line::styled(format!("⚠ {warning}"), warning_style(false)))
+}
+
+fn alert_line(
+    item: &crate::ui::inbox::InboxItem,
+    selected: bool,
+    width: Option<u16>,
+) -> Line<'static> {
+    let reason = escalation_line::row_reason(&item.detail)
+        .map(|reason| format!(" — {reason}"))
+        .unwrap_or_default();
+    let mut spans = vec![Span::styled(
+        format!(
+            "⚠ [{}] {} {}{reason}",
+            item.kind.code(),
+            item.remedy().tag(),
+            item.target_id
+        ),
+        warning_style(selected),
+    )];
+    if let Some(width) = width {
+        label::trim_spans_to_width(&mut spans, usize::from(width));
+    }
+    Line::from(spans)
 }
 
 /// The control AI row: same column layout as a category row — marker, a blank
