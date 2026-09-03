@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use super::*;
 use crate::{
     config::Config,
-    model::{OverseerCategory, Selection},
     registry::Registry,
     ui::inbox::{InboxItem, InboxKind},
 };
@@ -39,12 +38,6 @@ fn inbox_app(target_id: &str) -> App {
         pr_facts: None,
         sentence: None,
     }];
-    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
-    app.selected = app
-        .visible()
-        .iter()
-        .position(|row| matches!(row, Selection::OverseerInbox(0)))
-        .expect("no inbox item row");
     app
 }
 

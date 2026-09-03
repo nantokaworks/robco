@@ -4,8 +4,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-#[cfg(test)]
-use chrono::Utc;
 use ratatui::text::Text;
 
 use crate::{
@@ -22,18 +20,12 @@ mod categories;
 mod decisions;
 mod discord_agents;
 mod hold_reason;
-mod inbox_rows;
-mod render;
-mod render_format;
 
-pub(in crate::ui) use categories::{
-    category_detail, category_summary, health_warnings, inbox_actionable_count,
-};
+pub(in crate::ui) use categories::{category_detail, category_summary, health_warnings};
 pub(in crate::ui) use discord_agents::{
     channel_preview as discord_channel_preview,
     channel_preview_from as discord_channel_preview_from, ordered_channel_ids,
 };
-pub(in crate::ui) use inbox_rows::item_preview as inbox_item_preview;
 
 /// Decisions a snapshot reads out of the append-only log
 /// ([`crate::ui::actions::overseer_refresh`]).
@@ -43,13 +35,12 @@ pub(in crate::ui) use inbox_rows::item_preview as inbox_item_preview;
 /// history it is leaving out.
 pub(in crate::ui) const DECISION_SNAPSHOT_LIMIT: usize = 200;
 
-/// Columns a detail row (an Inbox item, a Discord channel) spends on its own
+/// Columns a detail row (a Discord channel) spends on its own
 /// marker before its content starts: one marker column, one gap column.
 /// `overseer_frame::DETAIL_INDENT` nests every detail row under its category
 /// label; this is the row's own share of the line, on top of that indent.
 /// Every detail-row builder in this module must agree on it, or two rows
-/// nested the same way visibly snap to different columns — the way Discord's
-/// row drifted from Inbox's (dropr:497). A continuation line with no marker
+/// nested the same way visibly snap to different columns. A continuation line with no marker
 /// of its own (a Discord channel's error line) pads out to this width too,
 /// so it lines up under the row's content instead of under a blank marker
 /// cell. A test in `tests.rs` pins this so a third builder cannot drift
@@ -81,7 +72,6 @@ pub(in crate::ui) struct OverseerSnapshot {
     pub(in crate::ui) discord_channels: DiscordChannels,
     pub(in crate::ui) decisions: Vec<DecisionEntry>,
     pub(in crate::ui) daemon_alive: bool,
-    pub(in crate::ui) heartbeat_age: Option<Duration>,
     /// The build the running daemon started from, as recorded in the heartbeat.
     /// `None` for a heartbeat written before the daemon recorded it.
     pub(in crate::ui) daemon_version: Option<String>,

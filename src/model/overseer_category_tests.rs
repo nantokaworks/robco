@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn discord_is_the_only_overseer_category() {
+    assert_eq!(OverseerCategory::COUNT, 1);
+    assert_eq!(OverseerCategory::ALL, [OverseerCategory::Discord]);
+    assert_eq!(OverseerCategory::Discord.index(), 0);
+    assert_eq!(OverseerCategory::Discord.label(), "Discord");
+    assert!(OverseerCategory::Discord.has_children());
+}
+
+#[test]
 fn category_labels_stay_english_in_every_locale() {
     use crate::locale::{Locale, t};
     for category in OverseerCategory::ALL {

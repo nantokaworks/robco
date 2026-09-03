@@ -1,7 +1,6 @@
 //! `terminal_reason` on its own (dropr:524): which phase answers, which
 //! decision it reads, and what it says when the log has nothing left. Its own
-//! file because `decisions_tests.rs` is already at the source-size limit, the
-//! same seam `decisions_standoffs_tests.rs` was split on.
+//! file keeps these fixtures separate from merge-lifecycle coverage.
 
 use chrono::Utc;
 

@@ -62,9 +62,7 @@ pub(super) fn newest<'a>(items: impl IntoIterator<Item = &'a InboxItem>) -> Opti
     })
 }
 
-/// DELIBERATE temporary copy of `ui::overseer::inbox_rows::row_reason`.
-/// Leaf #585 (dropr task 10mZwhUrBNq5wY64l5496) deletes `inbox_rows.rs`; keep
-/// this local until then rather than consolidating code around a dying module.
+/// Pull the terse reason shown under a worker row from structured detail.
 pub(super) fn row_reason(detail: &str) -> Option<&str> {
     let first_line = detail.lines().next().unwrap_or(detail).trim();
     if first_line.is_empty() {

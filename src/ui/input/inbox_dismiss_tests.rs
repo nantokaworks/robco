@@ -1,7 +1,6 @@
 use super::*;
 use crate::{
     config::Config,
-    model::{OverseerCategory, Selection},
     registry::Registry,
     ui::inbox::{InboxItem, InboxKind},
 };
@@ -41,12 +40,6 @@ fn inbox_app() -> App {
         item(InboxKind::Escalation, "#159", 20),
         item(InboxKind::Escalation, "agent-1", 10),
     ];
-    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
-    app.selected = app
-        .visible()
-        .iter()
-        .position(|row| matches!(row, Selection::OverseerInbox(0)))
-        .expect("no inbox item row");
     app
 }
 

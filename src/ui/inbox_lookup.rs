@@ -11,7 +11,6 @@ use super::{App, inbox::InboxItem};
 
 impl App {
     /// Escalations originating from `agent_id`, preserving Inbox list order.
-    #[allow(dead_code, reason = "consumed by later leaves of dropr #580")]
     pub(crate) fn escalations_for_agent(&self, agent_id: &str) -> Vec<(usize, &InboxItem)> {
         self.overseer_inbox
             .iter()
@@ -21,7 +20,6 @@ impl App {
     }
 
     /// Repo-level escalations not owned by any agent still in the registry.
-    #[allow(dead_code, reason = "consumed by later leaves of dropr #580")]
     pub(crate) fn escalations_for_repo(&self, repo_label: &str) -> Vec<(usize, &InboxItem)> {
         self.overseer_inbox
             .iter()
@@ -41,7 +39,6 @@ impl App {
     }
 
     /// Escalations that are not associated with any repository.
-    #[allow(dead_code, reason = "consumed by later leaves of dropr #580")]
     pub(crate) fn global_escalations(&self) -> Vec<(usize, &InboxItem)> {
         self.overseer_inbox
             .iter()

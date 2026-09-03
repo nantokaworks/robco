@@ -27,10 +27,6 @@ impl App {
             Selection::OverseerCategory(category) => {
                 format!("overseer:{}", category.label().to_lowercase())
             }
-            Selection::OverseerInbox(item) => self.overseer_inbox.get(item).map_or_else(
-                || "overseer-inbox:missing".to_string(),
-                |item| format!("overseer-inbox:{}:{}", item.kind.code(), item.target_id),
-            ),
             Selection::DiscordChannel(index) => {
                 super::overseer::ordered_channel_ids(&self.overseer_snapshot.discord_channels)
                     .get(index)
@@ -225,19 +221,12 @@ impl App {
             visible.push(Selection::OverseerAi);
             for category in OverseerCategory::ALL {
                 visible.push(Selection::OverseerCategory(category));
-                if category.has_children() && self.overseer_category_expanded(category) {
-                    match category {
-                        OverseerCategory::Inbox => visible
-                            .extend((0..self.overseer_inbox.len()).map(Selection::OverseerInbox)),
-                        OverseerCategory::Discord => {
-                            let count = super::overseer::ordered_channel_ids(
-                                &self.overseer_snapshot.discord_channels,
-                            )
-                            .len();
-                            visible.extend((0..count).map(Selection::DiscordChannel));
-                        }
-                        _ => {}
-                    }
+                if self.overseer_category_expanded(category) {
+                    let count = super::overseer::ordered_channel_ids(
+                        &self.overseer_snapshot.discord_channels,
+                    )
+                    .len();
+                    visible.extend((0..count).map(Selection::DiscordChannel));
                 }
             }
         }

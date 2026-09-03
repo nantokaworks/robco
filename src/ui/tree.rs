@@ -48,7 +48,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             Selection::OverseerAi
             | Selection::OverseerAlert(_)
             | Selection::OverseerCategory(_)
-            | Selection::OverseerInbox(_)
             | Selection::DiscordChannel(_) => continue,
             Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. } => {
                 if let Some(line) = remote_chat_row::build(app, *item, selected, marker) {

@@ -90,7 +90,7 @@ See [06-ui.md](06-ui.md#sidebar-layout) for what each one does on screen.
   "expanded_children": ["/Users/ich/.robco/worktrees/nex_feature-x_ab12cd"],
   "other_collapsed": false,
   "orphans_collapsed": false,
-  "expanded_overseer_categories": ["Inbox"],
+  "expanded_overseer_categories": ["Discord"],
   "project_order": ["/Users/ich/abyss/nex", "/Users/ich/abyss/other"]
 }
 ```

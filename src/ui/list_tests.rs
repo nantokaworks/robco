@@ -33,64 +33,6 @@ fn overseer_categories_are_always_listed_and_the_header_is_not_a_row() {
     assert_eq!(app.visible(), expected);
 }
 
-fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
-    crate::ui::inbox::InboxItem {
-        kind: crate::ui::inbox::InboxKind::Escalation,
-        repo: None,
-        agent_id: None,
-        target_session: Some("robco-agent-1".into()),
-        target_id: target_id.into(),
-        label: format!("{target_id} — escalated"),
-        detail: format!("{target_id} escalated"),
-        at: chrono::Utc::now(),
-        pr_url: None,
-        pr_facts: None,
-        sentence: None,
-    }
-}
-
-#[test]
-fn expanding_the_inbox_lists_its_items_as_rows_and_collapsing_takes_them_back() {
-    let mut app = test_app();
-    app.set_overseer_visibility(true);
-    app.orphans = Vec::new();
-    app.overseer_inbox = vec![inbox_item("#1"), inbox_item("#2")];
-
-    let mut categories = vec![
-        Selection::OverseerAlert(0),
-        Selection::OverseerAlert(1),
-        Selection::OverseerAi,
-    ];
-    categories.extend(OverseerCategory::ALL.map(Selection::OverseerCategory));
-    assert_eq!(app.visible(), categories);
-
-    app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
-    let inbox_row = categories
-        .iter()
-        .position(|row| *row == Selection::OverseerCategory(OverseerCategory::Inbox))
-        .unwrap();
-    assert_eq!(
-        app.visible(),
-        [
-            &categories[..=inbox_row],
-            &[Selection::OverseerInbox(0), Selection::OverseerInbox(1)],
-            &categories[inbox_row + 1..],
-        ]
-        .concat()
-    );
-
-    // Collapsing takes the item rows away and leaves the cursor on a real row
-    // rather than past the end of the list — never `None`, and never a stale
-    // `OverseerInbox` reference into a row that no longer exists.
-    app.selected = inbox_row + 2;
-    app.set_overseer_category_expanded(OverseerCategory::Inbox, false);
-    assert_eq!(app.visible(), categories);
-    assert!(matches!(
-        app.selected_item(),
-        Some(Selection::OverseerCategory(_))
-    ));
-}
-
 #[test]
 fn app_overseer_frame_height_tracks_content_within_bounds() {
     let mut app = test_app();
@@ -128,7 +70,7 @@ fn selection_identity_survives_overseer_row_toggle() {
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
 
     app.set_overseer_visibility(true);
-    assert_eq!(app.selected, 6);
+    assert_eq!(app.selected, 2);
     assert!(matches!(app.selected_item(), Some(Selection::Repo(0))));
     // Moving up off the first repo row lands on the last OVERSEER category —
     // never on the header, which is no longer a row.

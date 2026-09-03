@@ -11,9 +11,6 @@ use crate::model::{OverseerCategory, Selection, Status};
 use super::{IndicatorState, escalation_line, indicator, label, select};
 use crate::ui::{App, theme::DEFAULT as THEME};
 
-mod inbox_indicator;
-use inbox_indicator::category_indicator;
-
 const GAP: &str = "  ";
 
 const DETAIL_INDENT: &str = "    ";
@@ -105,13 +102,28 @@ fn build_content_with_warnings(
                 .into_iter()
                 .map(indent_detail),
         );
-        let item_index = match (category, selected) {
-            (OverseerCategory::Inbox, Some(Selection::OverseerInbox(index))) => Some(index),
-            (OverseerCategory::Discord, Some(Selection::DiscordChannel(index))) => Some(index),
+        let item_index = match selected {
+            Some(Selection::DiscordChannel(index)) => Some(index),
             _ => None,
         };
         if let Some(index) = item_index {
-            selected_row = u16::try_from(first_detail + index).unwrap_or(u16::MAX);
+            // A channel with a `last_error` renders two lines, so the
+            // selected channel's rendered-line offset is its index plus one
+            // extra line per errored channel ABOVE it — `first_detail + index`
+            // alone would scroll to an earlier channel's error line instead.
+            let channels = &app.overseer_snapshot.discord_channels;
+            let extra_error_lines = crate::ui::overseer::ordered_channel_ids(channels)
+                .iter()
+                .take(index)
+                .filter(|id| {
+                    channels
+                        .channels
+                        .get(id.as_str())
+                        .is_some_and(|agent| agent.last_error.is_some())
+                })
+                .count();
+            selected_row =
+                u16::try_from(first_detail + index + extra_error_lines).unwrap_or(u16::MAX);
         }
     }
 
@@ -247,10 +259,6 @@ fn category_line(
         format!("{} {arrow} {}{GAP}", marker(selected), category.label()),
         row_style(selected),
     )];
-    if let Some(indicator) = category_indicator(app, category, selected) {
-        spans.push(indicator);
-        spans.push(Span::styled(GAP, row_style(selected)));
-    }
     spans.push(Span::styled(
         summary.to_string(),
         if warn {
@@ -264,7 +272,7 @@ fn category_line(
     Line::from(spans)
 }
 
-/// Nests the Inbox item rows directly under its label, which [`category_line`]
+/// Nests the Discord channel rows directly under its label, which [`category_line`]
 /// puts at column 4 — the same column every category label sits at, arrow or
 /// not. The item rows carry no indent of their own, so this is the frame's
 /// single indent origin for them.

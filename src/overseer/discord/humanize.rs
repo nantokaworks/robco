@@ -157,8 +157,8 @@ const PREFIX: &[(&str, &str)] = &[
 /// verbatim-prefix stripping. Unlike `sentence`'s owned `String` — which
 /// mixes static vocabulary with runtime prose — this returns the table's own
 /// `&'static str`, so a caller can feed it straight into `locale::t` as a
-/// translation-table key. The Inbox reason display (`ui::overseer::inbox_rows`)
-/// uses this rather than `sentence` for exactly that reason: wrapped prose is
+/// translation-table key. Escalation displays use this rather than `sentence`
+/// for exactly that reason: wrapped prose is
 /// not in the vocabulary and is never translated (see the module doc comment).
 pub(crate) fn static_sentence(reason: &str) -> Option<&'static str> {
     let trimmed = reason.trim();

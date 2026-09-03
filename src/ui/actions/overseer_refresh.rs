@@ -1,4 +1,4 @@
-use std::{fs, time::Instant, time::SystemTime};
+use std::time::Instant;
 
 use crate::{
     config::Config,
@@ -60,10 +60,6 @@ pub(in crate::ui) fn capture_overseer(
         &crate::overseer::row_summaries::RowSummaries::load().unwrap_or_default(),
     );
     let heartbeat = crate::overseer::heartbeat_path().ok();
-    let heartbeat_age = heartbeat
-        .as_ref()
-        .and_then(|path| fs::metadata(path).and_then(|meta| meta.modified()).ok())
-        .and_then(|modified| SystemTime::now().duration_since(modified).ok());
     // Reload the overseer config from disk so the Info pane reflects flips made
     // outside the `,` settings editor (the `S` panic-stop, the daemon, Discord,
     // external edits). `app.config` only refreshes via the editor, so reading it
@@ -99,7 +95,6 @@ pub(in crate::ui) fn capture_overseer(
             discord_channels,
             decisions,
             daemon_alive,
-            heartbeat_age,
             daemon_version,
             control_status,
         },
@@ -193,59 +188,6 @@ mod tests {
             app.background_refresh.overseer_synced_at.unwrap() + Duration::from_nanos(1);
         app.apply_status(status_result(!fresh_auto_merge), newer_started);
         assert_eq!(app.overseer_snapshot.overseer.auto_merge, !fresh_auto_merge);
-    }
-
-    #[test]
-    fn a_newly_arrived_escalation_does_not_slide_the_cursor_onto_another_worker() {
-        use crate::{
-            model::{OverseerCategory, Selection},
-            overseer::logging::{DecisionEntry, DecisionKind},
-        };
-
-        fn escalation(task: &str, second: u32) -> DecisionEntry {
-            let mut decision = DecisionEntry::new(DecisionKind::Escalate, "needs user");
-            decision.at = chrono::Utc::now() - chrono::Duration::seconds(second.into());
-            decision.task = Some(task.into());
-            decision
-        }
-
-        fn refresh(app: &mut App, decisions: &[DecisionEntry]) {
-            app.apply_overseer(OverseerResult {
-                inbox: inbox::aggregate(
-                    &Ledger::default(),
-                    decisions,
-                    &[],
-                    &Dismissals::default(),
-                    &Registry::default(),
-                    &crate::overseer::row_summaries::RowSummaries::default(),
-                ),
-                snapshot: OverseerSnapshot::default(),
-                control_watch: ControlWatch::default(),
-            });
-        }
-
-        let temp = tempfile::tempdir().unwrap();
-        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
-        app.overseer_visible = true;
-        app.orphans = Vec::new();
-        app.set_overseer_category_expanded(OverseerCategory::Inbox, true);
-
-        let older = escalation("task-older", 10);
-        refresh(&mut app, std::slice::from_ref(&older));
-        app.selected = app
-            .visible()
-            .iter()
-            .position(|row| matches!(row, Selection::OverseerInbox(_)))
-            .expect("no inbox item row");
-        let identity = app.item_key(app.selected_item().unwrap());
-
-        // The list is re-aggregated newest-first, so this pushes the selected
-        // item down a slot. A clamped index would leave the cursor on the new
-        // escalation — and `y` would approve a worker the operator never chose.
-        refresh(&mut app, &[escalation("task-newer", 0), older]);
-
-        assert_eq!(app.selected_item(), Some(Selection::OverseerInbox(1)));
-        assert_eq!(app.item_key(app.selected_item().unwrap()), identity);
     }
 
     fn status_result(auto_merge: bool) -> StatusResult {
