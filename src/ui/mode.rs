@@ -30,9 +30,10 @@ pub(in crate::ui) enum Mode {
     PromptOverseer {
         input: TextInput,
     },
-    /// Send a one-line instruction into a repo/agent/orphan row's live
-    /// CLAUDE/CODEX tmux session (dropr:565), opened by `i` while that tab is
-    /// showing. `host` pins a remote control prompt to the host selected when
+    /// Send an instruction into a repo/agent/orphan row's live CLAUDE/CODEX
+    /// tmux session (dropr:565), opened by `i` while that tab is showing.
+    /// Multi-line since dropr:593 — a modified Enter inserts a newline and
+    /// only a bare Enter submits. `host` pins a remote control prompt to the host selected when
     /// it opened; `None` preserves local/session-derived routing.
     PromptSession {
         session: String,

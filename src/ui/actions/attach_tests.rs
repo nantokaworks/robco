@@ -17,7 +17,7 @@ fn tmux_failure() -> crate::Error {
 }
 
 #[test]
-fn instruct_session_sends_the_flattened_instruction_then_enter() {
+fn instruct_session_sends_the_multiline_instruction_then_enter() {
     let mut app = test_app();
     let calls = RefCell::new(Vec::new());
 
@@ -38,7 +38,7 @@ fn instruct_session_sends_the_flattened_instruction_then_enter() {
 
     assert_eq!(
         calls.borrow().as_slice(),
-        ["literal:target:line one line two", "keys:target:Enter"]
+        ["literal:target:line one\nline two", "keys:target:Enter"]
     );
     assert_eq!(
         app.message.as_ref().map(|(message, _)| message.as_str()),

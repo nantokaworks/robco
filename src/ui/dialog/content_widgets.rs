@@ -41,24 +41,46 @@ pub(super) fn hint_line(locale: Locale, text: &'static str) -> Line<'static> {
     ))
 }
 
-/// Body shared by `Mode::PromptOverseer` and `Mode::PromptSession` (dropr:565):
-/// both are a single wrapped instruction field over a `enter send / esc
-/// cancel` hint, differing only in the dialog title.
+const MIN_INSTRUCTION_ROWS: usize = 5;
+const MAX_INSTRUCTION_ROWS: usize = 10;
+
+/// Body shared by `Mode::PromptOverseer` and `Mode::PromptSession`.
 pub(super) fn instruction_prompt_body(
     locale: Locale,
     body: Rect,
     content_width: usize,
     input: &TextInput,
 ) -> (Vec<Line<'static>>, (usize, usize)) {
-    let max_input_height = body.height.saturating_sub(4).clamp(1, 10) as usize;
-    let wrapped = input_wrap::input_lines(
-        t(locale, "instruction"),
-        input,
-        content_width,
-        max_input_height,
-    );
+    let available_rows = body.height.saturating_sub(3) as usize;
+    let max_rows = available_rows.clamp(1, MAX_INSTRUCTION_ROWS);
+    let mut wrapped =
+        input_wrap::input_lines(t(locale, "instruction"), input, content_width, max_rows);
+    let rows = instruction_input_rows(wrapped.lines.len(), available_rows);
+    wrapped.lines.resize_with(rows, Line::default);
     let caret = wrapped.caret;
     let mut lines = wrapped.lines;
-    lines.push(hint_line(locale, "enter send   esc cancel"));
+    lines.push(hint_line(
+        locale,
+        "enter send   alt+enter/ctrl+j newline   esc cancel",
+    ));
     (lines, caret)
+}
+
+fn instruction_input_rows(content_rows: usize, available_rows: usize) -> usize {
+    content_rows
+        .clamp(MIN_INSTRUCTION_ROWS, MAX_INSTRUCTION_ROWS)
+        .min(available_rows.max(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::instruction_input_rows;
+
+    #[test]
+    fn instruction_rows_start_tall_grow_and_clamp() {
+        assert_eq!(instruction_input_rows(1, 20), 5);
+        assert_eq!(instruction_input_rows(7, 20), 7);
+        assert_eq!(instruction_input_rows(20, 20), 10);
+        assert_eq!(instruction_input_rows(7, 3), 3);
+    }
 }

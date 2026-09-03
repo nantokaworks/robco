@@ -190,7 +190,7 @@ impl App {
         }
     }
 
-    /// Send a one-line instruction into a repo/agent/orphan row's live
+    /// Send an instruction into a repo/agent/orphan row's live
     /// CLAUDE/CODEX tmux session (dropr:565) — the session `Mode::PromptSession`
     /// was opened for. Mirrors `instruct_overseer`, but for the row-owned
     /// session rather than the control AI's.
@@ -225,11 +225,7 @@ impl App {
         mut literal: impl FnMut(&str, &str) -> Result<()>,
         mut keys: impl FnMut(&str, &[&str]) -> Result<()>,
     ) {
-        // A raw newline is itself a submit, so unflattened multi-line text
-        // (e.g. a bracket-paste) would run as separate fragments instead of
-        // one instruction (`tmux::single_line`'s own doc comment).
-        let instruction = tmux::single_line(instruction);
-        let result = literal(session, &instruction).and_then(|()| keys(session, &["Enter"]));
+        let result = literal(session, instruction).and_then(|()| keys(session, &["Enter"]));
         match result {
             Ok(()) => self.show_message(t(self.locale, "instruction sent")),
             Err(err) => self.show_message(err.to_string()),

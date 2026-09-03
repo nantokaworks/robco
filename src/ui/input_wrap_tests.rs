@@ -149,3 +149,29 @@ fn mid_string_caret_does_not_widen_the_line() {
     assert_eq!(rendered(&wrapped), [" prompt: one two"]);
     assert_eq!(wrapped.caret, (0, 9));
 }
+
+#[test]
+fn hard_breaks_create_lines_and_preserve_offsets() {
+    let wrapped = wrap_text("one\ntwo\n", 20);
+
+    assert_eq!(
+        wrapped,
+        vec![
+            ("one".to_string(), 0),
+            ("two".to_string(), 4),
+            (String::new(), 8),
+        ]
+    );
+}
+
+#[test]
+fn caret_tracks_hard_breaks_and_soft_wraps_together() {
+    let input = TextInput::from("one two\nthree four");
+    let wrapped = input_lines("prompt", &input, 16, 10);
+
+    assert_eq!(
+        rendered(&wrapped),
+        [" prompt: one two", "         three ", "         four_"]
+    );
+    assert_eq!(wrapped.caret, (2, 13));
+}

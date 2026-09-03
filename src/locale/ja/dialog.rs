@@ -40,6 +40,9 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "enter connect   esc cancel" => "enterで接続   escでキャンセル",
         "enter send   esc cancel" => "enterで送信   escでキャンセル",
+        "enter send   alt+enter/ctrl+j newline   esc cancel" => {
+            "enterで送信   alt+enter/ctrl+jで改行   escでキャンセル"
+        }
         "enter delete   esc cancel" => "enterで削除   escでキャンセル",
         "ends the running session now and removes the worktree" => {
             "実行中のセッションを直ちに終了し、worktreeを削除します"

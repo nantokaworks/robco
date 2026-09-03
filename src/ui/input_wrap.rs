@@ -125,8 +125,18 @@ pub(in crate::ui) fn display_width(text: &str) -> usize {
 /// always maps onto exactly one line.
 fn wrap_text(input: &str, max_width: usize) -> Vec<(String, usize)> {
     let mut lines: Vec<(String, usize)> = Vec::new();
-    let mut current = String::new();
     let mut start = 0;
+    for paragraph in input.split('\n') {
+        wrap_paragraph(paragraph, max_width, start, &mut lines);
+        start += paragraph.chars().count() + 1;
+    }
+    lines
+}
+
+fn wrap_paragraph(input: &str, max_width: usize, base: usize, lines: &mut Vec<(String, usize)>) {
+    let first_line = lines.len();
+    let mut current = String::new();
+    let mut start = base;
     let mut consumed = 0;
     let mut chars = input.chars().peekable();
 
@@ -142,14 +152,14 @@ fn wrap_text(input: &str, max_width: usize) -> Vec<(String, usize)> {
 
         if !whitespace && !current.is_empty() && width(&current) + width(&token) > max_width {
             lines.push((std::mem::take(&mut current), start));
-            start = consumed;
+            start = base + consumed;
         }
 
         for ch in token.chars() {
             let ch_width = width(&ch.to_string());
             if width(&current) + ch_width > max_width && !current.is_empty() {
                 lines.push((std::mem::take(&mut current), start));
-                start = consumed;
+                start = base + consumed;
             }
             if ch_width <= max_width {
                 current.push(ch);
@@ -158,10 +168,9 @@ fn wrap_text(input: &str, max_width: usize) -> Vec<(String, usize)> {
         }
     }
 
-    if !current.is_empty() || lines.is_empty() {
+    if !current.is_empty() || lines.len() == first_line {
         lines.push((current, start));
     }
-    lines
 }
 
 fn width(text: &str) -> usize {
