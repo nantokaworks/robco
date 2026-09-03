@@ -130,29 +130,6 @@ fn confirm_pr_caret_tracks_a_mid_string_cursor() {
 }
 
 #[test]
-fn inbox_prompt_caret_tracks_a_mid_string_cursor() {
-    assert_caret_marks(
-        Mode::PromptInbox {
-            item: crate::ui::inbox::InboxItem {
-                kind: crate::ui::inbox::InboxKind::Escalation,
-                repo: None,
-                agent_id: None,
-                target_session: Some("robco-agent".to_string()),
-                target_id: "agent".to_string(),
-                label: "agent — worker".to_string(),
-                detail: "worker_blocked".to_string(),
-                at: chrono::Utc::now(),
-                pr_url: None,
-                pr_facts: None,
-                sentence: None,
-            },
-            input: edited("ship it", 4),
-        },
-        "p",
-    );
-}
-
-#[test]
 fn caret_column_accounts_for_full_width_glyphs() {
     let (cursor, _) = draw_cursor(Mode::PromptRepo {
         input: edited("日本語", 1),

@@ -134,11 +134,7 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "display-only inbox item: no live session to answer" => {
             "表示専用の受信箱項目です：回答可能な稼働中セッションがありません"
         }
-        "press enter to answer the selected inbox item" => {
-            "enterを押すと選択した受信箱項目に回答できます"
-        }
         "inbox item is no longer listed" => "受信箱項目は既に一覧から削除されています",
-        "answer sent" => "回答を送信しました",
         "approval sent" => "承認を送信しました",
         "dispatch off, workers killed; daemon still running" => {
             "dispatchを無効化しworkerを終了しました：daemonは稼働継続"

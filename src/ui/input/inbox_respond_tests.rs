@@ -9,40 +9,14 @@ use crate::{
 };
 
 #[test]
-fn answer_and_approve_use_existing_tmux_sequences() {
+fn approve_uses_the_existing_tmux_sequence() {
     let calls = RefCell::new(Vec::new());
-    send_response(
-        "target",
-        InboxResponse::Answer("ship it"),
-        |session, text| {
-            calls.borrow_mut().push(format!("literal:{session}:{text}"));
-            Ok(())
-        },
-        |session, keys| {
-            calls
-                .borrow_mut()
-                .push(format!("keys:{session}:{}", keys.join(",")));
-            Ok(())
-        },
-    )
-    .unwrap();
-    assert_eq!(
-        calls.borrow().as_slice(),
-        ["literal:target:ship it", "keys:target:Enter"]
-    );
-
-    calls.borrow_mut().clear();
-    send_response(
-        "target",
-        InboxResponse::Approve,
-        |_, _| Ok(()),
-        |session, keys| {
-            calls
-                .borrow_mut()
-                .push(format!("keys:{session}:{}", keys.join(",")));
-            Ok(())
-        },
-    )
+    send_response("target", InboxResponse::Approve, |session, keys| {
+        calls
+            .borrow_mut()
+            .push(format!("keys:{session}:{}", keys.join(",")));
+        Ok(())
+    })
     .unwrap();
     assert_eq!(calls.borrow().as_slice(), ["keys:target:y,Enter"]);
 }
@@ -114,14 +88,10 @@ fn a_successful_approve_marks_the_row_handled() {
     let mut app = inbox_app("agent-approve-ok");
     let item = app.overseer_inbox[0].clone();
 
-    app.approve_inbox_with(
-        0,
-        |_, _| Ok(()),
-        |_, keys| {
-            assert_eq!(keys, ["y", "Enter"]);
-            Ok(())
-        },
-    );
+    app.approve_inbox_with(0, |_, keys| {
+        assert_eq!(keys, ["y", "Enter"]);
+        Ok(())
+    });
 
     assert!(
         suppressed(&item),
@@ -149,47 +119,7 @@ fn a_failed_approve_leaves_the_row_untouched() {
     let mut app = inbox_app("agent-approve-err");
     let item = app.overseer_inbox[0].clone();
 
-    app.approve_inbox_with(0, |_, _| Ok(()), |_, _| Err(tmux_failure()));
-
-    assert!(
-        !suppressed(&item),
-        "a failed send must not suppress the row"
-    );
-    assert_eq!(app.overseer_inbox, vec![item]);
-}
-
-#[test]
-fn a_successful_answer_marks_the_row_handled() {
-    let _store = lock_overseer_home();
-    let mut app = inbox_app("agent-answer-ok");
-    let item = app.overseer_inbox[0].clone();
-
-    app.answer_inbox_with(
-        &item,
-        "ship it",
-        |_, text| {
-            assert_eq!(text, "ship it");
-            Ok(())
-        },
-        |_, _| Ok(()),
-    );
-
-    assert!(
-        suppressed(&item),
-        "answer did not record the acknowledgement suppression"
-    );
-    assert_eq!(
-        app.message.as_ref().map(|(message, _)| message.as_str()),
-        Some("answer sent")
-    );
-}
-
-#[test]
-fn a_failed_answer_leaves_the_row_untouched() {
-    let mut app = inbox_app("agent-answer-err");
-    let item = app.overseer_inbox[0].clone();
-
-    app.answer_inbox_with(&item, "ship it", |_, _| Err(tmux_failure()), |_, _| Ok(()));
+    app.approve_inbox_with(0, |_, _| Err(tmux_failure()));
 
     assert!(
         !suppressed(&item),

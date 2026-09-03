@@ -22,7 +22,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         "stop overseer?" => "overseerを停止しますか？",
         "reset dispatch circuit?" => "dispatch回路をリセットしますか？",
         "stop the overseer daemon?" => "overseerデーモンを停止しますか？",
-        "clear the overseer inbox?" => "overseer受信箱を消去しますか？",
         "remove channel?" => "チャンネルを削除しますか？",
         "clear chat session?" => "チャットセッションをクリアしますか？",
 
@@ -39,7 +38,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "hostまたはuser@hostを入力。config.hostsに追加すると保存されます"
         }
         "enter connect   esc cancel" => "enterで接続   escでキャンセル",
-        "enter send   esc cancel" => "enterで送信   escでキャンセル",
         "enter send   alt+enter/ctrl+j newline   esc cancel" => {
             "enterで送信   alt+enter/ctrl+jで改行   escでキャンセル"
         }
@@ -93,15 +91,6 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
         }
         "running workers are not touched; start it again with R" => {
             "稼働中のworkerには影響しません。Rで再度起動できます"
-        }
-        "hiding {} item(s):" => "{}件を非表示にします：",
-        "nothing on record is deleted, only removed from this list" => {
-            "記録は削除されません。このリストから消えるだけです"
-        }
-        "a hidden item returns only if the same target escalates again; \
-                     otherwise it stays hidden even if it still needs you" => {
-            "非表示にした項目は、同じ対象が再度エスカレーションした時だけ再表示されます。\
-             対応が必要なままでも、それ以外は非表示のままです"
         }
         "enter clear   esc cancel" => "enterで消去   escでキャンセル",
         "deletes its whole record, history included — this cannot be undone" => {

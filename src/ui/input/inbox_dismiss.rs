@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use crate::locale::{fmt, t};
 
-use super::super::{App, Mode};
+use super::super::App;
 
 /// One row to suppress: its `(kind, target_id)` identity and the timestamp it
 /// was carrying when the operator cleared it.
@@ -21,7 +21,7 @@ impl App {
     /// the timestamp it carries, so a later escalation for the same target is
     /// listed again.
     pub(in crate::ui) fn dismiss_inbox_item(&mut self, index: usize) {
-        let rows = self.inbox_dismissal_rows(Some(index));
+        let rows = self.inbox_dismissal_rows(index);
         let Some((kind, target_id, _)) = rows.first() else {
             self.show_message(t(self.locale, "inbox item is no longer listed"));
             return;
@@ -30,50 +30,21 @@ impl App {
         self.apply_dismissals(&rows, message);
     }
 
-    /// Open the confirmation for clearing every listed row. Dismissing one row
-    /// acts immediately; clearing the list is the bulk action, so it is gated
-    /// the same way the other bulk overseer actions are.
-    pub(in crate::ui) fn confirm_dismiss_inbox(&mut self) {
-        if self.overseer_inbox.is_empty() {
-            self.show_message(t(self.locale, "inbox is already empty"));
-            return;
-        }
-        self.mode = Mode::ConfirmInboxDismissAll {
-            count: self.overseer_inbox.len(),
-        };
-    }
-
-    pub(in crate::ui) fn dismiss_inbox_all(&mut self) {
-        let rows = self.inbox_dismissal_rows(None);
-        let message = fmt(
-            self.locale,
-            "dismissed {} inbox item(s)",
-            &[&rows.len().to_string()],
-        );
-        self.apply_dismissals(&rows, message);
-    }
-
-    /// The rows a dismiss covers: one item by index, or every listed item.
-    ///
-    /// Reads from the displayed list rather than re-deriving, so what is
+    /// Reads one row from the displayed list rather than re-deriving, so what is
     /// suppressed is exactly what the operator was looking at — including the
     /// timestamps, which is what keeps a newer escalation out of the window.
-    fn inbox_dismissal_rows(&self, index: Option<usize>) -> Vec<Row> {
+    fn inbox_dismissal_rows(&self, index: usize) -> Vec<Row> {
         let row = |item: &crate::ui::inbox::InboxItem| {
             (item.kind.code(), item.target_id.clone(), item.at)
         };
-        match index {
-            Some(index) => self
-                .overseer_inbox
-                .get(index)
-                .map(row)
-                .into_iter()
-                .collect(),
-            None => self.overseer_inbox.iter().map(row).collect(),
-        }
+        self.overseer_inbox
+            .get(index)
+            .map(row)
+            .into_iter()
+            .collect()
     }
 
-    /// Shared by dismiss and by the approve/answer acknowledgement: suppressing
+    /// Shared by dismiss and by the approval acknowledgement: suppressing
     /// is the one mechanism that both hides the row now and keeps a newer
     /// escalation for the same target visible later.
     pub(super) fn apply_dismissals(&mut self, rows: &[Row], success: String) {

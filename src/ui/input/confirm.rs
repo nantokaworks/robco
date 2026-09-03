@@ -26,7 +26,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             | Mode::ConfirmKillOrphan { .. }
             | Mode::ConfirmOverseerPanic
             | Mode::ConfirmDaemonStop
-            | Mode::ConfirmInboxDismissAll { .. }
             | Mode::ConfirmRemoveDiscordChannel { .. }
             | Mode::ConfirmClearChat { .. } => Some(Ok(())),
             _ => None,
@@ -104,13 +103,6 @@ pub(super) fn handle_confirm(app: &mut App, key: KeyEvent) -> Option<Result<()>>
             app.mode = Mode::Normal;
             if confirmed {
                 app.stop_daemon();
-            }
-            Some(Ok(()))
-        }
-        Mode::ConfirmInboxDismissAll { .. } => {
-            app.mode = Mode::Normal;
-            if confirmed {
-                app.dismiss_inbox_all();
             }
             Some(Ok(()))
         }
