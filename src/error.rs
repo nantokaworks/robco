@@ -72,6 +72,11 @@ pub enum Error {
     #[error("no open pull request for {0}")]
     NoOpenPullRequest(String),
     #[error(
+        "'{dir}' is not a directory\nto connect to a remote robco, use --host <destination> or the H key inside the TUI",
+        dir = .0.display()
+    )]
+    LaunchDirMissing(PathBuf),
+    #[error(
         "worker session {session} started in {actual}, not {expected}; the tmux server's own \
          working directory is gone and the server needs a restart"
     )]

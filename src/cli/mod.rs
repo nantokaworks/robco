@@ -3,6 +3,7 @@ use std::{ffi::OsString, path::PathBuf};
 use clap::{Args as ClapArgs, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 mod daemon;
+pub(crate) mod launch_dir;
 
 pub use daemon::{
     ConfigArgs, ConfigCommand, DecisionsArgs, DecisionsCommand, InboxArgs, InboxCommand,
@@ -18,6 +19,7 @@ pub use daemon::{
 )]
 pub struct Args {
     /// Directory whose direct children should be scanned for git repositories.
+    /// Must exist; for a remote robco use --host or the H key in the TUI.
     pub launch_dir: Option<PathBuf>,
 
     /// Add an ad-hoc remote ssh destination to the TUI (repeatable).
