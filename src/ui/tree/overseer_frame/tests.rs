@@ -22,6 +22,7 @@ fn inbox_app() -> App {
     app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
         kind: crate::ui::inbox::InboxKind::Escalation,
         repo: None,
+        agent_id: None,
         target_session: None,
         target_id: "task-1".into(),
         label: "task-1".into(),
@@ -154,6 +155,7 @@ fn the_inbox_row_indicator_lights_only_when_something_is_actionable() {
     app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
         kind: crate::ui::inbox::InboxKind::Escalation,
         repo: None,
+        agent_id: None,
         target_session: None,
         target_id: "task-1".into(),
         label: "task-1".into(),

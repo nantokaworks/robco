@@ -6,6 +6,7 @@ fn live_escalation(target_id: &str) -> InboxItem {
     InboxItem {
         kind: InboxKind::Escalation,
         repo: None,
+        agent_id: None,
         target_session: Some("session".into()),
         target_id: target_id.into(),
         label: "label".into(),

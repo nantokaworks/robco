@@ -38,6 +38,7 @@ fn inbox_item(target_id: &str) -> crate::ui::inbox::InboxItem {
     crate::ui::inbox::InboxItem {
         kind: crate::ui::inbox::InboxKind::Escalation,
         repo: None,
+        agent_id: None,
         target_session: Some("robco-agent-1".into()),
         target_id: target_id.into(),
         label: format!("{target_id} — escalated"),

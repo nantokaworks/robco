@@ -21,6 +21,7 @@ fn item_with_session(
     InboxItem {
         kind: InboxKind::Escalation,
         repo: repo.map(ToString::to_string),
+        agent_id: None,
         target_session: session.map(ToString::to_string),
         target_id: target_id.into(),
         label: format!("{target_id} — {detail}"),
