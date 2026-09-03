@@ -78,6 +78,19 @@ fn missing_remote_binary_is_distinct() {
 }
 
 #[test]
+fn missing_binary_classification_is_stable() {
+    for _ in 0..25 {
+        let error = RemoteClient::test_command(
+            shell("echo 'sh: robco: command not found' >&2; exit 127"),
+            Duration::from_millis(200),
+        )
+        .err()
+        .unwrap();
+        assert!(matches!(error, RemoteError::BinaryMissing(_)));
+    }
+}
+
+#[test]
 fn old_server_reports_missing_tools() {
     let command = shell(
         r#"read a

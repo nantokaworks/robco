@@ -7,7 +7,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
@@ -25,11 +25,47 @@ struct Inner {
     input: Mutex<BufWriter<ChildStdin>>,
     child: Mutex<Child>,
     pending: Mutex<HashMap<u64, mpsc::Sender<Reply>>>,
-    stderr: Arc<Mutex<String>>,
+    stderr: Arc<CapturedStderr>,
     next_id: AtomicU64,
     connected: AtomicBool,
     timeout: Duration,
 }
+
+struct CapturedStderr {
+    buffer: Mutex<String>,
+    done: AtomicBool,
+}
+
+impl CapturedStderr {
+    fn new() -> Self {
+        Self {
+            buffer: Mutex::new(String::new()),
+            done: AtomicBool::new(false),
+        }
+    }
+
+    fn snapshot(&self) -> String {
+        self.buffer
+            .lock()
+            .map(|value| value.clone())
+            .unwrap_or_default()
+    }
+
+    /// Startup classification must observe stderr that may trail process exit.
+    fn drained_stderr(&self, cap: Duration) -> String {
+        let deadline = Instant::now() + cap;
+        while !self.done.load(Ordering::Acquire) {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            std::thread::sleep(remaining.min(Duration::from_millis(2)));
+        }
+        self.snapshot()
+    }
+}
+
+const STDERR_DRAIN_CAP: Duration = Duration::from_millis(100);
 
 impl Transport {
     pub(super) fn from_command(command: Command, timeout: Duration) -> Result<Self, RemoteError> {
@@ -54,7 +90,7 @@ impl Transport {
             .stderr
             .take()
             .ok_or_else(|| RemoteError::Connect("stderr unavailable".into()))?;
-        let stderr = Arc::new(Mutex::new(String::new()));
+        let stderr = Arc::new(CapturedStderr::new());
         let inner = Arc::new(Inner {
             input: Mutex::new(BufWriter::new(input)),
             child: Mutex::new(child),
@@ -101,7 +137,7 @@ impl Transport {
                         let _ = child.kill();
                     }
                     Err(RemoteError::startup(
-                        &self.stderr(),
+                        &self.inner.stderr.drained_stderr(STDERR_DRAIN_CAP),
                         format!("{method} timed out"),
                     ))
                 }
@@ -120,22 +156,22 @@ impl Transport {
     }
 
     fn stderr(&self) -> String {
-        self.inner
-            .stderr
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.inner.stderr.snapshot()
     }
 
     fn failure(&self, fallback: String) -> RemoteError {
         if self.inner.connected.load(Ordering::Acquire) {
-            RemoteError::Dropped(if self.stderr().trim().is_empty() {
+            let stderr = self.stderr();
+            RemoteError::Dropped(if stderr.trim().is_empty() {
                 fallback
             } else {
-                self.stderr()
+                stderr
             })
         } else {
-            RemoteError::startup(&self.stderr(), fallback)
+            RemoteError::startup(
+                &self.inner.stderr.drained_stderr(STDERR_DRAIN_CAP),
+                fallback,
+            )
         }
     }
 }
@@ -149,16 +185,17 @@ impl Drop for Inner {
     }
 }
 
-fn spawn_stderr_reader(stderr: impl std::io::Read + Send + 'static, shared: Arc<Mutex<String>>) {
+fn spawn_stderr_reader(stderr: impl std::io::Read + Send + 'static, shared: Arc<CapturedStderr>) {
     std::thread::spawn(move || {
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            if let Ok(mut captured) = shared.lock() {
+            if let Ok(mut captured) = shared.buffer.lock() {
                 if !captured.is_empty() {
                     captured.push('\n');
                 }
                 captured.push_str(&line);
             }
         }
+        shared.done.store(true, Ordering::Release);
     });
 }
 
@@ -188,11 +225,11 @@ fn spawn_response_reader(output: impl std::io::Read + Send + 'static, inner: Arc
             .and_then(|mut child| child.try_wait().ok().flatten())
             .map(|status| format!("remote process exited with {status}"))
             .unwrap_or_else(|| "remote process exited".into());
-        let stderr = inner
-            .stderr
-            .lock()
-            .map(|value| value.clone())
-            .unwrap_or_default();
+        let stderr = if inner.connected.load(Ordering::Acquire) {
+            inner.stderr.snapshot()
+        } else {
+            inner.stderr.drained_stderr(STDERR_DRAIN_CAP)
+        };
         let detail = if stderr.trim().is_empty() {
             exit
         } else {
