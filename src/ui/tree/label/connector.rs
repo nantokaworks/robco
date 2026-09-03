@@ -83,7 +83,7 @@ pub(super) fn tree_prefix(
 /// The columns it does draw are the ones a *child* of that agent would draw:
 /// every ancestor guide, then one more column for the agent itself, which
 /// continues when the agent still has a later sibling. That is the same
-/// `deeper.push(!is_last)` step [`crate::model::agent_rows`] takes for real
+/// `deeper.push(!is_last)` step `crate::model::agent_tree::agent_rows` takes for real
 /// children, so the vertical run down to the next sibling is never broken,
 /// and the line sits flush against whatever child row follows it.
 pub(in crate::ui::tree) fn continuation_prefix(

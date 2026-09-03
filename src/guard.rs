@@ -9,7 +9,7 @@
 //! to end its own throwaway server ends the real one instead.
 //!
 //! This is not a mistake a prompt can train away, so the worker's client is
-//! given a `PreToolUse` hook (see [`crate::agent::hooks`]) that calls
+//! given a `PreToolUse` hook (see `crate::agent::hooks`) that calls
 //! `robco guard tmux` before every shell command it runs. The hook reads the
 //! client's JSON on stdin and answers with a deny decision when the command
 //! would reach the shared server.

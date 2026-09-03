@@ -145,7 +145,7 @@ pub struct App {
     background_refresh: BackgroundRefresh,
     preview_capture: PreviewCapture,
     /// Aggregated inbox, newest first. The rows the operator moves between are
-    /// [`Selection::OverseerInbox`] entries into this list; it carries no cursor
+    /// [`crate::model::Selection::OverseerInbox`] entries into this list; it carries no cursor
     /// of its own.
     overseer_inbox: Vec<inbox::InboxItem>,
     /// Identity of every item the last aggregation derived, including the ones a

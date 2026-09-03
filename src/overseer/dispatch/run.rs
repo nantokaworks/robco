@@ -8,7 +8,7 @@
 //! of that gate — daily limits, retries, author allowlists, and
 //! per-repository slots rationed what the machine chose for itself, never
 //! what an operator already decided by naming a task. What survives here is
-//! resolving the bare task ref to a [`Candidate`] and handing it to
+//! resolving the bare task ref to a [`super::Candidate`] and handing it to
 //! [`worker::spawn_candidate`], which still refuses on its own: a live
 //! worker or an existing branch for the task holds it exactly as before.
 
