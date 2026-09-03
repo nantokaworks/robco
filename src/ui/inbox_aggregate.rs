@@ -73,6 +73,7 @@ pub(crate) fn aggregate(
         items.push(InboxItem {
             kind: InboxKind::Escalation,
             repo: ledger_entry.map(|entry| registry.repo_label(&entry.repo).to_string()),
+            agent_id: ledger_entry.map(|entry| entry.agent_id.clone()),
             target_session: session,
             target_id: target_id.to_string(),
             label: format!("{target_id} — {}", decision.reason),
@@ -108,6 +109,7 @@ pub(crate) fn aggregate(
         items.push(InboxItem {
             kind: InboxKind::Escalation,
             repo: Some(repo.to_string()),
+            agent_id: Some(entry.agent_id.clone()),
             target_session: session,
             target_id: entry.display_id.clone(),
             label: format!("{} — {repo} / {}", entry.display_id, entry.agent_id),

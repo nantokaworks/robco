@@ -17,6 +17,7 @@ fn item(kind: InboxKind, target_id: &str, session: Option<&str>) -> InboxItem {
     InboxItem {
         kind,
         repo: None,
+        agent_id: None,
         target_session: session.map(ToString::to_string),
         target_id: target_id.into(),
         label: format!("{target_id} — {LONG_REASON}"),

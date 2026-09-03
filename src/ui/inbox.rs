@@ -49,6 +49,9 @@ pub(crate) struct InboxItem {
     /// whose `task` names no ledger entry the aggregation can find — the row
     /// renders the same, just without this part.
     pub repo: Option<String>,
+    /// The PROJECTS [`AgentNode::id`](crate::model::AgentNode::id) of the
+    /// worker that originated this item, when a matching ledger entry exists.
+    pub agent_id: Option<String>,
     pub target_session: Option<String>,
     pub target_id: String,
     pub label: String,

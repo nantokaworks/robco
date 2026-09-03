@@ -55,6 +55,7 @@ fn inbox_app(target_id: &str) -> App {
     app.overseer_inbox = vec![InboxItem {
         kind: InboxKind::Escalation,
         repo: None,
+        agent_id: None,
         target_session: Some(format!("robco-{target_id}")),
         target_id: target_id.into(),
         label: format!("{target_id} — worker"),

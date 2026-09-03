@@ -38,6 +38,7 @@ mod expand;
 mod help;
 mod hyperlink;
 pub(crate) mod inbox;
+mod inbox_lookup;
 mod input;
 mod input_wrap;
 mod layout;

@@ -506,6 +506,7 @@ fn inbox_and_discord_rows_agree_on_their_left_edge() {
     app.overseer_inbox = vec![crate::ui::inbox::InboxItem {
         kind: crate::ui::inbox::InboxKind::Escalation,
         repo: None,
+        agent_id: None,
         target_session: None,
         target_id: "task-1".into(),
         label: "task-1".into(),

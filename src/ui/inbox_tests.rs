@@ -94,6 +94,7 @@ fn a_live_escalation_resolves_the_workers_session() {
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].kind, InboxKind::Escalation);
+    assert_eq!(items[0].agent_id.as_deref(), Some("agent-1"));
     assert_eq!(items[0].target_session.as_deref(), Some("robco-agent-1"));
     assert!(items[0].label.contains("needs user"));
 }
@@ -105,8 +106,10 @@ fn global_and_stale_escalations_are_display_only() {
     let global = items(&Ledger::default(), &[global], &[]);
 
     assert_eq!(stale.len(), 1);
+    assert_eq!(stale[0].agent_id.as_deref(), Some("agent-1"));
     assert_eq!(stale[0].target_session, None);
     assert_eq!(global.len(), 1);
+    assert_eq!(global[0].agent_id, None);
     assert_eq!(global[0].target_session, None);
     assert_eq!(global[0].target_id, "overseer");
 }
