@@ -132,3 +132,150 @@ fn y_and_d_without_an_escalation_only_show_a_message() {
         assert!(app.overseer_inbox.is_empty());
     }
 }
+
+#[test]
+fn enter_on_an_agent_is_left_for_attach_routing() {
+    let mut app = worker_app(Vec::new());
+
+    assert!(!handle_normal_with(&mut app, KeyCode::Enter, |_, _| {
+        panic!("Enter must not approve")
+    }));
+    assert_eq!(
+        app.selected_item(),
+        Some(Selection::Agent { repo: 0, agent: 0 })
+    );
+}
+
+#[test]
+fn escalated_ledger_for_a_gone_worker_has_a_repo_row_and_dismisses() {
+    use crate::overseer::{
+        dismissals::Dismissals,
+        ledger::{self, Ledger, LedgerPhase},
+        row_summaries::RowSummaries,
+    };
+
+    let _store = lock_overseer_home();
+    let temp = tempfile::tempdir().unwrap();
+    let gone = test_support::agent("agent-approve-ok", temp.path().join("gone"));
+    let mut entry = ledger::new_entry(&gone, "robco", Utc::now());
+    entry.phase = LedgerPhase::Escalated;
+    let repo = test_support::repo(temp.path().join("robco"), vec![]);
+    let registry = Registry {
+        version: 1,
+        repos: vec![repo],
+    };
+    let inbox = crate::ui::inbox::aggregate(
+        &Ledger {
+            entries: vec![entry],
+            ..Ledger::default()
+        },
+        &[],
+        &[],
+        &Dismissals::default(),
+        &registry,
+        &RowSummaries::default(),
+    );
+    let mut app = App::new(registry, Config::default(), temp.path().into());
+    app.overseer_visible = false;
+    app.overseer_inbox_targets = inbox.targets;
+    app.overseer_inbox = inbox.items;
+    app.set_repo_expanded(0, true);
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::RepoEscalation { repo: 0, .. }))
+        .expect("repo escalation row");
+    let target = app.overseer_inbox[0].target_id.clone();
+
+    assert!(handle_normal(&mut app, KeyCode::Char('d')));
+    assert!(
+        Dismissals::load()
+            .unwrap()
+            .entries
+            .iter()
+            .any(|row| row.target_id == target)
+    );
+}
+
+#[test]
+fn global_decision_has_an_overseer_alert_and_dismisses() {
+    use crate::overseer::{
+        dismissals::Dismissals,
+        ledger::Ledger,
+        logging::{DecisionEntry, DecisionKind},
+        row_summaries::RowSummaries,
+    };
+
+    let _store = lock_overseer_home();
+    let temp = tempfile::tempdir().unwrap();
+    let decision = DecisionEntry::new(DecisionKind::Escalate, "global alert");
+    let registry = Registry::default();
+    let inbox = crate::ui::inbox::aggregate(
+        &Ledger::default(),
+        &[decision],
+        &[],
+        &Dismissals::default(),
+        &registry,
+        &RowSummaries::default(),
+    );
+    let mut app = App::new(registry, Config::default(), temp.path().into());
+    app.overseer_visible = true;
+    app.orphans.clear();
+    app.overseer_inbox_targets = inbox.targets;
+    app.overseer_inbox = inbox.items;
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::OverseerAlert(_)))
+        .expect("overseer alert row");
+
+    let selection = app.selected_item().unwrap();
+    let dismissed = RefCell::new(Vec::new());
+    assert!(handle_display_only_with(
+        &mut app,
+        selection,
+        0,
+        KeyCode::Char('d'),
+        |_, index| dismissed.borrow_mut().push(index),
+    ));
+    assert_eq!(*dismissed.borrow(), [0]);
+}
+
+#[test]
+fn stale_repo_escalation_index_writes_nothing() {
+    let mut app = worker_app(Vec::new());
+
+    assert!(handle_display_only_with(
+        &mut app,
+        Selection::RepoEscalation { repo: 0, item: 99 },
+        99,
+        KeyCode::Char('d'),
+        |_, _| panic!("stale row must not write"),
+    ));
+
+    assert_eq!(
+        app.message.as_ref().unwrap().0,
+        "inbox item is no longer listed"
+    );
+}
+
+#[test]
+fn repo_escalation_cursor_survives_inbox_reordering() {
+    let mut app = worker_app(vec![item("gone", None, 1)]);
+    app.registry.repos[0].agents.clear();
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| matches!(row, Selection::RepoEscalation { .. }))
+        .unwrap();
+    let identity = app.item_key(app.selected_item().unwrap());
+    app.overseer_inbox.insert(0, item("newer-gone", None, 2));
+
+    app.restore_selection(Some(identity.clone()));
+
+    assert_eq!(
+        app.selected_item(),
+        Some(Selection::RepoEscalation { repo: 0, item: 1 })
+    );
+    assert_eq!(app.item_key(app.selected_item().unwrap()), identity);
+}

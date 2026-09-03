@@ -87,6 +87,8 @@ const INBOX_ITEM_HINTS: Hints = &[
     ("q", "quit"),
 ];
 
+const ESCALATION_HINTS: Hints = &[("d", "dismiss"), ("?", "help"), ("q", "quit")];
+
 const DROPR_TASK_LIST_HINTS: Hints = &[
     ("j/k", "move"),
     ("↵", "open"),
@@ -164,6 +166,7 @@ fn hints_for(
         Some(Selection::OverseerCategory(OverseerCategory::Discord)) => EXPANDABLE_CATEGORY_HINTS,
         Some(Selection::OverseerCategory(_)) => OTHER_CATEGORY_HINTS,
         Some(Selection::OverseerInbox(_)) => INBOX_ITEM_HINTS,
+        Some(Selection::OverseerAlert(_) | Selection::RepoEscalation { .. }) => ESCALATION_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,
         Some(Selection::RemoteDiscordChannel { .. }) => CHILD_WORKTREE_HINTS,
         Some(Selection::ChildWorktree { .. }) => CHILD_WORKTREE_HINTS,

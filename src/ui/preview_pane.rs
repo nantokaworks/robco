@@ -27,7 +27,11 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
         Some(Selection::OverseerAi | Selection::RemoteControlAi(_)) => &[PreviewPane::Info],
         // The inbox row is acted on from the left frame, so its preview is the
         // Inbox listing itself and there is no second tab to cycle to.
-        Some(Selection::OverseerInbox(_)) => &[PreviewPane::Info],
+        Some(
+            Selection::OverseerInbox(_)
+            | Selection::OverseerAlert(_)
+            | Selection::RepoEscalation { .. },
+        ) => &[PreviewPane::Info],
         // The channel row is acted on from the left frame too (Enter attaches
         // the live turn), so its one tab mirrors that same tmux session —
         // see `scrollback::live_session`'s `Selection::DiscordChannel` arm.

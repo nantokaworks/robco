@@ -25,7 +25,7 @@ pub(super) fn lines(app: &App, agent: &AgentNode) -> Vec<Line<'static>> {
     lines
 }
 
-fn item_lines(app: &App, item: &InboxItem) -> Vec<Line<'static>> {
+pub(super) fn item_lines(app: &App, item: &InboxItem) -> Vec<Line<'static>> {
     let remedy = item.remedy();
     let mut lines = vec![
         field("kind", item.kind.label().to_string()),

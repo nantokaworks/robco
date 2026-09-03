@@ -22,6 +22,7 @@ mod launch_row;
 pub(in crate::ui) mod overseer_frame;
 mod reason_line;
 mod remote_chat_row;
+mod repo_escalation_row;
 mod repo_row;
 use indicator::{IndicatorState, select};
 
@@ -45,6 +46,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
 
         match *item {
             Selection::OverseerAi
+            | Selection::OverseerAlert(_)
             | Selection::OverseerCategory(_)
             | Selection::OverseerInbox(_)
             | Selection::DiscordChannel(_) => continue,
@@ -73,6 +75,23 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                         !repo.agents.is_empty(),
                         projects_width,
                     ));
+                }
+            }
+            Selection::RepoEscalation { repo, item } => {
+                let is_last = !matches!(
+                    visible.get(idx + 1),
+                    Some(Selection::RepoEscalation { repo: next_repo, .. }) if *next_repo == repo
+                );
+                if let Some(line) = repo_escalation_row::build(
+                    app,
+                    repo,
+                    item,
+                    selected,
+                    marker,
+                    projects_width,
+                    is_last,
+                ) {
+                    lines.push(line);
                 }
             }
             Selection::Agent {

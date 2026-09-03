@@ -85,6 +85,8 @@ pub enum Selection {
     /// — it is the one OVERSEER row that owns a session to attach to, not a
     /// read-only summary of one (dropr:370).
     OverseerAi,
+    /// A repo-less Inbox escalation shown directly below OVERSEER warnings.
+    OverseerAlert(usize),
     OverseerCategory(OverseerCategory),
     /// One aggregated Overseer Inbox item, indexing into [`crate::ui::App`]'s
     /// inbox list. Present only while the Inbox category is expanded, so the
@@ -105,6 +107,11 @@ pub enum Selection {
         channel: usize,
     },
     Repo(usize),
+    /// An escalation whose repository remains but whose worker row is gone.
+    RepoEscalation {
+        repo: usize,
+        item: usize,
+    },
     Agent {
         repo: usize,
         agent: usize,

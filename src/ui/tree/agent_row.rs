@@ -22,7 +22,18 @@ pub(super) fn build(
     projects_width: u16,
 ) -> Vec<Line<'static>> {
     let repo = &app.registry.repos[repo_idx];
-    let row = crate::model::agent_row(&repo.agents, agent_idx);
+    let mut row = crate::model::agent_row(&repo.agents, agent_idx);
+    let repo_has_trailing_escalations = repo.host.is_none()
+        && app
+            .registry
+            .repos
+            .iter()
+            .position(|candidate| candidate.host.is_none() && candidate.name == repo.name)
+            == Some(repo_idx)
+        && !app.escalations_for_repo(&repo.name).is_empty();
+    if repo_has_trailing_escalations && row.depth == 0 && row.is_last {
+        row.is_last = false;
+    }
     let agent = &repo.agents[agent_idx];
     let agent_style = if selected {
         style
