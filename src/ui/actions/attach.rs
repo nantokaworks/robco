@@ -7,6 +7,9 @@ use crate::{
 
 use super::super::{App, suspend_terminal};
 
+#[path = "remote_attach.rs"]
+mod remote_attach;
+
 impl App {
     /// Suspend the TUI and hand the terminal to a tmux session. A failure here
     /// (e.g. the session exited between `ensure_*` and attach, or a transient
@@ -20,12 +23,20 @@ impl App {
     pub(in crate::ui) fn attach_session_on(&mut self, session: &str, host: Option<&HostLabel>) {
         self.force_redraw = true;
         let server = &self.config.tmux_server;
-        let result = suspend_terminal(|| match host {
-            Some(host) => remote_attach(host, session),
-            None => tmux::attach(server, session),
-        });
-        if let Err(err) = result {
-            self.show_message(err.to_string());
+        match host {
+            Some(host) => match remote_attach::attach_with(
+                || remote_attach::probe(host, session),
+                || suspend_terminal(|| remote_attach::interactive(host, session)),
+            ) {
+                Ok(remote_attach::ProbeVerdict::Exists) => {}
+                Ok(verdict) => self.show_message(verdict.message(self.locale, host, session)),
+                Err(err) => self.show_message(err.to_string()),
+            },
+            None => {
+                if let Err(err) = suspend_terminal(|| tmux::attach(server, session)) {
+                    self.show_message(err.to_string());
+                }
+            }
         }
     }
 
@@ -270,22 +281,6 @@ impl App {
             return;
         };
         self.attach_session(&session);
-    }
-}
-
-/// Direct ssh attach intentionally nests the operator's local and remote tmux.
-fn remote_attach(host: &HostLabel, session: &str) -> Result<()> {
-    let target = format!("={session}");
-    let status = std::process::Command::new("ssh")
-        .args(["-t", &host.ssh, "tmux", "attach", "-t", &target])
-        .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(crate::Error::Command {
-            context: "remote tmux attach",
-            stderr: format!("ssh exited with {status}"),
-        })
     }
 }
 

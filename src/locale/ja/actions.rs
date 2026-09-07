@@ -12,6 +12,11 @@ pub(super) fn lookup(en: &str) -> Option<&'static str> {
             "この子worktreeには稼働中のセッションがありません"
         }
         "branch remains: {}" => "ブランチは残っています: {}",
+        "no live session {} on {} — start it on the host first" => {
+            "{} は {} で稼働していません — 先にホスト上で起動してください"
+        }
+        "tmux is not on {}'s non-interactive PATH" => "{} の非対話PATHにtmuxがありません",
+        "remote attach failed: {}" => "リモートattachに失敗しました: {}",
         "instruction sent to overseer control" => "overseer制御に指示を送信しました",
         "instruction sent" => "指示を送信しました",
         "reloading dropr tasks…" => "droprタスクを再読込中…",
