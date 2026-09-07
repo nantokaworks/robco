@@ -16,7 +16,11 @@ fn remote_control_i_opens_the_session_prompt() {
         },
     )];
     app.sync_remote_host_views();
-    app.selected = 0;
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| *row == crate::model::Selection::RemoteControlAi(0))
+        .unwrap();
 
     assert!(handle_normal(&mut app, KeyCode::Char('i')));
     let expected = crate::overseer::control_session_name(&app.config.tmux_session_prefix);

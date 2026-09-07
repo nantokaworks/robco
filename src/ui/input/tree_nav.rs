@@ -33,6 +33,7 @@ impl App {
                 self.set_overseer_category_expanded(category, true);
             }
             Some(Selection::Repo(repo)) => self.set_repo_expanded(repo, true),
+            Some(Selection::HostHeader(host)) => self.set_host_collapsed(host, false),
             Some(Selection::Agent { repo, agent }) => {
                 self.set_agent_children_expanded(repo, agent, true);
             }
@@ -48,6 +49,7 @@ impl App {
                 self.set_overseer_category_expanded(category, false);
             }
             Some(Selection::Repo(repo)) => self.set_repo_expanded(repo, false),
+            Some(Selection::HostHeader(host)) => self.set_host_collapsed(host, true),
             Some(Selection::Agent { repo, agent }) => {
                 self.set_agent_children_expanded(repo, agent, false);
             }
@@ -60,6 +62,9 @@ impl App {
     pub(super) fn toggle_selected_tree_header(&mut self, selection: Selection) -> bool {
         match selection {
             Selection::OverseerCategory(category) => self.toggle_overseer_category(category),
+            Selection::HostHeader(host) => {
+                self.set_host_collapsed(host, !self.host_collapsed(host))
+            }
             Selection::OtherHeader => self.set_other_collapsed(!self.other_collapsed),
             Selection::OrphanHeader => self.set_orphans_collapsed(!self.orphans_collapsed),
             _ => return false,
@@ -98,6 +103,59 @@ mod tests {
         app.expand_selected_tree_item();
         app.collapse_selected_tree_item();
         assert_eq!(app.selected_item(), Some(Selection::OverseerAi));
+    }
+
+    #[test]
+    fn host_header_collapses_expands_and_keeps_its_identity() {
+        use crate::{model::HostLabel, ui::actions::remote_hosts::HostSlot};
+
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = false;
+        app.orphans.clear();
+        app.hosts = vec![HostSlot::connected(HostLabel {
+            name: "Production".into(),
+            ssh: "prod".into(),
+        })];
+        app.sync_remote_host_views();
+        assert_eq!(app.selected_item(), Some(Selection::HostHeader(0)));
+        assert_eq!(app.item_key(Selection::HostHeader(0)), "host-header:prod");
+
+        app.collapse_selected_tree_item();
+        assert!(app.host_collapsed(0));
+        assert_eq!(app.selected_item(), Some(Selection::HostHeader(0)));
+        app.expand_selected_tree_item();
+        assert!(!app.host_collapsed(0));
+        assert_eq!(app.selected_item(), Some(Selection::HostHeader(0)));
+        assert!(app.toggle_selected_tree_header(Selection::HostHeader(0)));
+        assert!(app.host_collapsed(0));
+    }
+
+    /// Enter must reach the header through the real key router and toggle —
+    /// never fall through to the attach arms (the dropr:584 panic lesson).
+    #[test]
+    fn enter_on_a_host_header_toggles_through_the_key_router() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        use crate::{model::HostLabel, ui::actions::remote_hosts::HostSlot};
+
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+        app.overseer_visible = false;
+        app.orphans.clear();
+        app.hosts = vec![HostSlot::connected(HostLabel {
+            name: "Production".into(),
+            ssh: "prod".into(),
+        })];
+        app.sync_remote_host_views();
+        assert_eq!(app.selected_item(), Some(Selection::HostHeader(0)));
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(app.host_collapsed(0));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        assert!(!app.host_collapsed(0));
     }
 
     #[test]

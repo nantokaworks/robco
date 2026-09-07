@@ -22,9 +22,14 @@ pub(crate) fn panes_for(selection: Option<Selection>) -> &'static [PreviewPane] 
     match selection {
         // The control AI is a row of its own now (dropr:370), so no category
         // row owns a session to show behind a second tab.
-        Some(Selection::OverseerCategory(_) | Selection::RemoteHostError(_)) => {
-            &[PreviewPane::Info]
-        }
+        // Host headers carry a read-only Info summary too: with no pane at
+        // all the catch-all renderer would show the generic Claude fallback,
+        // which misdescribes a host row (dropr:599 review F-01).
+        Some(
+            Selection::OverseerCategory(_)
+            | Selection::RemoteHostError(_)
+            | Selection::HostHeader(_),
+        ) => &[PreviewPane::Info],
         // The row is acted on from the left frame (Enter attaches, `i`
         // instructs), so its one tab is the live control session capture
         // itself and there is no second tab to cycle to.

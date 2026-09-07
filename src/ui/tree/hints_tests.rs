@@ -143,6 +143,12 @@ fn discord_category_advertises_expand() {
 }
 
 #[test]
+fn host_header_advertises_tree_controls() {
+    let line = hints_line(None, Some(Selection::HostHeader(0)), None, false).to_string();
+    assert_eq!(line, "[h] COLLAPSE [?] HELP [q] QUIT");
+}
+
+#[test]
 fn child_worktree_advertises_attach_only() {
     let line = hints_line(
         None,

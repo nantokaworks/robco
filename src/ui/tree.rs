@@ -16,6 +16,7 @@ mod footer;
 mod hints;
 mod host_chip;
 mod host_group;
+mod host_header;
 pub(in crate::ui) mod indicator;
 mod label;
 mod launch_row;
@@ -34,7 +35,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     }
     let projects_width = panes.tree.width.saturating_sub(1);
 
-    let mut lines = host_chip::lines(app, projects_width, app.started.elapsed());
+    let mut lines = vec![Line::from(Span::styled(
+        "PROJECTS",
+        THEME.accent_bold_style(),
+    ))];
     for (idx, item) in visible.iter().enumerate() {
         let selected = idx == app.selected;
         let marker = if selected { ">" } else { " " };
@@ -49,36 +53,46 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
             | Selection::OverseerAlert(_)
             | Selection::OverseerCategory(_)
             | Selection::DiscordChannel(_) => continue,
-            Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. } => {
-                if let Some(line) = remote_chat_row::build(app, *item, selected, marker) {
+            Selection::HostHeader(host) => {
+                if let Some(line) = host_header::build(app, host, selected, marker, projects_width)
+                {
                     lines.push(line);
                 }
             }
+            Selection::RemoteControlAi(_) | Selection::RemoteDiscordChannel { .. } => {
+                if let Some(line) = remote_chat_row::build(app, *item, selected, marker) {
+                    lines.push(indent_remote(line));
+                }
+            }
             Selection::RemoteHostError(host) => {
-                if let Some(line) = host_chip::failed_row(app, host, selected, marker) {
+                if let Some(line) = host_header::failed_child(app, host, selected, marker) {
                     lines.push(line);
                 }
             }
             Selection::Repo(repo_idx) => {
-                lines.extend(repo_row::build(
-                    app,
-                    repo_idx,
-                    selected,
-                    marker,
-                    style,
-                    projects_width,
-                ));
+                let remote = app.registry.repos[repo_idx].host.is_some();
+                let row_width = nested_width(projects_width, remote);
+                let mut repo_lines =
+                    repo_row::build(app, repo_idx, selected, marker, style, row_width);
+                if remote {
+                    repo_lines = repo_lines.into_iter().map(indent_remote).collect();
+                }
+                lines.extend(repo_lines);
                 // Launches in flight for this repo (dropr:517) show right
                 // under its own row, gated on expansion the same way its real
                 // agent rows are.
                 if app.expanded.get(repo_idx).copied().unwrap_or(true) {
                     let repo = &app.registry.repos[repo_idx];
-                    lines.extend(launch_row::build(
+                    let mut launch_lines = launch_row::build(
                         app,
                         &repo.path,
                         !repo.agents.is_empty(),
-                        projects_width,
-                    ));
+                        nested_width(projects_width, repo.host.is_some()),
+                    );
+                    if remote {
+                        launch_lines = launch_lines.into_iter().map(indent_remote).collect();
+                    }
+                    lines.extend(launch_lines);
                 }
             }
             Selection::RepoEscalation { repo, item } => {
@@ -102,15 +116,20 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 repo: repo_idx,
                 agent: agent_idx,
             } => {
-                lines.extend(agent_row::build(
+                let remote = app.registry.repos[repo_idx].host.is_some();
+                let mut agent_lines = agent_row::build(
                     app,
                     repo_idx,
                     agent_idx,
                     selected,
                     marker,
                     style,
-                    projects_width,
-                ));
+                    nested_width(projects_width, remote),
+                );
+                if remote {
+                    agent_lines = agent_lines.into_iter().map(indent_remote).collect();
+                }
+                lines.extend(agent_lines);
             }
             Selection::ChildWorktree {
                 repo,
@@ -154,7 +173,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
                 if child.tmux_session.is_some() {
                     spans.push(Span::styled(" ⌁", child_style));
                 }
-                lines.push(Line::from(spans));
+                let line = Line::from(spans);
+                lines.push(if repo.host.is_some() {
+                    indent_remote(line)
+                } else {
+                    line
+                });
             }
             // "OTHER LOCATIONS" / "ORPHAN SESSIONS" are all-caps section-divider
             // chrome, the same family as "PROJECTS" and "OVERSEER" (out of
@@ -205,6 +229,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, visible: &[Selection], message: Op
     frame.render_widget(tree, projects_area);
 
     footer::draw(frame, app, root.footer, message);
+}
+
+fn indent_remote(mut line: Line<'static>) -> Line<'static> {
+    line.spans.insert(0, Span::raw("  "));
+    line
+}
+
+fn nested_width(width: u16, nested: bool) -> u16 {
+    width.saturating_sub(u16::from(nested) * 2)
 }
 
 #[cfg(test)]

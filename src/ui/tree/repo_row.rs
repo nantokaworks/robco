@@ -33,12 +33,7 @@ pub(super) fn build(
         format!(" {}", repo.agents.len()),
         if selected { style } else { THEME.hint_style() },
     )];
-    if let Some(host) = &repo.host {
-        right.push(Span::styled(
-            format!("  @{}", host.name),
-            if selected { style } else { THEME.muted_style() },
-        ));
-    } else if !app.repo_is_local(repo) {
+    if repo.host.is_none() && !app.repo_is_local(repo) {
         right.push(Span::styled(
             format!("  {}", super::host_group::short_path(&repo.path)),
             if selected { style } else { THEME.muted_style() },

@@ -28,6 +28,8 @@ pub(in crate::ui) struct UiState {
     /// than the rule so a repo this file has never seen — a freshly discovered
     /// one — starts expanded, matching how a scan treats it.
     pub(in crate::ui) collapsed_repos: BTreeSet<String>,
+    /// Remote hosts whose child rows are collapsed, keyed by SSH destination.
+    pub(in crate::ui) collapsed_hosts: BTreeSet<String>,
     /// Agents whose child-worktree rows are expanded. The in-memory form is
     /// already path-keyed, so it persists as-is.
     pub(in crate::ui) expanded_children: BTreeSet<String>,

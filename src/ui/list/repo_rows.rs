@@ -21,6 +21,10 @@ pub(super) fn remote_item_key(app: &App, selection: Selection) -> String {
             || "remote-host-error:missing".to_string(),
             |slot| format!("remote-host-error:{}", slot.label.ssh),
         ),
+        Selection::HostHeader(host) => app.hosts.get(host).map_or_else(
+            || "host-header:missing".to_string(),
+            |slot| format!("host-header:{}", slot.label.ssh),
+        ),
         Selection::RemoteDiscordChannel { host, channel } => app
             .hosts
             .get(host)
@@ -41,6 +45,12 @@ pub(super) fn push_remote_host_rows(
     host: usize,
     slot: &HostSlot,
 ) {
+    let Some(view) = app.host_view(host) else {
+        return;
+    };
+    if view.connection != HostConnection::Connected {
+        return;
+    }
     for repo_idx in app
         .registry
         .repos
@@ -49,12 +59,6 @@ pub(super) fn push_remote_host_rows(
         .filter_map(|(index, repo)| (repo.host.as_ref() == Some(&slot.label)).then_some(index))
     {
         push_repo_rows(app, visible, repo_idx, &app.registry.repos[repo_idx]);
-    }
-    let Some(view) = app.host_view(host) else {
-        return;
-    };
-    if view.connection != HostConnection::Connected {
-        return;
     }
     visible.push(Selection::RemoteControlAi(host));
     let count = crate::ui::overseer::ordered_channel_ids(&view.discord_channels).len();
@@ -187,5 +191,48 @@ mod tests {
         let key = app.item_key(Selection::RepoEscalation { repo: 0, item: 0 });
         assert!(key.contains(&app.registry.repos[0].path.display().to_string()));
         assert!(!key.contains(&app.registry.repos[1].path.display().to_string()));
+    }
+
+    #[test]
+    fn remote_repo_is_not_reorderable_across_host_boundaries() {
+        let labels = ["first", "second"].map(|ssh| HostLabel {
+            name: ssh.into(),
+            ssh: ssh.into(),
+        });
+        let repos = labels
+            .iter()
+            .enumerate()
+            .map(|(index, host)| {
+                let mut repo = test_support::repo(format!("/srv/{index}").into(), Vec::new());
+                repo.host = Some(host.clone());
+                repo
+            })
+            .collect();
+        let temp = tempfile::tempdir().unwrap();
+        let mut app = App::new(
+            Registry { version: 1, repos },
+            Config::default(),
+            temp.path().into(),
+        );
+        app.overseer_visible = false;
+        app.orphans.clear();
+        app.expanded = vec![true, true];
+        app.hosts = labels.into_iter().map(HostSlot::connected).collect();
+        app.sync_remote_host_views();
+        app.selected = 1;
+
+        app.move_selected_repo(1);
+
+        assert_eq!(
+            app.visible(),
+            vec![
+                Selection::HostHeader(0),
+                Selection::Repo(0),
+                Selection::RemoteControlAi(0),
+                Selection::HostHeader(1),
+                Selection::Repo(1),
+                Selection::RemoteControlAi(1),
+            ]
+        );
     }
 }

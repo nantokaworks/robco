@@ -9,9 +9,7 @@ use crate::{
     locale::t,
     model::{Selection, Status},
     ui::{
-        App, PreviewPane,
-        actions::remote_hosts::HostConnection,
-        layout, merge_dialog, scrollback,
+        App, PreviewPane, layout, merge_dialog, scrollback,
         summary::{agent_summary, child_summary},
         theme::DEFAULT as THEME,
     },
@@ -23,6 +21,7 @@ mod branch_only;
 mod dropr_task_preview;
 #[cfg(test)]
 mod error_info_tests;
+mod host_info;
 mod labels;
 mod notice;
 mod overseer;
@@ -71,25 +70,17 @@ pub fn draw(frame: &mut Frame<'_>, app: &App, selection: Option<Selection>) {
             };
             preview
         }
-        (_, Some(Selection::RemoteHostError(host))) => {
-            let (Some(slot), Some(view)) = (app.hosts.get(host), app.host_view(host)) else {
+        (_, Some(Selection::HostHeader(host))) => {
+            let Some(preview) = host_info::header(app, host) else {
                 return;
             };
-            let state = match view.connection {
-                HostConnection::Connecting => "connecting",
-                HostConnection::Connected => "connected",
-                HostConnection::Failed => "failed",
+            preview
+        }
+        (_, Some(Selection::RemoteHostError(host))) => {
+            let Some(preview) = host_info::error(app, host) else {
+                return;
             };
-            let error = view
-                .error
-                .as_deref()
-                .unwrap_or_default()
-                .replace('\n', "\n       ");
-            let text = format!(
-                "host: {}\nssh: {}\nconnection: {state}\nerror: {error}",
-                slot.label.name, slot.label.ssh
-            );
-            (slot.label.name.clone(), text.into())
+            preview
         }
         (
             _,

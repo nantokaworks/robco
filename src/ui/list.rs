@@ -35,7 +35,8 @@ impl App {
                         |id| format!("discord-channel:{id}"),
                     )
             }
-            Selection::RemoteControlAi(_)
+            Selection::HostHeader(_)
+            | Selection::RemoteControlAi(_)
             | Selection::RemoteHostError(_)
             | Selection::RemoteDiscordChannel { .. } => repo_rows::remote_item_key(self, selection),
             Selection::Repo(repo) => format!(
@@ -82,7 +83,6 @@ impl App {
         }
     }
 
-    /// Restore the remembered valid preview tab, or the selection's default.
     pub(in crate::ui) fn restore_preview(&mut self) {
         let selection = self.selected_item();
         let panes = self.preview_panes(selection);
@@ -209,7 +209,6 @@ impl App {
         )
     }
 
-    /// Flattened tree rows in display order.
     pub(in crate::ui) fn visible(&self) -> Vec<Selection> {
         let mut visible = Vec::new();
         if self.overseer_visible {
@@ -230,18 +229,24 @@ impl App {
                 }
             }
         }
-        visible.extend(
-            self.hosts
-                .iter()
-                .enumerate()
-                .filter(|(host, _)| {
-                    self.host_view(*host)
-                        .is_some_and(|view| view.connection == repo_rows::HostConnection::Failed)
-                })
-                .map(|(host, _)| Selection::RemoteHostError(host)),
-        );
         for repo_idx in self.local_repos() {
             repo_rows::push_repo_rows(self, &mut visible, repo_idx, &self.registry.repos[repo_idx]);
+        }
+
+        for (host, slot) in self.hosts.iter().enumerate() {
+            visible.push(Selection::HostHeader(host));
+            if self.host_collapsed(host) {
+                continue;
+            }
+            match self.host_view(host).map(|view| view.connection) {
+                Some(repo_rows::HostConnection::Failed) => {
+                    visible.push(Selection::RemoteHostError(host));
+                }
+                Some(repo_rows::HostConnection::Connected) => {
+                    repo_rows::push_remote_host_rows(self, &mut visible, host, slot);
+                }
+                _ => {}
+            }
         }
 
         let others = self.other_location_repos();
@@ -257,9 +262,6 @@ impl App {
                     );
                 }
             }
-        }
-        for (host, slot) in self.hosts.iter().enumerate() {
-            repo_rows::push_remote_host_rows(self, &mut visible, host, slot);
         }
         if !self.orphans.is_empty() {
             visible.push(Selection::OrphanHeader);

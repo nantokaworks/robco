@@ -181,7 +181,7 @@ mod tests {
         app.hosts = ["first", "selected"]
             .into_iter()
             .map(|ssh| {
-                HostSlot::idle(HostLabel {
+                HostSlot::connected(HostLabel {
                     name: ssh.into(),
                     ssh: ssh.into(),
                 })

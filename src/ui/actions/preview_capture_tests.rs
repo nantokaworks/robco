@@ -84,7 +84,13 @@ sleep 1"#,
     let client = RemoteClient::test_command(command, Duration::from_millis(100)).unwrap();
     let backend = Arc::new(RemoteBackend::test(client));
     app.hosts = vec![HostSlot::with_backend(host, Arc::clone(&backend))];
+    app.sync_remote_host_views();
     app.overseer_visible = false;
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|item| *item == Selection::Repo(0))
+        .unwrap();
     app.preview = PreviewPane::Claude;
 
     app.schedule_preview_capture(Rect::new(0, 0, 120, 40));

@@ -168,7 +168,8 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
         app.registry.repos = vec![repo];
-        app.hosts = vec![HostSlot::idle(host)];
+        app.hosts = vec![HostSlot::connected(host)];
+        app.sync_remote_host_views();
         app.overseer_visible = false;
         app.expanded = vec![true];
         app.selected = app
