@@ -136,16 +136,28 @@ fn connected_remote_hosts_list_global_chats_after_their_repos() {
     assert_eq!(
         app.visible(),
         vec![
-            Selection::RemoteHostError(1),
+            Selection::HostHeader(0),
             Selection::Repo(0),
             Selection::RemoteControlAi(0),
             Selection::RemoteDiscordChannel {
                 host: 0,
                 channel: 0
             },
-            Selection::Repo(1),
+            Selection::HostHeader(1),
+            Selection::RemoteHostError(1),
         ]
     );
+
+    app.set_host_collapsed(0, true);
+    assert_eq!(
+        app.visible(),
+        vec![
+            Selection::HostHeader(0),
+            Selection::HostHeader(1),
+            Selection::RemoteHostError(1),
+        ]
+    );
+    app.set_host_collapsed(0, false);
 
     app.selected = 2;
     let key = app.item_key(app.selected_item().unwrap());
@@ -183,12 +195,13 @@ fn failed_host_row_reanchors_to_control_row_when_host_recovers() {
     app.hosts[0].replace_error(Some("offline\nretry later"));
     app.ingest_remote_hosts();
     assert_eq!(app.selected_item(), Some(Selection::Repo(0)));
-    assert_eq!(app.visible()[0], Selection::RemoteHostError(0));
+    assert_eq!(app.visible()[1], Selection::HostHeader(0));
+    assert_eq!(app.visible()[2], Selection::RemoteHostError(0));
     assert_eq!(
         app.item_key(Selection::RemoteHostError(0)),
         "remote-host-error:ops@prod"
     );
-    app.selected = 0;
+    app.selected = 2;
     assert_eq!(app.selected_item(), Some(Selection::RemoteHostError(0)));
 
     app.hosts[0].replace_error(None);

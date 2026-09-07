@@ -111,6 +111,7 @@ const ORPHAN_HINTS: Hints = &[
 /// the same key (dropr:509). `enter` and `h` fold it too; the bar names one
 /// key per action, not every synonym.
 const HEADER_HINTS: Hints = &[("l", "expand"), ("?", "help"), ("q", "quit")];
+const COLLAPSE_HEADER_HINTS: Hints = &[("h", "collapse"), ("?", "help"), ("q", "quit")];
 
 fn hints_for(
     app: &App,
@@ -151,6 +152,13 @@ fn hints_for(
         Some(Selection::OverseerAi) => OVERSEER_AI_HINTS,
         Some(Selection::RemoteControlAi(_)) => OVERSEER_AI_HINTS,
         Some(Selection::RemoteHostError(_)) => READ_ONLY_HINTS,
+        Some(Selection::HostHeader(host)) => {
+            if app.host_collapsed(host) {
+                HEADER_HINTS
+            } else {
+                COLLAPSE_HEADER_HINTS
+            }
+        }
         Some(Selection::OverseerCategory(OverseerCategory::Discord)) => EXPANDABLE_CATEGORY_HINTS,
         Some(Selection::OverseerAlert(_) | Selection::RepoEscalation { .. }) => ESCALATION_HINTS,
         Some(Selection::DiscordChannel(_)) => DISCORD_CHANNEL_HINTS,

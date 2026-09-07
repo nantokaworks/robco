@@ -53,6 +53,11 @@ fn failed_host_info_contains_the_full_error() {
 #[test]
 fn failed_host_action_keys_are_inert() {
     let mut app = failed_host_app();
+    app.selected = app
+        .visible()
+        .iter()
+        .position(|row| *row == Selection::RemoteHostError(0))
+        .unwrap();
     for code in [KeyCode::Enter, KeyCode::Char('y'), KeyCode::Char('d')] {
         app.force_redraw = false;
         app.handle_key(KeyEvent::new(code, KeyModifiers::NONE))

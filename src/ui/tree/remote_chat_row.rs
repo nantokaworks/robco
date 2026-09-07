@@ -34,7 +34,7 @@ pub(super) fn build(
         }
         _ => return None,
     };
-    let slot = app.hosts.get(host)?;
+    app.hosts.get(host)?;
     let style = if selected {
         THEME.selection_style()
     } else {
@@ -42,7 +42,7 @@ pub(super) fn build(
     };
     let primary = select(IndicatorState::with_status(status));
     Some(Line::from(vec![
-        Span::styled(format!("{marker}   {label} @{}  ", slot.label.name), style),
+        Span::styled(format!("{marker}   {label}  "), style),
         indicator::primary_span(primary, selected, app.started.elapsed(), 1),
     ]))
 }
@@ -56,7 +56,7 @@ mod tests {
     };
 
     #[test]
-    fn rows_include_labels_and_host_name() {
+    fn rows_include_labels_without_host_suffix() {
         let temp = tempfile::tempdir().unwrap();
         let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
         let channels: DiscordChannels = serde_json::from_value(serde_json::json!({"channels": {
@@ -86,7 +86,9 @@ mod tests {
             " ",
         )
         .unwrap();
-        assert!(control.to_string().contains("Control AI @Prod"));
-        assert!(discord.to_string().contains("#ops @Prod"));
+        assert!(control.to_string().contains("Control AI"));
+        assert!(discord.to_string().contains("#ops"));
+        assert!(!control.to_string().contains("@Prod"));
+        assert!(!discord.to_string().contains("@Prod"));
     }
 }

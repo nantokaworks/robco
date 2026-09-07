@@ -39,7 +39,7 @@ fn zero_hosts_adds_no_tree_indirection() {
 }
 
 #[test]
-fn host_states_render_in_the_header_and_as_detail_lines() {
+fn host_states_render_as_top_level_rows() {
     let odin = HostLabel {
         name: "odin".into(),
         ssh: "odin.example".into(),
@@ -64,16 +64,24 @@ fn host_states_render_in_the_header_and_as_detail_lines() {
     app.sync_remote_host_views();
 
     let rows = render_test_support::rendered_rows_at_width(&app, 120);
-    assert!(rows[0].contains("⌁ odin"), "{}", rows[0]);
-    assert!(rows[0].contains("✗ bad"), "{}", rows[0]);
+    assert_eq!(rows[0].trim_end(), "PROJECTS");
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("⌁ odin") && row.contains("1 repos"))
+    );
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("✗ bad") && row.contains("offline"))
+    );
     assert!(
         ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
             .iter()
-            .any(|glyph| rows[0].contains(&format!("{glyph} new"))),
-        "{}",
-        rows[0]
+            .any(|glyph| rows.iter().any(|row| row.contains(&format!("{glyph} new"))))
     );
-    assert!(rows.iter().any(|row| row.contains("new: connecting...")));
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("new") && row.contains("connecting..."))
+    );
     assert!(rows.iter().any(|row| row.contains("✗ bad: offline")));
     assert_eq!(
         rows.iter()
@@ -83,13 +91,8 @@ fn host_states_render_in_the_header_and_as_detail_lines() {
     );
     assert!(!rows.iter().any(|row| row.contains("retry later")));
 
-    let header = rendered_cells_for_at_width(&app, "PROJECTS", 120);
-    let chip_cross = header
-        .iter()
-        .find(|cell| cell.symbol() == "✗")
-        .expect("failed chip cross");
-    assert_eq!(chip_cross.fg, Color::Red);
-    assert!(chip_cross.modifier.contains(Modifier::BOLD));
+    assert!(!rows[0].contains("odin"));
+    assert!(!rows[0].contains("bad"));
 
     let failure = rendered_cells_for(&app, "bad: offline");
     let cross = failure
@@ -101,7 +104,7 @@ fn host_states_render_in_the_header_and_as_detail_lines() {
 }
 
 #[test]
-fn remote_repo_uses_host_suffix_without_a_divider_or_path() {
+fn remote_repo_nests_without_a_host_suffix_or_path() {
     let odin = HostLabel {
         name: "odin".into(),
         ssh: "odin.example".into(),
@@ -112,13 +115,14 @@ fn remote_repo_uses_host_suffix_without_a_divider_or_path() {
 
     let rows = rendered_rows(&app);
     let remote = rows.iter().find(|row| row.contains("remote")).unwrap();
-    assert!(remote.contains("@odin"), "{remote}");
+    assert!(!remote.contains("@odin"), "{remote}");
     assert!(!remote.contains("/tmp/remote"), "{remote}");
-    assert!(!rows.iter().any(|row| row.contains("HOST ")));
+    assert!(rows.iter().any(|row| row.contains("⌁ odin")));
+    assert!(remote.starts_with("  "), "{remote}");
 }
 
 #[test]
-fn connecting_detail_is_hidden_once_that_host_has_a_repo() {
+fn connecting_host_hides_stale_repo_children() {
     let host = HostLabel {
         name: "odin".into(),
         ssh: "odin.example".into(),
@@ -128,11 +132,16 @@ fn connecting_detail_is_hidden_once_that_host_has_a_repo() {
     app.sync_remote_host_views();
 
     let rows = rendered_rows(&app);
-    assert!(!rows.iter().any(|row| row.contains("odin: connecting...")));
+    assert!(
+        rows.iter()
+            .any(|row| row.contains("odin") && row.contains("connecting.")),
+        "{rows:?}"
+    );
+    assert!(!rows.iter().any(|row| row.contains("remote")));
 }
 
 #[test]
-fn narrow_header_drops_a_whole_chip_and_shows_ellipsis() {
+fn narrow_host_row_keeps_the_label_before_clipping_the_summary() {
     let host = HostLabel {
         name: "long-host".into(),
         ssh: "long.example".into(),
@@ -141,10 +150,13 @@ fn narrow_header_drops_a_whole_chip_and_shows_ellipsis() {
     app.hosts = vec![HostSlot::connected(host)];
     app.sync_remote_host_views();
 
-    let header = &render_test_support::rendered_rows_at_width(&app, 16)[0];
-    assert!(header.contains("PROJECTS…"), "{header}");
-    assert!(!header.contains('⌁'), "{header}");
-    assert!(!header.contains("long"), "{header}");
+    let rows = render_test_support::rendered_rows_at_width(&app, 16);
+    let host = rows
+        .iter()
+        .find(|row| row.contains("long-h"))
+        .unwrap_or_else(|| panic!("{rows:?}"));
+    assert!(host.contains("⌁ long-h"), "{host}");
+    assert!(!host.contains("0 repos"), "{host}");
 }
 
 #[test]
@@ -162,7 +174,7 @@ fn connected_host_with_dead_daemon_shows_red_warning() {
     )];
     app.sync_remote_host_views();
 
-    let cells = rendered_cells_for_at_width(&app, "PROJECTS", 120);
+    let cells = rendered_cells_for_at_width(&app, "odin", 120);
     let warning = cells.iter().find(|cell| cell.symbol() == "⚠").unwrap();
     assert_eq!(warning.fg, Color::Red);
 }

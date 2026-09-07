@@ -37,6 +37,7 @@ fn a_saved_layout_round_trips_through_the_file() {
     let mut store = UiStateStore::at(path.clone());
     store.update(|state| {
         state.collapsed_repos.insert("/repos/alpha".into());
+        state.collapsed_hosts.insert("prod".into());
         state.expanded_children.insert("/worktrees/one".into());
         state.other_collapsed = true;
         state.orphans_collapsed = true;
@@ -180,6 +181,34 @@ fn an_old_ui_state_file_loads_only_discord_cleanly() {
             .expanded_overseer_categories,
         BTreeSet::from(["Discord".to_string()])
     );
+}
+
+#[test]
+fn collapsed_hosts_round_trip_and_unknown_destinations_are_ignored() {
+    use crate::{model::HostLabel, ui::actions::remote_hosts::HostSlot};
+
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ui-state.json");
+    let mut store = UiStateStore::at(path.clone());
+    store.update(|state| {
+        state.collapsed_hosts.insert("prod".into());
+        state.collapsed_hosts.insert("retired".into());
+    });
+    let mut app = App::new_with_ui_state(
+        Registry::default(),
+        Config::default(),
+        temp.path().into(),
+        UiStateStore::at(path),
+    );
+    app.hosts = vec![HostSlot::connected(HostLabel {
+        name: "Production".into(),
+        ssh: "prod".into(),
+    })];
+    app.sync_remote_host_views();
+
+    assert!(app.host_collapsed(0));
+    app.set_host_collapsed(0, false);
+    assert!(app.ui_state.state().collapsed_hosts.is_empty());
 }
 
 #[test]

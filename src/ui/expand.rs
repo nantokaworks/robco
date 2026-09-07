@@ -11,6 +11,35 @@ use crate::model::OverseerCategory;
 use super::{App, actions::discovery::path_key};
 
 impl App {
+    pub(in crate::ui) fn host_collapsed(&self, host: usize) -> bool {
+        self.hosts.get(host).is_some_and(|slot| {
+            self.ui_state
+                .state()
+                .collapsed_hosts
+                .contains(&slot.label.ssh)
+        })
+    }
+
+    pub(in crate::ui) fn set_host_collapsed(&mut self, host: usize, collapsed: bool) {
+        let Some(ssh) = self.hosts.get(host).map(|slot| slot.label.ssh.clone()) else {
+            return;
+        };
+        let known = self
+            .hosts
+            .iter()
+            .map(|slot| slot.label.ssh.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        self.ui_state.update(|state| {
+            state.collapsed_hosts.retain(|key| known.contains(key));
+            if collapsed {
+                state.collapsed_hosts.insert(ssh);
+            } else {
+                state.collapsed_hosts.remove(&ssh);
+            }
+        });
+        self.clamp_selection();
+    }
+
     pub(in crate::ui) fn overseer_category_expanded(&self, category: OverseerCategory) -> bool {
         self.overseer_expanded[category.index()]
     }
