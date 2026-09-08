@@ -96,6 +96,7 @@ pub(in crate::ui) fn capture_overseer(
             decisions,
             daemon_alive,
             daemon_version,
+            binary_version: None,
             control_status,
         },
         control_watch: ControlWatch {

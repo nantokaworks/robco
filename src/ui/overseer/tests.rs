@@ -40,12 +40,34 @@ fn stale_heartbeat_is_not_fresh() {
 fn health_warnings_report_liveness_and_version_drift() {
     assert_eq!(
         categories::health_warnings_from(false, false),
-        ["STALE/OFFLINE"]
+        ["local: STALE/OFFLINE"]
     );
     assert_eq!(
         categories::health_warnings_from(true, true),
-        [crate::overseer::heartbeat::DRIFT_LABEL]
+        ["local: stale build"]
     );
+}
+
+/// The full drift sentence stays unprefixed: the "local" attribution lives on
+/// the rendered row labels (`local: STALE/OFFLINE`, `local: stale build`) and
+/// the header's `local ⚠×N` chip, which are English UI chrome by policy. The
+/// sentence itself is what `robco status --debug` prints in full.
+#[test]
+fn local_version_drift_names_the_running_build() {
+    let snapshot = OverseerSnapshot {
+        daemon_alive: true,
+        daemon_version: Some("old".into()),
+        ..Default::default()
+    };
+    let warning = snapshot.version_drift().unwrap();
+    assert!(warning.contains("old"), "{warning}");
+
+    let healthy = OverseerSnapshot {
+        daemon_alive: false,
+        daemon_version: Some("old".into()),
+        ..Default::default()
+    };
+    assert_eq!(healthy.version_drift(), None);
 }
 
 #[test]

@@ -137,11 +137,8 @@ fn build_content_with_warnings(
 /// no arrow and no selection marker, because it is not a focus target.
 fn header_line(app: &App, warning_count: usize, width: Option<u16>) -> Line<'static> {
     let style = THEME.accent_bold_style();
-    // The header never leaves the screen, so a glyph that ticks along with a
-    // healthy daemon is pure noise: it draws the eye every frame without
-    // carrying anything to act on. Only the error state earns a glyph here.
-    // The snapshot's own `Running` / `Idle` distinction is untouched — the
-    // previews and the Info pane still read it in full.
+    // Only the error state earns a glyph; a healthy daemon's animated glyph
+    // would add noise to a header that never leaves the screen.
     let indicator = match app.overseer_snapshot.status() {
         Status::Dead => Some(indicator::primary_span(
             select(IndicatorState::with_status(Some(Status::Dead))),
@@ -152,15 +149,11 @@ fn header_line(app: &App, warning_count: usize, width: Option<u16>) -> Line<'sta
         _ => None,
     };
 
-    // The glyph follows the label after the same two-column gap `category_line`
-    // puts between a label and its summary. Padding it out to the frame width
-    // instead would strand it ~37 columns away on a wide sidebar, where it no
-    // longer reads as the status of the name beside it.
+    // Keep the glyph beside the label, across the same gap as category rows.
     let mut spans = vec![Span::styled("OVERSEER", style)];
     if let Some(width) = width {
-        // Reserve the gap and the glyph up front so a narrow frame trims the
-        // label rather than the status it describes. With no glyph to place
-        // there is nothing to reserve, and the label keeps those columns.
+        // Reserve the gap and glyph up front so a narrow frame trims the
+        // label rather than the status it describes.
         let reserved = if indicator.is_some() {
             GAP.len() + 1
         } else {
@@ -172,12 +165,11 @@ fn header_line(app: &App, warning_count: usize, width: Option<u16>) -> Line<'sta
         spans.push(Span::styled(GAP, style));
         spans.push(indicator);
     }
-    // Warnings trail the indicator so the glyph — when there is one — stays
-    // adjacent to the label whatever the warning count is, and so they are
-    // what a narrow frame drops.
+    // Warnings trail the indicator so the glyph stays beside the label and
+    // a narrow frame drops the warnings first.
     if warning_count > 0 {
         spans.push(Span::styled(
-            format!("{GAP}⚠×{warning_count}"),
+            format!("{GAP}local ⚠×{warning_count}"),
             warning_style(false),
         ));
     }

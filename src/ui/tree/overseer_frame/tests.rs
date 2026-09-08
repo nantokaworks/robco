@@ -35,7 +35,7 @@ fn frame_keeps_only_control_ai_and_discord_after_the_header() {
         .collect::<Vec<_>>();
     assert_eq!(lines.len(), 4);
     assert!(lines[0].starts_with("OVERSEER"));
-    assert_eq!(lines[1], "⚠ STALE/OFFLINE");
+    assert_eq!(lines[1], "⚠ local: STALE/OFFLINE");
     assert!(lines[2].contains("Control AI"));
     assert!(lines[3].contains("Discord"));
 }
@@ -82,6 +82,13 @@ fn dead_status_glyph_stays_beside_the_header_label() {
     let app = test_app();
     let line = build_content(&app, Some(40)).lines[0].to_string();
     assert!(line.starts_with("OVERSEER  ✗"), "{line}");
+}
+
+#[test]
+fn header_warning_chip_identifies_the_local_machine() {
+    let app = test_app();
+    let line = build_content(&app, Some(40)).lines[0].to_string();
+    assert!(line.contains("local ⚠×1"), "{line}");
 }
 
 #[test]

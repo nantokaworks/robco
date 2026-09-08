@@ -67,3 +67,23 @@ fn failed_host_action_keys_are_inert() {
         assert!(!app.force_redraw, "inert keys must not attempt an attach");
     }
 }
+
+#[test]
+fn host_info_names_both_builds_and_explains_drift() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = App::new(Registry::default(), Config::default(), temp.path().into());
+    app.hosts = vec![HostSlot::connected_with_versions(
+        HostLabel {
+            name: "Production".into(),
+            ssh: "prod".into(),
+        },
+        Some("1.0.0"),
+        Some("2.0.0"),
+    )];
+    app.sync_remote_host_views();
+    let (_, text) = host_info::header(&app, 0).unwrap();
+    let rendered = text.to_string();
+    assert!(rendered.contains("daemon version: 1.0.0"), "{rendered}");
+    assert!(rendered.contains("binary: 2.0.0"), "{rendered}");
+    assert!(rendered.contains("overseer daemon is running 1.0.0 but this binary is 2.0.0"));
+}

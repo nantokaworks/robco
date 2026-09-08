@@ -59,6 +59,10 @@ pub(super) struct OverseerWire {
     pub daemon_alive: bool,
     pub heartbeat_age: Option<Duration>,
     pub daemon_version: Option<String>,
+    /// Absent when talking to an older host; without its binary build, the
+    /// client cannot make a sound host-local drift comparison.
+    #[serde(default)]
+    pub binary_version: Option<String>,
     pub control_status: Option<String>,
 }
 
@@ -173,4 +177,38 @@ fn child(value: &Value) -> Option<ChildWorktree> {
 
 fn optional(value: &Value, field: &str) -> Option<String> {
     value.get(field).and_then(Value::as_str).map(str::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn overseer_wire(binary_version: Option<&str>) -> OverseerWire {
+        let mut value = json!({
+            "overseer": OverseerConfig::default(), "ledger": Ledger::default(),
+            "other_prs": OtherPrs::default(), "discord_channels": DiscordChannels::default(),
+            "decisions": [], "dismissals": Dismissals::default(),
+            "row_summaries": RowSummaries::default(), "daemon_pid_alive": true,
+            "daemon_alive": true, "heartbeat_age": null, "daemon_version": "daemon",
+            "control_status": null
+        });
+        if let Some(version) = binary_version {
+            value["binary_version"] = json!(version);
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn overseer_wire_accepts_binary_version() {
+        assert_eq!(
+            overseer_wire(Some("host")).binary_version.as_deref(),
+            Some("host")
+        );
+    }
+
+    #[test]
+    fn overseer_wire_defaults_a_missing_binary_version() {
+        assert_eq!(overseer_wire(None).binary_version, None);
+    }
 }
