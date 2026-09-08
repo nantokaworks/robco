@@ -27,11 +27,17 @@ pub(super) fn header(app: &App, host: usize) -> Option<(String, Text<'static>)> 
         .count();
     let daemon = if view.daemon_alive { "alive" } else { "dead" };
     let mut text = format!(
-        "host: {}\nssh: {}\nconnection: {}\nrepos: {repos}\ndaemon: {daemon}",
+        "host: {}\nssh: {}\nconnection: {}\nrepos: {repos}\ndaemon: {daemon}\ndaemon version: {}\nbinary: {}",
         slot.label.name,
         slot.label.ssh,
-        state(view.connection)
+        state(view.connection),
+        view.daemon_version.as_deref().unwrap_or("unknown"),
+        view.binary_version.as_deref().unwrap_or("unknown")
     );
+    if let Some(warning) = view.version_drift() {
+        text.push('\n');
+        text.push_str(&warning);
+    }
     if let Some(error) = view.error.as_deref() {
         text.push_str("\nerror: ");
         text.push_str(&error.replace('\n', "\n       "));

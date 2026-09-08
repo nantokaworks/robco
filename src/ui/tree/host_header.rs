@@ -65,7 +65,9 @@ pub(super) fn build(
         ),
         Span::styled(slot.label.name.clone(), row_style),
     ];
-    if view.connection == HostConnection::Connected && !view.daemon_alive {
+    if view.connection == HostConnection::Connected
+        && (!view.daemon_alive || view.version_drift().is_some())
+    {
         spans.push(Span::styled(" ⚠", host_chip::failure_style()));
     }
     spans.push(Span::styled(format!("  {summary}"), summary_style));

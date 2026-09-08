@@ -912,12 +912,14 @@ too. Each pass therefore records its own version in the heartbeat, and
 `robco status --debug` reports it as `version=` beside `pid` and `heartbeat`. When
 that version differs from the `robco` binary answering the command — the exact
 "installed but not restarted" state — the status command warns and names the two builds;
-the OVERSEER header carries it as a `stale build` warning
+the OVERSEER header carries it as a `local: stale build` warning
 row, and the plain (non-`--debug`) `robco status` lists it under `stuck:`. A
 heartbeat written before the daemon recorded its build reads as `unknown` and warns the
 same way, because only a release older than this one leaves the field out. Restart the
 daemon (`robco stop` then `robco daemon`, or restart the installed service)
 to clear it; nothing restarts it automatically on drift.
+In host-slot mode, each connected host row and its Info preview surface drift between that
+host's daemon and the remote `robco` binary independently.
 
 ### Discord application
 

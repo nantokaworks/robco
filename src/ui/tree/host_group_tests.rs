@@ -178,3 +178,37 @@ fn connected_host_with_dead_daemon_shows_red_warning() {
     let warning = cells.iter().find(|cell| cell.symbol() == "⚠").unwrap();
     assert_eq!(warning.fg, Color::Red);
 }
+
+#[test]
+fn connected_host_marks_only_known_version_drift() {
+    let host = |name: &str| HostLabel {
+        name: name.into(),
+        ssh: name.into(),
+    };
+    let mut app = bare_app(Vec::new());
+    app.hosts = vec![
+        HostSlot::connected_with_versions(host("drift"), Some("old"), Some("new")),
+        HostSlot::connected_with_versions(host("missing"), None, Some("new")),
+        HostSlot::connected_with_versions(host("equal"), Some("same"), Some("same")),
+        HostSlot::connected_with_versions(host("unknown"), Some("old"), None),
+    ];
+    app.sync_remote_host_views();
+
+    assert!(
+        rendered_cells_for_at_width(&app, "drift", 120)
+            .iter()
+            .any(|c| c.symbol() == "⚠")
+    );
+    assert!(
+        rendered_cells_for_at_width(&app, "missing", 120)
+            .iter()
+            .any(|c| c.symbol() == "⚠")
+    );
+    for label in ["equal", "unknown"] {
+        assert!(
+            !rendered_cells_for_at_width(&app, label, 120)
+                .iter()
+                .any(|c| c.symbol() == "⚠")
+        );
+    }
+}

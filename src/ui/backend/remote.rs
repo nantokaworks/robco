@@ -100,6 +100,7 @@ impl RemoteBackend {
                     decisions: wire.decisions,
                     daemon_alive: wire.daemon_alive,
                     daemon_version: wire.daemon_version,
+                    binary_version: wire.binary_version,
                     control_status,
                 },
                 control_watch: ControlWatch {

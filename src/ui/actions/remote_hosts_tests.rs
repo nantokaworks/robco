@@ -77,9 +77,13 @@ fn publish_tags_repos_and_preserves_last_success_on_error() {
         &cell,
         &label,
         vec![repo],
-        Some(Status::Waiting),
-        channels.clone(),
-        false,
+        OverseerSnapshot {
+            control_status: Some(Status::Waiting),
+            discord_channels: channels.clone(),
+            daemon_version: Some("daemon".into()),
+            binary_version: Some("binary".into()),
+            ..OverseerSnapshot::default()
+        },
         None,
     );
     publish_error(&cell, "offline".into());
@@ -90,6 +94,11 @@ fn publish_tags_repos_and_preserves_last_success_on_error() {
     assert_eq!(snapshot.control_status, Some(Status::Waiting));
     assert_eq!(snapshot.discord_channels, channels);
     assert!(!snapshot.daemon_alive);
+    assert_eq!(snapshot.daemon_version.as_deref(), Some("daemon"));
+    assert_eq!(snapshot.binary_version.as_deref(), Some("binary"));
+    let view = HostView::from_snapshot(&snapshot);
+    assert_eq!(view.daemon_version.as_deref(), Some("daemon"));
+    assert_eq!(view.binary_version.as_deref(), Some("binary"));
 }
 
 #[test]
@@ -99,8 +108,12 @@ fn connection_tracks_first_success_and_failures() {
         ssh: "prod".into(),
     };
     let slot = HostSlot::idle(label.clone());
+    let connection_and_error = |slot: &HostSlot| {
+        let view = slot.snapshot_view();
+        (view.connection, view.error)
+    };
     assert_eq!(
-        slot.connection_and_error(),
+        connection_and_error(&slot),
         (HostConnection::Connecting, None)
     );
 
@@ -108,19 +121,20 @@ fn connection_tracks_first_success_and_failures() {
         &slot.snapshot,
         &label,
         Vec::new(),
-        None,
-        DiscordChannels::default(),
-        true,
+        OverseerSnapshot {
+            daemon_alive: true,
+            ..OverseerSnapshot::default()
+        },
         None,
     );
     assert_eq!(
-        slot.connection_and_error(),
+        connection_and_error(&slot),
         (HostConnection::Connected, None)
     );
 
     publish_error(&slot.snapshot, "offline".into());
     assert_eq!(
-        slot.connection_and_error(),
+        connection_and_error(&slot),
         (HostConnection::Failed, Some("offline".into()))
     );
 }
@@ -132,8 +146,9 @@ fn failed_first_publish_is_failed_despite_advanced_generation() {
         ssh: "prod".into(),
     });
     publish_error(&slot.snapshot, "offline".into());
+    let view = slot.snapshot_view();
     assert_eq!(
-        slot.connection_and_error(),
+        (view.connection, view.error),
         (HostConnection::Failed, Some("offline".into()))
     );
 }
@@ -151,8 +166,9 @@ fn poisoned_snapshot_remains_readable_and_writable() {
         panic!("poison snapshot");
     });
 
+    let view = slot.snapshot_view();
     assert_eq!(
-        slot.connection_and_error(),
+        (view.connection, view.error),
         (HostConnection::Connecting, None)
     );
     assert!(slot.backend().is_none());
@@ -160,14 +176,16 @@ fn poisoned_snapshot_remains_readable_and_writable() {
         &slot.snapshot,
         &label,
         Vec::new(),
-        None,
-        DiscordChannels::default(),
-        true,
+        OverseerSnapshot {
+            daemon_alive: true,
+            ..OverseerSnapshot::default()
+        },
         None,
     );
     publish_error(&slot.snapshot, "offline".into());
+    let view = slot.snapshot_view();
     assert_eq!(
-        slot.connection_and_error(),
+        (view.connection, view.error),
         (HostConnection::Failed, Some("offline".into()))
     );
 }

@@ -21,7 +21,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Terse header label for a daemon whose build is not this one. The full
 /// sentence — which names both versions — is [`drift`]; this is what fits
 /// beside the OVERSEER label on a 24-column sidebar.
-pub const DRIFT_LABEL: &str = "stale build";
+pub const DRIFT_LABEL: &str = "local: stale build";
 
 /// Introduces the version line. The timestamp keeps the first line to itself,
 /// exactly as builds before this one wrote it.
@@ -65,24 +65,29 @@ pub fn recorded_version(path: &Path) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// How the running daemon's build differs from this binary's, or `None` when
-/// the two match and there is nothing to act on.
+/// How the running daemon's build differs from `binary`, or `None` when the
+/// two match and there is nothing to act on.
 ///
 /// An absent version is drift rather than an unknown: only a build older than
 /// the one that started recording it omits the field, and that build is by
 /// definition not this one. Callers gate this on the daemon actually being
 /// healthy — telling an operator to restart a daemon that is already reported
 /// down names a recovery they are being pointed at anyway.
-pub fn drift(recorded: Option<&str>) -> Option<String> {
+pub fn drift_between(recorded: Option<&str>, binary: &str) -> Option<String> {
     match recorded {
-        Some(version) if version == VERSION => None,
+        Some(version) if version == binary => None,
         Some(version) => Some(format!(
-            "overseer daemon is running {version} but this binary is {VERSION} — anything fixed since {version} is not live yet; {RESTART_HINT}"
+            "overseer daemon is running {version} but this binary is {binary} — anything fixed since {version} is not live yet; {RESTART_HINT}"
         )),
         None => Some(format!(
-            "overseer daemon records no build, so it started from a release older than {VERSION} — anything fixed since is not live yet; {RESTART_HINT}"
+            "overseer daemon records no build, so it started from a release older than {binary} — anything fixed since is not live yet; {RESTART_HINT}"
         )),
     }
+}
+
+/// How the local daemon's build differs from this binary's.
+pub fn drift(recorded: Option<&str>) -> Option<String> {
+    drift_between(recorded, VERSION)
 }
 
 #[cfg(test)]
@@ -144,5 +149,19 @@ mod tests {
         let warning = drift(None).expect("an unrecorded build predates this one");
         assert!(warning.contains(VERSION), "{warning}");
         assert!(warning.contains("older"), "{warning}");
+    }
+
+    #[test]
+    fn drift_between_compares_against_the_supplied_binary() {
+        assert_eq!(drift_between(Some("host"), "host"), None);
+        let differing = drift_between(Some("daemon"), "host").unwrap();
+        assert!(differing.contains("daemon"), "{differing}");
+        assert!(differing.contains("host"), "{differing}");
+        let absent = drift_between(None, "host").unwrap();
+        assert!(absent.contains("host"), "{absent}");
+        assert_eq!(
+            drift(Some("daemon")),
+            drift_between(Some("daemon"), VERSION)
+        );
     }
 }

@@ -59,7 +59,7 @@ pub(in crate::ui) fn health_warnings(app: &App) -> Vec<&'static str> {
 pub(in crate::ui) fn health_warnings_from(alive: bool, version_drift: bool) -> Vec<&'static str> {
     let mut warnings = Vec::new();
     if !alive {
-        warnings.push("STALE/OFFLINE");
+        warnings.push("local: STALE/OFFLINE");
     }
     // The header carries only the terse label; `robco status --debug` names
     // both builds in full.

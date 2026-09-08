@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, PoisonError},
 };
 
 use crate::model::Status;
@@ -14,6 +14,7 @@ use super::{background_support::carry_runtime, discovery::path_key};
 use crate::ui::{
     App, DISCOVERY_INTERVAL,
     backend::{Backend, RemoteBackend},
+    overseer::OverseerSnapshot,
 };
 
 #[derive(Default)]
@@ -22,6 +23,8 @@ struct HostSnapshot {
     control_status: Option<Status>,
     discord_channels: DiscordChannels,
     daemon_alive: bool,
+    daemon_version: Option<String>,
+    binary_version: Option<String>,
     error: Option<String>,
     backend: Option<Arc<RemoteBackend>>,
     generation: u64,
@@ -34,6 +37,8 @@ pub(in crate::ui) struct HostView {
     pub(in crate::ui) control_status: Option<Status>,
     pub(in crate::ui) discord_channels: DiscordChannels,
     pub(in crate::ui) daemon_alive: bool,
+    pub(in crate::ui) daemon_version: Option<String>,
+    pub(in crate::ui) binary_version: Option<String>,
 }
 
 impl HostView {
@@ -51,7 +56,18 @@ impl HostView {
             control_status: snapshot.control_status,
             discord_channels: snapshot.discord_channels.clone(),
             daemon_alive: snapshot.daemon_alive,
+            daemon_version: snapshot.daemon_version.clone(),
+            binary_version: snapshot.binary_version.clone(),
         }
+    }
+
+    pub(in crate::ui) fn version_drift(&self) -> Option<String> {
+        let binary = self.binary_version.as_deref()?;
+        (self.connection == HostConnection::Connected)
+            .then(|| {
+                crate::overseer::heartbeat::drift_between(self.daemon_version.as_deref(), binary)
+            })
+            .flatten()
     }
 }
 
@@ -90,23 +106,14 @@ impl HostSlot {
 
     #[cfg(test)]
     fn snapshot_view(&self) -> HostView {
-        let snapshot = self
-            .snapshot
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
         HostView::from_snapshot(&snapshot)
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn connection_and_error(&self) -> (HostConnection, Option<String>) {
-        let view = self.snapshot_view();
-        (view.connection, view.error)
     }
 
     pub(in crate::ui) fn backend(&self) -> Option<Arc<RemoteBackend>> {
         self.snapshot
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(PoisonError::into_inner)
             .backend
             .clone()
     }
@@ -117,9 +124,7 @@ fn poll_host(label: HostLabel, config: Config, cell: Arc<Mutex<HostSnapshot>>) {
         match RemoteBackend::connect(&label.ssh) {
             Ok(backend) => {
                 let backend = Arc::new(backend);
-                let mut snapshot = cell
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let mut snapshot = cell.lock().unwrap_or_else(PoisonError::into_inner);
                 snapshot.backend = Some(Arc::clone(&backend));
                 drop(snapshot);
                 loop {
@@ -128,15 +133,7 @@ fn poll_host(label: HostLabel, config: Config, cell: Arc<Mutex<HostSnapshot>>) {
                             let status =
                                 backend.capture_status(registry, &config, &Default::default());
                             let overseer = status.overseer.snapshot;
-                            publish(
-                                &cell,
-                                &label,
-                                status.repos,
-                                overseer.control_status,
-                                overseer.discord_channels,
-                                overseer.daemon_alive,
-                                None,
-                            );
+                            publish(&cell, &label, status.repos, overseer, None);
                         }
                         Err(error) => {
                             publish_error(&cell, error.to_string());
@@ -156,30 +153,26 @@ fn publish(
     cell: &Mutex<HostSnapshot>,
     label: &HostLabel,
     mut repos: Vec<RepoNode>,
-    control_status: Option<Status>,
-    discord_channels: DiscordChannels,
-    daemon_alive: bool,
+    overseer: OverseerSnapshot,
     error: Option<String>,
 ) {
     for repo in &mut repos {
         repo.host = Some(label.clone());
     }
-    let mut snapshot = cell
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut snapshot = cell.lock().unwrap_or_else(PoisonError::into_inner);
     carry_runtime(&snapshot.repos, &mut repos, true);
     snapshot.repos = repos;
-    snapshot.control_status = control_status;
-    snapshot.discord_channels = discord_channels;
-    snapshot.daemon_alive = daemon_alive;
+    snapshot.control_status = overseer.control_status;
+    snapshot.discord_channels = overseer.discord_channels;
+    snapshot.daemon_alive = overseer.daemon_alive;
+    snapshot.daemon_version = overseer.daemon_version;
+    snapshot.binary_version = overseer.binary_version;
     snapshot.error = error;
     snapshot.generation = snapshot.generation.wrapping_add(1);
 }
 
 fn publish_error(cell: &Mutex<HostSnapshot>, error: String) {
-    let mut snapshot = cell
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut snapshot = cell.lock().unwrap_or_else(PoisonError::into_inner);
     snapshot.error = Some(error);
     snapshot.generation = snapshot.generation.wrapping_add(1);
 }
@@ -222,10 +215,7 @@ impl App {
         let mut changed = false;
         self.host_views.truncate(self.hosts.len());
         for (host, slot) in self.hosts.iter_mut().enumerate() {
-            let snapshot = slot
-                .snapshot
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let snapshot = slot.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
             if snapshot.generation == slot.applied_generation && self.host_views.get(host).is_some()
             {
                 continue;
@@ -264,7 +254,7 @@ impl App {
             .find(|slot| slot.label == *host)?
             .snapshot
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(PoisonError::into_inner)
             .backend
             .as_ref()
             .map(|backend| backend.client())

@@ -59,6 +59,7 @@ pub(super) fn snapshot(_args: OverseerSnapshotArgs) -> ToolResult<Value> {
         "daemon_alive": daemon_alive,
         "heartbeat_age": heartbeat_age,
         "daemon_version": daemon_version,
+        "binary_version": crate::overseer::heartbeat::VERSION,
         "control_session": control_session,
         "control_status": control_status,
     }))

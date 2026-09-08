@@ -13,6 +13,20 @@ impl HostSlot {
         Self::connected_with_chats(label, None, DiscordChannels::default(), true)
     }
 
+    pub(in crate::ui) fn connected_with_versions(
+        label: HostLabel,
+        daemon_version: Option<&str>,
+        binary_version: Option<&str>,
+    ) -> Self {
+        let slot = Self::connected(label);
+        {
+            let mut snapshot = slot.snapshot.lock().unwrap();
+            snapshot.daemon_version = daemon_version.map(str::to_owned);
+            snapshot.binary_version = binary_version.map(str::to_owned);
+        }
+        slot
+    }
+
     pub(in crate::ui) fn connected_with_chats(
         label: HostLabel,
         control_status: Option<Status>,
