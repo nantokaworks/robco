@@ -46,6 +46,13 @@ fn entry_settled(
     }
 }
 
+fn entry_with_repo(phase: LedgerPhase, repo: &str) -> LedgerEntry {
+    LedgerEntry {
+        repo: repo.into(),
+        ..entry(phase, None)
+    }
+}
+
 fn pr(state: &str) -> PrObservation {
     PrObservation {
         state: state.into(),
@@ -131,6 +138,56 @@ fn a_terminal_entry_is_identified_by_branch_not_its_recorded_pr_url() {
     ] {
         assert!(!probe_by_branch(&entry(live, Some("https://pr/1"))));
     }
+}
+
+/// dropr task #602: a failed listing used to fall through to the "not found"
+/// branch for every repo in the ledger, once the success flag was dropped.
+/// It must instead produce exactly one listing-level error and touch no repo.
+#[test]
+fn a_failed_listing_produces_one_error_not_one_per_repo() {
+    let ledger = Ledger {
+        entries: vec![
+            entry_with_repo(LedgerPhase::Working, "/repo-a"),
+            entry_with_repo(LedgerPhase::Working, "/repo-b"),
+        ],
+        ..Default::default()
+    };
+    let mut observations = Observations::default();
+
+    gather_task_states_from_overlay(
+        &ledger,
+        &DroprOverlay::default(),
+        false,
+        &mut observations,
+        now(),
+    );
+
+    assert_eq!(observations.errors.len(), 1);
+    assert_eq!(
+        observations.errors[0].message,
+        "dropr workspace listing failed"
+    );
+    assert_eq!(observations.errors[0].repo, None);
+}
+
+/// The companion case: once the listing itself has genuinely loaded, a repo
+/// that really is absent from it still gets its own "not found" error.
+#[test]
+fn a_successful_listing_still_reports_a_genuinely_absent_repo() {
+    let mut observations = Observations::default();
+    let workspaces = DroprOverlay::default();
+
+    let workspace = resolve_workspace(
+        "/repo-a",
+        "https://github.com/nantokaworks/unknown.git",
+        &workspaces,
+        &mut observations,
+    );
+
+    assert!(workspace.is_none());
+    assert_eq!(observations.errors.len(), 1);
+    assert_eq!(observations.errors[0].message, "dropr workspace not found");
+    assert_eq!(observations.errors[0].repo.as_deref(), Some("/repo-a"));
 }
 
 #[test]

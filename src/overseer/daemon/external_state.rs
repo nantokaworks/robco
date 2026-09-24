@@ -6,7 +6,7 @@
 
 use super::super::{COMMAND_TIMEOUT, terminal};
 use crate::{
-    dropr::DroprOverlay,
+    dropr::{DroprOverlay, DroprWorkspace},
     overseer::{
         exec::run_timeout,
         ledger::{Ledger, LedgerEntry, LedgerPhase},
@@ -34,7 +34,25 @@ pub(super) fn gather_task_states(
     observations: &mut Observations,
     now: DateTime<Utc>,
 ) {
-    let workspaces = DroprOverlay::load_best_effort();
+    let (workspaces, workspaces_ok) = DroprOverlay::load_with_status_timeout(COMMAND_TIMEOUT);
+    gather_task_states_from_overlay(ledger, &workspaces, workspaces_ok, observations, now);
+}
+
+/// Testable core of [`gather_task_states`]: an unavailable listing must not
+/// be read as "no workspace for any repo" by the loop below.
+fn gather_task_states_from_overlay(
+    ledger: &Ledger,
+    workspaces: &DroprOverlay,
+    workspaces_ok: bool,
+    observations: &mut Observations,
+    now: DateTime<Utc>,
+) {
+    if !workspaces_ok {
+        observations
+            .errors
+            .push(ObservationError::new("dropr workspace listing failed"));
+        return;
+    }
     let repos: HashSet<_> = ledger
         .entries
         .iter()
@@ -42,7 +60,7 @@ pub(super) fn gather_task_states(
         .map(|entry| entry.repo.as_str())
         .collect();
     for repo in repos {
-        gather_repo_task_states(repo, ledger, &workspaces, observations, now);
+        gather_repo_task_states(repo, ledger, workspaces, observations, now);
     }
 }
 
@@ -72,10 +90,7 @@ fn gather_repo_task_states(
         }
     };
     let origin = String::from_utf8_lossy(&output.stdout);
-    let Some(workspace) = workspaces.find_by_repo_url(origin.trim()) else {
-        observations
-            .errors
-            .push(ObservationError::new("dropr workspace not found").in_repo(repo));
+    let Some(workspace) = resolve_workspace(repo, origin.trim(), workspaces, observations) else {
         return;
     };
     let fetch = crate::dropr::fetch_repo_tasks(&workspace.id);
@@ -131,6 +146,23 @@ fn gather_repo_task_states(
             });
         }
     }
+}
+
+/// Looks `origin` up in an already-loaded overlay and records "dropr
+/// workspace not found" for `repo` only when it is genuinely absent.
+fn resolve_workspace<'a>(
+    repo: &str,
+    origin: &str,
+    workspaces: &'a DroprOverlay,
+    observations: &mut Observations,
+) -> Option<&'a DroprWorkspace> {
+    let workspace = workspaces.find_by_repo_url(origin);
+    if workspace.is_none() {
+        observations
+            .errors
+            .push(ObservationError::new("dropr workspace not found").in_repo(repo));
+    }
+    workspace
 }
 
 const PR_FIELDS: &str = "state,statusCheckRollup,url,mergedAt";

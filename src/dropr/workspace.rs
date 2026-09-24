@@ -4,8 +4,6 @@ use std::{collections::HashMap, process::Command, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-const WORKSPACE_LIST_TIMEOUT: Duration = Duration::from_secs(3);
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DroprWorkspace {
     pub kind: String,
@@ -30,14 +28,33 @@ pub struct DroprOverlay {
 }
 
 impl DroprOverlay {
+    /// Loads the overlay and drops the success flag. Safe only for a caller
+    /// that treats the overlay as purely additive enrichment: one that
+    /// leaves a repo's linkage unresolved on a failed load rather than
+    /// reporting it "not found", and gets another chance on its own next
+    /// reload. `discover_with_overlay`'s one-shot startup scan is that
+    /// shape — a failed load here just leaves `repo.dropr` empty until the
+    /// TUI's periodic `dropr_overlay::load_and_apply` (which keeps the flag)
+    /// reloads it a minute later. A caller that turns an empty overlay into
+    /// a per-repo error — the trap `gather_task_states` fell into (dropr
+    /// task #602) — MUST use [`Self::load_with_status`] /
+    /// [`Self::load_with_status_timeout`] instead.
     pub fn load_best_effort() -> Self {
         Self::load_with_status().0
     }
 
     /// [`Self::load_best_effort`] with the success flag kept, for callers that
     /// have to tell "no workspace for this repo" apart from "no listing".
+    ///
+    /// Uses the same 15s ceiling as every other `dropr`/`gh` subprocess call
+    /// in this crate (`overseer::exec::COMMAND_TIMEOUT`), not a shorter
+    /// dedicated one: a real `dropr workspace list` measured 1.2-1.4s with
+    /// 114 workspaces, and the call is a network round trip whose cost grows
+    /// with workspace count, so a 3s cap left only about a 2x margin. This
+    /// call runs off the UI/daemon thread wherever it is used, so the longer
+    /// ceiling costs no responsiveness.
     pub fn load_with_status() -> (Self, bool) {
-        Self::load_with_status_timeout(WORKSPACE_LIST_TIMEOUT)
+        Self::load_with_status_timeout(crate::overseer::exec::COMMAND_TIMEOUT)
     }
 
     /// Load the workspace overlay, also reporting whether the
